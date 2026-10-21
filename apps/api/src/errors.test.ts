@@ -12,7 +12,14 @@ describe("httpStatusFor", () => {
     ["LLM_NOT_CONFIGURED", 503],
     ["LLM_ACCOUNT_LIMIT", 503],
     ["LLM_REQUEST_REJECTED", 502],
+    // F9-T12: la IA no entregó los textos en el formato pedido (un fallo del modelo, no un 400).
+    ["LLM_OUTPUT_INVALID", 502],
     ["LLM_RATE_LIMITED", 429],
+    // F9-T20: aceptar o descartar algo que no es una idea; un plan pedido fuera de rango.
+    ["POST_NOT_IDEA", 409],
+    ["PLAN_RUN_CONFLICT", 409],
+    ["PLAN_RUN_INVALID", 400],
+    ["PLAN_RUN_NOT_FOUND", 404],
     ["RATE_LIMITED", 429],
     // Al conectar una cuenta (F3-T13).
     ["IG_AUTH_INVALID", 400],
@@ -55,6 +62,21 @@ describe("httpStatusFor", () => {
     ["ML_CONFLICT", 409],
     ["PUBLISHER_NOT_CONFIGURED", 503],
     ["ML_ABORTED", 503],
+    // F9-T14: conectar Discord sin llegar a conectar o cortado.
+    ["DISCORD_UNREACHABLE", 503],
+    ["DISCORD_ABORTED", 503],
+    ["DISCORD_WEBHOOK_NOT_FOUND", 400],
+    ["DISCORD_UNEXPECTED_RESPONSE", 502],
+    // F9-T15: LinkedIn al conectar y cambiar el modo.
+    ["LINKEDIN_AUTH_INVALID", 400],
+    ["LINKEDIN_PERMISSION_DENIED", 400],
+    ["LINKEDIN_UNEXPECTED_RESPONSE", 502],
+    ["LINKEDIN_NOT_CONFIGURED", 503],
+    ["LINKEDIN_APP_CREDENTIALS_INVALID", 503],
+    ["LINKEDIN_UNREACHABLE", 503],
+    ["LINKEDIN_UNAVAILABLE", 503],
+    ["LINKEDIN_RATE_LIMITED", 429],
+    ["ACCOUNT_MODE_NOT_SUPPORTED", 409],
     ["ML_UNAVAILABLE", 503],
     ["ML_RATE_LIMITED", 429],
     ["PUBLICATION_REMOTE_STATE_INVALID", 500],
@@ -62,6 +84,15 @@ describe("httpStatusFor", () => {
     ["QUEUE_UNAVAILABLE", 503],
     ["PUBLICATION_EVENT_INVALID", 500],
     ["PUBLICATION_REFERENCE_INVALID", 500],
+    // F9-T04: referencias de posts, planes, subidas y perfiles, y un post en un camino de avisos.
+    ["POST_REFERENCE_INVALID", 500],
+    ["POST_UPLOAD_REFERENCE_INVALID", 500],
+    ["PLAN_RUN_REFERENCE_INVALID", 500],
+    ["EDITORIAL_PROFILE_REFERENCE_INVALID", 500],
+    ["MEDIA_SUBJECT_INVALID", 500],
+    ["SUBJECT_NOT_LISTING", 500],
+    ["LOCK_SUBJECT_MISMATCH", 500],
+    ["POST_NOT_FOUND", 404],
     ["PUBLICATION_PROGRESS_INVALID", 500],
     ["CREDENTIALS_UNREADABLE", 500],
     ["LISTING_NOT_READY", 409],
@@ -120,6 +151,14 @@ describe("httpStatusFor", () => {
     ["MARKETPLACE_PROFILE_ACTION_PENDING", 409],
     ["MARKETPLACE_URL_INVALID", 400],
     ["MARKETPLACE_URL_REQUIRED", 400],
+    // F9-T06: el resultado dudoso, el enlace de una publicación a mano y la app de X o TikTok.
+    ["OUTCOME_UNKNOWN_PENDING", 409],
+    // F9-T11: una marca sin redes para el post; revisar un texto de post sin el perfil (cableado).
+    ["POST_NO_PLATFORMS", 409],
+    ["POST_REVIEW_UNAVAILABLE", 500],
+    ["PUBLISHED_URL_REQUIRED", 400],
+    ["PUBLISHED_URL_INVALID", 400],
+    ["TOKEN_REFRESH_NOT_CONFIGURED", 503],
     ["MARKETPLACE_PROFILE_BUSY", 503],
     // Errores de programación: por su sufijo caerían en 503 o 400.
     ["ACCESS_TOKEN_UNAVAILABLE", 500],
@@ -166,7 +205,11 @@ describe("createErrorHandler · lo que sale de details (seguimiento de ADR-0011)
         )
       ).error,
     ).toEqual({ code: "MARKETPLACE_NOT_READY", message: "falta", issues: [issue] });
-    for (const code of ["MANUAL_CONFIRM_PENDING", "MARKETPLACE_FORM_OPEN"]) {
+    for (const code of [
+      "MANUAL_CONFIRM_PENDING",
+      "MARKETPLACE_FORM_OPEN",
+      "OUTCOME_UNKNOWN_PENDING",
+    ]) {
       expect(
         (await bodyOf(new AppError(code, "espera", { details: { publicationId: PUBLICATION_ID } })))
           .error,

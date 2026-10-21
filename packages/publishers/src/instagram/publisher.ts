@@ -120,6 +120,12 @@ function sameFormat(media: InstagramMedia, format: PublishInput["format"]): bool
  * 3. Guarda la hora del pedido, `media_publish` y el `permalink` (del carrusel, no de los hijos).
  * Un `media_publish` que no terminó se relanza tal cual: el reintento lo resuelve por el progreso.
  * Todo el intento tiene un tope (`attemptMaxMs`), bajo el vencimiento del job.
+ *
+ * Avisos y posts (F9-T13): el input no dice de qué sujeto viene. Un post llega como imagen suelta
+ * (1 `ig_4x5`), carrusel (2 a 10 `ig_4x5`) o `reel` (su `ig_reel`), según `postPublicationPlan`, con
+ * el caption de su idioma (`instagramCaption`). El cupo es de la cuenta de Instagram: posts y avisos
+ * que salen por la misma cuenta lo comparten, y sin cupo el intento se reprograma igual que uno de
+ * un aviso (`IG_PUBLISH_LIMIT` lleva la señal de espera). Un post sin medios no pasa la revisión.
  */
 export function createInstagramPublisher(options: InstagramPublisherOptions = {}): DirectPublisher {
   let client: InstagramGraph | undefined;

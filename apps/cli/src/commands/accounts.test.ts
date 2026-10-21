@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import {
   fakeInstagramAuth,
+  fakeLinkedInAuth,
   fakeMercadoLibreAuth,
+  fakeXAuth,
   TEST_ML_REDIRECT_URI,
 } from "@agentsales/api/testing";
 import { ALL_SCOPE } from "@agentsales/core";
@@ -12,7 +14,9 @@ import {
   type ConnectOptions,
   runAccounts,
   runConnect,
+  runMode,
   runRefresh,
+  runSpendLimit,
 } from "./accounts.js";
 
 const TOKEN = "IGAA-token-del-panel-0123456789-secreto";
@@ -156,11 +160,33 @@ describe("accounts y accounts refresh", () => {
     );
   });
 
-  it("sin cuentas dice cómo conectar una", async () => {
+  it("sin cuentas dice cómo conectar cada red, también X (F9-T19)", async () => {
     const { h, deps } = await setup();
 
     expect(await runAccounts(deps())).toBe(0);
     expect(h.text()).toContain("No hay cuentas conectadas");
+    for (const command of [
+      "accounts connect instagram --broker <slug> --token-stdin",
+      "accounts connect discord --broker <slug> --webhook-stdin",
+      "accounts connect linkedin --broker <slug>",
+      "accounts connect x --broker <slug>",
+      "accounts connect tiktok --broker <slug>",
+    ]) {
+      expect(h.text()).toContain(command);
+    }
+  });
+
+  it("con cuentas, dice cuáles redes faltan y cómo conectarlas (F9-T19)", async () => {
+    const { h, deps, connect } = await setup();
+    await connect();
+
+    expect(await runAccounts(deps())).toBe(0);
+    const text = h.text();
+    expect(text).toContain(
+      "Sin cuenta: Portal Inmobiliario, Facebook Marketplace, Discord, LinkedIn, X, TikTok",
+    );
+    expect(text).toContain("→ X: pnpm -s cli accounts connect x --broker <slug>");
+    expect(text).not.toContain("→ Instagram:");
   });
 
   it("refresh: un token que no vence dice que no se renueva (F9-T02)", async () => {
@@ -481,6 +507,277 @@ describe("accounts connect mercadolibre (F4-T20, adelantado)", () => {
     expect(await runConnect(deps(), "mercadolibre", {})).toBe(1);
 
     expect(h.errors()).toContain("BROKER_REQUIRED");
+    expect(h.requests).toEqual([]);
+  });
+});
+
+describe("accounts connect discord (F9-T14)", () => {
+  const WEBHOOK_TOKEN = "tokenSecretoDelWebhook-123_abc";
+  const WEBHOOK_URL = `https://discord.com/api/webhooks/987654321/${WEBHOOK_TOKEN}`;
+
+  it("conecta con la URL de la entrada estándar, sin mostrarla ni mandarla en la URL", async () => {
+    const { h, deps } = await setup();
+
+    const code = await runConnect(deps(`${WEBHOOK_URL}\n`), "discord", {
+      broker: "marca",
+      webhookStdin: true,
+    });
+
+    expect(code).toBe(0);
+    expect(h.text()).toContain("✓ Conectado el webhook AgentSales de Discord (marca)");
+    const [account] = await h.platformAccounts.list(ALL_SCOPE);
+    expect(h.platformAccounts.storedCredentials(account?.id ?? "")).toEqual({
+      webhookUrl: WEBHOOK_URL,
+    });
+    expect(h.requests).toContain("POST /accounts/discord/connect");
+    expect(`${h.text()}\n${h.errors()}\n${h.requests.join("\n")}`).not.toContain(WEBHOOK_TOKEN);
+  });
+
+  it("sin --webhook-stdin o en una terminal no lee: pide pasarla por la entrada estándar", async () => {
+    const { h, deps } = await setup();
+    expect(await runConnect(deps(WEBHOOK_URL), "discord", { broker: "marca" })).toBe(1);
+    expect(await runConnect(deps(null), "discord", { broker: "marca", webhookStdin: true })).toBe(
+      1,
+    );
+    expect(h.errors()).toContain("WEBHOOK_STDIN_REQUIRED");
+    expect(h.errors()).toContain(
+      "pbpaste | pnpm -s cli accounts connect discord --broker marca --webhook-stdin",
+    );
+    expect(h.requests).toEqual([]);
+  });
+
+  it("vacío, otra cosa pegada u opciones de otro canal se rechazan sin llamar ni mostrar lo pegado", async () => {
+    const { h, deps } = await setup();
+    const cases: [Promise<number>, string][] = [
+      [
+        runConnect(deps("  \n"), "discord", { broker: "marca", webhookStdin: true }),
+        "WEBHOOK_URL_MISSING",
+      ],
+      [
+        runConnect(deps("https://example.com/api/webhooks/1/otroSecreto"), "discord", {
+          broker: "marca",
+          webhookStdin: true,
+        }),
+        "DISCORD_WEBHOOK_URL_INVALID",
+      ],
+      [
+        runConnect(deps(`${WEBHOOK_URL}\notra-linea`), "discord", {
+          broker: "marca",
+          webhookStdin: true,
+        }),
+        "DISCORD_WEBHOOK_URL_INVALID",
+      ],
+      [
+        runConnect(deps(WEBHOOK_URL), "discord", { broker: "marca", tokenStdin: true }),
+        "OPTION_NOT_FOR_PLATFORM",
+      ],
+      [
+        runConnect(deps(WEBHOOK_URL), "instagram", { broker: "marca", webhookStdin: true }),
+        "OPTION_NOT_FOR_PLATFORM",
+      ],
+    ];
+    for (const [result, code] of cases) {
+      expect(await result).toBe(1);
+      expect(h.errors()).toContain(code);
+    }
+    expect(h.errors()).not.toContain("otroSecreto");
+    expect(h.errors()).not.toContain(WEBHOOK_TOKEN);
+    expect(h.requests).toEqual([]);
+  });
+
+  it("un webhook borrado muestra el mensaje de la API, sin la URL", async () => {
+    const { h, deps } = await setup();
+    const code = await runConnect(
+      deps("https://discord.com/api/webhooks/987654321/borradoToken"),
+      "discord",
+      { broker: "marca", webhookStdin: true },
+    );
+    expect(code).toBe(1);
+    expect(h.errors()).toContain("DISCORD_WEBHOOK_NOT_FOUND");
+    expect(h.errors()).not.toContain("borradoToken");
+  });
+});
+
+describe("accounts connect x y accounts spend-limit (F9-T16)", () => {
+  async function xSetup(options: { configured?: boolean } = {}) {
+    const opened: string[] = [];
+    const h = harness({
+      deps: {
+        x: {
+          auth: fakeXAuth(),
+          configured: options.configured ?? true,
+          secureCookie: false,
+          pkce: () => ({ verifier: "v".repeat(43), challenge: "c" }),
+          // Distinto del que escribiría alguien a mano: el enlace tiene que venir de la API.
+          startUrl: "http://127.0.0.1:8787/api/oauth/x/start",
+        },
+      },
+    });
+    const brand = await h.brokers.create(brokerData("marca"));
+    const deps = (): AccountsDeps => ({
+      ...h.io,
+      client: h.client,
+      stdinIsTty: () => true,
+      readStdin: async () => "",
+      openUrl: (url) => opened.push(url),
+      now: () => new Date("2026-10-20T12:00:00Z"),
+      confirm: async () => false,
+      sleep: async () => {},
+      clock: () => 0,
+    });
+    return { h, deps, opened, brand };
+  }
+
+  it("imprime y abre el inicio del OAuth de X que da la API, con la marca", async () => {
+    const { h, deps, opened } = await xSetup();
+    expect(await runConnect(deps(), "x", { broker: "Marca" })).toBe(0);
+    expect(opened).toEqual(["http://127.0.0.1:8787/api/oauth/x/start?broker=marca"]);
+    expect(h.text()).toContain(opened[0]);
+    expect(h.text()).toContain("127.0.0.1");
+  });
+
+  it("sin el par de la app, una opción de otro canal o sin --broker, no abre nada", async () => {
+    const off = await xSetup({ configured: false });
+    expect(await runConnect(off.deps(), "x", { broker: "marca" })).toBe(1);
+    expect(off.h.errors()).toContain("X_NOT_CONFIGURED");
+    // Qué hacer (F9-T19): las tres variables y la guía.
+    for (const hint of ["X_CLIENT_ID", "X_REDIRECT_URI", "docs/08-guia-operador.md"]) {
+      expect(off.h.errors()).toContain(hint);
+    }
+    const { h, deps, opened } = await xSetup();
+    expect(await runConnect(deps(), "x", { broker: "marca", tokenStdin: true })).toBe(1);
+    expect(h.errors()).toContain("OPTION_NOT_FOR_PLATFORM");
+    expect(await runConnect(deps(), "x", {})).toBe(1);
+    expect(h.errors()).toContain("BROKER_REQUIRED");
+    expect(opened).toEqual([]);
+  });
+
+  it("spend-limit fija el tope en dólares (acepta coma) y accounts lo muestra", async () => {
+    const { h, deps, brand } = await xSetup();
+    const account = await h.platformAccounts.upsertConnected({
+      brokerId: brand.id,
+      platform: "x",
+      externalAccountId: "12345",
+      displayName: "@agentpey",
+      tokenExpiresAt: null,
+      meta: {
+        userId: "12345",
+        username: "agentpey",
+        scopes: ["tweet.write", "media.write", "offline.access"],
+        connectedAt: "2026-10-20T12:00:00.000Z",
+        tokenRefreshedAt: null,
+        accessTokenExpiresAt: "2026-10-20T14:00:00.000Z",
+      },
+      credentials: { accessToken: "access-x", refreshToken: "refresh-x" },
+    });
+    expect(await runAccounts(deps())).toBe(0);
+    expect(h.text()).toContain("tope de gasto en X de US$10 al mes");
+    expect(await runSpendLimit(deps(), account.id, "2,5")).toBe(0);
+    expect(h.text()).toContain("US$2,5 al mes");
+    expect(await runSpendLimit(deps(), account.id, "mucho")).toBe(1);
+    expect(h.errors()).toContain("X_SPEND_LIMIT_INVALID");
+    expect(await runSpendLimit(deps(), account.id, "5000")).toBe(1);
+    expect(h.errors()).toContain("1.000");
+  });
+});
+
+describe("accounts connect linkedin y accounts mode (F9-T15)", () => {
+  async function linkedinSetup(options: { configured?: boolean; confirm?: boolean } = {}) {
+    const opened: string[] = [];
+    const h = harness({
+      deps: {
+        linkedin: {
+          auth: fakeLinkedInAuth(),
+          configured: options.configured ?? true,
+          secureCookie: false,
+          // Distinto del que escribiría alguien a mano: el enlace tiene que venir de la API.
+          startUrl: "https://agentsales.test/api/oauth/linkedin/start",
+        },
+      },
+    });
+    const broker = await h.brokers.create(brokerData("marca"));
+    const deps = (): AccountsDeps => ({
+      ...h.io,
+      client: h.client,
+      stdinIsTty: () => true,
+      readStdin: async () => "",
+      openUrl: (url) => opened.push(url),
+      now: () => new Date("2026-10-20T12:00:00Z"),
+      confirm: async () => options.confirm ?? false,
+      sleep: async () => {},
+      clock: () => 0,
+    });
+    const linkedin = () =>
+      h.platformAccounts.upsertConnected(
+        {
+          brokerId: broker.id,
+          platform: "linkedin",
+          externalAccountId: "miembro-123",
+          displayName: "Vicente Wolde",
+          tokenExpiresAt: new Date("2026-12-19T12:00:00Z"),
+          meta: { mode: "manual", scopes: null, connectedAt: "2026-10-20T12:00:00.000Z" },
+          credentials: { accessToken: "token-linkedin-de-prueba" },
+        },
+        { revokeOthers: true },
+      );
+    return { h, deps, opened, linkedin };
+  }
+
+  it("connect linkedin abre el inicio del OAuth que da la API, con el corredor", async () => {
+    const { h, deps, opened } = await linkedinSetup();
+    expect(await runConnect(deps(), "linkedin", { broker: "marca" })).toBe(0);
+    const url = "https://agentsales.test/api/oauth/linkedin/start?broker=marca";
+    expect(opened).toEqual([url]);
+    expect(h.text()).toContain(url);
+    expect(h.text()).toContain("a mano");
+  });
+
+  it("sin la app de LinkedIn en la API: LINKEDIN_NOT_CONFIGURED, sin abrir nada", async () => {
+    const { h, deps, opened } = await linkedinSetup({ configured: false });
+    expect(await runConnect(deps(), "linkedin", { broker: "marca" })).toBe(1);
+    expect(h.errors()).toContain("LINKEDIN_NOT_CONFIGURED");
+    expect(opened).toEqual([]);
+  });
+
+  it("una opción de otro canal no se ignora", async () => {
+    const { h, deps } = await linkedinSetup();
+    expect(await runConnect(deps(), "linkedin", { broker: "marca", tokenStdin: true })).toBe(1);
+    expect(h.errors()).toContain("OPTION_NOT_FOR_PLATFORM");
+  });
+
+  it("accounts muestra la cuenta de LinkedIn a mano", async () => {
+    const { h, deps, linkedin } = await linkedinSetup();
+    await linkedin();
+    expect(await runAccounts(deps())).toBe(0);
+    expect(h.text()).toContain("LinkedIn (a mano)");
+    expect(h.text()).not.toContain("token-linkedin-de-prueba");
+  });
+
+  it("mode api pregunta antes; con --yes cambia, y manual vuelve sin preguntar", async () => {
+    const { h, deps, linkedin } = await linkedinSetup();
+    const account = await linkedin();
+
+    expect(await runMode(deps(), account.id, "api")).toBe(1);
+    expect(h.errors()).toContain("No se cambió el modo");
+    expect((await h.platformAccounts.get(account.id))?.meta.mode).toBe("manual");
+
+    expect(await runMode(deps(), account.id, "api", { yes: true })).toBe(0);
+    expect(h.text()).toContain("✓ Vicente Wolde (LinkedIn) publica por API");
+    expect((await h.platformAccounts.get(account.id))?.meta.mode).toBe("api");
+
+    expect(await runMode(deps(), account.id, "manual")).toBe(0);
+    expect(h.text()).toContain("publica a mano");
+    expect(await runMode(deps(), account.id, "manual")).toBe(0);
+    expect(h.text()).toContain("Sin cambios");
+  });
+
+  it("mode con un modo o un id que no sirven no llama a la API", async () => {
+    const { h, deps, linkedin } = await linkedinSetup();
+    const account = await linkedin();
+    expect(await runMode(deps(), account.id, "auto")).toBe(1);
+    expect(h.errors()).toContain("MODE_INVALID");
+    expect(await runMode(deps(), "no-es-un-id", "manual")).toBe(1);
+    expect(h.errors()).toContain("ACCOUNT_ID_INVALID");
     expect(h.requests).toEqual([]);
   });
 });

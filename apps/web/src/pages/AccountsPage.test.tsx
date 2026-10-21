@@ -141,8 +141,10 @@ describe("panel: Cuentas", () => {
       });
       expect(link.getAttribute("href")).toBe(`${START_URL}?broker=sin-cuenta`);
     } else {
-      expect(within(section).queryByRole("link")).toBeNull();
-      expect(section.textContent).toContain("--broker sin-cuenta --token-stdin");
+      // Solo en Instagram: LinkedIn, X y TikTok tienen su propio enlace desde F9-T19.
+      const instagram = within(section).getByRole("region", { name: "Instagram" });
+      expect(within(instagram).queryByRole("link")).toBeNull();
+      expect(instagram.textContent).toContain("--broker sin-cuenta --token-stdin");
     }
   });
 
@@ -691,5 +693,85 @@ describe("panel: Cuentas", () => {
         { path: `/accounts/${account?.id}/disconnect`, body: { confirmed: true } },
       ]);
     });
+  });
+});
+
+describe("panel: Cuentas de las redes de posts (F9-T19)", () => {
+  it("el administrador ve Discord por la CLI y los botones de LinkedIn y X; TikTok sin el par dice qué falta", async () => {
+    const h = harness();
+    await h.brokers.create(brokerData("sin-cuenta"));
+    h.renderApp("/cuentas");
+
+    const section = await screen.findByRole("region", { name: /sin-cuenta/ });
+    const discord = within(section).getByRole("region", { name: "Discord" });
+    expect(discord.textContent).toContain(
+      "pbpaste | pnpm -s cli accounts connect discord --broker sin-cuenta --webhook-stdin",
+    );
+    // La URL del webhook es secreta: no hay dónde pegarla en el panel.
+    expect(within(discord).queryByRole("textbox")).toBeNull();
+
+    const linkedin = within(section).getByRole("link", {
+      name: "Conectar LinkedIn de Marca sin-cuenta",
+    });
+    expect(linkedin.getAttribute("href")).toBe(
+      "http://localhost:8787/api/oauth/linkedin/start?broker=sin-cuenta",
+    );
+    const x = within(section).getByRole("link", { name: "Conectar X de Marca sin-cuenta" });
+    expect(x.getAttribute("href")).toBe(
+      "http://127.0.0.1:8787/api/oauth/x/start?broker=sin-cuenta",
+    );
+    // X vuelve a 127.0.0.1: con el panel en otro host, dice dónde abrirlo.
+    expect(within(section).getByRole("region", { name: "X" }).textContent).toContain(
+      "La conexión empieza en 127.0.0.1",
+    );
+
+    const tiktok = within(section).getByRole("region", { name: "TikTok" });
+    expect(within(tiktok).queryByRole("link")).toBeNull();
+    expect(tiktok.textContent).toContain("TIKTOK_CLIENT_KEY y TIKTOK_CLIENT_SECRET");
+  });
+
+  it("el corredor conecta su LinkedIn y su X (sus permisos), pero Discord lo pide al administrador", async () => {
+    const h = harness();
+    const mine = await h.brokers.create(brokerData("mio"));
+    h.signInAsBroker(mine.id);
+    h.renderApp("/cuentas");
+
+    const section = await screen.findByRole("region", { name: /mio/ });
+    expect(
+      within(section).getByRole("link", { name: "Conectar LinkedIn de Marca mio" }),
+    ).toBeTruthy();
+    expect(within(section).getByRole("link", { name: "Conectar X de Marca mio" })).toBeTruthy();
+    const discord = within(section).getByRole("region", { name: "Discord" });
+    expect(discord.textContent).toContain("Pídele al administrador que la conecte.");
+    expect(discord.textContent).not.toContain("--webhook-stdin");
+  });
+
+  it("una cuenta de LinkedIn dice que publica a mano; la vuelta de X dice que se conectó", async () => {
+    const h = harness();
+    const broker = await h.brokers.create(brokerData("marca"));
+    await h.platformAccounts.upsertConnected({
+      brokerId: broker.id,
+      platform: "linkedin",
+      externalAccountId: "miembro-123",
+      displayName: "Vicente Wolde",
+      tokenExpiresAt: new Date(Date.now() + 50 * DAY),
+      meta: { memberId: "miembro-123", scopes: ["w_member_social"], mode: "manual" },
+      credentials: { accessToken: "token-linkedin-de-prueba" },
+    });
+    h.renderApp("/cuentas?conectada=x&proveedor=x");
+
+    const message = await screen.findByText("Cuenta de X conectada.");
+    expect(message.closest("[role=status]")).not.toBeNull();
+    const linkedin = await screen.findByRole("article", { name: "Cuenta Vicente Wolde" });
+    expect(linkedin.textContent).toContain("A mano");
+    expect(linkedin.textContent).toContain("No se renueva sola");
+  });
+
+  it("la vuelta de X sin el par de la app dice qué anotar", async () => {
+    const h = harness();
+    await h.brokers.create(brokerData("marca"));
+    h.renderApp("/cuentas?proveedor=x&error=X_NOT_CONFIGURED");
+
+    expect((await oauthResult()).textContent).toContain("X_CLIENT_ID y X_CLIENT_SECRET");
   });
 });

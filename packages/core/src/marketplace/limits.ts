@@ -1,5 +1,7 @@
 import type { Platform } from "../enums.js";
 import { AppError } from "../errors.js";
+import { PLATFORM_TEXT } from "../labels.js";
+import { isManualAccount, type PlatformAccount } from "../platform-account.js";
 
 /**
  * Plataformas donde el clic final lo hace el operador (ADR-0017): el intento deja el formulario
@@ -8,9 +10,18 @@ import { AppError } from "../errors.js";
  */
 export const MANUAL_CONFIRM_PLATFORMS: ReadonlySet<Platform> = new Set(["fb_marketplace"]);
 
-/** Si en la plataforma el clic final es del operador. */
-export const requiresManualConfirm = (platform: Platform): boolean =>
-  MANUAL_CONFIRM_PLATFORMS.has(platform);
+/**
+ * Si el último paso lo hace el operador (ADR-0017; por cuenta desde ADR-0029 punto 9): en la
+ * plataforma (Marketplace, siempre) o, si se pasa la cuenta, también en una cuenta en modo `manual`
+ * de una red de marca (`isManualAccount`, `MANUAL_MODE_PLATFORMS`), que nunca llama a la red. Sin la cuenta responde solo
+ * por la plataforma, como antes de F9.
+ */
+export const requiresManualConfirm = (
+  platform: Platform,
+  account?: Pick<PlatformAccount, "platform" | "meta"> &
+    Partial<Pick<PlatformAccount, "externalAccountId">>,
+): boolean =>
+  MANUAL_CONFIRM_PLATFORMS.has(platform) || (account !== undefined && isManualAccount(account));
 
 /** El día de Marketplace (límite diario, valor de la UF) es el de Chile (spec F5 §4.7). */
 export const MARKETPLACE_TIME_ZONE = "America/Santiago";
@@ -99,12 +110,19 @@ export const marketplaceDailyLimitReached = (limit: number) =>
 
 /**
  * Una publicación espera el clic del operador: primero tiene que decir si la publicó o no (spec F5
- * §4.3, D11). Lo dicen descartar, quitar la aprobación, desconectar y volver a publicar.
+ * §4.3, D11). Lo dicen descartar, quitar la aprobación, desconectar, programar y volver a publicar.
+ * El mensaje depende de la plataforma (por defecto, Marketplace): en Marketplace es el clic final
+ * del formulario; en una cuenta a mano de otra red (ADR-0029 punto 9), publicarla a mano.
  */
-export const manualConfirmPending = (publicationId: string) =>
+export const manualConfirmPending = (
+  publicationId: string,
+  platform: Platform = "fb_marketplace",
+) =>
   new AppError(
     "MANUAL_CONFIRM_PENDING",
-    "Una publicación espera tu clic final en Marketplace: di si la publicaste (pega el enlace) o márcala como no publicada",
+    MANUAL_CONFIRM_PLATFORMS.has(platform)
+      ? "Una publicación espera tu clic final en Marketplace: di si la publicaste (pega el enlace) o márcala como no publicada"
+      : `Una publicación espera que la publiques a mano en ${PLATFORM_TEXT[platform]}: di si la publicaste (pega el enlace) o márcala como no publicada`,
     { details: { publicationId } },
   );
 

@@ -1,4 +1,9 @@
-import { AppError, type InstagramAuth, type MercadoLibreAuth } from "@agentsales/core";
+import {
+  AppError,
+  type InstagramAuth,
+  type MercadoLibreAuth,
+  type PlatformTokenRefresher,
+} from "@agentsales/core";
 import {
   createInMemoryJobQueue,
   createInMemoryPlatformAccountRepository,
@@ -111,17 +116,49 @@ async function setup(options: { mercadoLibreConfigured?: boolean } = {}) {
       return { accessToken: `${accessToken}-nuevo`, expiresAt: new Date(NOW.getTime() + 60 * DAY) };
     },
   };
+  /** Una cuenta de X (F9-T16) con el access token vencido: al lote le toca renovarlo. */
+  const addX = (refreshToken: string) =>
+    platformAccounts.upsertConnected({
+      brokerId: "broker-1",
+      platform: "x",
+      externalAccountId: "12345",
+      displayName: "@agentpey",
+      tokenExpiresAt: null,
+      meta: {
+        userId: "12345",
+        username: "agentpey",
+        scopes: ["tweet.write", "media.write", "offline.access"],
+        connectedAt: new Date(NOW.getTime() - DAY).toISOString(),
+        tokenRefreshedAt: null,
+        accessTokenExpiresAt: new Date(NOW.getTime() - 60_000).toISOString(),
+      },
+      credentials: { accessToken: "access-x-viejo", refreshToken },
+    });
+  const xCalls: string[] = [];
+  const xRefresher: PlatformTokenRefresher = {
+    async refresh(refreshToken) {
+      xCalls.push(refreshToken);
+      return {
+        accessToken: `access-${refreshToken}-nuevo`,
+        refreshToken: `${refreshToken}-rotado`,
+        accessTokenExpiresAt: new Date(NOW.getTime() + 2 * 60 * 60 * 1000),
+        refreshTokenExpiresAt: null,
+      };
+    },
+    isRejected: () => false,
+  };
   const { logger, lines } = captureLogger();
   const boss = fakeBoss();
   const job = tokensRefreshJob({
     platformAccounts,
     instagram,
     mercadoLibre: options.mercadoLibreConfigured === false ? null : mercadoLibre,
+    refreshers: { x: xRefresher },
     signal: new AbortController().signal,
     now: () => NOW,
   });
   await registerJobs(boss.boss, [job], logger);
-  return { platformAccounts, add, addMl, calls, mlCalls, lines, ...boss };
+  return { platformAccounts, add, addMl, addX, calls, mlCalls, xCalls, lines, ...boss };
 }
 
 describe("tokens.refresh", () => {
@@ -155,6 +192,26 @@ describe("tokens.refresh", () => {
       },
     ]);
     expect(TOKENS_REFRESH_SCHEDULE.singletonKey).toBe(TOKENS_REFRESH_KEY);
+  });
+
+  it("X (F9-T16): renueva con la misma función del intento y guarda el par que rota", async () => {
+    const { platformAccounts, addX, xCalls, lines, run } = await setup();
+    const account = await addX("refresh-x-1");
+
+    await run();
+
+    expect(xCalls).toEqual(["refresh-x-1"]);
+    expect(platformAccounts.storedCredentials(account.id)).toEqual({
+      accessToken: "access-refresh-x-1-nuevo",
+      refreshToken: "refresh-x-1-rotado",
+    });
+    expect(lines.find((line) => line.msg === "tokens revisados")).toMatchObject({
+      refreshed: [account.id],
+    });
+    expect(JSON.stringify(lines)).not.toContain("refresh-x-1");
+    // El reintento del lote no lo renueva otra vez: el token quedó fresco por 2 h.
+    await run(1);
+    expect(xCalls).toHaveLength(1);
   });
 
   it("refresca, marca las vencidas y registra solo ids, nunca tokens", async () => {

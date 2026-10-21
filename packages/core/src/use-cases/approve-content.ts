@@ -4,35 +4,49 @@ import {
   beforeContentLock,
   type CheckedContent,
   type ContentLockDeps,
-  checked,
+  type LockedContent,
   lockedCurrentContent,
+  settlePostStatus,
 } from "../content/locked-content.js";
+import type { Content } from "../content.js";
 import { AppError } from "../errors.js";
 import { LISTING_NOT_PREPARABLE_TEXT } from "../labels.js";
 import { canPrepareContent } from "../listing.js";
 import { type MarketplaceReadiness, marketplaceReadiness } from "../marketplace/readiness.js";
 import { type PortalReadiness, portalReadiness } from "../portal/readiness.js";
-import type { ListingLock } from "../ports/listing-lock.js";
+import { canDraftPost, postNotReady } from "../post.js";
 import type { Publication, PublicationActor } from "../publication.js";
+import { requirePostPlatform } from "../social/post-networks.js";
+import { listingSubject } from "../subject.js";
+import {
+  runOnSubject,
+  type SubjectLockedRepositories,
+  type SubjectLocks,
+} from "../subject-lock.js";
 import {
   channelPublications,
+  createPostPublications,
   createPublications,
+  planPostPublications,
   planPublications,
   type SkippedPublication,
 } from "./open-publications.js";
 
-export type ApproveContentDeps = ContentLockDeps & {
-  lock: ListingLock;
-  /** Marketplace: si hay token para convertir la UF (`BCCH_API_TOKEN`; spec F5 §4.6). */
-  ufConfigured?: boolean;
-};
+export type ApproveContentDeps = ContentLockDeps &
+  SubjectLocks & {
+    /** Marketplace: si hay token para convertir la UF (`BCCH_API_TOKEN`; spec F5 §4.6). */
+    ufConfigured?: boolean;
+  };
 
 export type ApprovedContent = CheckedContent & {
   /** Las publicaciones que nacieron ahora. */
   created: Publication[];
   /** Formatos que no se abrieron porque ya tenían una publicación activa de otro texto. */
   skipped: SkippedPublication[];
-  /** Todas las publicaciones del canal del aviso, después de aprobar (leídas en el candado). */
+  /**
+   * Todas las publicaciones del canal del aviso o del post (en un post, de todos sus idiomas),
+   * después de aprobar (leídas en el candado).
+   */
   publications: Publication[];
   /**
    * Solo en Portal: lo que le falta al aviso para Mercado Libre (`portalReadiness`, spec F4 §4.5).
@@ -49,97 +63,158 @@ export type ApprovedContent = CheckedContent & {
 /**
  * Aprueba el texto **vigente** de un canal (ADR-0014, spec F3 §4.2, `POST /contents/:id/approve`):
  * lo deja en `approved` y, si el corredor tiene una cuenta conectada en ese canal, abre sus
- * publicaciones (Instagram: carrusel y, con video, reel), todo dentro del candado del aviso. Todas
- * las revisiones van antes de la primera escritura. Errores (`AppError`, 409 salvo los "no existe"):
- * - el texto o su aviso no existen → `CONTENT_NOT_FOUND` o `LISTING_NOT_FOUND` (404);
+ * publicaciones (Instagram: carrusel y, con video, reel), todo dentro del candado de su sujeto: el
+ * del aviso o, desde F9, el del post (ADR-0029; un post abre una por cuenta, formato e idioma y
+ * pasa a `ready`). Todas las revisiones van antes de la primera escritura. Errores (`AppError`, 409
+ * salvo los "no existe"):
+ * - el texto o su aviso o post no existen → `CONTENT_NOT_FOUND`, `LISTING_NOT_FOUND` o
+ *   `POST_NOT_FOUND` (404);
  * - no es el vigente → `CONTENT_NOT_CURRENT`;
- * - el aviso no está en `ready`, `active` o `paused` → `LISTING_NOT_READY`;
+ * - el aviso no está en `ready`, `active` o `paused` → `LISTING_NOT_READY`; el post no está en
+ *   `draft` ni `ready` → `POST_NOT_READY`;
  * - hay una corrida activa (de textos o de imágenes, que reemplaza los medios) → `CONTENT_RUN_ACTIVE`;
+ * - el texto es de una red que no está entre las del post (`posts.platforms`, F9-T21) →
+ *   `POST_PLATFORM_EXCLUDED`;
  * - la revisión editorial tiene errores → `CONTENT_HAS_ERRORS` (las advertencias no bloquean);
- * - con una cuenta conectada, faltan las fotos del canal → `CONTENT_NOT_READY`.
+ * - con una cuenta conectada, faltan los medios del canal → `CONTENT_NOT_READY`.
  * Aprobar un texto ya aprobado vuelve a revisar y abre lo que falte (idempotente). En Portal,
- * devuelve además lo que le falta al aviso (`portalReadiness`), como advertencia.
+ * devuelve además lo que le falta al aviso (`portalReadiness`), como advertencia. Lo propio del
+ * aviso (Portal, Marketplace, `listing_source_hash`) no aplica a los posts.
  */
 export async function approveContent(
   deps: ApproveContentDeps,
   { contentId, actor }: { contentId: string; actor: PublicationActor },
 ): Promise<ApprovedContent> {
-  const { listingId, definitions } = await beforeContentLock(deps, contentId);
+  const before = await beforeContentLock(deps, contentId);
 
-  return deps.lock.run(listingId, async (locked) => {
-    const { content, listing, ctx } = await lockedCurrentContent(locked, contentId, definitions);
-    if (!canPrepareContent(listing.status)) {
+  return runOnSubject(deps, before.subject, async (locked) => {
+    const found = await lockedCurrentContent(locked, contentId, before);
+    if (found.kind === "listing" && !canPrepareContent(found.listing.status)) {
       throw new AppError("LISTING_NOT_READY", LISTING_NOT_PREPARABLE_TEXT, {
-        details: { listingId: listing.id, status: listing.status },
+        details: { listingId: found.listing.id, status: found.listing.status },
       });
     }
-    const active = await locked.contentRuns.findActive(listing.id);
-    if (active !== null) {
-      throw new AppError(
-        "CONTENT_RUN_ACTIVE",
-        "Hay una preparación de contenido en curso: espera a que termine para aprobar",
-        { details: { contentId, contentRunId: active.id } },
-      );
-    }
-    const review = checked(content, ctx);
-    if (hasContentErrors(review.checks)) {
-      throw new AppError(
-        "CONTENT_HAS_ERRORS",
-        "La revisión encontró errores en el texto: corrígelos antes de aprobar",
-        {
-          details: {
-            contentId,
-            // Solo los errores, como al publicar (`requirePortalPublishable`).
-            codes: review.checks
-              .filter((check) => check.severity === "error")
-              .map((check) => check.code),
-          },
-        },
-      );
-    }
-    const opening = await planPublications(locked, { listing, content });
-    let readiness: PortalReadiness | undefined;
-    if (content.platform === "portal_inmobiliario") {
-      const broker = await locked.brokers.findById(listing.brokerId);
-      if (broker === null) {
-        throw new AppError("BROKER_NOT_FOUND", "No existe el corredor del aviso", {
-          details: { listingId: listing.id },
-        });
-      }
-      readiness = portalReadiness(listing, {
-        name: broker.name,
-        email: broker.email,
-        whatsapp: broker.whatsapp,
-      });
-    }
-
-    const marketplace =
-      content.platform === "fb_marketplace"
-        ? marketplaceReadiness(listing, {
-            photos: composePhotoSet(await locked.media.listByListing(listing.id)).length,
-            ufConfigured: deps.ufConfigured ?? false,
-          })
-        : undefined;
-
-    // Recién aquí se escribe: nada de lo anterior puede dejar el texto aprobado a medias.
-    const approved =
-      content.status === "approved"
-        ? content
-        : await locked.contents.update(content.id, { status: "approved" });
-    const created = await createPublications(locked, {
-      listing,
-      content: approved,
-      planned: opening.toCreate,
-      actor,
-    });
-    return {
-      content: approved,
-      checks: review.checks,
-      created,
-      skipped: opening.skipped,
-      publications: await channelPublications(locked, listing.id, approved.platform),
-      ...(readiness === undefined ? {} : { portalReadiness: readiness }),
-      ...(marketplace === undefined ? {} : { marketplaceReadiness: marketplace }),
-    };
+    if (found.kind === "post" && !canDraftPost(found.post.status)) throw postNotReady(found.post);
+    const review = await approvable(found, contentId);
+    return found.kind === "listing"
+      ? approveListingContent(deps, found, review, actor)
+      : approvePostContent(found, review, actor);
   });
+}
+
+/** Lo común, antes de escribir: sin corrida activa y sin errores en la revisión. */
+async function approvable(
+  { repos, content, review }: LockedContent,
+  contentId: string,
+): Promise<CheckedContent> {
+  const active = await repos.contentRuns.findActive(content.subject);
+  if (active !== null) {
+    throw new AppError(
+      "CONTENT_RUN_ACTIVE",
+      "Hay una preparación de contenido en curso: espera a que termine para aprobar",
+      { details: { contentId, contentRunId: active.id } },
+    );
+  }
+  const reviewed = review(content);
+  if (hasContentErrors(reviewed.checks)) {
+    throw new AppError(
+      "CONTENT_HAS_ERRORS",
+      "La revisión encontró errores en el texto: corrígelos antes de aprobar",
+      {
+        details: {
+          contentId,
+          // Solo los errores, como al publicar (`requirePortalPublishable`).
+          codes: reviewed.checks
+            .filter((check) => check.severity === "error")
+            .map((check) => check.code),
+        },
+      },
+    );
+  }
+  return reviewed;
+}
+
+/** El texto en `approved` (sin escribir si ya lo estaba). */
+const markApproved = (repos: SubjectLockedRepositories, content: Content) =>
+  content.status === "approved"
+    ? Promise.resolve(content)
+    : repos.contents.update(content.id, { status: "approved" });
+
+/** Aviso: abre sus publicaciones y devuelve lo que le falta para Portal o Marketplace. */
+async function approveListingContent(
+  deps: Pick<ApproveContentDeps, "ufConfigured">,
+  { repos: locked, content, listing }: Extract<LockedContent, { kind: "listing" }>,
+  review: CheckedContent,
+  actor: PublicationActor,
+): Promise<ApprovedContent> {
+  const opening = await planPublications(locked, { listing, content });
+  let readiness: PortalReadiness | undefined;
+  if (content.platform === "portal_inmobiliario") {
+    const broker = await locked.brokers.findById(listing.brokerId);
+    if (broker === null) {
+      throw new AppError("BROKER_NOT_FOUND", "No existe el corredor del aviso", {
+        details: { listingId: listing.id },
+      });
+    }
+    readiness = portalReadiness(listing, {
+      name: broker.name,
+      email: broker.email,
+      whatsapp: broker.whatsapp,
+    });
+  }
+
+  const marketplace =
+    content.platform === "fb_marketplace"
+      ? marketplaceReadiness(listing, {
+          photos: composePhotoSet(await locked.media.listBySubject(listingSubject(listing.id)))
+            .length,
+          ufConfigured: deps.ufConfigured ?? false,
+        })
+      : undefined;
+
+  // Recién aquí se escribe: nada de lo anterior puede dejar el texto aprobado a medias.
+  const approved = await markApproved(locked, content);
+  const created = await createPublications(locked, {
+    listing,
+    content: approved,
+    planned: opening.toCreate,
+    actor,
+  });
+  return {
+    content: approved,
+    checks: review.checks,
+    created,
+    skipped: opening.skipped,
+    publications: await channelPublications(locked, listingSubject(listing.id), approved.platform),
+    ...(readiness === undefined ? {} : { portalReadiness: readiness }),
+    ...(marketplace === undefined ? {} : { marketplaceReadiness: marketplace }),
+  };
+}
+
+/** Post: abre una publicación por cuenta, formato e idioma, y deja el post en `ready`. */
+async function approvePostContent(
+  { repos: locked, content, post }: Extract<LockedContent, { kind: "post" }>,
+  review: CheckedContent,
+  actor: PublicationActor,
+): Promise<ApprovedContent> {
+  // F9-T21: el texto de una red que se le quitó al post no se aprueba (abriría publicaciones).
+  requirePostPlatform(post, content.platform);
+  const opening = await planPostPublications(locked, { post, content });
+
+  // Recién aquí se escribe.
+  const approved = await markApproved(locked, content);
+  const created = await createPostPublications(locked, {
+    post,
+    content: approved,
+    planned: opening.toCreate,
+    actor,
+  });
+  await settlePostStatus(locked, post);
+  return {
+    content: approved,
+    checks: review.checks,
+    created,
+    skipped: opening.skipped,
+    publications: await channelPublications(locked, approved.subject, approved.platform),
+  };
 }

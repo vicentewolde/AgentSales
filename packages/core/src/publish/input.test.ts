@@ -58,6 +58,7 @@ function mediaItem(id: string, overrides: Partial<Media> = {}): Media {
   return {
     id,
     listingId: "listing-1",
+    postId: null,
     brokerId: "broker-1",
     kind: "image",
     role: "processed",
@@ -79,9 +80,11 @@ function mediaItem(id: string, overrides: Partial<Media> = {}): Media {
 function content(overrides: Partial<Content> = {}): Content {
   return {
     id: "content-1",
+    subject: { kind: "listing", id: "listing-1" },
     listingId: "listing-1",
     contentRunId: "run-1",
     platform: "instagram",
+    language: "es",
     title: null,
     body: "Departamento luminoso en Ñuñoa.",
     hashtags: ["#nunoa", "#departamentoventa"],
@@ -99,10 +102,12 @@ function content(overrides: Partial<Content> = {}): Content {
 function publication(overrides: Partial<Publication> = {}): Publication {
   return {
     id: "pub-1",
+    subject: { kind: "listing", id: "listing-1" },
     listingId: "listing-1",
     platformAccountId: "account-1",
     platform: "instagram",
     format: "post",
+    language: "es",
     contentId: "content-1",
     mediaIds: ["m-3", "m-1"],
     status: "publishing",
@@ -117,6 +122,7 @@ function publication(overrides: Partial<Publication> = {}): Publication {
     remoteState: null,
     listingSourceHash: null,
     relistedFrom: null,
+    costUsd: null,
     createdAt: at,
     updatedAt: at,
     ...overrides,
@@ -138,6 +144,8 @@ describe("buildPublishInput", () => {
       format: "post",
       title: null,
       caption: "Departamento luminoso en Ñuñoa.\n\n#nunoa #departamentoventa",
+      // F9-T06: el idioma de la publicación (las de un aviso son `es`).
+      language: "es",
       media: ["m-3", "m-1"].map((id) => {
         const { storagePath, mime, bytes, width, height, durationS, kind } = mediaItem(id);
         return {
@@ -387,6 +395,39 @@ describe("buildPublishInput", () => {
       expect(error).toMatchObject({ code: "PUBLICATION_MEDIA_MISSING", retriable: false });
     }
     expect(signed).toEqual([]);
+  });
+
+  it("en un post (F9) solo valen sus medios: no el logo ni los de otro post o de un aviso", async () => {
+    const storage = createInMemoryMediaStorage();
+    const postPublication = publication({
+      subject: { kind: "post", id: "post-1" },
+      listingId: null,
+      mediaIds: ["p-1"],
+    });
+    const postContent = content({ subject: { kind: "post", id: "post-1" }, listingId: null });
+    const own = mediaItem("p-1", { listingId: null, postId: "post-1" });
+    const input = await buildPublishInput(
+      { storage, ...NO_LISTING },
+      { publication: postPublication, content: postContent, media: [own] },
+    );
+    expect(input.media.map((item) => item.mediaId)).toEqual(["p-1"]);
+    // El atajo `listingId` es `null` en un post, en el logo y en los medios de otro post: con él,
+    // los tres pasarían. Por sujeto, ninguno.
+    const logo = mediaItem("logo", { listingId: null, postId: null, role: "original" });
+    const otherPost = mediaItem("p-9", { listingId: null, postId: "post-2" });
+    const fromListing = mediaItem("m-1");
+    for (const item of [logo, otherPost, fromListing]) {
+      await expect(
+        buildPublishInput(
+          { storage, ...NO_LISTING },
+          {
+            publication: { ...postPublication, mediaIds: [item.id] },
+            content: postContent,
+            media: [own, logo, otherPost, fromListing],
+          },
+        ),
+      ).rejects.toMatchObject({ code: "PUBLICATION_MEDIA_MISSING" });
+    }
   });
 
   it("un texto que no es el de la publicación (otro id o canal) es PUBLICATION_CONTENT_MISMATCH", async () => {

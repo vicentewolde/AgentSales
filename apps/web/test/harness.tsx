@@ -6,6 +6,7 @@ import {
   type BrokerData,
   type FieldDefinition,
   type LLMProvider,
+  listingSubject,
   type NewListing,
   type PublicationOperations,
   prepareContent,
@@ -82,21 +83,20 @@ export function harness(options: HarnessOptions = {}) {
   // R2 en memoria (spec F8 §4.4): la API firma las subidas y el panel "sube" aquí.
   const storage = testStorage();
   const auth = { ...testAuth(), brokers: options.deps?.brokers ?? brokers };
-  const base = createApp(
-    testDeps({
-      auth,
-      access: localAccess(8787, 5173),
-      listings,
-      brokers,
-      media,
-      importRuns,
-      contentRuns: content.contentRuns,
-      contents: content.contents,
-      platformAccounts,
-      storage,
-      ...options.deps,
-    }),
-  );
+  const deps = testDeps({
+    auth,
+    access: localAccess(8787, 5173),
+    listings,
+    brokers,
+    media,
+    importRuns,
+    contentRuns: content.contentRuns,
+    contents: content.contents,
+    platformAccounts,
+    storage,
+    ...options.deps,
+  });
+  const base = createApp(deps);
   const anonymous = options.session === "none";
   const app = anonymous ? base : withAdminSession(base);
   // Sin sesión por defecto, la cookie de sesión se guarda y se devuelve como en el navegador.
@@ -186,6 +186,8 @@ export function harness(options: HarnessOptions = {}) {
 
   return {
     client,
+    /** Todas las dependencias de la API (los posts, su candado y sus publicaciones: F9-T17). */
+    deps,
     /** La autenticación de la API (los dobles de core, con el administrador sembrado). */
     auth,
     requests,
@@ -243,7 +245,7 @@ export async function contentSetup(
   const prepare = async (
     llm: LLMProvider = createInMemoryLlmProvider([{ data: SAMPLE_CONTENT_DRAFT }]),
   ) => {
-    const run = await h.contentRuns.latest(listing.id);
+    const run = await h.contentRuns.latest(listingSubject(listing.id));
     if (run === null) throw new Error("no hay corridas");
     return prepareContent(
       {

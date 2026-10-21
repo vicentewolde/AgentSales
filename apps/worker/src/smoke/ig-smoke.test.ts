@@ -87,7 +87,7 @@ const account = (
 const cover = (
   storagePath: string,
   overrides: Partial<Media> = {},
-): Awaited<ReturnType<IgSmokeDeps["media"]["listByListing"]>>[number] => ({
+): Awaited<ReturnType<IgSmokeDeps["media"]["listBySubject"]>>[number] => ({
   id: `media-${storagePath}`,
   role: "rendered",
   variant: "cover",
@@ -146,7 +146,7 @@ function setup({
     listings: {
       list: async () => listings.map((listing) => ({ status: "ready" as const, ...listing })),
     },
-    media: { listByListing: async (id) => media[id] ?? [] },
+    media: { listBySubject: async (subject) => media[subject.id] ?? [] },
     storage: {
       head: async (path) => {
         const contentType = path in stored ? stored[path] : "image/jpeg";

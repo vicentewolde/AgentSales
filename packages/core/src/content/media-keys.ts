@@ -1,5 +1,6 @@
 import { canonicalJson } from "../canonical-json.js";
-import type { ProcessedMediaVariant, RenderedMediaVariant } from "../enums.js";
+import type { RenderedMediaVariant, VideoMediaVariant } from "../enums.js";
+import type { ImageVariant } from "../ports/media-processor.js";
 import {
   type CoverData,
   type ReelOverlayData,
@@ -18,7 +19,7 @@ const listingRoot = (brokerId: string, listingId: string) =>
 /** Una variante JPEG de un original (`thumb`, `ig_4x5`, `pi_4x3`; el `thumb` de un video también). */
 export function variantPath(
   ids: { brokerId: string; listingId: string },
-  variant: Exclude<ProcessedMediaVariant, "ig_reel">,
+  variant: ImageVariant,
   originalSha256: string,
   processorVersion: string,
 ): string {
@@ -60,4 +61,45 @@ export function reelTextInput(
   versions: { templates: string; processor: string },
 ): string {
   return canonicalJson({ ...versions, data: slideKeyInput(data) });
+}
+
+// ── Posts (spec F9 §4.5, F9-T10) ─────────────────────────────────────────────
+// Todo lo de un post vive bajo `posts/{postId}/`: los originales que sube el panel o la CLI
+// (ADR-0025) y sus variantes. Un post no tiene renders ni texto en el reel.
+
+/** El prefijo de todos los objetos de un post. */
+export const postObjectsPrefix = (postId: string) => `posts/${postId}/`;
+
+/** Prefijo de los originales de un post (lo que `…/uploads/complete` revisa con `list`). */
+export const postOriginalsPrefix = (postId: string) => `${postObjectsPrefix(postId)}original/`;
+
+/**
+ * Un original de un post, por su sha256 (como los de un aviso): determinística, así el mismo
+ * archivo pedido dos veces es la misma subida y la misma clave.
+ */
+export function postOriginalPath(postId: string, sha256: string, extension: string): string {
+  return `${postOriginalsPrefix(postId)}${sha256}.${extension}`;
+}
+
+/** Una variante JPEG de un original de un post (`thumb`, `ig_4x5`; el `thumb` de un video). */
+export function postVariantPath(
+  postId: string,
+  variant: ImageVariant,
+  originalSha256: string,
+  processorVersion: string,
+): string {
+  return `${postObjectsPrefix(postId)}processed/${variant}/${originalSha256}-v${processorVersion}.jpg`;
+}
+
+/**
+ * Un video derivado de un original de un post: el reel (sin texto encima) o el video para X. Lleva
+ * la versión del procesador, como las variantes JPEG: cambiarla los regenera.
+ */
+export function postVideoPath(
+  postId: string,
+  variant: VideoMediaVariant,
+  originalSha256: string,
+  processorVersion: string,
+): string {
+  return `${postObjectsPrefix(postId)}processed/${variant}/${originalSha256}-v${processorVersion}.mp4`;
 }

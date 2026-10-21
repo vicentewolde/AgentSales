@@ -1,5 +1,9 @@
 import { type Publication, schedulePublication } from "@agentsales/core";
-import { createInMemoryJobQueue, createPublicationScenario } from "@agentsales/core/testing";
+import {
+  createInMemoryJobQueue,
+  createPostPublicationScenario,
+  createPublicationScenario,
+} from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
 import { captureLogger } from "../../test/content-fixture.js";
 import {
@@ -113,6 +117,26 @@ describe("publication.due", () => {
         String(line.msg).startsWith("publicaciones programadas que no se pudieron empezar"),
       ),
     ).toMatchObject({ level: 40, failed: [{ publicationId: post.id, code: "LISTING_NOT_READY" }] });
+  });
+
+  it("a la hora empieza también la programada de un post, en el candado del post (F9-T07)", async () => {
+    const t = await createPostPublicationScenario();
+    const { logger, lines } = captureLogger();
+    const boss = fakeBoss();
+    const due = new Date("2026-10-19T13:00:30.000Z");
+    await registerJobs(boss.boss, [publicationDueJob({ ...t.deps, now: () => due })], logger);
+    const publication = await schedulePublication(
+      { ...t.deps, now: () => NOW },
+      { publicationId: t.publicationOf("discord").id, at: AT, dryRun: true, actor: "operator" },
+    );
+
+    await boss.run();
+
+    expect(t.current(publication.id)).toMatchObject({ status: "publishing", dryRun: true });
+    expect(t.queue.jobs.map((job) => job.data)).toEqual([{ publicationId: publication.id }]);
+    expect(lines.find((line) => line.msg === "publicaciones programadas empezadas")).toMatchObject({
+      publicationIds: [publication.id],
+    });
   });
 
   it("la vuelta del arranque se encola con la misma clave", async () => {

@@ -88,6 +88,38 @@ export const discordCredentialsSchema = z.object({ webhookUrl: discordWebhookUrl
 export type DiscordCredentials = z.infer<typeof discordCredentialsSchema>;
 
 /**
+ * El id y el token de la URL de un webhook de Discord (F9-T14). El id no es secreto (es el
+ * `external_account_id` de la cuenta); el token sí. `CREDENTIALS_INVALID` (sin la URL) si no es
+ * la URL de un webhook.
+ */
+export function discordWebhookParts(webhookUrl: string): { id: string; token: string } {
+  const parsed = discordWebhookUrlSchema.safeParse(webhookUrl);
+  const [, id, token] = parsed.success
+    ? (/\/webhooks\/(\d+)\/([\w-]+)$/.exec(parsed.data) ?? [])
+    : [];
+  if (id === undefined || token === undefined) throw credentialsInvalid();
+  return { id, token };
+}
+
+/** Un snowflake de Discord (el id de un servidor, canal, webhook o mensaje). */
+const snowflake = z.string().regex(/^\d{1,30}$/);
+
+/**
+ * `meta` de una cuenta de Discord (spec F9 §4.6, F9-T14): lo que dijo «Get Webhook with Token» al
+ * conectar, sin secretos. `guildId` arma el enlace del mensaje publicado
+ * (`https://discord.com/channels/<servidor>/<canal>/<mensaje>`); `null` si Discord no lo informó
+ * (entonces el enlace queda `null`). `mode: "manual"` (ADR-0029 punto 9) la deja a mano.
+ */
+export const discordAccountMetaSchema = z.object({
+  mode: z.enum(["api", "manual"]).optional(),
+  webhookName: z.string(),
+  guildId: snowflake.nullable(),
+  channelId: snowflake.nullable(),
+  connectedAt: z.iso.datetime(),
+});
+export type DiscordAccountMeta = z.infer<typeof discordAccountMetaSchema>;
+
+/**
  * El esquema de las credenciales de cada plataforma, **laxo**: el que lee lo guardado (una clave de
  * más en una fila vieja se descarta, no la vuelve ilegible). Lo que se escribe pasa por
  * `checkCredentials`, estricto. Marketplace no guarda (ADR-0017): su sesión vive en el perfil del
@@ -427,4 +459,33 @@ export function isManualMarketplaceAccount(
   if (account.externalAccountId === MANUAL_MARKETPLACE_ACCOUNT_ID) return true;
   const meta = marketplaceAccountMetaSchema.safeParse(account.meta);
   return meta.success && meta.data.mode === "manual";
+}
+
+/**
+ * Las redes donde una cuenta puede estar en modo `manual` por su `meta.mode` (ADR-0029 punto 9):
+ * las de contenido de marca. Marketplace tiene su propio modo a mano (ADR-0023). En Instagram y
+ * Portal no vale: su enlace no es su id (Portal opera el ítem por su número: sync, pausar,
+ * cerrar), así que un `mode: "manual"` ahí se ignora y la cuenta publica por API como siempre.
+ */
+export const MANUAL_MODE_PLATFORMS = [
+  "linkedin",
+  "x",
+  "discord",
+  "tiktok",
+] as const satisfies readonly Platform[];
+
+/**
+ * Si una cuenta publica a mano (ADR-0029 punto 9): nunca llama a la red; el intento deja el texto y
+ * los medios listos (`awaiting_manual_confirm`) y el operador confirma con el enlace. En
+ * Marketplace, la cuenta a mano de F7 (`isManualMarketplaceAccount`); en las redes de
+ * `MANUAL_MODE_PLATFORMS`, `meta.mode = "manual"` (LinkedIn por defecto, spec F9 §4.6); en
+ * Instagram y Portal, nunca. Lee solo esa clave: una `meta` vieja no falla.
+ */
+export function isManualAccount(
+  account: Pick<PlatformAccount, "platform" | "meta"> &
+    Partial<Pick<PlatformAccount, "externalAccountId">>,
+): boolean {
+  if (account.platform === "fb_marketplace") return isManualMarketplaceAccount(account);
+  if (!(MANUAL_MODE_PLATFORMS as readonly Platform[]).includes(account.platform)) return false;
+  return account.meta.mode === "manual";
 }

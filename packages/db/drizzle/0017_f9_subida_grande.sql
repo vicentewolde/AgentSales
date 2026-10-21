@@ -1,0 +1,1 @@
+ALTER TYPE "public"."post_upload_status" ADD VALUE 'uploaded';

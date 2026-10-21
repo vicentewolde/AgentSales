@@ -7,6 +7,7 @@ import {
   type ImportRunRepository,
   type ListingRepository,
   type LlmCallUsage,
+  listingSubject,
   type PlatformAccountRepository,
 } from "@agentsales/core";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -211,8 +212,8 @@ export function scopeRepositoriesContract(name: string, make: () => Promise<Scop
         }
       }
       const one = [
-        ...(await repos.contents.listCurrent(a.id)),
-        ...(await repos.contents.listCurrent(b.id)),
+        ...(await repos.contents.listCurrent(listingSubject(a.id))),
+        ...(await repos.contents.listCurrent(listingSubject(b.id))),
       ];
       const many = await repos.contents.listCurrentMany([a.id, b.id, a.id]);
       const key = (content: { id: string }) => content.id;

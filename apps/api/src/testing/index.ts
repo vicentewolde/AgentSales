@@ -6,9 +6,14 @@ import { Writable } from "node:stream";
 import { createLogger, createStateSigner, type Logger } from "@agentsales/config";
 import {
   AppError,
+  type DiscordWebhooks,
+  discordWebhookParts,
   type InstagramAuth,
+  type LinkedInAuth,
   type MercadoLibreAuth,
   type SessionClient,
+  type TikTokAuth,
+  type XAuth,
 } from "@agentsales/core";
 import {
   createFakePasswordHasher,
@@ -17,6 +22,7 @@ import {
   createFakeTotpProvider,
   createInMemoryBrokerRepository,
   createInMemoryContentRepositories,
+  createInMemoryEditorialProfileRepository,
   createInMemoryFieldDefinitionRepository,
   createInMemoryImportRunRepository,
   createInMemoryJobQueue,
@@ -25,7 +31,11 @@ import {
   createInMemoryMediaRepository,
   createInMemoryMediaStorage,
   createInMemoryMetaDeletionRepository,
+  createInMemoryPlanRunRepository,
   createInMemoryPlatformAccountRepository,
+  createInMemoryPostLock,
+  createInMemoryPostRepository,
+  createInMemoryPostUploadRepository,
   createInMemoryPublicationRepository,
   createInMemoryUserRepositories,
   type InMemoryMediaStorage,
@@ -83,6 +93,146 @@ export function fakeInstagramAuth(): InstagramAuth & { calls: string[] } {
       if (accessToken.startsWith("malo")) throw reject();
       return { userId: "17841400000000001", username: "corredora", accountType: "BUSINESS" };
     },
+  };
+}
+
+/**
+ * Discord falso para la API (F9-T14): responde el webhook de la URL (su id, un nombre, el servidor y
+ * el canal) y registra las llamadas sin la URL. Un token que empiece con `borrado` es
+ * `DISCORD_WEBHOOK_NOT_FOUND`, y uno con `malo`, `DISCORD_WEBHOOK_INVALID`.
+ */
+export function fakeDiscordWebhooks(): DiscordWebhooks & { calls: string[] } {
+  const calls: string[] = [];
+  return {
+    calls,
+    async get(webhookUrl) {
+      calls.push("get");
+      const { id, token } = discordWebhookParts(webhookUrl);
+      if (token.startsWith("borrado")) {
+        throw new AppError(
+          "DISCORD_WEBHOOK_NOT_FOUND",
+          "El webhook ya no existe: vuelve a conectar con un webhook nuevo del canal",
+        );
+      }
+      if (token.startsWith("malo")) {
+        throw new AppError(
+          "DISCORD_WEBHOOK_INVALID",
+          "Discord no acepta el webhook (su token ya no sirve): crea otro en el canal y vuelve a conectar",
+        );
+      }
+      return { id, name: "AgentSales", guildId: "111", channelId: "222" };
+    },
+  };
+}
+
+/** El verificador de PKCE de los tests de X (43 caracteres, como uno de verdad). */
+export const TEST_PKCE_VERIFIER = "verificador-pkce-de-prueba-0123456789abcdefgh";
+
+/**
+ * X falso para la API (F9-T16): canjea un código con su verificador y responde `/2/users/me`, y
+ * registra las llamadas (el código y el verificador, para revisar que llegó el de la cookie). Un
+ * código que empiece con `malo` es `X_AUTH_INVALID`, y uno con `sin-permisos`, un canje sin
+ * `tweet.write`. El refresco entrega un par nuevo (`…-refrescado-<n>`).
+ */
+export function fakeXAuth(): XAuth & { calls: Array<{ code: string; verifier: string }> } {
+  const calls: Array<{ code: string; verifier: string }> = [];
+  let refreshes = 0;
+  return {
+    calls,
+    authorizeUrl: (state, challenge) =>
+      `https://x.com/i/oauth2/authorize?state=${encodeURIComponent(state)}&code_challenge=${challenge}`,
+    async exchangeCode(code, verifier) {
+      calls.push({ code, verifier });
+      if (code.startsWith("malo")) {
+        throw new AppError("X_AUTH_INVALID", "X no acepta el acceso de la cuenta", {
+          details: { oauthError: "invalid_grant" },
+        });
+      }
+      return {
+        accessToken: `access-${code}`,
+        refreshToken: `refresh-${code}`,
+        accessTokenExpiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
+        refreshTokenExpiresAt: null,
+        scopes: code.startsWith("sin-permisos")
+          ? ["tweet.read", "users.read", "offline.access"]
+          : ["tweet.read", "tweet.write", "users.read", "media.write", "offline.access"],
+      };
+    },
+    async me() {
+      return { id: "12345", username: "agentpey", name: "AgentPey" };
+    },
+    async refresh(refreshToken) {
+      refreshes += 1;
+      return {
+        accessToken: `${refreshToken}-access-refrescado-${refreshes}`,
+        refreshToken: `${refreshToken}-refrescado-${refreshes}`,
+        accessTokenExpiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
+        refreshTokenExpiresAt: null,
+      };
+    },
+    isRejected: () => false,
+  };
+}
+
+/**
+ * LinkedIn falso para la API (F9-T15): arma la URL de autorización con el `state`, canjea un código
+ * y responde el miembro, y registra las llamadas sin valores. El código decide el caso: `malo…` es
+ * `LINKEDIN_AUTH_INVALID`, `sin-permiso…` no trae `w_member_social` y `otro…` responde otro miembro.
+ */
+export function fakeLinkedInAuth(): LinkedInAuth & { calls: string[] } {
+  const calls: string[] = [];
+  let lastCode = "";
+  return {
+    calls,
+    authorizeUrl: (state) =>
+      `https://www.linkedin.com/oauth/v2/authorization?client_id=app&state=${encodeURIComponent(state)}`,
+    async exchangeCode(code) {
+      calls.push("exchangeCode");
+      lastCode = code;
+      if (code.startsWith("malo")) {
+        throw new AppError(
+          "LINKEDIN_AUTH_INVALID",
+          "LinkedIn no aceptó la autorización (venció, ya se usó o la dirección de retorno no coincide): conecta de nuevo",
+        );
+      }
+      return {
+        accessToken: "token-linkedin-de-prueba",
+        expiresAt: new Date("2026-12-19T12:00:00Z"),
+        scopes: code.startsWith("sin-permiso")
+          ? ["openid", "profile"]
+          : ["openid", "profile", "w_member_social"],
+      };
+    },
+    async me() {
+      calls.push("me");
+      return lastCode.startsWith("otro")
+        ? { memberId: "otro-miembro", name: "Otra Persona" }
+        : { memberId: "miembro-123", name: "Vicente Wolde" };
+    },
+  };
+}
+
+/**
+ * TikTok sin el par de la app (F9-T19: `tiktok` es obligatorio en `AppDeps`, como X y LinkedIn): los
+ * tests de siempre ven TikTok sin configurar y nunca lo llaman; `oauth-tiktok.test.ts` pasa el suyo.
+ */
+export function unconfiguredTikTokAuth(): TikTokAuth {
+  const notConfigured = () =>
+    new AppError("TIKTOK_NOT_CONFIGURED", "TikTok no está configurado en los tests");
+  return {
+    authorizeUrl: () => {
+      throw notConfigured();
+    },
+    exchangeCode: async () => {
+      throw notConfigured();
+    },
+    user: async () => {
+      throw notConfigured();
+    },
+    refresh: async () => {
+      throw notConfigured();
+    },
+    isRejected: () => false,
   };
 }
 
@@ -280,11 +430,18 @@ export const adminApp = (deps: AppDeps) => withAdminSession(createApp(deps));
  * usa http://localhost/x: el Host es "localhost", y el origen del panel, el 5173.
  */
 export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
-  // El gasto de IA por corredor (F7-T12) cruza la corrida con el aviso, como Postgres.
+  // El gasto de IA por corredor (F7-T12) cruza la corrida con el aviso (o, desde F9, con el
+  // post), como Postgres.
   let listingsRef: AppDeps["listings"] | undefined;
+  const posts = overrides.posts ?? createInMemoryPostRepository();
+  // Los planes de ideas (F9-T21) guardan sus ideas en los mismos posts; su gasto entra al tope.
+  const ownPlanRuns = createInMemoryPlanRunRepository({ posts });
+  const planRuns = overrides.planRuns ?? ownPlanRuns;
   const content = createInMemoryContentRepositories({
     nextId: randomUUID,
     brokerOfListing: async (id) => (await listingsRef?.get(id))?.brokerId ?? null,
+    brokerOfPost: async (id) => (await posts.get(id))?.brokerId ?? null,
+    planRuns: () => (overrides.planRuns === undefined ? ownPlanRuns.all() : []),
   });
   // La app solo lee las publicaciones; el candado las cambia. Un test que trae las suyas trae
   // también su candado (como el escenario de publicación), para que los dos vean las mismas.
@@ -293,7 +450,12 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
   }
   const publications = createInMemoryPublicationRepository();
   const brokers = overrides.brokers ?? createInMemoryBrokerRepository([], { nextId: randomUUID });
-  const deps: Omit<AppDeps, "lock"> & { lock?: AppDeps["lock"] } = {
+  // Las subidas de posts: la app las lee y el candado del post las cambia (los mismos datos).
+  const postUploads = createInMemoryPostUploadRepository();
+  const deps: Omit<AppDeps, "lock" | "postLock"> & {
+    lock?: AppDeps["lock"];
+    postLock?: AppDeps["postLock"];
+  } = {
     // La autenticación ve los mismos corredores que la app (`/auth/me`).
     auth: { ...testAuth(), brokers },
     oauthStates: createInMemoryUserRepositories().oauthStates,
@@ -321,11 +483,36 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     queue: createInMemoryJobQueue(),
     newId: randomUUID,
     maxUploadBytes: 50 * 1024 * 1024,
+    maxVideoBytes: 30 * 1024 * 1024,
     contentRuns: content.contentRuns,
     contents: content.contents,
+    posts,
+    postUploads,
+    planRuns,
+    editorialProfiles: createInMemoryEditorialProfileRepository(),
     platformAccounts: createInMemoryPlatformAccountRepository({ nextId: randomUUID }),
     publications,
     instagram: { auth: fakeInstagramAuth(), oauthConfigured: true, secureCookie: false },
+    discord: fakeDiscordWebhooks(),
+    x: {
+      auth: fakeXAuth(),
+      configured: true,
+      secureCookie: false,
+      pkce: () => ({ verifier: TEST_PKCE_VERIFIER, challenge: "desafio-de-prueba" }),
+      startUrl: "http://127.0.0.1:8787/api/oauth/x/start",
+    },
+    linkedin: {
+      auth: fakeLinkedInAuth(),
+      configured: true,
+      secureCookie: false,
+      startUrl: "http://localhost:8787/api/oauth/linkedin/start",
+    },
+    tiktok: {
+      auth: unconfiguredTikTokAuth(),
+      configured: false,
+      secureCookie: false,
+      startUrl: "http://localhost:8787/api/oauth/tiktok/start",
+    },
     mercadoLibre: {
       auth: fakeMercadoLibreAuth(),
       configured: true,
@@ -364,5 +551,18 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
       publications,
       platformAccounts: deps.platformAccounts,
     });
-  return { ...deps, lock };
+  // El candado del post, con los mismos repositorios (F9).
+  const postLock =
+    deps.postLock ??
+    createInMemoryPostLock({
+      brokers: deps.brokers,
+      posts: deps.posts,
+      postUploads,
+      media: deps.media,
+      contentRuns: deps.contentRuns,
+      contents: deps.contents,
+      publications,
+      platformAccounts: deps.platformAccounts,
+    });
+  return { ...deps, lock, postLock };
 }

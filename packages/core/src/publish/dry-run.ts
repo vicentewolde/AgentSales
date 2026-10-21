@@ -4,6 +4,12 @@ import { checkPublishInput, publishInputInvalid } from "./input.js";
 /** La nota del "formulario listo" simulado (spec F5 §4.3, D4). */
 export const DRY_RUN_HANDOFF_NOTE = "Simulación: no se abrió Facebook";
 
+/**
+ * La nota del traspaso simulado de otra red con paso manual (TikTok, F9-T26: el borrador en la
+ * bandeja): no se llamó a la red.
+ */
+export const DRY_RUN_UPLOAD_NOTE = "Simulación: no se subió nada a la red";
+
 /** Id simulado de una publicación en `dry-run`. */
 export const dryRunExternalId = (publicationId: string) => `dry-run:${publicationId}`;
 
@@ -19,9 +25,9 @@ export const dryRunExternalId = (publicationId: string) => `dry-run:${publicatio
  * 3. Devuelve un resultado simulado (`dry-run:<publicationId>`, sin enlace) o, si el publisher
  *    tiene paso manual (`manualConfirm`, Marketplace: ADR-0017), el "formulario listo" simulado
  *    (`handoff` con `simulated: true`): nunca abre el navegador.
- * **Nunca** llama a `publish`, `pause`, `resume` ni `close` del envuelto (no los expone) ni guarda
- * progreso: no hay nada creado en la plataforma. Lo que se habría enviado lo registra quien llama,
- * igual que en `live` (`publishAttemptRecord`).
+ * **Nunca** llama a `publish`, `pause`, `resume`, `close`, `update` ni `remove` del envuelto (no los
+ * expone) ni guarda progreso: no hay nada creado en la plataforma. Lo que se habría enviado lo
+ * registra quien llama, igual que en `live` (`publishAttemptRecord`).
  */
 export function withDryRun(publisher: Publisher): Publisher {
   const preflight = publisher.preflight?.bind(publisher);
@@ -43,7 +49,10 @@ export function withDryRun(publisher: Publisher): Publisher {
         return {
           handoff: "manual_confirm",
           simulated: true,
-          notes: [DRY_RUN_HANDOFF_NOTE, ...notes],
+          notes: [
+            publisher.platform === "fb_marketplace" ? DRY_RUN_HANDOFF_NOTE : DRY_RUN_UPLOAD_NOTE,
+            ...notes,
+          ],
         };
       }
       return {

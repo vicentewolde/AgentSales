@@ -1,4 +1,4 @@
-import type { Platform, PublicationFormat, PublicationStatus } from "../enums.js";
+import type { Language, Platform, PublicationFormat, PublicationStatus } from "../enums.js";
 import type {
   Publication,
   PublicationActor,
@@ -7,23 +7,48 @@ import type {
   PublicationEventType,
   RemoteState,
 } from "../publication.js";
+import type { Subject } from "../subject.js";
 
-/** Una publicación que nace (ADR-0014): siempre en `approved`, con su texto y sus medios fijos. */
-export type NewPublication = {
-  listingId: string;
+/** Lo común de una publicación que nace, sea de un aviso o de un post. */
+type NewPublicationBase = {
   platformAccountId: string;
   platform: Platform;
   format: PublicationFormat;
   contentId: string;
   mediaIds: readonly string[];
+  /** El idioma de su texto; por defecto `es` (las de un aviso siempre lo son). */
+  language?: Language;
+  /** El costo estimado en dólares (spec F9 §4.12, hoy solo X); por defecto `null`. */
+  costUsd?: number | null;
+};
+
+/**
+ * Una publicación que nace (ADR-0014): siempre en `approved`, con su texto y sus medios fijos. De
+ * un aviso (`listingId`, como antes de F9) o, desde F9 (ADR-0029), de un post (`postId`).
+ */
+export type NewPublication = NewListingPublication | NewPostPublication;
+
+/** Una publicación nueva de un aviso (lo de antes de F9). */
+export type NewListingPublication = NewPublicationBase & {
+  listingId: string;
+  postId?: undefined;
   /**
-   * `source_hash` del aviso al nacer (ADR-0015, spec F4 §4.6): obligatorio desde F4-T16, para que
-   * una publicación de Portal sin versión no nazca. La columna sigue admitiendo `null` (las
-   * publicaciones anteriores a la migración `0007`).
+   * `source_hash` del aviso al nacer (ADR-0015, spec F4 §4.6): obligatorio desde F4-T16, para
+   * que una publicación de Portal sin versión no nazca. La columna sigue admitiendo `null` (las
+   * publicaciones anteriores a la migración `0007`, y las de posts).
    */
   listingSourceHash: string;
   /** La publicación de Portal que esta republica (ADR-0020, spec F6 §4.7); por defecto `null`. */
   relistedFrom?: string | null;
+};
+
+/** Una publicación nueva de un post (F9, ADR-0029). */
+export type NewPostPublication = NewPublicationBase & {
+  postId: string;
+  listingId?: undefined;
+  /** Un post no tiene ficha que versionar ni se republica: siempre `null`. */
+  listingSourceHash?: null;
+  relistedFrom?: null;
 };
 
 /** Quién causó un cambio y qué se anota en la bitácora (sin secretos: se guarda tal cual). */
@@ -86,8 +111,9 @@ export type NewPublicationEvent = PublicationEventInput & {
  * Publicaciones y su bitácora (`publications` y `publication_events`, ADR-0014 y spec F3 §4.3).
  * Cada cambio de estado guarda la fila y su evento `status_changed` en una sola transacción, y es
  * condicional: solo si la publicación sigue en `from`. Errores (`AppError`):
- * - una segunda publicación activa del mismo aviso, cuenta y formato → `PUBLICATION_CONFLICT`;
- * - un aviso, una cuenta o un texto que no existen al crear → `PUBLICATION_REFERENCE_INVALID`;
+ * - una segunda publicación activa del mismo aviso, cuenta y formato (o del mismo post, cuenta,
+ *   formato e idioma) → `PUBLICATION_CONFLICT`;
+ * - un aviso o post, una cuenta o un texto que no existen al crear → `PUBLICATION_REFERENCE_INVALID`;
  * - una publicación que no existe → `PUBLICATION_NOT_FOUND`;
  * - una transición que la máquina no permite, o desde un estado que ya cambió →
  *   `INVALID_TRANSITION` (sin escribir nada);
@@ -115,18 +141,25 @@ export interface PublicationRepository {
    */
   create(publication: NewPublication, event: PublicationEventInput): Promise<Publication>;
   get(id: string): Promise<Publication | null>;
-  /** Las de un aviso, por fecha de creación. */
-  listByListing(listingId: string): Promise<Publication[]>;
-  /** Las que están en un estado (por ejemplo, `publishing` para reencolarlas al arrancar). */
+  /**
+   * Las de un aviso o post (F9), por fecha de creación. Desde F9-T08 absorbe el `listByListing` de
+   * antes (un aviso es `listingSubject(id)`).
+   */
+  listBySubject(subject: Subject): Promise<Publication[]>;
+  /**
+   * Las que están en un estado, de avisos y de posts (por ejemplo, `publishing` para reencolarlas al
+   * arrancar). Desde F9-T06 este barrido, `listDue` y `listStalePublishing` ven las de los dos
+   * sujetos: quien solo trabaja con avisos filtra por su cuenta (`subject.kind`).
+   */
   listByStatus(status: PublicationStatus): Promise<Publication[]>;
   /**
-   * Las `scheduled` cuya hora venció dentro de la ventana (`since` ≤ `scheduled_at` ≤ `now`), sin
+   * Las `scheduled` (de avisos y de posts) cuya hora venció dentro de la ventana (`since` ≤ `scheduled_at` ≤ `now`), sin
    * las plataformas excluidas, por hora (y después id), como mucho `limit` (spec F6 §4.4): el
    * filtro va en la consulta para que las atrasadas y los recordatorios no ocupen los lugares.
    */
   listDue(query: DueQuery): Promise<Publication[]>;
   /**
-   * Las `publishing` sin cambios desde antes de `before`, sin las plataformas excluidas (la
+   * Las `publishing` (de avisos y de posts) sin cambios desde antes de `before`, sin las plataformas excluidas (la
    * vigilancia, spec F6 §4.6), por `updated_at`.
    */
   listStalePublishing(query: {
@@ -134,10 +167,15 @@ export interface PublicationRepository {
     excludePlatforms: readonly Platform[];
   }): Promise<Publication[]>;
   /**
-   * Las de esos avisos que están activas o cambiaron desde `since` (la vista de seguimiento, spec
-   * F6 §4.9), por aviso y fecha de creación.
+   * Las de esos avisos y posts que están activas o cambiaron desde `since` (la vista de
+   * seguimiento, spec F6 §4.9; los posts desde F9-T08), por aviso, después por post y fecha de
+   * creación. Sin ids no consulta.
    */
-  listForTracking(query: { listingIds: readonly string[]; since: Date }): Promise<Publication[]>;
+  listForTracking(query: {
+    listingIds: readonly string[];
+    postIds?: readonly string[];
+    since: Date;
+  }): Promise<Publication[]>;
   /**
    * Cambia el estado de `from` a `to` con los campos de `changes` y anota el evento, todo junto.
    * Devuelve la publicación ya cambiada.
@@ -206,4 +244,21 @@ export interface PublicationRepository {
    * Marketplace). Cuenta todos: también los reintentos de la misma publicación.
    */
   countLiveAttemptsSince(platformAccountId: string, since: Date): Promise<number>;
+  /**
+   * Anota el costo estimado de la publicación (`cost_usd`, spec F9 §4.12; hoy solo X), solo con la
+   * publicación en `publishing` (`PUBLICATION_NOT_PUBLISHING` si no), sin evento. `null` lo borra.
+   */
+  setCostUsd(id: string, costUsd: number | null): Promise<Publication>;
+  /**
+   * El gasto estimado de una cuenta desde `since`, incluido (F9-T16: el tope `spendLimitUsd` de X):
+   * la suma de `cost_usd` de sus publicaciones en `live` (no `dry_run`) que pudieron cobrar
+   * (`COST_COUNTED_STATUSES`: publicando, publicadas, pausadas, retiradas o con resultado dudoso;
+   * nunca las fallidas ni las canceladas), por `published_at` o, sin ella, `updated_at`. Sin
+   * contar `excludePublicationId` (la del intento en curso).
+   */
+  sumCostUsdSince(
+    platformAccountId: string,
+    since: Date,
+    options?: { excludePublicationId?: string },
+  ): Promise<number>;
 }

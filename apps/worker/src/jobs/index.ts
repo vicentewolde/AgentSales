@@ -1,9 +1,12 @@
 import type { RunImportDeps } from "@agentsales/core";
+import { type ContentPlanJobDeps, contentPlanJob } from "./content-plan.js";
 import { type ContentPrepareJobDeps, contentPrepareJob } from "./content-prepare.js";
 import { type DbBackupJobDeps, dbBackupJob } from "./db-backup.js";
 import type { Job } from "./define.js";
 import { importRunJob } from "./import-run.js";
 import { type MarketplaceProfileJobDeps, marketplaceProfileJob } from "./marketplace-profile.js";
+import { type PostDraftJobDeps, postDraftJob } from "./post-draft.js";
+import { type PostMediaJobDeps, postMediaJob } from "./post-media.js";
 import { type PublicationDueJobDeps, publicationDueJob } from "./publication-due.js";
 import { type PublicationPublishJobDeps, publicationPublishJob } from "./publication-publish.js";
 import { type PublicationSyncJobDeps, publicationSyncJob } from "./publication-sync.js";
@@ -34,6 +37,12 @@ export type JobDeps = {
   publicationsWatch: PublicationsWatchJobDeps;
   /** El respaldo local de la base (spec F6 §4.11): diario y al arrancar si hace falta. */
   dbBackup: DbBackupJobDeps;
+  /** Las variantes de los medios de un post (spec F9 §4.5): repositorios, R2 y el procesador. */
+  postMedia: PostMediaJobDeps;
+  /** Los textos de un post (spec F9 §4.9): repositorios, el candado del post y la IA. */
+  postDraft: PostDraftJobDeps;
+  /** El plan de ideas de la IA (spec F9 §4.9): repositorios, la IA y el id de las ideas. */
+  contentPlan: ContentPlanJobDeps;
 };
 
 /** Jobs que procesa el worker, con sus dependencias inyectadas. Los de ADR-0005 llegan en su fase. */
@@ -49,5 +58,8 @@ export function buildJobs(deps: JobDeps): readonly Job[] {
     publicationDueJob(deps.publicationDue),
     publicationsWatchJob(deps.publicationsWatch),
     dbBackupJob(deps.dbBackup),
+    postMediaJob(deps.postMedia),
+    postDraftJob(deps.postDraft),
+    contentPlanJob(deps.contentPlan),
   ];
 }

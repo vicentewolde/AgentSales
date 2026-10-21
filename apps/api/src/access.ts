@@ -68,10 +68,14 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "POST /publications/:id/close": "session",
   "POST /publications/:id/confirm": "session",
   "POST /publications/:id/not-published": "session",
+  // F9-T12: decir si salió una publicación con resultado dudoso (aviso o post).
+  "POST /publications/:id/resolve": "session",
   "POST /publications/:id/sync": "session",
   "POST /schedule": "session",
   "GET /tracking": "session",
   "GET /agenda": "session",
+  // F9-T18: el calendario (lo programado y lo publicado, avisos y posts) del alcance.
+  "GET /calendar": "session",
   // El gasto de IA del mes (F7-T12): cada uno ve el de su alcance.
   "GET /usage": "session",
   // Corredores y cargas.
@@ -83,6 +87,34 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "PATCH /brokers/:id": "session",
   "POST /brokers/:id/logo": "session",
   "GET /brokers/:id/template.xlsx": "session",
+  // F9-T09: el perfil editorial; leer con `broker.view` y editar con `brand.edit` (el corredor, el
+  // suyo), revisados en core; el de otro corredor es 404 (`ownedBy`).
+  "GET /brokers/:id/editorial-profile": "session",
+  "PUT /brokers/:id/editorial-profile": "session",
+  // F9-T10: los posts y sus medios, con `posts.manage` revisado en core; un corredor ve y gestiona
+  // solo los de su marca (lo ajeno es 404: `ownedBy` y core), el administrador todos.
+  "GET /posts": "session",
+  "POST /posts": "session",
+  "GET /posts/:id": "session",
+  "PATCH /posts/:id": "session",
+  "POST /posts/:id/archive": "session",
+  "POST /posts/:id/uploads": "session",
+  "POST /posts/:id/uploads/complete": "session",
+  // F9-T12: pedir los textos, editarlos, aprobarlos o quitarles la aprobación por red e idioma,
+  // publicar una red y programar; con `posts.manage` revisado en core y lo ajeno 404.
+  "POST /posts/:id/draft": "session",
+  "PATCH /posts/:id/contents/:platform/:language": "session",
+  "POST /posts/:id/contents/:platform/:language/approve": "session",
+  "POST /posts/:id/contents/:platform/:language/unapprove": "session",
+  "POST /posts/:id/publish": "session",
+  "POST /posts/:id/schedule": "session",
+  // F9-T21: el plan de ideas (pedirlo, listarlo y verlo) y aceptar o descartar una idea, con
+  // `posts.manage` revisado en core; un plan o una idea de otra marca es 404.
+  "POST /plans": "session",
+  "GET /plans": "session",
+  "GET /plans/:id": "session",
+  "POST /posts/:id/accept": "session",
+  "POST /posts/:id/discard": "session",
   // F8 (spec §4.4, ADR-0025): pedir la carga con sus URLs de subida y empezarla.
   "POST /imports/uploads": "session",
   "POST /imports/:id/start": "session",
@@ -92,12 +124,15 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   // protegen el `state` firmado y su propia cookie `Lax`.
   "GET /accounts": "session",
   "POST /accounts/connect-token": "admin",
+  "POST /accounts/discord/connect": "admin",
   "POST /accounts/mercadolibre/authorize-url": "admin",
   "POST /accounts/mercadolibre/connect": "admin",
   "POST /accounts/marketplace/login": "admin",
   "POST /accounts/marketplace/manual": "admin",
   "POST /accounts/:id/refresh": "admin",
   "POST /accounts/:id/disconnect": "admin",
+  // F9-T15 (ADR-0029 punto 9): pasar una red de contenido de marca a `manual` o `api`.
+  "POST /accounts/:id/mode": "admin",
   // De sesión: el administrador conecta a cualquier corredor y un corredor, solo el suyo (la ruta
   // lo revisa con `instagram.connect`, ADR-0028).
   "GET /oauth/instagram/start": "session",
@@ -105,6 +140,20 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   // La vuelta automática de Mercado Libre (F8-T19): llega desde Mercado Libre, sin la cookie
   // `Strict`; la protegen el `state` firmado de un solo uso y su propia cookie `Lax`.
   "GET /oauth/mercadolibre/callback": "public",
+  // X (F9-T16): el inicio, de sesión (la ruta revisa `x.connect`); la vuelta llega desde X, sin la
+  // cookie `Strict`: la protegen el `state` firmado de un solo uso y la cookie firmada con PKCE. El
+  // tope de gasto de una cuenta de X lo fija el administrador.
+  "GET /oauth/x/start": "session",
+  "GET /oauth/x/callback": "public",
+  "POST /accounts/:id/spend-limit": "admin",
+  // LinkedIn (F9-T15): el inicio con sesión (la ruta revisa `linkedin.connect`: el corredor, el
+  // suyo) y la vuelta pública, protegida por el `state` firmado de un solo uso y su cookie `Lax`.
+  "GET /oauth/linkedin/start": "session",
+  "GET /oauth/linkedin/callback": "public",
+  // TikTok (F9-T26): el inicio, con sesión (la ruta revisa `tiktok.connect`); la vuelta llega desde
+  // TikTok, sin la cookie `Strict`: la protegen el `state` firmado de un solo uso y su cookie `Lax`.
+  "GET /oauth/tiktok/start": "session",
+  "GET /oauth/tiktok/callback": "public",
   // Las vueltas de Meta (F8-T17): de servidor a servidor, las protege la firma de la app; la página
   // del pedido la abre la persona que pidió el borrado (con su código).
   "POST /meta/deauthorize": "public",

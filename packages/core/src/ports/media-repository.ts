@@ -4,15 +4,22 @@ import type {
   ProcessedMediaVariant,
   RenderedMediaVariant,
 } from "../enums.js";
-import { PROCESSED_MEDIA_VARIANTS, RENDERED_MEDIA_VARIANTS } from "../enums.js";
+import {
+  PROCESSED_MEDIA_VARIANTS,
+  RENDERED_MEDIA_VARIANTS,
+  VIDEO_MEDIA_VARIANTS,
+} from "../enums.js";
 import { AppError } from "../errors.js";
 import type { Media } from "../media.js";
+import { type Subject, type SubjectInput, sameSubject } from "../subject.js";
 
 /** Un medio original guardado (`media` con `role = original`): lo que la ingesta necesita. */
 export type MediaRecord = {
   id: string;
-  /** `null` para los medios del corredor (logo). */
+  /** `null` para los medios de un post y los del corredor (logo). */
   listingId: string | null;
+  /** El post del medio (F9, ADR-0029); `null` en los de un aviso y en el logo. */
+  postId: string | null;
   brokerId: string;
   kind: MediaKind;
   storagePath: string;
@@ -24,8 +31,24 @@ export type MediaRecord = {
   isCover: boolean;
 };
 
-/** Medio original nuevo (la carga); los derivados entran por `upsertDerivative`. */
-export type NewMedia = Omit<MediaRecord, "id">;
+/**
+ * Medio original nuevo (la carga, o desde F9 la subida de un post); los derivados entran por
+ * `upsertDerivative`. `postId` por defecto `null`; a lo más uno de `listingId` y `postId`.
+ */
+export type NewMedia = Omit<MediaRecord, "id" | "postId"> & { postId?: string | null };
+
+/**
+ * Valida un medio nuevo antes de tocar nada; la usan todas las implementaciones. Un medio de un
+ * aviso y de un post a la vez es un bug de quien llama: `MEDIA_SUBJECT_INVALID`, no reintentable.
+ */
+export function checkNewMedia(media: NewMedia): void {
+  if (media.listingId !== null && (media.postId ?? null) !== null) {
+    throw new AppError(
+      "MEDIA_SUBJECT_INVALID",
+      "Un medio es de un aviso o de un post, no de los dos",
+    );
+  }
+}
 
 /** Medidas de un medio, ya rotadas; `null` si no aplica (un video sin alto conocido, una foto). */
 export type MediaMeasurements = {
@@ -34,20 +57,21 @@ export type MediaMeasurements = {
   durationS: number | null;
 };
 
-type DerivativeData = MediaMeasurements & {
-  listingId: string;
-  brokerId: string;
-  kind: MediaKind;
-  storagePath: string;
-  mime: string;
-  bytes: number;
-  /** sha256 del contenido, en hexadecimal: lo calcula quien produjo el archivo. */
-  checksum: string;
-};
+type DerivativeData = MediaMeasurements &
+  SubjectInput & {
+    brokerId: string;
+    kind: MediaKind;
+    storagePath: string;
+    mime: string;
+    bytes: number;
+    /** sha256 del contenido, en hexadecimal: lo calcula quien produjo el archivo. */
+    checksum: string;
+  };
 
 /**
  * Un derivado de un aviso (spec F2 §4.2): una variante de un original (`processed`, con su
- * `parentMediaId`) o un render de plantilla (`rendered`, sin padre).
+ * `parentMediaId`) o un render de plantilla (`rendered`, sin padre). Desde F9, también la variante
+ * de un original de un post (`postId`); un post no tiene renders.
  */
 export type NewDerivative =
   | (DerivativeData & {
@@ -62,9 +86,9 @@ export type DerivativeResult = { media: Media; previousPath: string | null };
 
 /**
  * Valida un derivado antes de tocar nada; la usan todas las implementaciones. Una variante que no
- * es de su rol (un `cover` como `processed`), un padre que no corresponde al rol o un tipo que no
- * calza (el reel es video; lo demás, imagen) es un bug de quien llama: `MEDIA_DERIVATIVE_INVALID`,
- * no reintentable.
+ * es de su rol (un `cover` como `processed`), un padre que no corresponde al rol, un tipo que no
+ * calza (el reel y el video para X son video; lo demás, imagen) o un render de un post es un bug
+ * de quien llama: `MEDIA_DERIVATIVE_INVALID`, no reintentable.
  */
 export function checkDerivative(derivative: NewDerivative): void {
   const variants: readonly MediaVariant[] =
@@ -73,9 +97,12 @@ export function checkDerivative(derivative: NewDerivative): void {
     derivative.role === "processed"
       ? typeof derivative.parentMediaId === "string" && derivative.parentMediaId.length > 0
       : derivative.parentMediaId === null;
-  // El reel es el único video; las demás variantes y los renders son imágenes.
-  const kindOk = derivative.kind === (derivative.variant === "ig_reel" ? "video" : "image");
-  if (!variants.includes(derivative.variant) || !parentOk || !kindOk) {
+  // El reel y el video para X son video; las demás variantes y los renders son imágenes.
+  const isVideo = (VIDEO_MEDIA_VARIANTS as readonly MediaVariant[]).includes(derivative.variant);
+  const kindOk = derivative.kind === (isVideo ? "video" : "image");
+  // Un post usa sus propios medios: sin portada ni ficha de plantilla (spec F9 §3).
+  const subjectOk = derivative.role === "processed" || derivative.postId === undefined;
+  if (!variants.includes(derivative.variant) || !parentOk || !kindOk || !subjectOk) {
     throw new AppError(
       "MEDIA_DERIVATIVE_INVALID",
       `La variante ${derivative.variant} no corresponde a un medio ${derivative.role}`,
@@ -112,41 +139,44 @@ export function checkArrangement(items: readonly MediaArrangement[]): void {
 
 /**
  * Medios (`media`). Los métodos de la carga (F1: `listOriginals`, `listCovers`,
- * `findByStoragePath`, `create` y `arrange`) ven solo originales; los de F2 (`listByListing`,
+ * `findByStoragePath`, `create` y `arrange`) ven solo originales; los de F2 (`listBySubject`,
  * `updateMeasurements` y los derivados) ven también variantes y renders. Únicos por
- * `(listing_id, checksum)` de los originales, por `storage_path`, por `(parent_media_id, variant)`
- * de las variantes y por `(listing_id, variant)` de los renders (spec F1 §4.5 y F2 §4.3).
+ * `(listing_id, checksum)` y, desde F9, `(post_id, checksum)` de los originales, por
+ * `storage_path`, por `(parent_media_id, variant)` de las variantes y por `(listing_id, variant)`
+ * de los renders (spec F1 §4.5, F2 §4.3 y F9 §4.11). Donde antes iba el id del aviso, desde F9 va
+ * un `Subject` (aviso o post; desde F9-T08, nunca el id suelto de un aviso).
  * Errores (`AppError`):
  * - `create` que choca con uno de esos únicos → `MEDIA_CONFLICT`, **reintentable**: dos intentos
  *   del job pueden solaparse, y el reintento lo encuentra con `listOriginals` o `findByStoragePath`;
- * - `arrange` con un id que no es original de ese aviso → `MEDIA_NOT_FOUND`, y con ids repetidos,
- *   más de una portada o un `sortOrder` inválido → `MEDIA_ARRANGE_INVALID`; sin cambiar nada. En
- *   Postgres, dos `arrange` del mismo aviso se serializan (bloqueo del aviso);
+ * - `arrange` con un id que no es original de ese aviso o post → `MEDIA_NOT_FOUND`, y con ids
+ *   repetidos, más de una portada o un `sortOrder` inválido → `MEDIA_ARRANGE_INVALID`; sin cambiar
+ *   nada. En Postgres, dos `arrange` del mismo aviso (o post) se serializan (bloqueo de su fila);
  * - `upsertDerivative` con un derivado inconsistente → `MEDIA_DERIVATIVE_INVALID`; con un padre que
- *   no es original del aviso, o de otro corredor → `MEDIA_NOT_FOUND`; si dos intentos solapados
+ *   no es original del aviso (o post), o de otro corredor → `MEDIA_NOT_FOUND`; si dos intentos solapados
  *   chocan con un único, o uno borró el vigente mientras otro lo reemplazaba → `MEDIA_CONFLICT`,
  *   reintentable;
  * - fallo de conexión → `DB_UNAVAILABLE`, reintentable.
  */
 export interface MediaRepository {
-  /** Originales de un aviso, por `sortOrder` y luego por id. */
-  listOriginals(listingId: string): Promise<MediaRecord[]>;
+  /** Originales de un aviso o post, por `sortOrder` y luego por id. */
+  listOriginals(subject: Subject): Promise<MediaRecord[]>;
   /** Portadas (originales con `isCover`) de esos avisos, para la lista de la API. */
   listCovers(listingIds: readonly string[]): Promise<MediaRecord[]>;
   /** Para el logo, que no tiene aviso: su clave en R2 lleva el sha256. */
   findByStoragePath(storagePath: string): Promise<MediaRecord | null>;
   create(media: NewMedia): Promise<MediaRecord>;
   /**
-   * Fija orden y portada de varios originales de un aviso, todo o nada. Hay **una sola portada**
-   * por aviso: si un item trae `isCover`, los demás originales del aviso dejan de serlo, vengan o
-   * no en `items`. Solo considera originales (`role = original`).
+   * Fija orden y portada de varios originales de un aviso o post, todo o nada. Hay **una sola
+   * portada** por aviso o post: si un item trae `isCover`, los demás originales dejan de serlo,
+   * vengan o no en `items`. Solo considera originales (`role = original`).
    */
-  arrange(listingId: string, items: readonly MediaArrangement[]): Promise<void>;
+  arrange(subject: Subject, items: readonly MediaArrangement[]): Promise<void>;
   /**
-   * Todos los medios del aviso (originales, variantes y renders), por rol (`original`, `processed`,
-   * `rendered`), `sortOrder` e id. No incluye el logo del corredor, que no tiene aviso.
+   * Todos los medios del aviso o post (originales, variantes y renders), por rol (`original`,
+   * `processed`, `rendered`), `sortOrder` e id. No incluye el logo del corredor, que no tiene
+   * sujeto. Desde F9-T08 absorbe el `listByListing` de antes (un aviso es `listingSubject(id)`).
    */
-  listByListing(listingId: string): Promise<Media[]>;
+  listBySubject(subject: Subject): Promise<Media[]>;
   /** Un medio por id, de cualquier rol (por ejemplo, el logo del corredor); `null` si no existe. */
   get(id: string): Promise<Media | null>;
   /**
@@ -169,4 +199,27 @@ export interface MediaRepository {
    * se borra aquí): es idempotente.
    */
   deleteDerivative(id: string): Promise<string | null>;
+}
+
+/**
+ * Los medios que entrega un candado (`ListingLock` o `PostLock`): `arrange` bloquea la fila de su
+ * sujeto, así que dentro del candado solo se usa con el sujeto de ese candado. Con otro sería un
+ * segundo bloqueo dentro del primero (el anidado que las reglas prohíben, y un deadlock posible):
+ * `LOCK_SUBJECT_MISMATCH`, no reintentable, sin tocar nada. La usan todas las implementaciones de
+ * los candados.
+ */
+export function lockedMedia(media: MediaRepository, subject: Subject): MediaRepository {
+  return {
+    ...media,
+    async arrange(target, items) {
+      if (!sameSubject(target, subject)) {
+        throw new AppError(
+          "LOCK_SUBJECT_MISMATCH",
+          "Dentro de un candado solo se ordenan los medios de su propio aviso o post",
+          { details: { lock: subject, target } },
+        );
+      }
+      return media.arrange(target, items);
+    },
+  };
 }

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { BrokerData, NewListing } from "@agentsales/core";
+import { type BrokerData, listingSubject, type NewListing, postSubject } from "@agentsales/core";
 import { describe, expect, it } from "vitest";
 import { ROUTE_ACCESS } from "./access.js";
 import { createApp } from "./app.js";
@@ -67,7 +67,7 @@ async function ownedBy(deps: ReturnType<typeof testDeps>, slug: string) {
       },
     ],
   });
-  const [content] = await deps.contents.listCurrent(listing.id);
+  const [content] = await deps.contents.listCurrent(listingSubject(listing.id));
   const account = await deps.platformAccounts.upsertConnected({
     brokerId: broker.id,
     platform: "instagram",
@@ -99,7 +99,20 @@ async function ownedBy(deps: ReturnType<typeof testDeps>, slug: string) {
     input: { xlsxPath: "/tmp/x.xlsx", mediaDir: null, broker: slug },
     brokerId: broker.id,
   });
-  return { broker, listing, run, content, account, publication, importRun };
+  // F9-T10: un post de su marca (las rutas `/posts/:id…`).
+  const post = await deps.posts.create({
+    brokerId: broker.id,
+    topic: `Post ${slug}`,
+    kind: "text",
+  });
+  // F9-T21: un plan de ideas de su marca (las rutas `/plans/:id`).
+  const plan = await deps.planRuns.create({
+    brokerId: broker.id,
+    periodStart: new Date("2026-10-21T03:00:00Z"),
+    periodEnd: new Date("2026-11-04T03:00:00Z"),
+    request: { platforms: ["linkedin"], count: 2, days: 14, requestedBy: null },
+  });
+  return { broker, listing, run, content, account, publication, importRun, post, plan };
 }
 
 async function setup() {
@@ -155,6 +168,8 @@ function idFor(path: string, owned: Awaited<ReturnType<typeof ownedBy>>): string
   if (path.startsWith("/publications")) return owned.publication.id;
   if (path.startsWith("/imports")) return owned.importRun.id;
   if (path.startsWith("/brokers")) return owned.broker.id;
+  if (path.startsWith("/posts")) return owned.post.id;
+  if (path.startsWith("/plans")) return owned.plan.id;
   return owned.account.id;
 }
 
@@ -191,6 +206,82 @@ describe("lo de otro corredor no existe", () => {
   });
 });
 
+/** Un post de un corredor con su corrida, su texto y una publicación (F9, ADR-0029). */
+async function postOf(
+  deps: ReturnType<typeof testDeps>,
+  owned: Awaited<ReturnType<typeof ownedBy>>,
+) {
+  const post = await deps.posts.create({
+    brokerId: owned.broker.id,
+    topic: "Un post",
+    kind: "text",
+  });
+  const run = await deps.contentRuns.create({ postId: post.id, texts: true });
+  await deps.contentRuns.markRunning(run.id);
+  await deps.contentRuns.markSucceeded(run.id, {
+    report: { warnings: [] },
+    contents: [
+      {
+        platform: "instagram",
+        title: null,
+        body: "Texto del post",
+        hashtags: [],
+        llmProvider: "fake",
+        llmModel: "fake",
+        promptVersion: "v1",
+        rawOutput: null,
+      },
+    ],
+  });
+  const [content] = await deps.contents.listCurrent(postSubject(post.id));
+  const publication = await deps.postLock.run(post.id, (repos) =>
+    repos.publications.create(
+      {
+        postId: post.id,
+        platformAccountId: owned.account.id,
+        platform: "instagram",
+        format: "post",
+        contentId: content?.id ?? "",
+        mediaIds: [],
+      },
+      { actor: "system" },
+    ),
+  );
+  return { post, run, publication };
+}
+
+describe("el dueño de un post es su corredor (F9-T04)", () => {
+  it("la corrida y la publicación de un post ajeno no existen; las del suyo sí", async () => {
+    const s = await setup();
+    const mine = await postOf(s.deps, s.mine);
+    const theirs = await postOf(s.deps, s.theirs);
+
+    const foreignRun = await s.broker(`/content-runs/${theirs.run.id}`);
+    expect(foreignRun.status).toBe(404);
+    expect((await errorOf(foreignRun)).code).toBe("CONTENT_RUN_NOT_FOUND");
+    const foreignEvents = await s.broker(`/publications/${theirs.publication.id}/events`);
+    expect(foreignEvents.status).toBe(404);
+    expect((await errorOf(foreignEvents)).code).toBe("PUBLICATION_NOT_FOUND");
+
+    expect((await s.broker(`/content-runs/${mine.run.id}`)).status).toBe(200);
+    expect((await s.broker(`/publications/${mine.publication.id}/events`)).status).toBe(200);
+    expect((await s.admin(`/publications/${theirs.publication.id}/events`)).status).toBe(200);
+  });
+
+  it("/posts/:id/… de otro corredor no existe, también en una ruta que todavía no existe", async () => {
+    const s = await setup();
+    const mine = await postOf(s.deps, s.mine);
+    const theirs = await postOf(s.deps, s.theirs);
+    const foreign = await s.broker(`/posts/${theirs.post.id}/contents`);
+    expect(foreign.status).toBe(404);
+    expect((await errorOf(foreign)).code).toBe("POST_NOT_FOUND");
+    // Lo suyo pasa el dueño y llega a la ruta (los textos de un post llegan en T11 y T12).
+    const own = await s.broker(`/posts/${mine.post.id}/contents`);
+    expect(own.status).toBe(404);
+    expect((await errorOf(own)).code).toBe("ROUTE_NOT_FOUND");
+  });
+});
+
 describe("las listas sin nada ajeno", () => {
   it("propiedades, cargas, cuentas y corredores", async () => {
     const s = await setup();
@@ -216,6 +307,7 @@ describe("las listas sin nada ajeno", () => {
       "/listings?broker=ajeno",
       "/tracking?broker=ajeno",
       "/agenda?broker=ajeno",
+      `/calendar?broker=ajeno&${nextWeek()}`,
     ]) {
       const response = await s.broker(path);
       expect([path, response.status]).toEqual([path, 404]);
@@ -255,7 +347,160 @@ describe("las listas sin nada ajeno", () => {
     const adminAgenda = (await (await s.admin("/agenda")).json()) as { items: { kind: string }[] };
     expect(adminAgenda.items.some((item) => item.kind === "backup")).toBe(true);
   });
+
+  it("los posts y las cuentas de otro corredor no aparecen en su agenda ni en su seguimiento (F9-T08)", async () => {
+    const s = await setup();
+    const mine = await scheduledPostPublication(s.deps, s.mine);
+    const theirs = await scheduledPostPublication(s.deps, s.theirs);
+    const myAccount = await linkedinExpiringSoon(s.deps, s.mine.broker.id, "mio");
+    await linkedinExpiringSoon(s.deps, s.theirs.broker.id, "ajeno");
+
+    type AgendaBody = {
+      items: { kind: string; postId: string | null; accountId: string | null; title: string }[];
+    };
+    const agenda = (await (await s.broker("/agenda")).json()) as AgendaBody;
+    expect(
+      agenda.items.filter((item) => item.postId !== null).map((item) => [item.kind, item.postId]),
+    ).toEqual([["upcoming", s.mine.post.id]]);
+    expect(agenda.items.find((item) => item.postId !== null)?.title).toBe("Post mio");
+    expect(
+      agenda.items.filter((item) => item.kind === "token_expiring").map((item) => item.accountId),
+    ).toEqual([myAccount.id]);
+
+    const tracking = (await (await s.broker("/tracking")).json()) as {
+      posts: { post: { id: string }; cells: { instagram: { id: string }[] } }[];
+    };
+    expect(tracking.posts.map((row) => row.post.id)).toEqual([s.mine.post.id]);
+    expect(tracking.posts[0]?.cells.instagram.map((cell) => cell.id)).toEqual([mine.id]);
+
+    // El administrador ve los dos, y con ?broker solo los de ese corredor.
+    const admin = (await (await s.admin("/agenda")).json()) as AgendaBody;
+    expect(admin.items.filter((item) => item.postId !== null).map((item) => item.postId)).toEqual(
+      expect.arrayContaining([s.mine.post.id, s.theirs.post.id]),
+    );
+    const filtered = (await (await s.admin("/tracking?broker=ajeno")).json()) as {
+      posts: { post: { id: string }; cells: { instagram: { id: string }[] } }[];
+    };
+    expect(filtered.posts.map((row) => row.post.id)).toEqual([s.theirs.post.id]);
+    expect(filtered.posts[0]?.cells.instagram.map((cell) => cell.id)).toEqual([theirs.id]);
+  });
 });
+
+/** El rango de los próximos 7 días, para `GET /calendar` (F9-T18). */
+function nextWeek(): string {
+  const from = new Date(Date.now() - 60 * 60 * 1000);
+  const to = new Date(from.getTime() + 7 * 24 * 60 * 60 * 1000);
+  return `from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`;
+}
+
+describe("el calendario solo con lo suyo (F9-T18)", () => {
+  it("un corredor ve sus posts y avisos programados, no los de otro; el administrador, los dos", async () => {
+    const s = await setup();
+    const mine = await scheduledPostPublication(s.deps, s.mine);
+    const theirs = await scheduledPostPublication(s.deps, s.theirs);
+    const scheduleListing = (owned: Awaited<ReturnType<typeof ownedBy>>) =>
+      s.deps.lock.run(owned.listing.id, (repos) =>
+        repos.publications.transition(
+          owned.publication.id,
+          {
+            from: "approved",
+            to: "scheduled",
+            changes: { dryRun: true, scheduledAt: new Date(Date.now() + 2 * 60 * 60 * 1000) },
+          },
+          { actor: "system" },
+        ),
+      );
+    await scheduleListing(s.mine);
+    await scheduleListing(s.theirs);
+
+    type CalendarBody = {
+      entries: { publicationId: string; title: string; brokerSlug: string | null }[];
+    };
+    const ids = async (response: Response) =>
+      ((await response.json()) as CalendarBody).entries.map((entry) => entry.publicationId);
+
+    const own = await s.broker(`/calendar?${nextWeek()}`);
+    expect(own.status).toBe(200);
+    expect(await ids(own)).toEqual([mine.id, s.mine.publication.id]);
+    expect(await ids(await s.admin(`/calendar?${nextWeek()}`))).toEqual(
+      expect.arrayContaining([mine.id, theirs.id, s.mine.publication.id, s.theirs.publication.id]),
+    );
+    expect(await ids(await s.admin(`/calendar?broker=ajeno&${nextWeek()}`))).toEqual([
+      theirs.id,
+      s.theirs.publication.id,
+    ]);
+    // Mover la fecha de lo ajeno: no existe (el mismo 404 de siempre, `ownedBy`).
+    const move = await s.broker(`/publications/${theirs.id}/schedule`, {
+      method: "POST",
+      body: JSON.stringify({ at: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString() }),
+    });
+    expect([move.status, (await errorOf(move)).code]).toEqual([404, "PUBLICATION_NOT_FOUND"]);
+  });
+});
+
+/** Una publicación de Instagram del post del corredor, programada en una hora (F9-T08). */
+async function scheduledPostPublication(
+  deps: Awaited<ReturnType<typeof setup>>["deps"],
+  owned: Awaited<ReturnType<typeof ownedBy>>,
+) {
+  const run = await deps.contentRuns.create({ postId: owned.post.id, texts: true });
+  await deps.contentRuns.markRunning(run.id);
+  await deps.contentRuns.markSucceeded(run.id, {
+    report: { warnings: [] },
+    contents: [
+      {
+        platform: "instagram",
+        title: null,
+        body: "Texto del post",
+        hashtags: [],
+        llmProvider: "fake",
+        llmModel: "fake",
+        promptVersion: "v1",
+        rawOutput: null,
+      },
+    ],
+  });
+  const [content] = await deps.contents.listCurrent(postSubject(owned.post.id));
+  return deps.postLock.run(owned.post.id, async (repos) => {
+    const created = await repos.publications.create(
+      {
+        postId: owned.post.id,
+        platformAccountId: owned.account.id,
+        platform: "instagram",
+        format: "post",
+        contentId: content?.id ?? "",
+        mediaIds: [],
+      },
+      { actor: "system" },
+    );
+    return repos.publications.transition(
+      created.id,
+      {
+        from: "approved",
+        to: "scheduled",
+        changes: { dryRun: true, scheduledAt: new Date(Date.now() + 60 * 60 * 1000) },
+      },
+      { actor: "system" },
+    );
+  });
+}
+
+/** Una cuenta de LinkedIn cuyo token vence en 3 días (no se renueva sola). */
+function linkedinExpiringSoon(
+  deps: Awaited<ReturnType<typeof setup>>["deps"],
+  brokerId: string,
+  slug: string,
+) {
+  return deps.platformAccounts.upsertConnected({
+    brokerId,
+    platform: "linkedin",
+    externalAccountId: `li-${slug}`,
+    displayName: `LinkedIn ${slug}`,
+    tokenExpiresAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+    meta: { mode: "manual" },
+    credentials: { accessToken: `li-token-${slug}` },
+  });
+}
 
 describe("programar y cargar", () => {
   it("programar con una propiedad ajena no programa ninguna", async () => {
@@ -374,7 +619,11 @@ describe("el guardia de dueño", () => {
     expect((await s.deps.publications.get(s.theirs.publication.id))?.status).toBe("approved");
     expect((await s.deps.listings.get(s.theirs.listing.id))?.status).toBe(s.theirs.listing.status);
     expect((await s.deps.contents.get(s.theirs.content?.id ?? ""))?.status).toBe("draft");
-    expect(await s.deps.contentRuns.findActive(s.theirs.listing.id)).toBeNull();
+    expect(await s.deps.contentRuns.findActive(listingSubject(s.theirs.listing.id))).toBeNull();
+    expect(await s.deps.posts.get(s.theirs.post.id)).toMatchObject({
+      status: "draft",
+      topic: "Post ajeno",
+    });
   });
 });
 

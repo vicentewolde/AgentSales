@@ -4,6 +4,7 @@ import {
   type BrokerRepository,
   type ContentRepository,
   type ContentRunRepository,
+  type EditorialProfileRepository,
   type FieldDefinitionRepository,
   type HealthCheckName,
   type ImportRunRepository,
@@ -17,11 +18,17 @@ import {
   type MercadoLibreAuth,
   type MetaDeletionRepository,
   type OAuthStateRepository,
+  type PlanRunRepository,
   type Platform,
   type PlatformAccountRepository,
+  type PostLock,
+  type PostRepository,
+  type PostUploadRepository,
   type PublicationOperations,
   type PublicationRepository,
   type PublishMode,
+  type Subject,
+  type XAuth,
 } from "@agentsales/core";
 import { Hono, type MiddlewareHandler } from "hono";
 import { API_PREFIX } from "./access.js";
@@ -30,16 +37,20 @@ import { createErrorHandler, notFoundHandler } from "./errors.js";
 import { type HealthCheck, type HealthDetails, runHealth } from "./health.js";
 import type { AppLogger } from "./logger.js";
 import { type RateLimitDeps, rateLimitByIp, rateLimitByUser } from "./rate-limit.js";
-import { type RequestContext, withEventUser } from "./request-context.js";
+import { type RequestContext, withEventUser, withPostEventUser } from "./request-context.js";
 import { requestLogger } from "./request-logger.js";
-import { accountRoutes } from "./routes/accounts.js";
+import { type AccountRoutesDeps, accountRoutes } from "./routes/accounts.js";
 import { authRoutes } from "./routes/auth.js";
 import { brokerRoutes } from "./routes/brokers.js";
 import { contentRoutes, contentRunRoutes, listingContentRoutes } from "./routes/content.js";
+import { editorialProfileRoutes } from "./routes/editorial-profile.js";
 import { importRoutes } from "./routes/imports.js";
 import { listingRoutes } from "./routes/listings.js";
 import { type MetaSignatureVerifier, metaRoutes } from "./routes/meta.js";
 import { type OAuthDeps, oauthRoutes } from "./routes/oauth.js";
+import { type LinkedInOAuthDeps, linkedinOAuthRoutes } from "./routes/oauth-linkedin.js";
+import { planRoutes } from "./routes/plans.js";
+import { postRoutes } from "./routes/posts.js";
 import {
   listingPublicationRoutes,
   operationDeps,
@@ -96,8 +107,10 @@ export type AppDeps = {
   queue: JobQueue;
   /** uuid de una carga nueva: se necesita antes de crearla, para sus claves de R2 (spec F8 §4.4). */
   newId: () => string;
-  /** `MAX_IMPORT_UPLOAD_MB` en bytes: el tope de cada archivo de una carga. */
+  /** `MAX_IMPORT_UPLOAD_MB` en bytes: el tope de cada archivo de una carga (y de un post). */
   maxUploadBytes: number;
+  /** `MAX_VIDEO_MB` en bytes: el tope de un video de un post (el de la carga, F9-T10). */
+  maxVideoBytes: number;
   // Contenido (F2-T12): la API pide corridas y edita textos; las corre el worker (ADR-0012).
   contentRuns: ContentRunRepository;
   contents: ContentRepository;
@@ -107,17 +120,60 @@ export type AppDeps = {
    */
   lock: ListingLock;
   /**
+   * Posts de marca (F9, ADR-0029): el dueño de un recurso de un post (el corredor del post) y sus
+   * rutas (`/posts`, F9-T10).
+   */
+  posts: PostRepository;
+  /**
+   * Candado por post (ADR-0029, punto 3): las rutas de posts escriben dentro de él, con los eventos
+   * firmados por el usuario del pedido. `server.ts` compone `createPostLock` sobre la misma base.
+   */
+  postLock: PostLock;
+  /**
+   * Las subidas de medios de los posts, solo para leer (F9-T17): `GET /posts/:id` cuenta las
+   * `uploaded` que el worker todavía revisa. Los cambios van en el candado del post.
+   */
+  postUploads: Pick<PostUploadRepository, "listByPost">;
+  /** El perfil editorial de cada corredor o marca (F9-T09): lo lee la IA de los posts. */
+  editorialProfiles: EditorialProfileRepository;
+  /**
+   * Los planes de ideas (F9-T21, ADR-0030): pedirlos (`content.plan` los corre en el worker), listar
+   * los de una marca y ver uno con sus ideas.
+   */
+  planRuns: PlanRunRepository;
+  /**
    * Publicaciones (F3-T15): leer las de un aviso y su bitácora, y saber de qué aviso es una antes
    * del candado. Los cambios de estado van dentro del candado, con sus repositorios.
    */
   publications: Pick<
     PublicationRepository,
-    "get" | "listByListing" | "listEvents" | "listByStatus" | "listForTracking"
+    "get" | "listBySubject" | "listEvents" | "listByStatus" | "listForTracking"
   >;
   // Cuentas (F3-T13): conectar con el token del panel de Meta o por OAuth, y desconectar.
   platformAccounts: PlatformAccountRepository;
   /** Instagram Login, si el OAuth tiene su par de la app, y si la cookie va `Secure`. */
   instagram: OAuthDeps["instagram"];
+  /** Discord (F9-T14): leer el webhook al conectarlo (`createDiscordWebhooks`), sin publicar. */
+  discord: AccountRoutesDeps["discord"];
+  /**
+   * X (F9-T16, spec F9 §4.7): el OAuth con PKCE (`createXAuth`, que también renueva el token en el
+   * refresco a pedido), si está el par de la app, si la cookie va `Secure` (`X_REDIRECT_URI`
+   * `https://`), el verificador de PKCE (`createPkcePair`) y el inicio del OAuth en el host de
+   * `X_REDIRECT_URI` (como `instagramStartUrl`).
+   */
+  x: Omit<OAuthDeps["x"], "auth"> & { auth: XAuth; startUrl: string };
+  /**
+   * LinkedIn (F9-T15): el OAuth del perfil personal (`createLinkedInAuth`), si está el par de la app,
+   * si la cookie del `state` va `Secure` (dirección de retorno `https://`) y dónde empieza el OAuth
+   * (`/api/oauth/linkedin/start` en el host de `LINKEDIN_REDIRECT_URI`).
+   */
+  linkedin: LinkedInOAuthDeps["linkedin"] & { startUrl: string };
+  /**
+   * TikTok (F9-T26): Login Kit (`createTikTokAuth`), si tiene el par de la app, la cookie `Secure`
+   * y el inicio del OAuth. Sin el par (`configured: false`), conectar TikTok vuelve al panel con
+   * `TIKTOK_NOT_CONFIGURED`.
+   */
+  tiktok: OAuthDeps["tiktok"];
   /**
    * Mercado Libre (spec F4 §4.2): el OAuth con la dirección pegada, `configured` si está el par de
    * la app (sin él, conectar no llama) y la dirección de retorno que se muestra (`ML_REDIRECT_URI`).
@@ -191,6 +247,7 @@ export function createApp(input: AppDeps) {
   const deps: AppDeps = {
     ...input,
     lock: withEventUser(input.lock, input.requestContext),
+    postLock: withPostEventUser(input.postLock, input.requestContext),
     // Lo que publicar necesita saber de Marketplace: la configuración y lo que permite el ambiente.
     marketplace: { ...input.marketplace, automation: input.marketplaceAutomation },
   };
@@ -204,22 +261,29 @@ export function createApp(input: AppDeps) {
   const contentDeps = { ...deps, ufConfigured: deps.marketplace?.ufConfigured ?? false };
   // El corredor dueño de cada recurso por id (spec F7 §4.4): un corredor solo llega a lo suyo.
   const listingOwner = async (id: string) => (await deps.listings.get(id))?.brokerId ?? null;
-  const viaListing = async (listingId: string | undefined) =>
-    listingId === undefined ? null : listingOwner(listingId);
+  // Un post es de su corredor o marca (ADR-0029, punto 12), como un aviso.
+  const postOwner = async (id: string) => (await deps.posts.get(id))?.brokerId ?? null;
+  const viaSubject = async (subject: Subject | undefined) =>
+    subject === undefined
+      ? null
+      : subject.kind === "listing"
+        ? listingOwner(subject.id)
+        : postOwner(subject.id);
   const notFound = (code: string, message: string) => (id: string) =>
     new AppError(code, `${message} ${id}`);
   const ownership = {
     listing: ownedBy(listingOwner, notFound("LISTING_NOT_FOUND", "No existe el aviso")),
+    post: ownedBy(postOwner, notFound("POST_NOT_FOUND", "No existe el post")),
     contentRun: ownedBy(
-      async (id) => viaListing((await deps.contentRuns.get(id))?.listingId),
+      async (id) => viaSubject((await deps.contentRuns.get(id))?.subject),
       notFound("CONTENT_RUN_NOT_FOUND", "No existe la corrida"),
     ),
     content: ownedBy(
-      async (id) => viaListing((await deps.contents.get(id))?.listingId),
+      async (id) => viaSubject((await deps.contents.get(id))?.subject),
       notFound("CONTENT_NOT_FOUND", "No existe el texto"),
     ),
     publication: ownedBy(
-      async (id) => viaListing((await deps.publications.get(id))?.listingId),
+      async (id) => viaSubject((await deps.publications.get(id))?.subject),
       notFound("PUBLICATION_NOT_FOUND", "No existe la publicación"),
     ),
     importRun: ownedBy(
@@ -229,6 +293,11 @@ export function createApp(input: AppDeps) {
     account: ownedBy(
       async (id) => (await deps.platformAccounts.get(id))?.brokerId ?? null,
       notFound("ACCOUNT_NOT_FOUND", "No existe la cuenta"),
+    ),
+    // Un plan de ideas es de su marca (F9-T21).
+    plan: ownedBy(
+      async (id) => (await deps.planRuns.get(id))?.brokerId ?? null,
+      notFound("PLAN_RUN_NOT_FOUND", "No existe el plan"),
     ),
     // El corredor es su propio dueño: un corredor solo llega al suyo (F7-T13).
     broker: ownedBy(async (id) => id, notFound("BROKER_NOT_FOUND", "No existe el corredor")),
@@ -243,6 +312,9 @@ export function createApp(input: AppDeps) {
     .use(deps.rateLimit === null ? passThrough : rateLimitByUser(deps.rateLimit))
     // `/x/:id/*` también calza con `/x/:id` en Hono: una sola vez por prefijo (una lectura).
     .use("/listings/:id/*", ownership.listing)
+    // Un post es de su corredor o marca (F9-T10): lo ajeno es 404, también sus subidas.
+    .use("/posts/:id/*", ownership.post)
+    .use("/plans/:id/*", ownership.plan)
     .use("/content-runs/:id/*", ownership.contentRun)
     .use("/contents/:id/*", ownership.content)
     .use("/publications/:id/*", ownership.publication)
@@ -284,6 +356,9 @@ export function createApp(input: AppDeps) {
     .route("/content-runs", contentRunRoutes(deps))
     .route("/contents", contentRoutes(contentDeps))
     .route("/brokers", brokerRoutes(deps))
+    .route("/brokers", editorialProfileRoutes(deps))
+    .route("/posts", postRoutes(deps))
+    .route("/plans", planRoutes(deps))
     .route("/schedule", scheduleRoutes(publicationDeps))
     .route(
       "/",
@@ -300,12 +375,23 @@ export function createApp(input: AppDeps) {
       "/accounts",
       accountRoutes({
         ...deps,
+        // X (F9-T16) y TikTok (F9-T26): el refresco a pedido renueva con la misma función que el
+        // intento. Sin el par de la app de una red, una cuenta suya a la que le toca es
+        // TOKEN_REFRESH_NOT_CONFIGURED (503) sin llamar ni cambiarla.
+        refreshers: {
+          ...(deps.x.configured ? { x: deps.x.auth } : {}),
+          ...(deps.tiktok.configured ? { tiktok: deps.tiktok.auth } : {}),
+        },
         stateHash: (nonce) => deps.auth.tokens.hash(nonce),
         instagram: deps.instagram.auth,
         instagramOAuth: deps.instagram.oauthConfigured && deps.instagram.secureCookie,
       }),
     )
     .route("/oauth", oauthRoutes({ ...deps, stateHash: (nonce) => deps.auth.tokens.hash(nonce) }))
+    .route(
+      "/oauth/linkedin",
+      linkedinOAuthRoutes({ ...deps, stateHash: (nonce) => deps.auth.tokens.hash(nonce) }),
+    )
     .route("/meta", metaRoutes(deps));
   app.onError(createErrorHandler(deps.logger));
   app.notFound(notFoundHandler);

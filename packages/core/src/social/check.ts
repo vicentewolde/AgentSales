@@ -1,0 +1,657 @@
+import type { Broker } from "../broker.js";
+import {
+  CONTENT_CHECK_SEVERITIES,
+  type ContentCheck,
+  type ContentCheckCode,
+} from "../content/check.js";
+import { CAROUSEL_MAX_ITEMS, CAROUSEL_MIN_ITEMS } from "../content/compose.js";
+import type { EditorialProfileView } from "../editorial-profile.js";
+import type { PostKind, PostPlatform } from "../enums.js";
+import { foldText } from "../listing-validator/normalizers.js";
+import type { Media } from "../media.js";
+import type { Post } from "../post.js";
+import { operatorBriefOf, xLinksOf } from "./brief.js";
+import {
+  DISCORD_MAX_FILES,
+  INSTAGRAM_HASHTAGS_LIMIT,
+  linkKey,
+  linkPattern,
+  linksIn,
+  postTextLength,
+  X_LINK_POST_COST_USD,
+  X_MAX_IMAGES,
+  X_POST_COST_USD,
+} from "./networks.js";
+
+// La revisión de los textos de un post (spec F9 §4.4, ADR-0030 punto 7): una función pura que
+// corre sobre el texto final, también después de una edición manual, y no se guarda (se calcula
+// al leer y al aprobar). Los errores impiden aprobar; las advertencias, no.
+
+/**
+ * Lo que la revisión necesita de un post: lo que lleva (`kind` y sus medios), las **fuentes de
+ * hechos** (el perfil editorial de su marca, y el brief y el tema solo si los escribió el
+ * operador), los enlaces que el operador marcó para X y lo que el perfil pide evitar.
+ */
+export type PostCheckContext = {
+  kind: PostKind;
+  /** Los originales del post: cuántas imágenes y videos subió el operador. */
+  media: { images: number; videos: number };
+  /** Todo el texto que es fuente de hechos, junto (ver `buildPostCheckContext`). */
+  sources: string;
+  /** Los enlaces del brief del operador (`linkKey`): los únicos permitidos en X. */
+  xLinks: string[];
+  /**
+   * La marca explícita del operador en el post (`posts.x_link_allowed`, F9-T16): sin ella, ningún
+   * enlace va en X, aunque esté en el brief.
+   */
+  xLinkAllowed: boolean;
+  avoid: string[];
+};
+
+/**
+ * Las fuentes de hechos del perfil de una marca (ADR-0030, punto 1), juntas: el nombre de la
+ * marca, los `facts`, el público, las líneas de contenido y los hashtags del perfil y del corredor.
+ * `avoid` no es fuente. Las usan la revisión de un texto (`buildPostCheckContext`, que suma el brief
+ * y el tema del operador) y la de las ideas de un plan (F9-T20), que no tienen brief.
+ */
+export function profileSources(
+  profile: Pick<EditorialProfileView, "facts" | "audience" | "pillars" | "defaultHashtags">,
+  broker: Pick<Broker, "brandName" | "fixedHashtags">,
+): string {
+  return [
+    broker.brandName,
+    ...profile.facts,
+    profile.audience ?? "",
+    ...profile.pillars.flatMap((pillar) => [pillar.name, pillar.description]),
+    ...profile.defaultHashtags,
+    ...broker.fixedHashtags,
+  ]
+    .filter((text) => text.trim() !== "")
+    .join("\n");
+}
+
+/**
+ * El contexto de la revisión de un post. Fuentes de hechos (ADR-0030, punto 1): el nombre de la
+ * marca, los `facts`, el público, las líneas de contenido y los hashtags del perfil y del corredor;
+ * el brief del post solo con `briefOrigin = operator`, y el tema solo en un post manual (el tema
+ * de una idea lo escribió la IA). `avoid` no es fuente: es lo que no se usa. Nada de otra marca.
+ */
+export function buildPostCheckContext(params: {
+  post: Pick<Post, "kind" | "topic" | "brief" | "briefOrigin" | "source" | "xLinkAllowed">;
+  profile: Pick<
+    EditorialProfileView,
+    "facts" | "audience" | "pillars" | "defaultHashtags" | "avoid"
+  >;
+  broker: Pick<Broker, "brandName" | "fixedHashtags">;
+  media: readonly Pick<Media, "role" | "kind">[];
+}): PostCheckContext {
+  const { post, profile, broker } = params;
+  const originals = params.media.filter((item) => item.role === "original");
+  const sources = [
+    profileSources(profile, broker),
+    operatorBriefOf(post) ?? "",
+    post.source === "manual" ? post.topic : "",
+  ]
+    .filter((text) => text.trim() !== "")
+    .join("\n");
+  return {
+    kind: post.kind,
+    media: {
+      images: originals.filter((item) => item.kind === "image").length,
+      videos: originals.filter((item) => item.kind === "video").length,
+    },
+    sources,
+    xLinks: xLinksOf(post),
+    xLinkAllowed: post.xLinkAllowed,
+    avoid: [...profile.avoid],
+  };
+}
+
+/** Una mención (`@algo`) que no es parte de un correo ni de una palabra. */
+const MENTION = /(?<![\p{L}\p{N}_.@])@([\p{L}\p{N}_.]*[\p{L}\p{N}_])/gu;
+
+/**
+ * Una mención masiva, donde sea que esté (Discord la reconoce también pegada a otra palabra:
+ * `a@everyone`, `.@here`). Se busca sobre el texto sin caracteres de ancho cero y con `＠` como `@`
+ * (`unmasked`), así no se esconde con un truco tipográfico.
+ */
+const MASS_MENTION = /@(?:everyone|here)(?![\p{L}\p{N}_])/iu;
+
+/** Caracteres de ancho cero (U+200B a U+200D, U+2060 y U+FEFF). */
+const ZERO_WIDTH = /[\u200B-\u200D\u2060\uFEFF]/g;
+
+/** El texto sin caracteres de ancho cero y con la arroba de ancho completo (U+FF20) como `@`. */
+const unmasked = (text: string) => text.replace(ZERO_WIDTH, "").replace(/\uFF20/g, "@");
+
+/** Un hashtag dentro del texto. */
+const HASHTAG_IN_TEXT = /(?<![\p{L}\p{N}_])#[\p{L}\p{N}_]+/gu;
+
+/**
+ * Una cifra: dígitos con separadores de miles o decimales (`5.800`, `72,5`, `2026`, `1,000`), que
+ * no siguen a una letra (`B2B` y `web3` son nombres, no cifras). Se comparan sin los separadores
+ * (`numberKey`), así `1.000` y `1,000` son la misma en los dos idiomas.
+ */
+const NUMBER = /(?<![\p{L}\p{N}.,])\d+(?:[.,]\d+)*/gu;
+
+/** El marcador de una lista numerada al inicio de una línea (`1. …`, `2) …`): no es una cifra. */
+const LIST_MARKER = /^[ \t]*\d{1,3}[.)](?=\s)/gmu;
+
+/** "24/7" (todo el día, toda la semana) es una expresión, no un dato. */
+const ALWAYS_OPEN = /(?<![\p{N}/])24\/7(?![\p{N}/])/gu;
+
+/** La forma comparable de una cifra: solo los dígitos, sin ceros a la izquierda. */
+const numberKey = (raw: string) => raw.replace(/[.,]/g, "").replace(/^0+(?=\d)/, "");
+
+/** Una palabra: letras y números, empezando por letra (`AgentPey`, `B2B`, `iPhone`). */
+const WORD = /\p{L}[\p{L}\p{N}]*/gu;
+
+/** Fin de frase: `.`, `!`, `?`, `…`, `:` o `;` seguidos de espacio. */
+const SENTENCE_BREAK = /(?<=[.!?…:;])\s+/u;
+
+/** Lo que abre una frase o una cita: la palabra que viene después va con mayúscula sin ser un nombre. */
+const OPENERS = new Set(["¿", "¡", '"', "«", "“", "'", "‘"]);
+
+/**
+ * Los días y los meses con su nombre completo, en inglés y en español (plegados). Nunca son un
+ * nombre propio de la marca: se ignoran siempre (en inglés van con mayúscula).
+ */
+const DATE_NAMES: ReadonlySet<string> = new Set([
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+  "sunday",
+  "lunes",
+  "martes",
+  "miercoles",
+  "jueves",
+  "viernes",
+  "sabado",
+  "domingo",
+  "january",
+  "february",
+  "march",
+  "april",
+  "may",
+  "june",
+  "july",
+  "august",
+  "september",
+  "october",
+  "november",
+  "december",
+  "enero",
+  "febrero",
+  "marzo",
+  "abril",
+  "mayo",
+  "junio",
+  "julio",
+  "agosto",
+  "septiembre",
+  "octubre",
+  "noviembre",
+  "diciembre",
+]);
+
+/**
+ * Las abreviaturas de los días y los meses, en inglés y en español (plegadas: `Mié` y `Sáb` quedan
+ * `mie` y `sab`). Muchas son también nombres reales (`Mon` Laferte, Viña del `Mar`, `Sun`, `Dom`),
+ * así que solo se ignoran **junto a una fecha** (`dateAbbreviationsAsWords`): pegadas a una cifra
+ * (`Oct 9`, `9 oct.`, `Oct 9-12`, `26 de ene.`), a un día o mes completo, o a otra abreviatura que lo está
+ * (`Mon, Oct 9`). Ensayo de la demo de F9: "Up to Oct 9" marcaba «Oct» como nombre.
+ */
+const DATE_ABBREVIATIONS: ReadonlySet<string> = new Set([
+  "mon",
+  "tue",
+  "tues",
+  "wed",
+  "thu",
+  "thur",
+  "thurs",
+  "fri",
+  "sat",
+  "sun",
+  "lun",
+  "mar",
+  "mie",
+  "jue",
+  "vie",
+  "sab",
+  "dom",
+  "jan",
+  "feb",
+  "apr",
+  "jun",
+  "jul",
+  "aug",
+  "sep",
+  "sept",
+  "oct",
+  "nov",
+  "dec",
+  "ene",
+  "abr",
+  "ago",
+  "set",
+  "dic",
+]);
+
+/**
+ * Palabras que se escriben con mayúscula y no son un hecho de la marca: las redes donde se
+ * publica, los días y meses completos (`DATE_NAMES`), los idiomas en inglés, el pronombre `I` y
+ * siglas comunes. Plegadas (sin tildes, en minúsculas). Las abreviaturas de fechas van aparte
+ * (`DATE_ABBREVIATIONS`): solo valen junto a una fecha.
+ */
+const COMMON_CAPITALIZED: ReadonlySet<string> = new Set([
+  "instagram",
+  "linkedin",
+  "discord",
+  "tiktok",
+  "x",
+  "i",
+  "ia",
+  "ai",
+  "ok",
+  "api",
+  "apis",
+  "ceo",
+  "cto",
+  "crm",
+  "faq",
+  "pdf",
+  "url",
+  "uf",
+  "b2b",
+  "b2c",
+  "saas",
+  ...DATE_NAMES,
+  "english",
+  "spanish",
+]);
+
+/** Lo que puede separar las partes de una fecha: espacios, punto, coma, guiones y barra. */
+const DATE_GLUE = /^[\s.,\-–—/]+$/u;
+
+/**
+ * La línea con las abreviaturas de fecha que van **junto a una fecha** en minúsculas (el mismo
+ * largo), para que `unknownNames` no las tome por nombres: `Oct 9`, `9 oct.`, `Mon, Oct 9`,
+ * `Oct 9-12`, `Mié 9`, `26 de ene.`. Una abreviatura suelta o junto a otra palabra (`Mon Laferte`, `Viña del Mar`)
+ * queda como está y se revisa como cualquier nombre.
+ */
+function dateAbbreviationsAsWords(line: string): string {
+  const tokens = [...line.matchAll(/[\p{L}\p{N}]+/gu)].map((match) => ({
+    text: match[0],
+    start: match.index,
+    end: match.index + match[0].length,
+    folded: foldText(match[0]),
+  }));
+  const isAbbreviation = (i: number) => DATE_ABBREVIATIONS.has(tokens[i]?.folded ?? "");
+  /** Los vecinos de una palabra, si entre ellos solo hay separadores de fecha. */
+  const neighbors = (i: number): number[] => {
+    const token = tokens[i];
+    if (token === undefined) return [];
+    const result: number[] = [];
+    const before = tokens[i - 1];
+    if (before !== undefined && DATE_GLUE.test(line.slice(before.end, token.start))) {
+      result.push(i - 1);
+    }
+    const after = tokens[i + 1];
+    if (after !== undefined && DATE_GLUE.test(line.slice(token.end, after.start))) {
+      result.push(i + 1);
+    }
+    return result;
+  };
+  /** Una cifra o un día o mes completo: lo que ancla una fecha. */
+  const isAnchor = (i: number) => {
+    const token = tokens[i];
+    return token !== undefined && (/^\p{N}+$/u.test(token.text) || DATE_NAMES.has(token.folded));
+  };
+  /** "26 de ene.": una cifra y `de` antes de la abreviatura, como se escribe en español. */
+  const afterDayOf = (i: number) => {
+    const of = tokens[i - 1];
+    const day = tokens[i - 2];
+    const token = tokens[i];
+    return (
+      token !== undefined &&
+      of?.folded === "de" &&
+      day !== undefined &&
+      /^\p{N}+$/u.test(day.text) &&
+      DATE_GLUE.test(line.slice(day.end, of.start)) &&
+      DATE_GLUE.test(line.slice(of.end, token.start))
+    );
+  };
+  const anchored = (i: number) =>
+    isAbbreviation(i) && (neighbors(i).some(isAnchor) || afterDayOf(i));
+  let out = line;
+  tokens.forEach((token, i) => {
+    if (!isAbbreviation(i)) return;
+    if (!anchored(i) && !neighbors(i).some(anchored)) return;
+    const lower = token.text.toLowerCase();
+    if (lower.length !== token.text.length) return;
+    out = out.slice(0, token.start) + lower + out.slice(token.end);
+  });
+  return out;
+}
+
+/** `true` si la palabra lleva alguna mayúscula (`Banco`, `AgentPey`, `iPhone`, `CEO`). */
+const hasUppercase = (word: string) => /\p{Lu}/u.test(word);
+
+/**
+ * Una palabra toda en mayúsculas de 2 a 6 caracteres (`IA`, `B2B`, `GRATIS`, `CRM`): una sigla o
+ * un énfasis, no un nombre que la revisión pueda distinguir. No se marca.
+ */
+const isShoutOrAcronym = (word: string) => /^[\p{Lu}\p{N}]{2,6}$/u.test(word);
+
+/**
+ * Una línea con forma de título en inglés ("How We Pick Our Networks"): sin puntuación final, de 2
+ * a 10 palabras, y toda palabra de 4 letras o más con mayúscula inicial. Sus mayúsculas son de
+ * estilo, no nombres: la línea no se revisa como nombres propios (sí sus cifras, enlaces y
+ * menciones). El prompt pide no escribir así; el operador lo ve al aprobar.
+ */
+function isTitleLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (trimmed === "" || /[.!?…:;,]$/u.test(trimmed)) return false;
+  const words = trimmed.match(WORD) ?? [];
+  const long = words.filter((word) => word.length >= 4);
+  return (
+    words.length >= 2 &&
+    words.length <= 10 &&
+    long.length >= 2 &&
+    long.every((word) => /^\p{Lu}/u.test(word))
+  );
+}
+
+const foldedWords = (text: string) => new Set(foldText(text).match(/[\p{L}\p{N}]+/gu) ?? []);
+
+/**
+ * Los posibles nombres propios de un texto que no están en las fuentes (heurística, spec F9 §4.4):
+ * una palabra con mayúscula que **no** abre una frase (ni una línea, ni va tras `¿`, `¡` o una
+ * comilla), que no es una sigla o un énfasis en mayúsculas (`isShoutOrAcronym`), que no está entre
+ * las palabras de las fuentes ni en `COMMON_CAPITALIZED` (ni es una abreviatura de fecha junto a
+ * una fecha, `dateAbbreviationsAsWords`), y que no va en una línea con forma de título
+ * (`isTitleLine`). Las que van seguidas se juntan (`Banco Central`). No ve un nombre escrito en minúsculas ni los que abren una
+ * frase: la regla de hechos del prompt es la primera barrera y el operador revisa cada texto.
+ */
+function unknownNames(text: string, sourceWords: ReadonlySet<string>): string[] {
+  const names: string[] = [];
+  for (const raw of text.split("\n")) {
+    if (isTitleLine(raw)) continue;
+    const line = dateAbbreviationsAsWords(raw);
+    for (const sentence of line.split(SENTENCE_BREAK)) {
+      let run: { text: string; end: number } | null = null;
+      let first = true;
+      for (const match of sentence.matchAll(WORD)) {
+        const word = match[0];
+        const start = match.index;
+        const before = sentence.slice(0, start).trimEnd();
+        const opener = first || OPENERS.has(before.at(-1) ?? "");
+        first = false;
+        const folded = foldText(word);
+        const unknown =
+          !opener &&
+          hasUppercase(word) &&
+          !isShoutOrAcronym(word) &&
+          !sourceWords.has(folded) &&
+          !COMMON_CAPITALIZED.has(folded);
+        if (!unknown) {
+          if (run !== null) names.push(run.text);
+          run = null;
+          continue;
+        }
+        if (run !== null && /^\s+$/u.test(sentence.slice(run.end, start))) {
+          run = { text: `${run.text} ${word}`, end: start + word.length };
+        } else {
+          if (run !== null) names.push(run.text);
+          run = { text: word, end: start + word.length };
+        }
+      }
+      if (run !== null) names.push(run.text);
+    }
+  }
+  return [...new Set(names)];
+}
+
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** El nombre de cada red, para los mensajes. */
+const PLATFORM_NAME: Readonly<Record<PostPlatform, string>> = {
+  instagram: "Instagram",
+  x: "X",
+  linkedin: "LinkedIn",
+  discord: "Discord",
+  tiktok: "TikTok",
+};
+
+const usd = (value: number) => `US$${value.toFixed(value < 0.1 ? 3 : 2).replace(".", ",")}`;
+
+/** El mensaje de `TOO_LONG`, con cómo cuenta la red. */
+function tooLongMessage(platform: PostPlatform, length: number, max: number): string {
+  if (platform === "x") {
+    return `El texto tiene ${length} caracteres ponderados con los hashtags (máximo ${max}; un enlace cuenta 23 y un emoji, 2)`;
+  }
+  if (platform === "linkedin") {
+    return `El texto tiene ${length} caracteres con los hashtags y los escapes de LinkedIn (máximo ${max})`;
+  }
+  return `El texto tiene ${length} caracteres con los hashtags (máximo ${max})`;
+}
+
+/** Los requisitos de medios de cada red (spec F9 §4.4 y §4.6): el mensaje, o `null` si cumple. */
+function mediaProblem(platform: PostPlatform, ctx: PostCheckContext): string | null {
+  const { kind, media } = ctx;
+  if (kind === "video") {
+    return media.videos === 0
+      ? "El post es de video y no tiene video: súbelo o cambia el tipo del post"
+      : null;
+  }
+  if (platform === "tiktok") return "TikTok publica solo video: cambia el post a video y súbelo";
+  if (kind === "text") {
+    return platform === "instagram"
+      ? "Instagram necesita una imagen o un video: súbelos y cambia el tipo del post"
+      : null;
+  }
+  if (media.images === 0) return "El post es de imágenes y no tiene ninguna: súbelas";
+  if (
+    platform === "instagram" &&
+    kind === "carousel" &&
+    (media.images < CAROUSEL_MIN_ITEMS || media.images > CAROUSEL_MAX_ITEMS)
+  ) {
+    return `Un carrusel de Instagram lleva de ${CAROUSEL_MIN_ITEMS} a ${CAROUSEL_MAX_ITEMS} imágenes, y este tiene ${media.images}`;
+  }
+  if (platform === "x" && media.images > X_MAX_IMAGES) {
+    return `X admite hasta ${X_MAX_IMAGES} imágenes o 1 video por post, y este tiene ${media.images} imágenes`;
+  }
+  if (platform === "discord" && media.images > DISCORD_MAX_FILES) {
+    return `Discord admite hasta ${DISCORD_MAX_FILES} archivos por mensaje, y este tiene ${media.images} imágenes`;
+  }
+  return null;
+}
+
+/** `true` si el texto tiene `@everyone` o `@here`, aunque lo escondan con un truco tipográfico. */
+export const hasMassMention = (text: string): boolean => MASS_MENTION.test(unmasked(text));
+
+/** Las menciones (`@algo`) del texto que no están en las fuentes, sin las masivas ni repetidas. */
+function unknownMentions(body: string, sources: string): string[] {
+  const sourceMentions = new Set(
+    [...sources.matchAll(MENTION)].map((match) => (match[1] ?? "").toLowerCase()),
+  );
+  const mentions = new Set([...body.matchAll(MENTION)].map((match) => match[1] ?? ""));
+  return [...mentions].filter((mention) => {
+    const key = mention.toLowerCase();
+    return key !== "everyone" && key !== "here" && !sourceMentions.has(key);
+  });
+}
+
+/** El texto sin lo que no es prosa: listas numeradas, "24/7", enlaces, menciones y hashtags. */
+const proseOf = (body: string) =>
+  body
+    .replace(LIST_MARKER, " ")
+    .replace(ALWAYS_OPEN, " ")
+    .replace(linkPattern(), " ")
+    .replace(MENTION, " ")
+    .replace(HASHTAG_IN_TEXT, " ");
+
+/** Las cifras del texto que no están en las fuentes, tal cual aparecen y sin repetir. */
+function unknownNumbers(text: string, sources: string): string[] {
+  const sourceNumbers = new Set((sources.match(NUMBER) ?? []).map(numberKey));
+  const reported = new Set<string>();
+  const found: string[] = [];
+  for (const raw of text.match(NUMBER) ?? []) {
+    const key = numberKey(raw);
+    if (sourceNumbers.has(key) || reported.has(key)) continue;
+    reported.add(key);
+    found.push(raw);
+  }
+  return found;
+}
+
+/**
+ * Lo que un texto afirma sin que esté en las fuentes (ADR-0030, punto 1): menciones, enlaces,
+ * cifras y posibles nombres propios, con la misma regla que `checkPostContent`
+ * (`FACT_NOT_IN_PROFILE`). Devuelve un mensaje por cada uno; vacío si no hay nada. La usa el plan
+ * de ideas (F9-T20) sobre el tema y el porqué de cada idea, que no tienen brief del operador.
+ */
+export function unsupportedFacts(text: string, sources: string): string[] {
+  const messages: string[] = [];
+  for (const mention of unknownMentions(text, sources)) {
+    messages.push(`La mención «@${mention}» no está en el perfil`);
+  }
+  const sourceLinks = new Set(linksIn(sources).map(linkKey));
+  for (const link of new Set(linksIn(text))) {
+    if (!sourceLinks.has(linkKey(link))) messages.push(`El enlace «${link}» no está en el perfil`);
+  }
+  const prose = proseOf(text);
+  for (const raw of unknownNumbers(prose, sources)) {
+    messages.push(`La cifra «${raw}» no está en los hechos del perfil`);
+  }
+  for (const found of unknownNames(prose, foldedWords(sources))) {
+    messages.push(`«${found}» parece un nombre propio que no está en el perfil`);
+  }
+  return messages;
+}
+
+/**
+ * Revisa el texto de un post en una red (spec F9 §4.4). Errores (impiden aprobar):
+ * - `TOO_LONG`: el largo de la red con los hashtags (`postTextLength`: X ponderado, LinkedIn con
+ *   los escapes);
+ * - `HASHTAG_LIMIT`: más de 30 hashtags en Instagram;
+ * - `MASS_MENTION`: `@everyone` o `@here`, en cualquier red;
+ * - `FACT_NOT_IN_PROFILE`: una cifra, un posible nombre propio, un enlace o una mención que no
+ *   están en las fuentes de hechos (`buildPostCheckContext`; un brief de la IA no cuenta);
+ * - `LINK_NOT_ALLOWED`: en X, un enlace que el operador no puso en el brief del post, o cualquier
+ *   enlace si el post no tiene la marca explícita del operador (`xLinkAllowed`, F9-T16);
+ * - `MEDIA_REQUIREMENT`: un video sin video, Instagram sin imagen ni video, un carrusel de
+ *   Instagram fuera de 2 a 10 imágenes, TikTok sin video, X con más de 4 imágenes, Discord con
+ *   más de 10.
+ * Advertencias: `LINK_COST` (X con un enlace: US$0,20 en vez de US$0,015), `AVOID_TERM` (algo de
+ * lo que el perfil pide evitar), `MARKDOWN` (salvo en Discord, que lo muestra) y `MEDIA_UNUSED`
+ * (un post `image` con varias fotos en Instagram: sale solo la primera).
+ */
+export function checkPostContent(
+  platform: PostPlatform,
+  text: { body: string; hashtags: readonly string[] },
+  ctx: PostCheckContext,
+): ContentCheck[] {
+  const checks: ContentCheck[] = [];
+  const add = (code: ContentCheckCode, message: string) =>
+    checks.push({ code, severity: CONTENT_CHECK_SEVERITIES[code], message });
+  const name = PLATFORM_NAME[platform];
+
+  const { length, max } = postTextLength(platform, text);
+  if (length > max) add("TOO_LONG", tooLongMessage(platform, length, max));
+
+  if (platform === "instagram") {
+    const count = text.hashtags.length + (text.body.match(HASHTAG_IN_TEXT) ?? []).length;
+    if (count > INSTAGRAM_HASHTAGS_LIMIT) {
+      add(
+        "HASHTAG_LIMIT",
+        `Tiene ${count} hashtags: Instagram admite hasta ${INSTAGRAM_HASHTAGS_LIMIT}`,
+      );
+    }
+  }
+
+  // Menciones: las masivas nunca; las demás, solo si están en las fuentes.
+  if (hasMassMention([text.body, ...text.hashtags].join("\n"))) {
+    add("MASS_MENTION", "Tiene @everyone o @here: avisaría a todo un servidor o canal");
+  }
+  for (const mention of unknownMentions(text.body, ctx.sources)) {
+    add(
+      "FACT_NOT_IN_PROFILE",
+      `La mención «@${mention}» no está en el perfil ni en el brief del operador`,
+    );
+  }
+
+  // Enlaces: solo los de las fuentes; en X, además, solo los que el operador marcó en el brief.
+  const sourceLinks = new Set(linksIn(ctx.sources).map(linkKey));
+  const links = [...new Set(linksIn(text.body))];
+  for (const link of links) {
+    if (!sourceLinks.has(linkKey(link))) {
+      add(
+        "FACT_NOT_IN_PROFILE",
+        `El enlace «${link}» no está en el perfil ni en el brief del operador`,
+      );
+    } else if (platform === "x" && !ctx.xLinks.includes(linkKey(link))) {
+      add(
+        "LINK_NOT_ALLOWED",
+        `En X, un enlace va solo si lo pones en el brief del post (cuesta ${usd(X_LINK_POST_COST_USD)}): «${link}»`,
+      );
+    }
+  }
+  // F9-T16: además del brief, la marca explícita del operador en el post (no basta con el brief).
+  if (platform === "x" && links.length > 0 && !ctx.xLinkAllowed) {
+    add(
+      "LINK_NOT_ALLOWED",
+      `En X un enlace cuesta ${usd(X_LINK_POST_COST_USD)} en vez de ${usd(X_POST_COST_USD)}: márcalo en el post («Permitir un enlace en X» en el panel, o post edit --x-link en la CLI) o quítalo`,
+    );
+  }
+  if (platform === "x" && links.length > 0) {
+    add(
+      "LINK_COST",
+      `Este post de X lleva un enlace: cuesta ${usd(X_LINK_POST_COST_USD)} en vez de ${usd(X_POST_COST_USD)}`,
+    );
+  }
+
+  // Cifras y nombres propios, fuera de enlaces, menciones y hashtags del texto.
+  const prose = proseOf(text.body);
+  for (const raw of unknownNumbers([prose, ...text.hashtags].join("\n"), ctx.sources)) {
+    add(
+      "FACT_NOT_IN_PROFILE",
+      `La cifra «${raw}» no está en los hechos del perfil ni en el brief del operador`,
+    );
+  }
+  for (const found of unknownNames(prose, foldedWords(ctx.sources))) {
+    add(
+      "FACT_NOT_IN_PROFILE",
+      `«${found}» parece un nombre propio que no está en el perfil ni en el brief del operador`,
+    );
+  }
+
+  const problem = mediaProblem(platform, ctx);
+  if (problem !== null) add("MEDIA_REQUIREMENT", problem);
+  // Instagram publica una imagen suelta con la primera foto (F9-T13): las demás no salen.
+  if (platform === "instagram" && ctx.kind === "image" && ctx.media.images > 1) {
+    add(
+      "MEDIA_UNUSED",
+      `Instagram publicará solo la primera de ${ctx.media.images} fotos; usa carrusel para publicarlas todas`,
+    );
+  }
+
+  const folded = foldText([text.body, ...text.hashtags].join("\n"));
+  for (const term of ctx.avoid) {
+    const key = foldText(term);
+    if (key === "") continue;
+    const pattern = new RegExp(
+      String.raw`(?<![\p{L}\p{N}])${escapeRegExp(key)}(?![\p{L}\p{N}])`,
+      "u",
+    );
+    if (pattern.test(folded)) add("AVOID_TERM", `Usa «${term}», que el perfil pide evitar`);
+  }
+
+  if (platform !== "discord" && /\*\*|__|^#{1,6}\s|\[[^\]]*\]\([^)]*\)/m.test(text.body)) {
+    add("MARKDOWN", `Tiene formato markdown (**, encabezados o links), que ${name} no muestra`);
+  }
+
+  return checks;
+}

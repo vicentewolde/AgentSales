@@ -1,6 +1,8 @@
 import {
   type CloseAbandonedImportsDeps,
+  type CloseAbandonedPostUploadsDeps,
   closeAbandonedImports,
+  closeAbandonedPostUploads,
   isAppError,
   type LoginChallengeRepository,
   type OAuthStateRepository,
@@ -56,6 +58,11 @@ export type PublicationsWatchJobDeps = WatchPublicationsDeps & {
    * quedó de las cargas cerradas o terminadas.
    */
   importCleanup?: Omit<CloseAbandonedImportsDeps, "now">;
+  /**
+   * F9-T10 (spec F9 §4.5): borrar de R2 las subidas de medios de posts que nadie terminó en 24 h y
+   * cerrarlas como `abandoned`.
+   */
+  postUploadCleanup?: Omit<CloseAbandonedPostUploadsDeps, "now">;
 };
 
 const codeOf = (error: unknown) => (isAppError(error) ? error.code : "INTERNAL_ERROR");
@@ -63,8 +70,8 @@ const codeOf = (error: unknown) => (isAppError(error) ? error.code : "INTERNAL_E
 /**
  * Job `publications.watch`: corre `watchPublications` (core) y registra solo conteos, ids y
  * códigos. Una vuelta sin nada que hacer no escribe más que el inicio y el fin del job. Después
- * borra las sesiones y los `state` de OAuth vencidos (F7) y limpia las subidas (F8); si algo de
- * eso falla, solo lo advierte.
+ * borra las sesiones y los `state` de OAuth vencidos (F7) y limpia las subidas de cargas (F8) y de
+ * posts (F9); si algo de eso falla, solo lo advierte.
  */
 export function publicationsWatchJob(deps: PublicationsWatchJobDeps): Job {
   return defineJob({
@@ -146,6 +153,31 @@ export function publicationsWatchJob(deps: PublicationsWatchJobDeps): Job {
           }
         } catch (error) {
           logger.warn({ code: codeOf(error) }, "vigilancia: no se pudieron limpiar las subidas");
+        }
+      }
+      if (deps.postUploadCleanup !== undefined) {
+        try {
+          const cleaned = await closeAbandonedPostUploads({
+            ...deps.postUploadCleanup,
+            ...(deps.now === undefined ? {} : { now: deps.now }),
+          });
+          if (cleaned.abandoned.length > 0) {
+            logger.warn(
+              { postUploadIds: cleaned.abandoned },
+              "vigilancia: subidas de posts sin terminar borradas de R2",
+            );
+          }
+          if (cleaned.failed.length > 0) {
+            logger.warn(
+              { postUploadIds: cleaned.failed },
+              "vigilancia: no se pudieron borrar algunas subidas de posts (se reintenta)",
+            );
+          }
+        } catch (error) {
+          logger.warn(
+            { code: codeOf(error) },
+            "vigilancia: no se pudieron limpiar las subidas de posts",
+          );
         }
       }
     },

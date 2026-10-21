@@ -12,6 +12,7 @@ import {
   variantPath,
 } from "../content/media-keys.js";
 import { CONTENT_PROMPT_VERSION } from "../content/prompt.js";
+import { contentRunErrorOf } from "../content/run-error.js";
 import { coverData, reelOverlayData, slideBrand, specSheetData } from "../content/slides-data.js";
 import type { ContentRun, ContentRunReport } from "../content.js";
 import { type ContentRunStage, isTerminalContentRun, type RenderedMediaVariant } from "../enums.js";
@@ -38,7 +39,7 @@ import {
   type SlideImageRef,
   type SlideTemplates,
 } from "../ports/slide-templates.js";
-import { scrubMessage } from "../redact.js";
+import { listingIdOf, listingSubject, subjectNotListing } from "../subject.js";
 
 export type PrepareContentDeps = {
   contentRuns: ContentRunRepository;
@@ -94,29 +95,6 @@ const ordered = (media: readonly Media[]) =>
 const isDecodeFailed = (error: unknown) =>
   isAppError(error) && error.code === "MEDIA_DECODE_FAILED";
 
-/**
- * Mensajes fijos para los errores que pueden traer claves de R2 o rutas (`STORAGE_*`, `MEDIA_*`):
- * el error de la corrida lo muestran la API, el panel y la CLI (spec F2 §4.9).
- */
-const FIXED_MESSAGES: Readonly<Record<string, string>> = {
-  STORAGE_NOT_FOUND:
-    "Falta un archivo del aviso en el almacenamiento: vuelve a importar sus medios",
-  STORAGE_UNAVAILABLE: "El almacenamiento de archivos no respondió",
-  STORAGE_ERROR: "El almacenamiento de archivos rechazó la operación",
-  STORAGE_CONTENT_MISMATCH: "Un archivo cambió mientras se subía",
-  MEDIA_CONFLICT: "Otra preparación del mismo aviso escribió los medios al mismo tiempo",
-  MEDIA_NOT_FOUND: "Falta un medio del aviso",
-};
-
-/**
- * El error que se guarda en la corrida: sin claves de R2 ni rutas absolutas (dos o más tramos; un
- * comando como `/login` queda).
- */
-export function contentRunErrorOf(error: AppError): { code: string; message: string } {
-  const message = FIXED_MESSAGES[error.code] ?? scrubMessage(error.message);
-  return { code: error.code, message };
-}
-
 const aborted = (cause?: unknown) =>
   new AppError("CONTENT_RUN_ABORTED", "Se cortó la corrida de contenido", {
     retriable: true,
@@ -164,6 +142,9 @@ export async function prepareContent(
     });
   }
   if (isTerminalContentRun(run.status)) return { outcome: "skipped", status: run.status };
+  // Una corrida de post es de `post.draft` (F9-T05): aquí no se toca (ni `running` ni `failed`), y
+  // el error no reintentable cierra el job sin quitarle la corrida a su job.
+  if (run.subject.kind === "post") throw subjectNotListing(run.subject);
   if (!(await deps.contentRuns.markRunning(run.id))) return skipped(deps, run);
 
   const report: ContentRunReport = { warnings: [] };
@@ -216,7 +197,7 @@ async function load(
   report: ContentRunReport,
   signal: AbortSignalLike | undefined,
 ): Promise<Run> {
-  const { listing, broker, ctx } = await loadCheckContext(deps, run.listingId);
+  const { listing, broker, ctx } = await loadCheckContext(deps, listingIdOf(run.subject));
   return {
     deps,
     run,
@@ -252,7 +233,7 @@ async function saveDerivative(
 async function mediaStage(state: Run): Promise<void> {
   const { deps, ids } = state;
   const counts = { processed: 0, existing: 0, failed: 0 };
-  const media = await deps.media.listByListing(ids.listingId);
+  const media = await deps.media.listBySubject(listingSubject(ids.listingId));
   const originals = ordered(media);
   const pathOf = (original: Media, variant: ImageVariant) =>
     variantPath(ids, variant, original.checksum, deps.processor.version);
@@ -310,7 +291,7 @@ async function mediaStage(state: Run): Promise<void> {
   state.report.media = counts;
 
   // Avisos de tamaño desde las medidas guardadas: también de las fotos que ya estaban procesadas.
-  const after = await deps.media.listByListing(ids.listingId);
+  const after = await deps.media.listBySubject(listingSubject(ids.listingId));
   ordered(after)
     .filter((item) => item.kind === "image")
     .forEach((photo, index) => {
@@ -380,7 +361,7 @@ async function dropDerivative(state: Run, media: Media | null | undefined): Prom
 async function rendersStage(state: Run): Promise<void> {
   const { deps, ids, ctx, broker, signal } = state;
   const counts = { rendered: 0, existing: 0 };
-  const media = await deps.media.listByListing(ids.listingId);
+  const media = await deps.media.listBySubject(listingSubject(ids.listingId));
   const coverOriginal = coverPhoto(media);
   const photo = coverOriginal === null ? null : variantOf(media, coverOriginal.id, "ig_4x5");
   const photoRef = imageRef(photo);
@@ -484,7 +465,7 @@ async function rendersStage(state: Run): Promise<void> {
  */
 async function reelStage(state: Run): Promise<void> {
   const { deps, ids, ctx, signal } = state;
-  const media = await deps.media.listByListing(ids.listingId);
+  const media = await deps.media.listBySubject(listingSubject(ids.listingId));
   const first = videosOf(media)[0] ?? null;
 
   for (const stale of media.filter(

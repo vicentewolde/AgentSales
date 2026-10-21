@@ -25,7 +25,10 @@ import {
 /** Severidades de la revisión: los errores bloquean, las advertencias no. */
 export const CONTENT_CHECK_SEVERITY_LEVELS = ["error", "warning"] as const;
 
-/** Códigos de la revisión editorial (spec F2 §4.6 y F4 §4.7), con su severidad. */
+/**
+ * Códigos de la revisión editorial (spec F2 §4.6 y F4 §4.7) y de la de posts (spec F9 §4.4), con
+ * su severidad.
+ */
 export const CONTENT_CHECK_SEVERITIES = {
   NUMBER_NOT_IN_DATA: "error",
   ADDRESS_EXPOSED: "error",
@@ -38,6 +41,15 @@ export const CONTENT_CHECK_SEVERITIES = {
   SUPERLATIVE: "warning",
   MARKDOWN: "warning",
   HASHTAG_COUNT: "warning",
+  // Posts (spec F9 §4.4, `checkPostContent`).
+  HASHTAG_LIMIT: "error",
+  MASS_MENTION: "error",
+  FACT_NOT_IN_PROFILE: "error",
+  LINK_NOT_ALLOWED: "error",
+  MEDIA_REQUIREMENT: "error",
+  LINK_COST: "warning",
+  AVOID_TERM: "warning",
+  MEDIA_UNUSED: "warning",
 } as const satisfies Record<string, (typeof CONTENT_CHECK_SEVERITY_LEVELS)[number]>;
 export type ContentCheckCode = keyof typeof CONTENT_CHECK_SEVERITIES;
 export type ContentCheckSeverity = (typeof CONTENT_CHECK_SEVERITY_LEVELS)[number];

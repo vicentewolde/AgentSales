@@ -23,6 +23,7 @@ import type { JobQueue } from "../ports/job-queue.js";
 import type { LockedRepositories } from "../ports/listing-lock.js";
 import type { ListingRepository } from "../ports/listing-repository.js";
 import { hasStartedLive, type Publication, type PublicationActor } from "../publication.js";
+import { listingSubject, type Subject } from "../subject.js";
 
 // Piezas comunes de publicar el canal (`publishListing`), publicar una (`startPublication`),
 // descartar y retirar (spec F3 §4.3).
@@ -97,17 +98,25 @@ export function requirePublishableListing(listing: Listing | null, listingId: st
   return listing;
 }
 
-/** Sin corridas activas: una corrida puede reemplazar los medios (spec F3 §4.2). */
+/**
+ * Sin corridas activas: una corrida puede reemplazar los medios o los textos (spec F3 §4.2). En un
+ * post, `details.postId`.
+ */
 export async function requireNoActiveRun(
   locked: Pick<LockedRepositories, "contentRuns">,
-  listingId: string,
+  target: Subject,
 ): Promise<void> {
-  const active = await locked.contentRuns.findActive(listingId);
+  const active = await locked.contentRuns.findActive(target);
   if (active !== null) {
     throw new AppError(
       "CONTENT_RUN_ACTIVE",
       "Hay una preparación de contenido en curso: espera a que termine para publicar",
-      { details: { listingId, contentRunId: active.id } },
+      {
+        details: {
+          ...(target.kind === "listing" ? { listingId: target.id } : { postId: target.id }),
+          contentRunId: active.id,
+        },
+      },
     );
   }
 }
@@ -171,6 +180,19 @@ export async function portalDefinitionsBeforeLock(
   if (listing === null) return [];
   return deps.fieldDefinitions.list({ category: listing.category, brokerId: listing.brokerId });
 }
+
+/**
+ * Las definiciones de campos de Portal para una publicación de un sujeto, leídas antes del candado
+ * (`portalDefinitionsBeforeLock`): un post nunca es de Portal (`null`).
+ */
+export const subjectDefinitionsBeforeLock = (
+  deps: PortalCheckDeps,
+  subject: Subject,
+  platform: Platform,
+): Promise<FieldDefinition[] | null> =>
+  subject.kind === "listing"
+    ? portalDefinitionsBeforeLock(deps, subject.id, platform)
+    : Promise.resolve(null);
 
 /**
  * Antes de pasar una publicación de Portal a `publishing` (spec F4 §4.5 y T16), dentro del candado:
@@ -293,7 +315,7 @@ export async function requireMarketplaceStartable(
       LockedRepositories["publications"],
       "listByStatus" | "countLiveAttemptsSince"
     >;
-    media: Pick<LockedRepositories["media"], "listByListing">;
+    media: Pick<LockedRepositories["media"], "listBySubject">;
     platformAccounts: Pick<LockedRepositories["platformAccounts"], "get">;
     brokers: Pick<LockedRepositories["brokers"], "findById">;
   },
@@ -316,7 +338,7 @@ export async function requireMarketplaceStartable(
   },
 ): Promise<void> {
   const readiness = marketplaceReadiness(listing, {
-    photos: composePhotoSet(await locked.media.listByListing(listing.id)).length,
+    photos: composePhotoSet(await locked.media.listBySubject(listingSubject(listing.id))).length,
     ufConfigured: options.ufConfigured ?? false,
   });
   if (!readiness.ready) {

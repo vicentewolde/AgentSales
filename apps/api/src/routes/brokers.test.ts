@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { BrokerData } from "@agentsales/core";
+import { type BrokerData, emptyEditorialProfileData } from "@agentsales/core";
 import { describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import { brokerDetailResponseSchema, errorBodySchema } from "../contracts/index.js";
@@ -121,6 +121,53 @@ describe("POST /brokers", () => {
       json: { ...valid, slug: "otro" },
     });
     expect(forbidden.status).toBe(403);
+  });
+});
+
+describe("la lista de alta de una marca (ensayo de la demo de F9)", () => {
+  it("una marca no pide WhatsApp, logo, Mercado Libre ni Marketplace: pide el perfil y una red", async () => {
+    const s = await setup();
+    const created = await s.admin("/brokers", {
+      method: "POST",
+      json: {
+        slug: "agentpey",
+        name: "AgentPey",
+        brandName: "AgentPey",
+        primaryColor: "#112233",
+        kind: "brand",
+      },
+    });
+    expect(created.status).toBe(201);
+    const brand = brokerDetailResponseSchema.parse(await created.json());
+    expect(brand.onboarding.map((step) => [step.key, step.done])).toEqual([
+      ["brand", true],
+      ["editorial", false],
+      ["user", false],
+      ["networks", false],
+    ]);
+    await s.deps.editorialProfiles.upsert(brand.broker.id, {
+      ...emptyEditorialProfileData(),
+      pillars: [{ key: "producto", name: "Producto", description: "", weight: 1 }],
+      facts: ["AgentPey publica avisos con IA"],
+    });
+    await s.deps.platformAccounts.upsertConnected({
+      brokerId: brand.broker.id,
+      platform: "linkedin",
+      externalAccountId: "li-agentpey",
+      displayName: "LinkedIn AgentPey",
+      tokenExpiresAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+      meta: { mode: "manual" },
+      credentials: { accessToken: "li-token-agentpey" },
+    });
+    const got = brokerDetailResponseSchema.parse(
+      await (await s.admin(`/brokers/${brand.broker.id}`)).json(),
+    );
+    expect(got.onboarding.map((step) => [step.key, step.done])).toEqual([
+      ["brand", true],
+      ["editorial", true],
+      ["user", false],
+      ["networks", true],
+    ]);
   });
 });
 

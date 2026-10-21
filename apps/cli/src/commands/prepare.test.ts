@@ -1,4 +1,4 @@
-import { AppError } from "@agentsales/core";
+import { AppError, listingSubject } from "@agentsales/core";
 import { describe, expect, it } from "vitest";
 import {
   fakeClock,
@@ -34,7 +34,7 @@ describe("runPrepare", () => {
 
     expect(code).toBe(0);
     expect(clock.sleeps).toEqual([2_000, 2_000, 2_000, 2_000]);
-    const created = await h.contentRuns.latest(listing.id);
+    const created = await h.contentRuns.latest(listingSubject(listing.id));
     expect(h.queue.jobs).toEqual([
       {
         name: "content.prepare",
@@ -137,7 +137,7 @@ describe("runPrepare", () => {
     const clock = fakeClock();
 
     expect(await run(h, clock, { wait: false })).toBe(0);
-    const created = await h.contentRuns.latest(listing.id);
+    const created = await h.contentRuns.latest(listingSubject(listing.id));
     expect(h.out).toEqual([created?.id]);
     expect(h.errors()).toContain("agentsales content P-001");
     expect(clock.sleeps).toEqual([]);
@@ -150,7 +150,7 @@ describe("runPrepare", () => {
     const clock = fakeClock(() => worker.finish());
 
     expect(await run(h, clock, { texts: false })).toBe(0);
-    expect(await h.contentRuns.latest(listing.id)).toMatchObject({ texts: false });
+    expect(await h.contentRuns.latest(listingSubject(listing.id))).toMatchObject({ texts: false });
     expect(h.text()).not.toContain("Revisión editorial");
     expect(h.requests).not.toContain(`GET /listings/${listing.id}/content`);
   });
@@ -161,7 +161,7 @@ describe("runPrepare", () => {
     const worker = simulateContentWorker(h, listing.id);
     await h.contentRuns.create({ listingId: listing.id, texts: true });
     await worker.finish();
-    const [instagram] = await h.contents.listCurrent(listing.id);
+    const [instagram] = await h.contents.listCurrent(listingSubject(listing.id));
     await h.contents.update(instagram?.id ?? "", { body: "a mano", status: "edited" });
 
     const blocked = fakeClock();
@@ -173,7 +173,7 @@ describe("runPrepare", () => {
     const clock = fakeClock(() => worker.finish(sampleContents("Texto nuevo de la IA.")));
     expect(await run(h, clock, { replaceEdits: true })).toBe(0);
     // La edición a mano quedó reemplazada por los textos nuevos.
-    const [current] = await h.contents.listCurrent(listing.id);
+    const [current] = await h.contents.listCurrent(listingSubject(listing.id));
     expect(current).toMatchObject({ status: "draft", body: "Texto nuevo de la IA." });
   });
 
@@ -196,7 +196,7 @@ describe("runPrepare", () => {
     expect(await run(h, fakeClock())).toBe(1);
     expect(h.errors()).toContain("✗ PUBLICATION_PENDING: P-001 tiene publicaciones aprobadas");
     expect(h.errors()).toContain("Publícalas o descártalas");
-    expect(await h.contentRuns.latest(listing.id)).toBeNull();
+    expect(await h.contentRuns.latest(listingSubject(listing.id))).toBeNull();
   });
 
   it("una corrida fallida sale con 1 y muestra el código y el mensaje", async () => {

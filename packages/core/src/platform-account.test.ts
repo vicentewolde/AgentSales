@@ -6,6 +6,8 @@ import {
   checkConnectedCredentials,
   checkCredentials,
   checkTokenExpiry,
+  discordAccountMetaSchema,
+  discordWebhookParts,
   hasAccessToken,
   instagramAccountMetaSchema,
   isManualMarketplaceAccount,
@@ -301,5 +303,37 @@ describe("meta de Marketplace", () => {
 
   it.each([{ userId: "abc" }, { userId: "" }, { connectedAt: "ayer" }])("rechaza %o", (change) => {
     expect(marketplaceAccountMetaSchema.safeParse({ ...meta, ...change }).success).toBe(false);
+  });
+});
+
+describe("Discord (F9-T14)", () => {
+  it("discordWebhookParts: el id y el token de la URL; otra cosa es CREDENTIALS_INVALID sin la URL", () => {
+    expect(discordWebhookParts("https://discord.com/api/webhooks/987/tok-en_1")).toEqual({
+      id: "987",
+      token: "tok-en_1",
+    });
+    expect(discordWebhookParts("https://discordapp.com/api/webhooks/1/x").id).toBe("1");
+    for (const value of ["https://example.com/api/webhooks/1/secreto", "secreto"]) {
+      let error: unknown = null;
+      try {
+        discordWebhookParts(value);
+      } catch (caught) {
+        error = caught;
+      }
+      expect(error).toMatchObject({ code: "CREDENTIALS_INVALID" });
+      expect((error as Error).message).not.toContain("secreto");
+    }
+  });
+
+  it("la meta de una cuenta de Discord: sin secretos, con el servidor y el canal (o null)", () => {
+    const meta = {
+      webhookName: "AgentSales",
+      guildId: "111",
+      channelId: null,
+      connectedAt: "2026-10-20T12:00:00.000Z",
+    };
+    expect(discordAccountMetaSchema.parse(meta)).toEqual(meta);
+    expect(discordAccountMetaSchema.parse({ ...meta, mode: "manual" }).mode).toBe("manual");
+    expect(discordAccountMetaSchema.safeParse({ ...meta, guildId: "abc" }).success).toBe(false);
   });
 });

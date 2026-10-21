@@ -1,8 +1,17 @@
 import type { OnboardingStepView } from "@agentsales/api/contracts";
-import { ONBOARDING_OWNER_TEXT, ONBOARDING_STEP_TEXT } from "@agentsales/core";
+import { type BrokerKind, onboardingOwnerText, onboardingStepText } from "@agentsales/core";
 
-/** La lista de alta de un corredor (spec F7 §4.6): cada paso, si está y, si falta, quién lo hace. */
-export function OnboardingList({ steps }: { steps: readonly OnboardingStepView[] }) {
+/**
+ * La lista de alta de un corredor (spec F7 §4.6) o de una marca (F9): cada paso, si está y, si
+ * falta, quién lo hace.
+ */
+export function OnboardingList({
+  steps,
+  kind,
+}: {
+  steps: readonly OnboardingStepView[];
+  kind: BrokerKind;
+}) {
   const done = steps.filter((step) => step.done).length;
   return (
     <section aria-label="Lista de alta" className="mt-4">
@@ -16,12 +25,12 @@ export function OnboardingList({ steps }: { steps: readonly OnboardingStepView[]
         {steps.map((step) => (
           <li key={step.key}>
             {step.done ? (
-              <span className="text-green-800">✓ {ONBOARDING_STEP_TEXT[step.key]}</span>
+              <span className="text-green-800">✓ {onboardingStepText(step.key)}</span>
             ) : (
               <span className="text-amber-900">
-                · {ONBOARDING_STEP_TEXT[step.key]}
+                · {onboardingStepText(step.key)}
                 {step.pending && `: falta ${step.pending}`}
-                {step.owner && ` (${ONBOARDING_OWNER_TEXT[step.owner]})`}
+                {step.owner && ` (${onboardingOwnerText(step.owner, kind)})`}
               </span>
             )}
           </li>

@@ -11,9 +11,10 @@ import type { Media } from "../media.js";
 import { type PortalReadiness, portalReadiness } from "../portal/readiness.js";
 import type { ContentRepository, ContentRunRepository } from "../ports/content-repository.js";
 import type { MediaRepository } from "../ports/media-repository.js";
+import { listingSubject } from "../subject.js";
 
 export type GetListingContentDeps = ContentCheckDeps & {
-  media: Pick<MediaRepository, "listByListing">;
+  media: Pick<MediaRepository, "listBySubject">;
   contents: Pick<ContentRepository, "listCurrent">;
   contentRuns: Pick<ContentRunRepository, "latest">;
   /** Marketplace: si hay token para convertir la UF (`BCCH_API_TOKEN`; spec F5 §4.6). */
@@ -54,9 +55,9 @@ export async function getListingContent(
 ): Promise<ListingContent> {
   const { listing, broker, ctx } = await loadCheckContext(deps, listingId);
   const [contents, media, latestRun] = await Promise.all([
-    deps.contents.listCurrent(listing.id),
-    deps.media.listByListing(listing.id),
-    deps.contentRuns.latest(listing.id),
+    deps.contents.listCurrent(listingSubject(listing.id)),
+    deps.media.listBySubject(listingSubject(listing.id)),
+    deps.contentRuns.latest(listingSubject(listing.id)),
   ]);
   const photos = composePhotoSet(media);
   return {

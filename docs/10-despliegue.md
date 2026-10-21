@@ -43,7 +43,7 @@ Si Fly dice que el nombre está ocupado, usa otro (por ejemplo `agentsales-agent
 Son los valores de producción de tu `.env.production`. Este comando, corrido en la carpeta del proyecto (donde está `.env.production`), copia **solo** los que necesita el servidor, sin mostrarlos en pantalla:
 
 ```bash
-grep -E '^(DATABASE_URL|R2_ACCOUNT_ID|R2_ACCESS_KEY_ID|R2_SECRET_ACCESS_KEY|R2_BUCKET|APP_ENCRYPTION_KEY|ANTHROPIC_API_KEY|INSTAGRAM_APP_ID|INSTAGRAM_APP_SECRET|FACEBOOK_APP_SECRET|ML_APP_ID|ML_CLIENT_SECRET|BCCH_API_TOKEN|BACKUP_R2_ACCESS_KEY_ID|BACKUP_R2_SECRET_ACCESS_KEY)=' .env.production | fly secrets import --stage -a agentsales
+grep -E '^(DATABASE_URL|R2_ACCOUNT_ID|R2_ACCESS_KEY_ID|R2_SECRET_ACCESS_KEY|R2_BUCKET|APP_ENCRYPTION_KEY|ANTHROPIC_API_KEY|INSTAGRAM_APP_ID|INSTAGRAM_APP_SECRET|FACEBOOK_APP_SECRET|ML_APP_ID|ML_CLIENT_SECRET|LINKEDIN_CLIENT_ID|LINKEDIN_CLIENT_SECRET|BCCH_API_TOKEN|BACKUP_R2_ACCESS_KEY_ID|BACKUP_R2_SECRET_ACCESS_KEY)=' .env.production | fly secrets import --stage -a agentsales
 ```
 
 - `--stage` guarda los secretos sin encender nada; los toman las máquinas al arrancar.
@@ -52,6 +52,9 @@ grep -E '^(DATABASE_URL|R2_ACCOUNT_ID|R2_ACCESS_KEY_ID|R2_SECRET_ACCESS_KEY|R2_B
 - `DATABASE_URL` es la de la base de producción de Neon (no la rama `dev`), `R2_BUCKET` es `agentsales-media`, y `APP_ENCRYPTION_KEY` es la de producción (sin ella no se pueden leer los tokens de las cuentas conectadas).
 - `BACKUP_R2_ACCESS_KEY_ID` y `BACKUP_R2_SECRET_ACCESS_KEY` son el token del bucket `agentsales-backups` (checklist, "Antes del primer despliegue"), **no** el de `agentsales-media`: el servidor no arranca si son el mismo. Fly le da los secretos a los dos procesos: la API no los usa, los quita de su configuración y de su entorno al arrancar (así ningún proceso que abra los hereda) y nunca abre el bucket de respaldos; solo el worker sube los respaldos. No es un aislamiento total (el sistema guarda el entorno con que arrancó cada proceso), pero la API ya no puede usarlo por error. Sin ellos, el servidor no arranca (producción exige el respaldo a R2).
 - **`INSTAGRAM_APP_ID` e `INSTAGRAM_APP_SECRET` son el par de la app de Instagram, no el de la app general de Meta.** Están en Meta, `AgentSales-IG` → **Casos de uso → Administrar mensajes y contenido en Instagram → Personalizar → Configuración de la API con el inicio de sesión de Instagram** (el *Instagram app ID* y el *Instagram app secret*, con el botón Mostrar), no en Configuración → Información básica. Si la clave no es la de Instagram, el botón Conectar Instagram vuelve con "Instagram no aceptó la conexión (el código venció o ya se usó)": compara los 4 primeros y los 4 últimos caracteres con tu `.env.production`, sin copiarla. `FACEBOOK_APP_SECRET` (opcional) sí es la de Información básica.
+- **Las redes de los posts (F9), en resumen:** LinkedIn ya va en el comando de arriba (`LINKEDIN_CLIENT_ID` y `LINKEDIN_CLIENT_SECRET`; si no están en `.env.production`, no se copian y conectar LinkedIn dice `LINKEDIN_NOT_CONFIGURED`). X y TikTok se suben aparte, cuando vayas a usarlos (abajo). Discord no tiene variables: cada webhook se guarda cifrado en la base al conectarlo. Las direcciones de vuelta de las tres salen de `PUBLIC_URL` (`https://<dominio>/api/oauth/linkedin|x|tiktok/callback`) y se registran igual en la app de cada red. Fly entrega los secretos a los dos procesos: la API los usa para conectar y el worker, en X y TikTok, para renovar el token (sin el par, una cuenta por renovar falla con `TOKEN_REFRESH_NOT_CONFIGURED` sin cambiarla). Cada red publica de verdad solo después de su prueba de entrada (S1 a S6, `docs/07-checklist-cuentas.md`, "F9 · Contenido de marca").
+- **X (F9-T16), cuando vayas a conectarlo:** el par OAuth 2.0 de la app de X (`X_CLIENT_ID` y `X_CLIENT_SECRET`, de console.x.com) no está en el comando de arriba; súmalo con `grep -E '^(X_CLIENT_ID|X_CLIENT_SECRET)=' .env.production | fly secrets import --stage -a agentsales`. La dirección de retorno es `<PUBLIC_URL>/api/oauth/x/callback` (regístrala igual en la app de X). Antes de publicar de verdad en X va la prueba S4 (`docs/integraciones/x.md` §0).
+- **TikTok (F9-T26):** `TIKTOK_CLIENT_KEY` y `TIKTOK_CLIENT_SECRET` (el par del **Sandbox**) no van en la lista de arriba: súbelos **antes de la prueba S6**, porque TikTok exige `https` y S6 solo se hace desde el servidor (en el Mac no se puede conectar; `docs/integraciones/tiktok.md` §0). Hasta S6, TikTok se usa solo en `dry-run`. Súbelos con el comando de "Cambiar un solo secreto" (uno por línea del `grep -E`); la vuelta es `https://<dominio>/api/oauth/tiktok/callback` (sin `TIKTOK_REDIRECT_URI`, sale de `PUBLIC_URL`) y se registra igual en la app de TikTok.
 - **Cambiar un solo secreto después**, sin desplegar: `grep -E '^NOMBRE=' .env.production | fly secrets import -a agentsales` (sin `--stage`, Fly lo aplica y reinicia las máquinas). Con `--stage` queda pendiente hasta el próximo despliegue.
 - Revisa que quedaron los nombres (sin valores):
   ```bash
@@ -96,7 +99,7 @@ Tarda varios minutos (Fly construye la imagen). Al terminar:
 fly status -a agentsales
 ```
 
-Debe mostrar una máquina `api` y una `worker`. **Después de cada despliegue en modo demo, revisa que el worker quedó como querías** (un despliegue puede encenderlo: NO VERIFICADO, `hosting.md` §14.2). Si no es día de demo, apágalo (paso 8).
+Debe mostrar una máquina `api` y una `worker`. **Al actualizar, primero se despliega el servidor y después se usa la CLI nueva contra él** (`login --api`): la CLI nueva exige campos que un servidor viejo no manda (por ejemplo, `connect.x`, `connect.linkedin` y `connect.tiktok` en `GET /accounts`, desde F9-T19) y rechaza su respuesta. **Después de cada despliegue en modo demo, revisa que el worker quedó como querías** (un despliegue puede encenderlo: NO VERIFICADO, `hosting.md` §14.2). Si no es día de demo, apágalo (paso 8).
 
 ## Paso 5 · El dominio y su certificado
 
@@ -144,6 +147,7 @@ Esto no toca el otro proyecto de `agentpey.com`: es otro nombre, y las cookies d
 6. **Portal Inmobiliario pide el WhatsApp del corredor** (aunque sea en simulación): en el panel, **Corredores** → el corredor → **WhatsApp**, con código de país. Sin él, la pestaña Portal dice "Mercado Libre exige el WhatsApp del corredor". Y sin un paquete con cupo en Mercado Libre, la simulación de Portal lo anota (`ML_NO_QUOTA`) y sigue con las revisiones de AgentSales.
 7. **Una demo en producción** parte del historial que ya trae la base (publicaciones simuladas de antes): para repetir el flujo en una propiedad, retira primero sus publicaciones simuladas ("Marcar como retirada"), quita la aprobación y vuelve a aprobar; para ver que el calendario corre sin tu Mac, programa unos minutos adelante y míralo desde el teléfono en **Seguimiento**.
 8. **Pasar a mano las cuentas de Marketplace de perfil** que quedaron en la base (por ejemplo `agentsales-pruebas`): en **Cuentas**, el corredor, **Activar Marketplace a mano** (no pregunta nada ni toca archivos: en el servidor no hay perfil). Sin esto esas cuentas siguen "conectadas" pero publicar con ellas da `MARKETPLACE_AUTOMATION_NOT_ALLOWED`.
+9. **Tus marcas (F9), una vez y solo en esta instancia:** `ENV_FILE=.env.production pnpm db:seed --operator-brands` crea `vinny` y `agentpey` con su perfil vacío (no duplica ni pisa nada si lo repites). Después llenas su perfil editorial y conectas sus redes (`docs/08-guia-operador.md`). Las migraciones de F9 (`0014` a `0018`) se aplican solas al desplegar.
 
 ## Paso 7 · Ver los logs
 
@@ -189,45 +193,72 @@ Cada despliegue queda con la etiqueta de su commit (`sha-…`).
    fly deploy -a agentsales --image registry.fly.io/agentsales:sha-<los 12 primeros caracteres del commit>
    ```
 
-Volver atrás **no deshace migraciones** (por eso son siempre aditivas: la versión anterior sigue funcionando con la base nueva) ni cambios de secretos.
+Volver atrás **no deshace migraciones** ni cambios de secretos. Por eso las migraciones son aditivas: la versión anterior sigue funcionando con la base nueva. La excepción es la `0015` (F9), que además quita el `NOT NULL` de `listing_id` en textos, corridas y publicaciones y cambia el único de `contents`: es compatible hacia atrás solo mientras no haya filas de posts (abajo).
 
 **Ojo con los valores nuevos de F9 (migración `0014`).** La migración solo agrega (las redes `x`, `linkedin`, `discord` y `tiktok`, el estado `outcome_unknown` y la columna `brokers.kind`), así que volver a una versión anterior a F9 funciona **mientras ninguna fila use esos valores**. En cuanto exista una cuenta, un texto o una publicación de X, LinkedIn, Discord o TikTok, o una publicación que haya pasado por `outcome_unknown`, el código viejo no sabe leer esa fila: valida lo que lee y responde un error (`PLATFORM_ACCOUNT_ROW_INVALID`, `CONTENT_ROW_INVALID`, `PUBLICATION_ROW_INVALID` o `PUBLICATION_EVENT_ROW_INVALID`) en las pantallas y los trabajos que la tocan. Una marca (`kind = brand`) no da error, pero el código viejo no conoce la columna y la trata como un corredor más (le muestra Propiedades e Importar y deja activar su publicación automática). Antes de volver atrás a una versión sin F9, pásale a Claude qué versión quieres y te dirá qué filas revisar; lo normal es arreglar hacia adelante con una versión nueva.
 
-**Y con los posts (migración `0015`).** La `0015` suma las tablas de los posts (`posts`, `plan_runs`, `post_uploads`, `editorial_profiles`) y deja nulo `listing_id` en textos, corridas y publicaciones, con un `CHECK` de un solo sujeto. Mientras no exista ningún post con texto, corrida, medio o publicación, la versión anterior a F9 sigue funcionando. Apenas exista uno, el código viejo falla al leer esa fila (`listing_id` nulo → `CONTENT_ROW_INVALID`, `CONTENT_RUN_ROW_INVALID` o `PUBLICATION_ROW_INVALID`) en las pantallas y los trabajos que la tocan, y un trabajo que lista todas las corridas en cola o las publicaciones que vencen se detiene en ella. Revertirla a mano exige, **en este orden**: borrar lo de los posts (publicaciones con su bitácora, textos, corridas y medios de post; los archivos de R2 bajo `posts/` quedan y se borran aparte), quitar los `CHECK`, restaurar `contents_run_platform_unique`, quitar las columnas, tablas y tipos nuevos, volver a poner `SET NOT NULL` en `listing_id` y borrar el registro de la `0015` para que se vuelva a aplicar si después redespliegas F9. Lo normal es arreglar hacia adelante.
+**Y con los posts (migración `0015`).** La `0015` suma las tablas de los posts (`posts`, `plan_runs`, `post_uploads`, `editorial_profiles`) y deja nulo `listing_id` en textos, corridas y publicaciones, con un `CHECK` de un solo sujeto. Mientras no exista ningún post con texto, corrida, medio o publicación, la versión anterior a F9 sigue funcionando. Apenas exista uno, el código viejo falla al leer esa fila (`listing_id` nulo → `CONTENT_ROW_INVALID`, `CONTENT_RUN_ROW_INVALID` o `PUBLICATION_ROW_INVALID`) en las pantallas y los trabajos que la tocan, y un trabajo que lista todas las corridas en cola o las publicaciones que vencen se detiene en ella. **Las migraciones `0016` a `0018` (F9-T16, T17 y T20)** solo agregan: `posts.x_link_allowed`, el valor `uploaded` de `post_upload_status`, `posts.platforms` y el índice único de un plan activo por marca. Una versión que no las conoce ignora las columnas nuevas, pero falla al leer una subida en `uploaded` (`POST_UPLOAD_ROW_INVALID`) en lo que la toque, como la limpieza de cada hora, mientras exista.
 
-> **Solo a mano, con un respaldo previo (paso 10) y probado antes en una rama de Neon; lo decide el operador.** Borra para siempre los posts, sus textos y sus publicaciones. Es la referencia de cómo deshacer la `0015`, no un paso del despliegue (un test lo prueba sobre una copia en memoria).
+**Revertir los posts a mano** deshace la `0015` a la `0018` **juntas** (en producción las cuatro están aplicadas), en este orden: una guarda que se detiene si la última migración registrada no es la `0018`; borrar lo de los posts (publicaciones con su bitácora, textos, corridas y medios de post; los archivos de R2 bajo `posts/` quedan y se borran aparte); deshacer la `0018`, la `0017` y la `0016`; después la `0015` (los `CHECK`, el único de antes de `contents`, las columnas, tablas y tipos nuevos, y `SET NOT NULL` en `listing_id`); y borrar los **cuatro** registros del migrador. Los cuatro, porque el migrador de Drizzle mira solo el último registro y aplica las migraciones con un `when` mayor: si quedara el de la `0018`, al redesplegar F9 la `0015` no se volvería a aplicar y las tablas de los posts no existirían, sin ningún error. Lo normal es arreglar hacia adelante.
 
-<!-- revertir-0015: el test packages/db/test/f9-posts-migration.test.ts lee este bloque -->
+> **Solo a mano, con un respaldo previo (paso 10) y probado antes en una rama de Neon; lo decide el operador.** Borra para siempre los posts, sus textos y sus publicaciones. Es la referencia de cómo deshacer la `0015` a la `0018`, no un paso del despliegue: un test lo corre sobre una copia en memoria, vuelve a aplicar las migraciones con la regla del migrador y comprueba que el esquema queda igual al de una base nueva. Si la guarda se detiene porque hay una migración posterior a la `0018`, este bloque ya no sirve tal cual: pídele a Claude el que corresponde.
+>
+> **En orden:**
+> 1. **Anota lo que ya salió a las redes.** Lo publicado en Instagram, X, LinkedIn, Discord o TikTok se queda allá, pero el bloque borra su enlace y su registro. Antes, guarda los enlaces (`pnpm -s cli publications`) y, si hace falta, bórralos a mano en cada red, como los archivos de R2 bajo `posts/`.
+> 2. **Apaga el worker y la API** (paso 8). Con el worker de F9 encendido, un post podría estar saliendo mientras el bloque borra su publicación: llegaría a la red sin dejar registro.
+> 3. **Corre el bloque** con `psql "<cadena de la rama>" -v ON_ERROR_STOP=1 -f revertir.sql` o en el SQL Editor de Neon sobre la rama. Es una sola transacción: si la guarda se detiene, no cambia nada.
+> 4. **Despliega la versión anterior.** Los trabajos de posts que quedaron en cola (`post.draft`, `post.media`, `content.plan` y los `publication.publish` de posts) fallan al no encontrar su fila, y eso no hace daño.
+
+<!-- revertir-0015-0018: el test packages/db/test/f9-posts-migration.test.ts lee este bloque -->
 ```sql
 BEGIN;
+-- 0. Guarda: la última migración registrada debe ser la 0018 (su "when" en
+--    packages/db/drizzle/meta/_journal.json). Si no, se detiene sin cambiar nada.
+DO $$
+BEGIN
+  IF (SELECT max(created_at) FROM drizzle.__drizzle_migrations) IS DISTINCT FROM 1792529761221 THEN
+    RAISE EXCEPTION 'La última migración registrada no es la 0018: este bloque no sirve tal cual';
+  END IF;
+END $$;
 -- 1. Lo de los posts (la bitácora de sus publicaciones se borra en cascada).
 DELETE FROM publications WHERE post_id IS NOT NULL;
 DELETE FROM contents WHERE post_id IS NOT NULL;
 DELETE FROM content_runs WHERE post_id IS NOT NULL;
 DELETE FROM media WHERE post_id IS NOT NULL;
--- 2. Los CHECK de un solo sujeto.
+-- 2. La 0018: el índice de un plan activo por marca y las redes del post.
+DROP INDEX plan_runs_one_active_per_broker;
+ALTER TABLE posts DROP COLUMN platforms;
+-- 3. La 0017: Postgres no quita un valor de un enum. 'uploaded' se va con el tipo
+--    post_upload_status entero, que se borra en el paso 6 (con post_uploads).
+-- 4. La 0016: la marca del enlace en X.
+ALTER TABLE posts DROP COLUMN x_link_allowed;
+-- 5. La 0015: los CHECK de un solo sujeto.
 ALTER TABLE publications DROP CONSTRAINT publications_one_subject;
 ALTER TABLE contents DROP CONSTRAINT contents_one_subject;
 ALTER TABLE content_runs DROP CONSTRAINT content_runs_one_subject;
 ALTER TABLE media DROP CONSTRAINT media_at_most_one_subject;
--- 3. El único de antes: un texto por corrida y canal.
+-- 6. La 0015: el único de antes, un texto por corrida y canal.
 ALTER TABLE contents DROP CONSTRAINT contents_run_platform_language_unique;
 ALTER TABLE contents ADD CONSTRAINT contents_run_platform_unique UNIQUE (content_run_id, platform);
--- 4. Las columnas (con sus llaves e índices), las tablas y los tipos nuevos.
+-- 7. La 0015: las columnas (con sus llaves e índices), las tablas y los tipos nuevos.
 ALTER TABLE publications DROP COLUMN post_id, DROP COLUMN language, DROP COLUMN cost_usd;
 ALTER TABLE contents DROP COLUMN post_id, DROP COLUMN language;
 ALTER TABLE content_runs DROP COLUMN post_id;
 ALTER TABLE media DROP COLUMN post_id;
 DROP TABLE post_uploads, posts, plan_runs, editorial_profiles;
 DROP TYPE post_upload_status, post_status, post_source, post_kind, plan_run_status, brief_origin;
--- 5. listing_id vuelve a ser obligatorio.
+-- 8. La 0015: listing_id vuelve a ser obligatorio.
 ALTER TABLE publications ALTER COLUMN listing_id SET NOT NULL;
 ALTER TABLE contents ALTER COLUMN listing_id SET NOT NULL;
 ALTER TABLE content_runs ALTER COLUMN listing_id SET NOT NULL;
--- 6. El registro de la 0015 (su "when" en packages/db/drizzle/meta/_journal.json).
-DELETE FROM drizzle.__drizzle_migrations WHERE created_at = 1792463061827;
+-- 9. Los registros de la 0015, 0016, 0017 y 0018 (sus "when" en _journal.json): así, al
+--    redesplegar F9, el migrador vuelve a aplicar las cuatro.
+DELETE FROM drizzle.__drizzle_migrations
+WHERE created_at IN (1792463061827, 1792508198594, 1792511001808, 1792529761221);
 COMMIT;
 ```
+
+Después de correrlo, la base queda como tras la `0014`: una versión anterior a los posts la lee igual, y redesplegar F9 aplica de nuevo la `0015` a la `0018`.
 
 ## Paso 10 · Restaurar un respaldo
 
@@ -294,7 +325,7 @@ Fuera de F8. Cuando quieras que los corredores usen la herramienta cualquier dí
    - `PUBLIC_URL=https://<dominio>` (la usan los scripts como `auth:admin`).
    - `DATABASE_URL` del proyecto nuevo de Neon; `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` y `R2_BUCKET=<app>-media`; `BACKUP_R2_ACCESS_KEY_ID` y `BACKUP_R2_SECRET_ACCESS_KEY` del token de `<app>-backups`.
    - **Una `APP_ENCRYPTION_KEY` nueva** (44 caracteres aleatorios con tu gestor de contraseñas, o `openssl rand -base64 32 | pbcopy`, que la deja en el portapapeles sin mostrarla), guardada también en tu gestor: sin ella no se leen los tokens de las cuentas que conectes en esa instancia.
-   - `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET` y `FACEBOOK_APP_SECRET` de **su** app de Meta (punto 8).
+   - `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET` y `FACEBOOK_APP_SECRET` de **su** app de Meta (punto 8), y los pares de sus apps de LinkedIn, X y TikTok si los usa (punto 8).
    - `ANTHROPIC_API_KEY`: mejor otra clave, para ver el gasto de cada instancia por separado. `BCCH_API_TOKEN` puede ser el mismo. `ML_APP_ID` y `ML_CLIENT_SECRET`, solo si esa instancia usa Portal (punto 8).
    - Las direcciones de vuelta de los OAuth no van: salen de `PUBLIC_URL`.
 
@@ -302,9 +333,9 @@ Fuera de F8. Cuando quieras que los corredores usen la herramienta cualquier dí
    ```bash
    ENV_FILE=.env.<instancia> pnpm storage:check --origin https://<dominio>
    ```
-5. **Los secretos en Fly:** el mismo comando del «Paso 2 · Los secretos» de arriba, con el archivo y la app nuevos (si se suman variables de otras redes, como las de TikTok o X, su tarea las agrega a esta lista y a la del paso 2):
+5. **Los secretos en Fly:** el mismo comando del «Paso 2 · Los secretos» de arriba, con el archivo y la app nuevos (los pares de X y TikTok de esa instancia se suben aparte, como en el paso 2, cuando la instancia vaya a usarlos):
    ```bash
-   grep -E '^(DATABASE_URL|R2_ACCOUNT_ID|R2_ACCESS_KEY_ID|R2_SECRET_ACCESS_KEY|R2_BUCKET|APP_ENCRYPTION_KEY|ANTHROPIC_API_KEY|INSTAGRAM_APP_ID|INSTAGRAM_APP_SECRET|FACEBOOK_APP_SECRET|ML_APP_ID|ML_CLIENT_SECRET|BCCH_API_TOKEN|BACKUP_R2_ACCESS_KEY_ID|BACKUP_R2_SECRET_ACCESS_KEY)=' .env.<instancia> | fly secrets import --stage -a <app>
+   grep -E '^(DATABASE_URL|R2_ACCOUNT_ID|R2_ACCESS_KEY_ID|R2_SECRET_ACCESS_KEY|R2_BUCKET|APP_ENCRYPTION_KEY|ANTHROPIC_API_KEY|INSTAGRAM_APP_ID|INSTAGRAM_APP_SECRET|FACEBOOK_APP_SECRET|ML_APP_ID|ML_CLIENT_SECRET|LINKEDIN_CLIENT_ID|LINKEDIN_CLIENT_SECRET|BCCH_API_TOKEN|BACKUP_R2_ACCESS_KEY_ID|BACKUP_R2_SECRET_ACCESS_KEY)=' .env.<instancia> | fly secrets import --stage -a <app>
    ```
    ```bash
    fly secrets list -a <app>
@@ -320,7 +351,8 @@ Fuera de F8. Cuando quieras que los corredores usen la herramienta cualquier dí
    Si un despliegue de esa instancia corre antes de crearlo, GitHub crea el Environment vacío y **sin la regla de `main`**: el flujo se corta por la falta del token, pero configúralo igual (la regla y el token) antes de seguir. Anota en tu calendario renovar este token (6 meses), aparte del de `production`.
 8. **Las apps propias de cada red:** la instancia nueva no usa las apps de la principal (D19), así un problema con una red en una no toca a la otra.
    - **Meta:** una app nueva como `AgentSales-IG`, con el caso de uso de Instagram y, en *Business login settings* (`docs/07-checklist-cuentas.md`, "Direcciones de vuelta de Meta"): la vuelta `https://<dominio>/api/oauth/instagram/callback`, la de cancelar la autorización `https://<dominio>/api/meta/deauthorize` y la de eliminación de datos `https://<dominio>/api/meta/data-deletion`. Su revisión de Meta (App Review) y la verificación de la empresa van por separado (`docs/11-app-review-meta.md`).
-   - **TikTok y X:** una app propia en cada una, con la dirección de vuelta en `https://<dominio>/api/oauth/…`; la dirección exacta la fija la tarea de cada red (por ejemplo T26 para TikTok) y queda en su nota de `docs/integraciones/`.
+   - **TikTok y X:** una app propia en cada una, con su dirección de vuelta: `https://<dominio>/api/oauth/tiktok/callback` y `https://<dominio>/api/oauth/x/callback` (sus notas: `docs/integraciones/tiktok.md` y `x.md`). Sus pares (`TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `X_CLIENT_ID`, `X_CLIENT_SECRET`) van en `.env.<instancia>`.
+   - **LinkedIn** (si esa instancia publica en LinkedIn): mejor una app propia, con `https://<dominio>/api/oauth/linkedin/callback`; sus pares van en el comando del punto 5. **Discord** no tiene app: cada marca conecta su webhook.
    - **Mercado Libre** (si esa instancia usa Portal): mejor una app propia; con la de hoy también funciona, agregando `https://<dominio>/api/oauth/mercadolibre/callback` en **Redirect URIs** (el panel acepta varias), pero entonces comparten la app.
 
 ### B · Los archivos de la instancia (Claude, con un PR)

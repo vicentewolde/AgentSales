@@ -1,29 +1,31 @@
 import { AppError } from "../errors.js";
 import { manualConfirmPending } from "../marketplace/limits.js";
 import type { JobQueue } from "../ports/job-queue.js";
-import type { ListingLock } from "../ports/listing-lock.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
 import type { Publication, PublicationActor } from "../publication.js";
+import { outcomeUnknownPending } from "../publish/outcome.js";
+import { runOnSubject, type SubjectLocks } from "../subject-lock.js";
 import {
   enqueuePublications,
   type MarketplaceStartOptions,
   type PortalCheckDeps,
-  portalDefinitionsBeforeLock,
   publicationNotFound,
   STARTABLE_STATUSES,
   startOne,
+  subjectDefinitionsBeforeLock,
 } from "./publication-start.js";
 import { requireStartableOne } from "./start-checks.js";
 
-export type StartPublicationDeps = PortalCheckDeps & {
-  lock: ListingLock;
-  queue: JobQueue;
-  /** Marketplace: el límite diario y si se puede convertir la UF (spec F5 §4.6 y §4.7). */
-  marketplace?: MarketplaceStartOptions;
-  now?: () => Date;
-  /** Fuera del candado: solo para saber de qué aviso es la publicación. */
-  publications: Pick<PublicationRepository, "get">;
-};
+/** `postLock` hace falta para una publicación de un post (sin él, `SUBJECT_NOT_LISTING`). */
+export type StartPublicationDeps = PortalCheckDeps &
+  SubjectLocks & {
+    queue: JobQueue;
+    /** Marketplace: el límite diario y si se puede convertir la UF (spec F5 §4.6 y §4.7). */
+    marketplace?: MarketplaceStartOptions;
+    now?: () => Date;
+    /** Fuera del candado: solo para saber de qué sujeto es la publicación. */
+    publications: Pick<PublicationRepository, "get">;
+  };
 
 export type StartPublicationResult = {
   publication: Publication;
@@ -41,6 +43,7 @@ export type StartPublicationResult = {
  * y encola después del candado. Revisa lo mismo que publicar el canal, sobre su propio texto (el
  * fijado al nacer, que no cambia mientras está pendiente: ADR-0014). Errores (`AppError`):
  * - no existe → `PUBLICATION_NOT_FOUND` (404); el aviso no está en `ready` o `active` → `LISTING_NOT_READY`;
+ *   el post no está en `draft` ni `ready` → `POST_NOT_READY` (F9-T07: dentro del candado del post);
  * - hay una corrida activa → `CONTENT_RUN_ACTIVE`; su texto ya no está aprobado → `CONTENT_NOT_APPROVED`;
  * - su cuenta ya no está conectada → `ACCOUNT_NOT_CONNECTED`;
  * - ya empezó en `live` y se pide en `dry-run` → `PUBLISH_MODE_LOCKED`;
@@ -63,14 +66,17 @@ export async function startPublication(
 ): Promise<StartPublicationResult> {
   const found = await deps.publications.get(publicationId);
   if (found === null) throw publicationNotFound(publicationId);
-  const definitions = await portalDefinitionsBeforeLock(deps, found.listingId, found.platform);
+  const definitions = await subjectDefinitionsBeforeLock(deps, found.subject, found.platform);
 
-  const result = await deps.lock.run(found.listingId, async (locked) => {
-    const publication = await locked.publications.get(publicationId);
+  const result = await runOnSubject(deps, found.subject, async (locked) => {
+    const publication = await locked.repos.publications.get(publicationId);
     if (publication === null) throw publicationNotFound(publicationId);
     if (publication.status === "publishing") return { publication, requeued: true };
     // Marketplace: primero el operador dice si la publicó (spec F5 §4.3).
-    if (publication.status === "awaiting_manual_confirm") throw manualConfirmPending(publicationId);
+    if (publication.status === "awaiting_manual_confirm")
+      throw manualConfirmPending(publicationId, publication.platform);
+    // No se sabe si salió (ADR-0029 punto 8): reintentar podría publicarla dos veces.
+    if (publication.status === "outcome_unknown") throw outcomeUnknownPending(publicationId);
     if (publication.status === "published") {
       throw new AppError("NOTHING_TO_PUBLISH", "Esta publicación ya está publicada", {
         details: { publicationId },
@@ -91,7 +97,7 @@ export async function startPublication(
       manualLimits: true,
     });
     return {
-      publication: await startOne(locked.publications, publication, { dryRun, actor }),
+      publication: await startOne(locked.repos.publications, publication, { dryRun, actor }),
       requeued: false,
     };
   });

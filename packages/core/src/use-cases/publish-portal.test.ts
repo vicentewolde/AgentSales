@@ -13,6 +13,7 @@ import type {
   PublishValidation,
 } from "../ports/publisher.js";
 import type { Publication } from "../publication.js";
+import { listingIdOf } from "../subject.js";
 import {
   createFakePublisher,
   createPublicationScenario,
@@ -571,7 +572,12 @@ describe("la versión del aviso al publicar (F4-T19)", () => {
     if (approved === undefined) throw new Error("falta la publicación");
     // Una anterior a la migración 0007: sin versión (el repositorio guarda "" como `null`).
     const legacy = await t.publications.create(
-      { ...approved, format: "reel", listingSourceHash: "" },
+      {
+        ...approved,
+        listingId: listingIdOf(approved.subject),
+        format: "reel",
+        listingSourceHash: "",
+      },
       { actor: "system" },
     );
     expect(legacy.listingSourceHash).toBeNull();
@@ -590,7 +596,12 @@ describe("la versión del aviso al publicar (F4-T19)", () => {
     const [approved] = t.publications.all();
     if (approved === undefined) throw new Error("falta la publicación");
     const legacy = await t.publications.create(
-      { ...approved, format: "reel", listingSourceHash: "" },
+      {
+        ...approved,
+        listingId: listingIdOf(approved.subject),
+        format: "reel",
+        listingSourceHash: "",
+      },
       { actor: "system" },
     );
     t.listings.getSourceHash = async () => null;

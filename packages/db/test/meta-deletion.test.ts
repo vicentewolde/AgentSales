@@ -2,6 +2,7 @@ import { createSecretBox } from "@agentsales/config";
 import {
   ERASED_ACCOUNT_DISPLAY_NAME,
   type LockedRepositories,
+  listingSubject,
   type MetaDeletionRepository,
   type PlatformAccountRepository,
   type PublicationRepository,
@@ -61,7 +62,7 @@ async function seed(repos: Repos, instagramUserId: string) {
     report: { warnings: [] },
     contents: [newContent("instagram")],
   });
-  const [content] = await repos.contents.listCurrent(listingId);
+  const [content] = await repos.contents.listCurrent(listingSubject(listingId));
   const created = await repos.publications.create(
     {
       listingId,

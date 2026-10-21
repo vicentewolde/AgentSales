@@ -1,0 +1,115 @@
+// Textos de posts por red (spec F9 §4.4, ADR-0030): lo que ve la IA, el prompt, el esquema de su
+// salida, las reglas de cada red y la revisión.
+
+export {
+  buildSocialBrief,
+  operatorBriefOf,
+  postPlatforms,
+  type SocialBrief,
+  type SocialTarget,
+  socialTargets,
+  xLinksOf,
+} from "./brief.js";
+export {
+  buildPostCheckContext,
+  checkPostContent,
+  hasMassMention,
+  type PostCheckContext,
+  profileSources,
+  unsupportedFacts,
+} from "./check.js";
+export {
+  normalizePostHashtag,
+  normalizePostHashtags,
+  SAMPLE_SOCIAL_DRAFT,
+  SOCIAL_DRAFT_JSON_SCHEMA,
+  SOCIAL_DRAFT_LIMITS,
+  type SocialDraft,
+  type SocialDraftText,
+  socialDraftSchema,
+  validateSocialDraft,
+} from "./draft.js";
+export {
+  type DraftedPostText,
+  type DraftPostTextsResult,
+  draftPostTexts,
+} from "./draft-texts.js";
+export {
+  DISCORD_MAX_FILES,
+  escapeLinkedInText,
+  INSTAGRAM_HASHTAGS_LIMIT,
+  joinedPostText,
+  kindProblem,
+  LINKEDIN_RESERVED_CHARACTERS,
+  linkKey,
+  linksIn,
+  neutralizeDiscordMentions,
+  POST_TEXT_LIMITS,
+  postTextLength,
+  X_LINK_POST_COST_USD,
+  X_MAX_IMAGES,
+  X_POST_COST_USD,
+  X_URL_WEIGHT,
+  xWeightedLength,
+} from "./networks.js";
+export {
+  addDays,
+  buildPlanBrief,
+  type CheckedPlanIdea,
+  checkPlanIdeas,
+  type DiscardedPlanIdea,
+  defaultPlanCount,
+  groupByPlanWeek,
+  PLAN_DEFAULT_DAYS,
+  PLAN_DISCARD_CODES,
+  PLAN_FALLBACK_PER_WEEK,
+  PLAN_HISTORY_MAX,
+  PLAN_IDEA_LIMITS,
+  PLAN_JSON_SCHEMA,
+  PLAN_MAX_DAYS,
+  PLAN_MAX_IDEAS,
+  PLAN_MAX_START_AHEAD_DAYS,
+  PLAN_RECENT_DAYS,
+  type PlanBrief,
+  type PlanCadence,
+  type PlanDiscardCode,
+  type PlanHistory,
+  type PlanIdea,
+  type PlannedSlot,
+  type PlanPeriod,
+  type PlanResponse,
+  type PlanRunReport,
+  type PlanRunRequest,
+  planHistory,
+  planIdeaSchema,
+  plannedSlots,
+  planPeriod,
+  planRunErrorAdvice,
+  planRunPeriod,
+  planRunReportSchema,
+  planRunRequestSchema,
+  planWeeks,
+  planWeekText,
+  topicKey,
+  validatePlanResponse,
+  weekdayOf,
+  weekOf,
+} from "./plan.js";
+export {
+  buildPlanPrompt,
+  PLAN_DATA_TAG,
+  PLAN_PROMPT_VERSION,
+  PLAN_SYSTEM_PROMPT,
+  planBriefData,
+} from "./plan-prompt.js";
+export { type ProposedPlanIdeas, proposePlanIdeas } from "./plan-propose.js";
+export { samplePlanResponse } from "./plan-sample.js";
+export {
+  ideaNeedsDraft,
+  type PostNetworkGaps,
+  postNetworkGaps,
+  postPlatformExcluded,
+  postPublishesOn,
+  requirePostPlatform,
+} from "./post-networks.js";
+export { buildSocialPrompt, SOCIAL_PROMPT_VERSION, SOCIAL_SYSTEM_PROMPT } from "./prompt.js";

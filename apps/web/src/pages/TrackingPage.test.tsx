@@ -19,7 +19,11 @@ const item = (extra: Partial<Item>): Item => ({
   kind: "upcoming",
   action: "none",
   listingId: "l1",
+  postId: null,
   externalRef: "P1",
+  title: "P1",
+  accountId: null,
+  brokerSlug: null,
   platform: "instagram",
   format: "post",
   publicationId: "p1",
@@ -46,6 +50,7 @@ describe("la agenda", () => {
               action: "backup",
               listingId: null,
               externalRef: null,
+              title: null,
               platform: null,
               format: null,
               publicationId: null,
@@ -72,6 +77,48 @@ describe("la agenda", () => {
     const backup = screen.getByRole("region", { name: AGENDA_KIND_TEXT.backup });
     expect(backup.textContent).toContain("nunca");
     expect(backup.textContent).toContain("más de 48 h");
+  });
+
+  it("un post va con su tema y enlaza a su página de Contenido (F9-T17); lo nuevo de F9 dice qué hacer", () => {
+    render(
+      <MemoryRouter>
+        <Agenda
+          items={[
+            item({
+              kind: "outcome_unknown",
+              action: "resolve",
+              listingId: null,
+              postId: "post-1",
+              externalRef: null,
+              title: "Bastidores",
+              platform: "discord",
+            }),
+            item({
+              kind: "token_expiring",
+              action: "reconnect",
+              listingId: null,
+              externalRef: null,
+              title: "Vinny en LinkedIn",
+              accountId: "acc-1",
+              platform: "linkedin",
+              format: null,
+              publicationId: null,
+              dryRun: null,
+              daysLeft: 3,
+            }),
+          ]}
+        />
+      </MemoryRouter>,
+    );
+
+    const unknown = screen.getByRole("region", { name: AGENDA_KIND_TEXT.outcome_unknown });
+    expect(unknown.textContent).toContain("Bastidores (post)");
+    expect(unknown.textContent).toContain("di si salió o no");
+    expect(within(unknown).getByRole("link").getAttribute("href")).toBe("/contenido/post-1");
+    const token = screen.getByRole("region", { name: AGENDA_KIND_TEXT.token_expiring });
+    expect(token.textContent).toContain("Vinny en LinkedIn");
+    expect(token.textContent).toContain("vence en 3 días");
+    expect(token.textContent).toContain("Vuelve a conectar");
   });
 });
 
@@ -108,6 +155,7 @@ describe("la matriz", () => {
     const base = {
       id: "p",
       format: "post" as const,
+      language: "es" as const,
       status: "published" as const,
       dryRun: true,
       externalUrl: null,

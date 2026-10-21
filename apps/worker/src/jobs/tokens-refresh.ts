@@ -62,6 +62,12 @@ export type TokensRefreshJobDeps = {
    * y el lote sigue con Instagram.
    */
   mercadoLibre: RefreshAccountTokensDeps["mercadoLibre"];
+  /**
+   * La renovación de las plataformas con token que rota (X, F9-T16, y TikTok, F9-T26; ADR-0029
+   * punto 11), la misma que usa el intento: sin el par de la app de una plataforma, sus cuentas
+   * por renovar quedan en `failed` (`TOKEN_REFRESH_NOT_CONFIGURED`) sin cambiarlas, y el lote sigue.
+   */
+  refreshers?: RefreshAccountTokensDeps["refreshers"];
   /** Se dispara al apagar el worker: no se empieza otra cuenta y se corta la llamada en curso. */
   signal: AbortSignalLike;
   now?: () => Date;
@@ -70,8 +76,8 @@ export type TokensRefreshJobDeps = {
 const codeOf = (error: unknown) => (isAppError(error) ? error.code : "INTERNAL_ERROR");
 
 /**
- * Job `tokens.refresh`: corre el lote `refreshAccountTokens` de core (Instagram y Mercado Libre,
- * cada una con su política). El log lleva solo ids de cuentas y códigos, nunca tokens (la URL del
+ * Job `tokens.refresh`: corre el lote `refreshAccountTokens` de core (Instagram, Mercado Libre y,
+ * desde F9-T16 y T26, X y TikTok con `ensureRotatingAccessToken`, cada una con su política). El log lleva solo ids de cuentas y códigos, nunca tokens (la URL del
  * refresco de Instagram lleva el token y no sale de su cliente). Si alguna cuenta falló por algo
  * pasajero (red, cupo, base, el candado ocupado), el job falla con `TOKENS_REFRESH_INCOMPLETE` y
  * pg-boss lo reintenta: las que ya se refrescaron quedan fuera por su política (24 h en Instagram,
@@ -97,6 +103,7 @@ export function tokensRefreshJob(deps: TokensRefreshJobDeps): Job {
           platformAccounts: deps.platformAccounts,
           instagram: deps.instagram,
           mercadoLibre: deps.mercadoLibre,
+          ...(deps.refreshers === undefined ? {} : { refreshers: deps.refreshers }),
           ...(deps.now === undefined ? {} : { now: deps.now }),
           onWarning: ({ accountId, code }) =>
             logger.warn({ accountId, code }, "aviso del refresco de tokens"),
@@ -129,7 +136,7 @@ export function tokensRefreshJob(deps: TokensRefreshJobDeps): Job {
       if (blocked.length > 0) {
         logger.warn(
           { failed: blocked },
-          "cuentas sin renovar que un reintento no arregla: revisa el código (MERCADOLIBRE_NOT_CONFIGURED: falta ML_APP_ID o ML_CLIENT_SECRET en .env)",
+          "cuentas sin renovar que un reintento no arregla: revisa el código (MERCADOLIBRE_NOT_CONFIGURED: falta ML_APP_ID o ML_CLIENT_SECRET en .env; TOKEN_REFRESH_NOT_CONFIGURED: falta el par de la app de X o de TikTok en .env)",
         );
       }
       const pending = report.failed.filter((failure) => failure.retriable);

@@ -3,8 +3,10 @@ import {
   type Content,
   type ContentRepository,
   contentSchema,
+  LANGUAGES,
   PLATFORMS,
   pickContentChanges,
+  subjectFieldsOf,
 } from "@agentsales/core";
 import { asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
@@ -15,9 +17,12 @@ import { contents } from "../schema.js";
 function toContent(row: typeof contents.$inferSelect): Content {
   const parsed = contentSchema.safeParse({
     id: row.id,
-    listingId: row.listingId,
+    // Exactamente uno de `listing_id` y `post_id` (ADR-0029); si no, la fila no valida.
+    ...subjectFieldsOf(row),
     contentRunId: row.contentRunId,
     platform: row.platform,
+    // Texto en la base: se valida con `LANGUAGES` al leer.
+    language: row.language,
     title: row.title,
     body: row.body,
     hashtags: row.hashtags,
@@ -37,7 +42,10 @@ function toContent(row: typeof contents.$inferSelect): Content {
   return parsed.data;
 }
 
-const platformOrder = (content: Content) => PLATFORMS.indexOf(content.platform);
+/** El orden de `listCurrent`: el de `PLATFORMS` y, dentro de cada red, el de `LANGUAGES`. */
+const currentOrder = (a: Content, b: Content) =>
+  PLATFORMS.indexOf(a.platform) - PLATFORMS.indexOf(b.platform) ||
+  LANGUAGES.indexOf(a.language) - LANGUAGES.indexOf(b.language);
 
 /** `ContentRepository` sobre Drizzle (node-postgres en las apps, PGlite en los tests). */
 export function createContentRepository(db: SchemaDatabase): ContentRepository {
@@ -60,16 +68,26 @@ export function createContentRepository(db: SchemaDatabase): ContentRepository {
       });
     },
 
-    listCurrent(listingId) {
+    listCurrent(subject) {
       return withDbErrors(async () => {
-        // El más reciente de cada canal (`DISTINCT ON`). El índice (listing, platform, created_at)
-        // acota las filas del aviso; con pocas filas por canal, el orden descendente no importa.
+        // El más reciente de cada canal e idioma (`DISTINCT ON`). El índice (aviso o post,
+        // platform, created_at) acota las filas; con pocas filas por canal, el orden descendente
+        // no importa. Los textos de un aviso son todos `es`: uno por canal, como antes de F9.
         const rows = await db
-          .selectDistinctOn([contents.platform])
+          .selectDistinctOn([contents.platform, contents.language])
           .from(contents)
-          .where(eq(contents.listingId, listingId))
-          .orderBy(asc(contents.platform), desc(contents.createdAt), desc(contents.id));
-        return rows.map(toContent).sort((a, b) => platformOrder(a) - platformOrder(b));
+          .where(
+            subject.kind === "listing"
+              ? eq(contents.listingId, subject.id)
+              : eq(contents.postId, subject.id),
+          )
+          .orderBy(
+            asc(contents.platform),
+            asc(contents.language),
+            desc(contents.createdAt),
+            desc(contents.id),
+          );
+        return rows.map(toContent).sort(currentOrder);
       });
     },
 

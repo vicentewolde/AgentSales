@@ -78,6 +78,7 @@ Reglas: `main` solo recibe cambios por PR; una rama por tarea o por lote de tare
 | `doctor` marca ffmpeg o ffprobe en rojo, o una corrida falla con `MEDIA_TOOL_NOT_INSTALLED` | Falta ffmpeg o es anterior a 8.1 (no arma las fotos HEIC del iPhone): `brew install ffmpeg` o `brew upgrade ffmpeg`. Si está en otra ruta, ajusta `FFMPEG_PATH` y `FFPROBE_PATH` en `.env` |
 | `doctor` marca Chromium en rojo, o una corrida falla con `RENDER_BROWSER_NOT_INSTALLED` | Falta el Chromium que pide la versión de Playwright del proyecto (pasa también al actualizarlo): `pnpm --filter @agentsales/media exec playwright install chromium` |
 | Quieres ver cómo redacta la IA sin tocar la base | `pnpm eval:content` en tu terminal: evalúa las propiedades listas de `agentsales-pruebas` con tu CLI de Claude (descuenta del plan), muestra la revisión por canal y deja los textos en `tmp/eval/<fecha>/`. Termina con error si algún texto tiene errores. `--provider fake` prueba el comando sin gastar cuota. Ctrl+C corta la llamada en curso y no sigue con las demás |
+| Quieres ver qué ideas y textos de posts propone la IA, y cuánto cuestan | `pnpm eval:social` en tu terminal: corre el plan y los textos de 3 ideas sobre tres marcas inventadas (sin hechos, con dos idiomas y con historial), sin tocar la base, y cuenta ideas repetidas, datos inventados, largos, escapes y menciones masivas, con el costo del plan y de los textos. `--profile dos-idiomas --ideas 10` mide un plan completo; `--provider anthropic-api` usa la API (centavos) y `--provider fake` no gasta nada; `--out` deja el detalle en `tmp/eval-social/`. Termina con error si un texto tiene errores o escapes, o si la IA falla; las ideas que el plan descarta son la defensa funcionando (con `--strict`, también hacen fallar) |
 | Quieres comprobar que la CLI de Claude responde | `pnpm llm:smoke` en tu terminal: una llamada corta con datos inventados (descuenta del plan) |
 | Quieres conectar tu Instagram (o reconectarlo: cuenta vencida o `IG_AUTH_INVALID`) | En el panel de Meta, tu app → Casos de uso → API de Instagram → "Genera identificadores de acceso" → **Generar identificador** (en inglés, **Generate token**) junto a tu cuenta, y cópialo. Con la API corriendo: `pbpaste | pnpm -s cli accounts connect instagram --broker agentsales-pruebas --token-stdin`. Revisa con `pnpm -s cli accounts` o en **Cuentas** del panel |
 | Quieres aprobar y publicar en simulación | En la sección Contenido de la propiedad: "Aprobar Instagram" y "Publicar en Instagram (simulación)", o `pnpm -s cli approve P001` y `pnpm -s cli publish P001`. No llama a Instagram: la bitácora muestra lo que se habría enviado. Retíralas al terminar ("Marcar como retirada" o `pnpm -s cli publications retire <id>`) |
@@ -139,10 +140,218 @@ De punta a punta, con `pnpm dev` corriendo. Todo se puede hacer en el panel (**C
    - **Instagram:** como evaluador de tu app de Meta. En el servidor, con el botón **Conectar Instagram** de **Cuentas**: tú, o el propio corredor desde su usuario (ADR-0028; inicia sesión él mismo, desde donde esté, y solo puede conectar la suya); en tu Mac, con el token de *Generate token* (pasos en `docs/07-checklist-cuentas.md`, "Antes de F7").
    - **Mercado Libre:** en el servidor, con el botón **Conectar Mercado Libre** de **Cuentas** (la vuelta es automática); en tu Mac, con su cuenta y pegando la dirección de vuelta.
    - **Marketplace:** **Activar Marketplace a mano** (el formulario automático es solo para tus corredores). Al publicar, el sistema deja el texto, las fotos y el precio listos; el corredor lo publica en Facebook y confirma con el enlace o "No lo publiqué".
-5. **La lista de alta** del corredor (en su detalle, en Mi marca y en `pnpm -s cli brokers show <slug>`) dice qué falta y quién lo hace.
+5. **La lista de alta** del corredor (en su detalle, en Mi marca y en `pnpm -s cli brokers show <slug>`) dice qué falta y quién lo hace (su Instagram lo conecta el propio corredor en **Cuentas**). Una **marca** (`--kind brand`) tiene la suya, porque solo publica posts: la marca, el **perfil editorial** (al menos una línea de contenido y un hecho), el usuario y **al menos una red de los posts** conectada (Instagram, X, LinkedIn o TikTok las conecta la marca en **Cuentas**; Discord, tú con la CLI). No pide WhatsApp, logo, Mercado Libre ni Marketplace, que son de los avisos.
 6. **El gasto:** en **Corredores** y con `pnpm -s cli usage`, lo gastado en IA en el mes (estimado: la cifra oficial está en la consola de Anthropic). Con el tope alcanzado, preparar los textos se frena hasta que subas el tope o empiece el mes siguiente.
 
 Para desactivar a alguien: **Desactivar** en su usuario (o `pnpm -s cli users disable <correo>`) cierra sus sesiones al tiro.
+
+## El contenido de tus marcas, de punta a punta (F9)
+
+El recorrido completo de un post de marca, en orden. Cada paso tiene su sección más abajo; todo se hace en el panel o en la CLI, con `pnpm dev` corriendo (o contra el servidor).
+
+1. **Las marcas:** `pnpm db:seed --operator-brands` crea `vinny` y `agentpey` (solo en tu instancia; `docs/07-checklist-cuentas.md`, "F9 · Contenido de marca"). Otra marca: `pnpm -s cli brokers create --kind brand …`.
+2. **Sus redes:** conecta cada cuenta (Instagram, Discord, LinkedIn, X, TikTok) y haz su prueba de entrada antes de publicar de verdad ("Conectar las redes de los posts").
+3. **El perfil editorial:** idiomas, líneas, hechos, cosas que evitar y cadencia ("Llenar el perfil editorial").
+4. **El plan:** la IA propone ideas con fecha; tú aceptas, editas o descartas cada una ("Pedir a la IA un plan de ideas"). O creas un post a mano ("Publicar un post de una marca").
+5. **Los textos:** al aceptar una idea (`post accept <id> --wait` los espera) o con `post draft` (pide textos nuevos: gasta IA otra vez) la IA redacta un texto por red e idioma; los revisas y corriges.
+6. **Aprobar:** cada texto por separado; aprobar abre una publicación por cuenta, formato e idioma.
+7. **Programar o publicar:** a una hora de Chile (el reloj del worker publica a la hora) o ya.
+8. **Lo que queda pendiente**, siempre con su comando en la `agenda` y en el detalle del post:
+   - **"No se sabe si salió"** (`outcome_unknown`): miras la red y dices si salió o no (`publications resolve`).
+   - **LinkedIn a mano:** a la hora el texto queda listo; lo publicas tú y confirmas con el enlace (`publications confirm`).
+   - **TikTok:** el video llega como borrador a la bandeja de la app; pegas el texto, lo publicas allá y confirmas con el enlace.
+   - **Reconectar LinkedIn** cada 60 días (la agenda avisa 7 días antes).
+
+## Llenar el perfil editorial de tus marcas (F9)
+
+El perfil editorial es **lo único que la IA sabe de una marca** cuando propone ideas y redacta posts. Lo que no está ahí, la IA no lo afirma. Se llena una vez y se ajusta cuando cambie algo. Con `pnpm dev` corriendo (o contra el servidor, con tu sesión de la CLI):
+
+```bash
+pnpm -s cli brand show --broker agentpey          # cómo está hoy
+pnpm -s cli brand edit --broker agentpey \
+  --languages es,en \
+  --audience "Corredores independientes que quieren publicar sin perder la tarde" \
+  --pillar "aprendizajes|Lo que aprendo construyendo|3|Errores, decisiones y lo que cambió" \
+  --pillar "producto|Producto|2|Qué hace AgentSales y para quién" \
+  --pillar "bastidores|Bastidores|1" \
+  --fact "AgentSales publica avisos en Instagram, Portal Inmobiliario y Marketplace" \
+  --fact "Lo construye una sola persona en Chile" \
+  --avoid "promesas de ventas o de resultados" \
+  --cadence "instagram/3/lun,mie,vie/10:00,19:00/6" \
+  --cadence "linkedin/1/mar/09:00" \
+  --hashtags "agentsales construirenpublico"
+```
+
+- **Idiomas:** `es`, `en` o `es,en`; el primero es el principal. Con dos, cada post sale en los dos idiomas como publicaciones separadas, espaciadas por la cadencia.
+- **Líneas de contenido** (`--pillar "clave|nombre|peso|descripción"`): los temas de los que habla la marca. El peso reparte las ideas del plan (una línea con peso 3 recibe el triple que una con 1). La clave va en minúsculas, sin espacios.
+- **Hechos** (`--fact`, uno por frase): **lo más importante**. Cifras, clientes, fechas y logros que la IA puede afirmar. Sin hechos, la IA escribe sobre ideas y criterios, pero no inventa números ni nombres. Revísalos: lo que pongas aquí puede salir publicado.
+- **Cosas que evitar** (`--avoid`): temas, palabras o promesas que no quieres ver.
+- **Cadencia** (`--cadence "red/posts por semana/días/horas/horas entre idiomas"`): por red (instagram, x, linkedin, discord, tiktok); los días como `lun,mar,mie,jue,vie,sab,dom` y las horas en **hora de Chile**. Las horas entre idiomas son 6 si no las pones. `--remove-cadence <red>` quita una red.
+- Cada opción **reemplaza** su campo y lo demás queda como estaba; `--add-fact` y `--add-avoid` suman a la lista. `--audience ""` lo borra.
+- **Con un archivo:** `pnpm -s cli brand show --broker agentpey --json > perfil.json`, lo editas y `pnpm -s cli brand edit --broker agentpey --file perfil.json`. Los campos que el archivo no trae quedan como estaban.
+- Si algo no sirve, la CLI dice qué campo y por qué (`EDITORIAL_PROFILE_INVALID`) y no guarda nada.
+- El tono sigue siendo el de la marca (`brokers edit --tone`) y los hashtags del perfil se suman a los fijos de la marca.
+- Un corredor edita solo el perfil de su marca; tú, el de cualquiera.
+
+## Publicar un post de una marca (F9)
+
+Un post es una publicación de la marca que no es un aviso: una idea, un aprendizaje, una novedad. Tiene **un texto por red y por idioma** (si la marca publica en dos idiomas, cada uno sale como una publicación aparte). Todo funciona en `dry-run` igual que en vivo, salvo que en `dry-run` nada sale a las redes. Con `pnpm dev` corriendo (o contra el servidor):
+
+```bash
+# 1. Crear: el tema y tu brief (lo que la IA puede usar y afirmar, además del perfil de la marca)
+pnpm -s cli post create "Lo que aprendí esta semana" --broker agentpey \
+  --brief "Tres cosas: …" --kind image --pillar aprendizajes --date "2026-10-23 10:00"
+
+# 2. Subir medios (si el post lleva foto o video): van directo a R2, con avance
+pnpm -s cli post upload <id_post> foto.jpg clip.mp4
+
+# 3. Pedir los textos a la IA y esperar
+pnpm -s cli post draft <id_post>
+
+# 4. Revisar, corregir y aprobar
+pnpm -s cli post show <id_post>
+pbpaste | pnpm -s cli post edit <id_post> --platform linkedin --language es
+pnpm -s cli post edit <id_post> --x-link                  # solo si el texto de X lleva un enlace (US$0,20; --no-x-link lo quita)
+pnpm -s cli post approve <id_post>                       # todas las redes, o --platform x
+
+# 5. Programar (hora de Chile) o publicar ya
+pnpm -s cli post schedule <id_post> --at "2026-10-23 10:00"   # --platform para algunas redes
+pnpm -s cli post publish <id_post>                            # --platform para una sola
+```
+
+- **`post list`** muestra tus posts (`--broker`, `--status idea|draft|ready|archived`, `--from` y `--to` como `AAAA-MM-DD`). **`post show`** dice todo: estado, medios y sus variantes ("procesando…" mientras el worker las arma), cada texto por red e idioma con su revisión, y cada publicación con el comando que le toca.
+- **Un enlace en X** necesita dos cosas tuyas: que esté en tu brief y que lo permitas en el post (`post edit <id> --x-link`, o la casilla «Permitir un enlace en X» en el panel), porque ese post cuesta US$0,20 en vez de US$0,015. Sin el permiso, la revisión no deja aprobar el texto de X con un enlace.
+- **El brief tuyo cuenta como fuente de hechos; el de la IA no.** La revisión marca cifras, nombres o enlaces que no están en el perfil ni en tu brief: corrígelos o súmalos al perfil antes de aprobar.
+- **Los medios** se suben una vez: si repites `post upload` con el mismo archivo, no se vuelve a subir. Si se corta, vuelve a correr el comando: retoma lo que falta.
+- **Aprobar** abre una publicación por cada red con la cuenta conectada; sin cuenta, el texto queda aprobado y la publicación nace cuando la conectes. Si ninguna red aprobada tiene cuenta, `post approve` te dice que la conectes primero (`pnpm -s cli accounts`) en vez de ofrecerte publicar; después `post publish` o `post schedule` abren sus publicaciones. `post approve --undo` quita la aprobación y descarta lo que no salió.
+- **En vivo** (`PUBLISH_MODE=live`), `post publish`, `post schedule` y `publications retry` preguntan antes (`--yes` no pregunta). A la hora programada el reloj del worker publica sin volver a preguntar.
+- **Una red a mano** (por ejemplo LinkedIn): a la hora queda lista para que la publiques tú; después `pbpaste | pnpm -s cli publications confirm <id> --url-stdin` con el enlace, o `publications not-published <id>` si no la publicaste.
+- **"No se sabe si salió"** (`outcome_unknown`): el envío se cortó y AgentSales no sabe si la red la publicó. **Mira la red** y dilo: `pnpm -s cli publications resolve <id> --published` (con el enlace, si lo tienes: `pbpaste | … --published --url-stdin`) o `--not-published` (queda fallida). AgentSales nunca la reintenta solo, para no publicarla dos veces.
+- **Reintentar o publicar ya una sola publicación:** `pnpm -s cli publications retry <id>` (el id sale en `post show` y en la agenda). Descartarla: `publications cancel <id>`. Retirar una publicada: `publications retire <id>` (en LinkedIn por la API, `--delete` la borra por ti; ver "Conectar las redes de los posts").
+- **Antes de conectar las cuentas** de la marca, mira "Conectar las redes de los posts (F9)", más abajo: qué va en el `.env`, cómo se conecta cada red y las pruebas S1 a S6 antes de publicar de verdad.
+- **`agenda`** muestra los posts junto a las propiedades, con el comando de cada cosa pendiente. **`post archive <id>`** da por terminado un post (primero hay que resolver o descartar sus publicaciones pendientes).
+- Si algo falla, la CLI muestra el código y qué hacer: `POST_NO_PLATFORMS` (la marca no tiene cuentas ni cadencia: conecta una o define la cadencia en `brand edit`), `LLM_BUDGET_EXCEEDED` (la marca llegó a su tope de IA del mes: `pnpm -s cli usage`), `LLM_OUTPUT_INVALID` (la IA no respondió en el formato pedido: vuelve a pedir los textos), `CONTENT_EDITED` (ya editaste o aprobaste: `post draft --replace-edits` los reemplaza), `POST_NOT_READY` (una idea sin aceptar o un post archivado), `OUTCOME_UNKNOWN_PENDING` (primero di si salió).
+
+### Lo mismo desde el panel (F9-T17)
+
+Todo lo anterior se puede hacer en el panel, en **Contenido** (el menú de la izquierda; el administrador elige la marca en "Ver corredor"):
+
+- **La lista** muestra los posts de la marca por estado (los archivados, con su filtro). Abajo, **Nuevo post**: tema, brief, tipo y fecha planeada (hora de Chile). Con "Todos" eliges la marca.
+- **El detalle de un post** tiene, en orden: **Pedir los textos a la IA** (con "Reemplazar también los textos editados o aprobados" si ya los tocaste); **una pestaña por red e idioma** con el texto, el conteo de esa red (en X cuenta como X: un enlace vale 23 y un emoji 2, y avisa que un enlace encarece el post; un enlace en X se permite con la casilla «Permitir un enlace en X» del post, que cuesta US$0,20 en vez de US$0,015), la vista previa, la revisión con lo que hay que corregir, **Editar** y **Aprobar** (o quitar la aprobación); **Fotos y videos** para subir con avance (puedes cancelar, y si falla, **Reintentar**; cada medio dice "procesando…" hasta que el worker arma sus versiones); **Publicar en …** una red a la vez y **Programar…** las redes que elijas a una hora de Chile (una red sin cuenta conectada aparece desactivada, con el aviso y el enlace a **Cuentas**; si ninguna tiene, tampoco se puede programar); y la lista de **Publicaciones**.
+- **"No se sabe si salió"**: la publicación lo dice en ámbar. Mira la red y aprieta **Sí, salió** (pega el enlace si lo tienes) o **No salió** (queda fallida y puedes **Reintentar**).
+- **Una red a mano** (LinkedIn): la publicación te pide publicarla tú; después pega el enlace y aprieta **Lo publiqué**, o **No lo publiqué**.
+- **En vivo**, publicar y reintentar piden un segundo clic ("Sí, publicar en vivo"), y programar lo avisa en rojo.
+- **Videos de más de 100 MB:** el navegador los sube sin calcular su huella (sha256); el servidor la calcula después y el video aparece en unos minutos. Si ya estaba en el post, no se duplica.
+- **Calendario** (F9-T18, en el menú): la semana o el mes con lo programado y lo ya publicado, posts y propiedades juntos, en hora de Chile. Desde ahí cambias la hora de una publicación programada (la misma confirmación en vivo de siempre); lo aprobado sin programar, lo que se está publicando y lo fallido siguen en **Seguimiento**.
+- **El perfil editorial** se edita en **Mi marca** (o, siendo administrador, en la página de cada corredor), con los mismos campos que `brand edit`. Si algo no sirve, el error aparece en rojo junto al campo y no se guarda nada.
+
+## Pedir a la IA un plan de ideas (F9)
+
+Si no sabes qué publicar, la IA te propone **ideas con fecha** para las próximas semanas, con el perfil editorial de la marca (sus líneas, sus hechos y su cadencia). **Una idea no se publica sola:** tú decides cuáles aceptar; al aceptar una, la IA redacta sus textos, y después los revisas, apruebas y programas como cualquier post. Cada plan gasta IA de la marca (entra a su tope del mes), aunque descartes todo.
+
+```bash
+# 1. Pedir el plan (por defecto, 14 días desde mañana, todas las redes de la marca y las ideas que
+#    pide su cadencia) y esperar: imprime las ideas por semana, cada una con su id y su comando
+pnpm -s cli plan --broker agentpey --days 14 --platform linkedin,x --count 8
+
+# 2. Decidir cada idea
+pnpm -s cli post accept <id_idea>      # pasa a borrador y la IA redacta sus textos (--wait los espera)
+pnpm -s cli post discard <id_idea>     # no se vuelve a proponer en 60 días
+pnpm -s cli post edit <id_idea> --date "2026-10-23 10:00" --platforms x,linkedin --brief "Lo que yo sé: …"
+
+# 3. Seguir como un post: revisar, aprobar y programar
+pnpm -s cli post show <id_idea>
+pnpm -s cli post approve <id_idea>
+pnpm -s cli post schedule <id_idea> --at "2026-10-23 10:00"
+```
+
+- **`plan show <id>`** vuelve a mostrar un plan con el estado de cada idea; **`plan list`** muestra los planes de la marca (`--broker` va antes o después de `list`: `plan list --broker agentpey` o `plan --broker agentpey list`). `--no-wait` pide el plan y sale con su id.
+- **Esperar los textos de una idea:** `post accept <id> --wait` acepta y espera esa redacción, con su revisión al final. Sin `--wait` no espera (puedes aceptar varias seguidas) y los textos aparecen en `post show <id>` al terminar. **No uses `post draft` para esperar:** pide textos nuevos y vuelve a gastar IA; sirve solo si la idea quedó aceptada sin textos (por ejemplo, con el worker apagado).
+- **Un plan a la vez por marca:** si ya hay uno en curso, pedir otro te muestra ese.
+- **Lo que mira la IA:** no repite los temas de los últimos 60 días ni las ideas que descartaste, respeta la cadencia de cada red (días, horas y posts por semana, contando lo que ya está planificado esas semanas) y no inventa cifras ni nombres que no estén en el perfil. Las ideas que no pasan esas revisiones salen al final como "descartadas por las revisiones", con el motivo.
+- **Antes de aceptar** puedes mover la fecha, cambiar las redes o escribir tu brief. **El brief tuyo cuenta como fuente de hechos**: si sabes algo concreto del tema, escríbelo antes de aceptar para que la IA lo use.
+- **Las redes de cada idea** son las que la IA sugirió; al aceptarla, la IA redacta solo para esas. Si después le cambias las redes a un post, sus textos de las redes quitadas no se borran, pero ya no se aprueban, publican ni programan: aprobar, `post publish --platform` o publicar una publicación suya da `POST_PLATFORM_EXCLUDED`; `post schedule --platform` la informa como no programada, y sin `--platform` simplemente no se usa. Una red con publicaciones pendientes (aprobadas, programadas o fallidas, incluida la que el reloj dejó fallida con `POST_PLATFORM_EXCLUDED`) no se puede quitar (`POST_HAS_PENDING_PUBLICATIONS`): primero cancélalas con `publications cancel <id>`. `post show` y el panel avisan qué texto falta de una red agregada (pídelo con `post draft`; Instagram en un post de solo texto no cuenta, porque no sirve a ese tipo).
+- **Si el plan falla**, la CLI y el panel dicen el motivo y qué hacer: `LLM_BUDGET_EXCEEDED` (la marca llegó a su tope de IA del mes: `pnpm -s cli usage`), `LLM_OUTPUT_INVALID` (la IA no respondió en el formato pedido: pide el plan de nuevo), `LLM_AUTH_REQUIRED` (renueva la sesión de la CLI de Claude), `PLAN_RUN_ABANDONED` (el worker se cortó: pide el plan de nuevo), o un error pasajero (vuelve a pedirlo en unos minutos).
+
+### Lo mismo desde el panel (F9-T21)
+
+En **Plan** (el menú de la izquierda; el administrador elige la marca en "Ver corredor"):
+
+- **Pedir un plan:** los días (14 por defecto), las redes (sin marcar ninguna, todas las de la marca) y cuántas ideas (vacío: según la cadencia). Mientras la IA propone, la página lo dice y se actualiza sola.
+- **Las ideas por semana**, cada una con su fecha y hora (Chile), su línea, sus redes, su tipo y el porqué. Por idea: **Aceptar**, **Editar** (brief, fecha y redes) y **Descartar** (pide confirmación). Una aceptada lleva al post, donde revisas, apruebas y programas.
+- **Redactar lo aceptado:** si una idea quedó aceptada sin textos (por ejemplo, el worker no estaba al aceptarla), el botón pide sus textos.
+- **Si el plan falla**, el motivo aparece en rojo con qué hacer.
+
+## Conectar las redes de los posts (F9)
+
+Cada marca (o corredor) publica sus posts en las cuentas que **tú** conectes. Se conectan en **Cuentas** del panel o con la CLI, con `pnpm dev` corriendo (o contra el servidor). `pnpm -s cli accounts` muestra las conectadas y, debajo, **las redes que faltan con el comando de cada una**.
+
+> **Antes de publicar de verdad en una red, haz su prueba de entrada** (spec F9 §4.8): **S1** Instagram, **S2 y S3** LinkedIn, **S4** X, **S5** Discord y **S6** TikTok. Son obligatorias, a mano y con tus cuentas. El código se construyó contra simulaciones: hasta que hagas la prueba de una red y anotes el resultado en su nota de `docs/integraciones/`, esa red se usa solo en `dry-run`. Pasar a `live` lo decides tú, en el chat.
+
+### Lo que va en el `.env` de la API
+
+Cada red (salvo Discord) necesita **su app** creada en la plataforma, con su par de claves en el `.env`. Después de anotarlas, reinicia la API (`pnpm dev`, o en el servidor, sus secretos: `docs/10-despliegue.md`). Sin el par, conectar dice qué variable falta (`LINKEDIN_NOT_CONFIGURED`, `X_NOT_CONFIGURED`, `TIKTOK_NOT_CONFIGURED`) y no abre nada.
+
+| Red | Variables | Dónde se crea la app | La dirección de retorno, si no la pones |
+|---|---|---|---|
+| Instagram | `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`, `INSTAGRAM_REDIRECT_URI` | developers.facebook.com (la de los avisos: `docs/07-checklist-cuentas.md`) | `<PUBLIC_URL>/api/oauth/instagram/callback` |
+| LinkedIn | `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET`, `LINKEDIN_REDIRECT_URI` | linkedin.com/developers, asociada a una **Página de empresa** que la verifica, con *Share on LinkedIn* y *Sign In with LinkedIn using OpenID Connect* | `<PUBLIC_URL>/api/oauth/linkedin/callback` (en el Mac, `http://localhost:8787/…`) |
+| X | `X_CLIENT_ID`, `X_CLIENT_SECRET`, `X_REDIRECT_URI` | console.x.com, una "Web App" con OAuth 2.0 de lectura y escritura, con créditos y tope de gasto en Billing | `<PUBLIC_URL>/api/oauth/x/callback` (en el Mac, `http://127.0.0.1:8787/…`: X no acepta `localhost`) |
+| TikTok | `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI` | developers.tiktok.com, con Login Kit y Content Posting API (`video.upload`); por ahora en un **Sandbox**, con el dominio verificado | `<PUBLIC_URL>/api/oauth/tiktok/callback` (TikTok exige `https`: solo en el servidor) |
+| Discord | ninguna | — (un webhook por canal) | — |
+
+La dirección de retorno se registra **igual** en la app de cada red. **Deja las tres `*_REDIRECT_URI` vacías** (`LINKEDIN_REDIRECT_URI=`): una variable vacía cuenta como no puesta, y AgentSales usa la de la última columna. Escríbela solo si registraste otra dirección. Nunca pegues una clave en el chat.
+
+### Lo que pide cada consola
+
+Ya hecho el 2026-10-20 y 21 para las tres (detalle en `docs/07-checklist-cuentas.md`, "F9 · Contenido de marca"). Sirve también para una instancia nueva.
+
+- **LinkedIn exige una Página de empresa:** sin Página, no deja crear la app. Se creó la Página "AgentSales" (Desarrollo de software, 0-1 empleados, tipo Autónomo, con logo) y la app "AgentSales" asociada a ella, con la privacidad `https://agentsales.agentpey.com/legal/privacidad`. Después, **la Página verifica la app**: es un paso de la consola, y la app queda "verificada" cuando un administrador de la Página la aprueba. En Products van *Share on LinkedIn* (Default Tier) y *Sign In with LinkedIn using OpenID Connect*; en Auth, las dos direcciones de retorno (Mac y servidor). **La Página existe solo para tener la app: AgentSales publica en tu perfil personal** (spec F9, P1), y esa cuenta nace a mano.
+- **X cobra por post:** la app "Web App" con OAuth 2.0 de lectura y escritura, las dos direcciones de retorno (Mac y servidor) y la web `https://agentsales.agentpey.com`. Antes de S4, **carga créditos en Billing y fija el tope de gasto de la consola** (*spending limit*). Es un pago: lo haces tú. Sin créditos, X responde `X_PAYMENT_REQUIRED`.
+- **TikTok, en un Sandbox:** el borrador de **Production** no se guarda sin un video demo y el texto de la revisión. Por eso todo se configura en un **Sandbox**: Login Kit y Content Posting API con `user.info.basic` y `video.upload`, **Direct Post apagado** (solo borradores), la dirección de retorno del servidor, la web y los términos y la privacidad de `/legal/`. El par del `.env` es **el del Sandbox**. En un Sandbox solo autorizan las cuentas de **Sandbox settings → Target Users → Add account**: agrega la tuya iniciando sesión con tu TikTok. La revisión de Production (con el video demo) se pide aparte, más adelante.
+- **TikTok verifica el dominio por DNS:** pide un registro **TXT** en la raíz de `agentpey.com` con su código (`tiktok-developers-site-verification=…`, lo muestra la consola). El DNS está en Vercel: se agrega ahí, sin tocar el SPF del correo, y se vuelve a TikTok a verificar.
+
+### Cómo se conecta cada una
+
+- **Instagram:** igual que para los avisos (más arriba, "Dar de alta un corredor"): en el servidor, el botón **Conectar Instagram**; en el Mac, `pbpaste | pnpm -s cli accounts connect instagram --broker <slug> --token-stdin` con el token de *Generate token*. Detalle de los posts en `docs/integraciones/instagram-contenido-propio.md`.
+- **LinkedIn** (tu perfil personal): el botón **Conectar LinkedIn** en Cuentas, o `pnpm -s cli accounts connect linkedin --broker <slug>`, que abre el enlace en el navegador donde tienes el panel abierto. En el Mac, abre el panel en `http://localhost:5173`: la vuelta de LinkedIn es `localhost` (al revés que X; el panel avisa si estás en otro). Autoriza en LinkedIn y vuelves a Cuentas. **La cuenta queda a mano** (ver "El modo a mano", abajo). El acceso dura 60 días y **no se renueva solo**: la agenda avisa una semana antes y se reconecta igual. Nota: `docs/integraciones/linkedin.md`.
+- **X:** el botón **Conectar X**, o `pnpm -s cli accounts connect x --broker <slug>`. En el Mac, abre el panel en `http://127.0.0.1:5173` (no `localhost`) antes de conectar: el panel lo avisa si estás en otro. **Cada post cuesta créditos de X** (unos US$0,015; con un enlace, US$0,20, y el enlace hay que permitirlo en el post: con `pnpm -s cli post edit <id> --x-link` o la casilla «Permitir un enlace en X» del post). Cada cuenta tiene un **tope de gasto del mes** (por defecto US$10): `pnpm -s cli accounts spend-limit <id> <dólares>`. Pasado el tope, la publicación falla sin llamar a X (`X_SPEND_LIMIT_REACHED`). El tope duro sigue siendo el de la consola de X. Nota: `docs/integraciones/x.md`.
+- **Discord:** se conecta el **webhook de un canal**. En Discord: Ajustes del servidor → Integraciones → Webhooks → Nuevo webhook (elige el canal) → **Copiar URL del webhook**. Después, en la terminal: `pbpaste | pnpm -s cli accounts connect discord --broker <slug> --webhook-stdin`. La URL es **el secreto del canal**: va del portapapeles a la API, nunca se escribe en la terminal ni se pega en el panel (por eso el panel solo muestra el comando para copiar). Un canal por marca: conectar otro webhook desconecta el anterior. Nota: `docs/integraciones/discord.md`.
+- **TikTok:** **solo desde el servidor** (TikTok exige `https`; en el Mac no conecta), con el par en sus secretos (`docs/10-despliegue.md`) y tu cuenta agregada como Target User del Sandbox. El botón **Conectar TikTok**, o `pnpm -s cli accounts connect tiktok --broker <slug>` con la sesión de la CLI en el servidor; autoriza y deja marcado el permiso de subir videos. Solo publica **video**, y llega como **borrador** a la bandeja de la app de TikTok: tú lo abres, pegas el texto que está en AgentSales, lo publicas y confirmas con el enlace (`pbpaste | pnpm -s cli publications confirm <id> --url-stdin`). Nota: `docs/integraciones/tiktok.md`.
+
+Un corredor puede conectar **su propio** Instagram, LinkedIn, X y TikTok desde su usuario (solo los suyos); Discord, renovar, desconectar, el modo y el tope de gasto son tuyos (administrador).
+
+### El modo a mano (`accounts mode`)
+
+Una cuenta de LinkedIn, X, Discord o TikTok puede estar **a mano** o **por la API**:
+
+- **A mano:** a la hora programada, AgentSales deja el texto y los medios listos **sin llamar a la red**; tú publicas y confirmas con el enlace (`pbpaste | pnpm -s cli publications confirm <id> --url-stdin`), o `publications not-published <id>` si no lo hiciste. LinkedIn **nace a mano** y se queda así hasta que S2 y S3 estén resueltas.
+- **Por la API:** AgentSales publica solo (en `live`).
+- Se cambia con `pnpm -s cli accounts mode <id> manual|api` (pasar a `api` pregunta antes; `--yes`). El id sale en `pnpm -s cli accounts`. La tarjeta de la cuenta en Cuentas dice en qué modo está.
+
+### Confirmar, resolver y retirar
+
+- **Confirmar una publicación a mano** (LinkedIn a mano, TikTok, Marketplace): `pbpaste | pnpm -s cli publications confirm <id> --url-stdin` con el enlace copiado (no se imprime), o en el panel, **Lo publiqué**.
+- **"No se sabe si salió"** (`outcome_unknown`): el envío se cortó y la red pudo haberlo publicado. Mira la red y di qué pasó: `pnpm -s cli publications resolve <id> --published` (con el enlace: `pbpaste | … --published --url-stdin`) o `--not-published`. AgentSales nunca la reintenta solo, para no publicarla dos veces. En X, un "texto repetido" también queda así: si no salió, cambia un poco el texto antes de reintentar.
+- **Retirar un post publicado:** bórralo a mano en la red y márcalo con `pnpm -s cli publications retire <id>` (pregunta si ya lo borraste). **En LinkedIn con la cuenta por la API**, AgentSales lo puede borrar por ti: `pnpm -s cli publications retire <id> --delete` (pregunta antes: es definitivo; solo en `live`). Si el post se publicó a mano y pegaste el enlace de "Copiar enlace", LinkedIn no acepta borrarlo por la API: la CLI te dice que lo borres a mano.
+
+### Qué hacer cuando una red falla
+
+Debajo de cada publicación fallida, el panel (**Qué hacer:**), `post show`, `publications`, `publish` y la `agenda` muestran **el consejo de su error**. Los más comunes:
+
+| Lo que ves | Qué hacer |
+|---|---|
+| `LINKEDIN_NOT_CONFIGURED`, `X_NOT_CONFIGURED`, `TIKTOK_NOT_CONFIGURED` | Anota el par de la app en `.env` (tabla de arriba) y reinicia la API |
+| `*_AUTH_INVALID`, `TOKEN_REFRESH_REJECTED`, cuenta "vencida" | Reconecta la cuenta (el mismo botón o `accounts connect`) y reintenta |
+| `*_PERMISSION_DENIED`, `X_PERMISSION_MISSING` | Reconecta y acepta **todos** los permisos que pide la red |
+| `DISCORD_WEBHOOK_NOT_FOUND`, `DISCORD_WEBHOOK_INVALID` | El webhook se borró o cambió: crea otro en el canal y conéctalo de nuevo |
+| `X_PAYMENT_REQUIRED` | Sin créditos en X: recarga en console.x.com (Billing) |
+| `X_SPEND_LIMIT_REACHED` | Llegaste al tope del mes: súbelo con `accounts spend-limit` o espera al mes siguiente |
+| `X_LINK_NOT_ALLOWED` | Permite el enlace en el post (`pnpm -s cli post edit <id> --x-link` o la casilla «Permitir un enlace en X»; cuesta US$0,20) o quita el enlace del texto de X; después apruébalo y reintenta |
+| `TIKTOK_PENDING_LIMIT` | Hay 5 borradores esperando en la app de TikTok: publícalos o descártalos |
+| `TIKTOK_APP_RESTRICTED` | La app de TikTok todavía no tiene la auditoría: revisa S6 en `tiktok.md` |
+| `*_RATE_LIMITED`, `*_UNAVAILABLE`, `*_UNREACHABLE` | Es pasajero: el sistema reintenta solo; si no, reintenta más tarde |
+| `RETIRE_DELETE_UNSUPPORTED` | Esa red o esa cuenta no borra por la API: bórrala a mano y `publications retire <id>` |
 
 ## Restaurar un respaldo de la base
 

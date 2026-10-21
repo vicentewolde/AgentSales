@@ -7,6 +7,7 @@ import type { PlatformAccount } from "../platform-account.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { ContentRepository } from "../ports/content-repository.js";
 import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
+import { listingSubject } from "../subject.js";
 import { type ApproveContentDeps, approveContent } from "./approve-content.js";
 import { type PublishListingDeps, publishListing } from "./publish-listing.js";
 import { type ScheduleDeps, scheduleChannel } from "./schedule-publications.js";
@@ -108,7 +109,7 @@ export async function autoPublishListing(
   const connected = connectedPlatforms(await deps.platformAccounts.listByBroker(broker.id));
   const channels: AutoPublishChannel[] = [];
   for (const content of autoPublishContents(
-    await deps.contents.listCurrent(listingId),
+    await deps.contents.listCurrent(listingSubject(listingId)),
     connected,
   )) {
     channels.push(

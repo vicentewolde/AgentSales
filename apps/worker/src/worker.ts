@@ -24,6 +24,7 @@ import {
   createContentRepository,
   createContentRunRepository,
   createDb,
+  createEditorialProfileRepository,
   createFieldDefinitionRepository,
   createImportRunRepository,
   createListingLock,
@@ -31,8 +32,12 @@ import {
   createLoginChallengeRepository,
   createMediaRepository,
   createOAuthStateRepository,
+  createPlanRunRepository,
   createPlatformAccountRepository,
   createPlatformCatalogRepository,
+  createPostLock,
+  createPostRepository,
+  createPostUploadRepository,
   createPublicationRepository,
   createSessionRepository,
   createWorkerHeartbeatRepository,
@@ -47,8 +52,12 @@ import {
   createMercadoLibreAuth,
   MERCADOLIBRE_REFRESH_TIMEOUT_MS,
 } from "@agentsales/publishers";
+import { createDiscordPublisher } from "@agentsales/publishers/discord";
+import { createLinkedInPublisher } from "@agentsales/publishers/linkedin";
 import { marketplaceProfileDir, openMarketplaceProfile } from "@agentsales/publishers/marketplace";
+import { createTikTokAuth, createTikTokPublisher } from "@agentsales/publishers/tiktok";
 import { createBancoCentralUf } from "@agentsales/publishers/uf";
+import { createXAuth, createXPublisher } from "@agentsales/publishers/x";
 import { createBoss, jobQueueFromBoss } from "@agentsales/queue";
 import { createR2Storage } from "@agentsales/storage";
 import { createSlideTemplates } from "@agentsales/templates";
@@ -59,9 +68,11 @@ import {
   marketplaceTmpRootOf,
 } from "./content-tmp.js";
 import { type Heartbeat, startHeartbeat, workerProcessId } from "./heartbeat.js";
+import { failAbandonedPlanRuns, requeueQueuedPlanRuns } from "./jobs/content-plan.js";
 import {
   failAbandonedContentRuns,
   requeueQueuedContentRuns,
+  requeueQueuedPostRuns,
   resumeAutoPublishAtStart,
 } from "./jobs/content-prepare.js";
 import { type BackupTarget, backupStatusOf, requestBackupIfDue } from "./jobs/db-backup.js";
@@ -71,7 +82,12 @@ import { enqueuePublicationDue } from "./jobs/publication-due.js";
 import { instagramNoteLogger, requeuePublishingPublications } from "./jobs/publication-publish.js";
 import { registerJobs } from "./jobs/registry.js";
 import { enqueueTokensRefresh } from "./jobs/tokens-refresh.js";
-import { apiLlmOptions, llmProviderOptions } from "./llm-options.js";
+import {
+  apiLlmOptions,
+  llmProviderOptions,
+  planLlmProviderOptions,
+  socialLlmProviderOptions,
+} from "./llm-options.js";
 import { createWorkerMarketplacePublisher } from "./marketplace/publisher.js";
 import { createMarketplaceWindows, sweepClosedWindows } from "./marketplace/windows.js";
 import { createWorkerPortal } from "./portal.js";
@@ -98,6 +114,13 @@ const contentRuns = createContentRunRepository(database.db);
 const workspaceRoot = findWorkspaceRoot();
 const contentTmpRoot = contentTmpRootOf(workspaceRoot);
 const sha256 = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
+
+/** sha256 hexadecimal de un archivo de R2 leído en streaming (F9-T17: sin cargarlo en memoria). */
+async function sha256OfStream(stream: AsyncIterable<Uint8Array>): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const chunk of stream) hash.update(chunk);
+  return hash.digest("hex");
+}
 const repositories = {
   brokers: createBrokerRepository(database.db),
   listings: createListingRepository(database.db),
@@ -140,6 +163,49 @@ const platformAccounts = createPlatformAccountRepository(database.db, { secretBo
 // Registrado en los dos modos: una publicación en `dry_run` también lo necesita (lo envuelve
 // `withDryRun`). El cliente de Instagram se arma recién al primer intento en `live` (perezoso).
 const instagram = createInstagramPublisher({ onNote: instagramNoteLogger(logger) });
+// Discord por webhook (F9-T14): sin cliente que armar ni secreto propio (la URL es la credencial
+// de cada cuenta). Sus notas van al log solo con ids y cifras, nunca con la URL.
+const discord = createDiscordPublisher({
+  onNote: (note) => logger.info(note, "nota del publicador de Discord"),
+});
+// X (F9-T16): el publisher en los dos modos (en `dry-run` lo envuelve `withDryRun` y no llama).
+// Sus notas van al log solo con ids y cifras, nunca con un token.
+const x = createXPublisher({ onNote: (note) => logger.info(note, "nota del publicador de X") });
+// TikTok (F9-T26): el video como borrador en la bandeja (modo Upload); registrado en los dos modos
+// (en `dry-run` lo envuelve `withDryRun` y no llama a TikTok). Sus notas, solo con ids y cifras.
+const tiktok = createTikTokPublisher({
+  onNote: (note) => logger.info(note, "nota del publicador de TikTok"),
+});
+// La renovación de los tokens que rotan (X cada 2 h, TikTok cada 24 h; ADR-0029 punto 11), al
+// publicar y en `tokens.refresh`, con la misma función (`ensureRotatingAccessToken`). Sin el par de
+// la app de una red no se arma su renovación, y una cuenta suya por renovar es
+// `TOKEN_REFRESH_NOT_CONFIGURED` sin cambiarla.
+const tokenRefreshers = {
+  ...(env.X_CLIENT_ID && env.X_CLIENT_SECRET
+    ? {
+        x: createXAuth({
+          clientId: env.X_CLIENT_ID,
+          clientSecret: env.X_CLIENT_SECRET,
+          redirectUri: env.X_REDIRECT_URI,
+        }),
+      }
+    : {}),
+  ...(env.TIKTOK_CLIENT_KEY && env.TIKTOK_CLIENT_SECRET
+    ? {
+        tiktok: createTikTokAuth({
+          clientKey: env.TIKTOK_CLIENT_KEY,
+          clientSecret: env.TIKTOK_CLIENT_SECRET,
+          redirectUri: env.TIKTOK_REDIRECT_URI,
+        }),
+      }
+    : {}),
+};
+// LinkedIn, perfil personal (F9-T15): solo llega aquí una cuenta en modo `api`; en `manual` (el de
+// por defecto, D5) core deja el texto listo sin llamar a la red. Sus notas van al log solo con ids
+// y cifras, nunca con el token ni una URL.
+const linkedin = createLinkedInPublisher({
+  onNote: (note) => logger.info(note, "nota del publicador de LinkedIn"),
+});
 // Refresco de tokens (spec F3 §4.6): solo usa el token, así que funciona sin el par de la app
 // (como en la API); el par lo necesita solo el canje del OAuth, que el worker no hace.
 const instagramAuth = createInstagramAuth({
@@ -196,6 +262,11 @@ const backupTarget: BackupTarget =
         status: storage,
       };
 const listingLock = createListingLock(database.db, { secretBox });
+// Los posts (spec F9 §4.5): sus medios y la limpieza de sus subidas, con el candado del post.
+const posts = createPostRepository(database.db);
+const postLock = createPostLock(database.db, { secretBox });
+// Los planes de ideas (spec F9 §4.9): sus ideas se guardan como posts en la misma transacción.
+const planRuns = createPlanRunRepository(database.db);
 const marketplaceWindows = createMarketplaceWindows({
   publications,
   confirm: (publicationId, url) =>
@@ -233,6 +304,10 @@ const autoPublish: AutoPublishDeps = {
   },
   dryRun: env.PUBLISH_MODE !== "live",
 };
+// La API de Anthropic para los corredores y marcas que no son del operador (spec F7 §4.7).
+const apiLlm = ((options) => (options === null ? null : createLlmProvider(options)))(
+  apiLlmOptions(env),
+);
 const jobs = buildJobs({
   importRun,
   contentPrepare: {
@@ -244,9 +319,7 @@ const jobs = buildJobs({
       renderer,
       // El del operador para sus corredores propios, y la API para los demás (spec F7 §4.7).
       llm: createLlmProvider(llmProviderOptions(env, process.env)),
-      apiLlm: ((options) => (options === null ? null : createLlmProvider(options)))(
-        apiLlmOptions(env),
-      ),
+      apiLlm,
       sha256,
     },
     // Sin `threads`: ffmpeg usa todos los núcleos (los tests limitan a 2).
@@ -271,6 +344,10 @@ const jobs = buildJobs({
       storage,
       publishers: {
         instagram,
+        discord,
+        x,
+        linkedin,
+        tiktok,
         portal_inmobiliario: portal.publisher,
         // En `live` llena el formulario y deja la ventana al registro; en `dry-run` no abre nada.
         // En producción no se registra (D4): publicar con una cuenta de perfil ya falló en core.
@@ -292,6 +369,9 @@ const jobs = buildJobs({
       uf: ufSource,
       // El token de Portal se asegura (y se refresca) con el par de la app (spec F4 §4.3).
       mercadoLibre: mercadoLibreAuth,
+      // X y TikTok (F9-T16, T26): la renovación de su token; X, además, la marca del enlace de cada post.
+      tokenRefreshers,
+      posts,
     },
     // Se arma más abajo (`jobQueueFromBoss`); los handlers corren después de arrancar.
     queue: { enqueue: (name, data, options) => queue.enqueue(name, data, options) },
@@ -312,6 +392,7 @@ const jobs = buildJobs({
     platformAccounts,
     instagram: instagramAuth,
     mercadoLibre: mercadoLibreAuth,
+    refreshers: tokenRefreshers,
     signal: jobsAbort.signal,
   },
   marketplaceProfile: marketplaceAutomation
@@ -329,6 +410,8 @@ const jobs = buildJobs({
     : null,
   publicationDue: {
     lock: listingLock,
+    // Las programadas de posts (F9-T07) se empiezan en el candado del post.
+    postLock,
     // Se arma más abajo (`jobQueueFromBoss`); los handlers corren después de arrancar.
     queue: { enqueue: (name, data, options) => queue.enqueue(name, data, options) },
     publications,
@@ -345,8 +428,60 @@ const jobs = buildJobs({
     },
     // Las subidas que nadie terminó y lo que quedó en R2 de cargas terminadas (spec F8 §4.4).
     importCleanup: { importRuns, storage },
+    // Las subidas de medios de posts que nadie terminó en 24 h (spec F9 §4.5).
+    postUploadCleanup: {
+      postUploads: createPostUploadRepository(database.db),
+      postLock,
+      storage,
+    },
     // Se arma más abajo (`jobQueueFromBoss`); los handlers corren después de arrancar.
     queue: { enqueue: (name, data, options) => queue.enqueue(name, data, options) },
+  },
+  postMedia: {
+    shared: { posts, media: repositories.media, storage },
+    // Las subidas grandes sin sha256 (F9-T17): se hashean en streaming y se deduplican.
+    uploads: { posts, postLock, storage, sha256Stream: sha256OfStream },
+    createProcessor: (workDir) =>
+      createMediaProcessor({
+        ffmpegPath: env.FFMPEG_PATH,
+        ffprobePath: env.FFPROBE_PATH,
+        workDir,
+      }),
+    tmpRoot: contentTmpRoot,
+    signal: jobsAbort.signal,
+  },
+  // Los textos de un post (spec F9 §4.9, F9-T11): el perfil de su marca, sus cuentas y sus medios,
+  // y el candado del post para guardar los textos y dejar su estado al día.
+  postDraft: {
+    shared: {
+      contentRuns,
+      posts,
+      brokers: repositories.brokers,
+      editorialProfiles: createEditorialProfileRepository(database.db),
+      platformAccounts,
+      media: repositories.media,
+      postLock,
+      // Con `fake`, el borrador de ejemplo de un post (no el de un aviso).
+      llm: createLlmProvider(socialLlmProviderOptions(env, process.env)),
+      apiLlm,
+    },
+    signal: jobsAbort.signal,
+  },
+  // El plan de ideas (spec F9 §4.9, F9-T20): el perfil de la marca, sus posts recientes (los temas
+  // que no se repiten) y la IA; las ideas quedan como posts `idea`, sin textos ni publicaciones.
+  contentPlan: {
+    shared: {
+      planRuns,
+      posts,
+      brokers: repositories.brokers,
+      editorialProfiles: createEditorialProfileRepository(database.db),
+      contentRuns,
+      // Con `fake`, un plan de ejemplo armado con lo que pide el prompt.
+      llm: createLlmProvider(planLlmProviderOptions(env, process.env)),
+      apiLlm,
+      newId: randomUUID,
+    },
+    signal: jobsAbort.signal,
   },
   dbBackup: {
     target: backupTarget,
@@ -470,6 +605,30 @@ async function failAbandonedContent(): Promise<void> {
   }
 }
 
+async function failAbandonedPlans(): Promise<void> {
+  try {
+    const closed = await failAbandonedPlanRuns(planRuns);
+    if (closed.length > 0) logger.warn({ planRunIds: closed }, "planes abandonados cerrados");
+  } catch (error) {
+    logger.warn({ err: error }, "no se pudieron revisar los planes abandonados");
+  }
+}
+
+async function requeuePlans(): Promise<void> {
+  try {
+    const { requeued, failed } = await requeueQueuedPlanRuns(planRuns, queue);
+    if (requeued > 0) logger.info({ requeued }, "planes de ideas en cola reencolados");
+    if (failed.length > 0) {
+      logger.warn(
+        { planRunIds: failed },
+        "no se pudieron reencolar algunos planes: se reintenta al próximo arranque o al pedirlos",
+      );
+    }
+  } catch (error) {
+    logger.warn({ err: error }, "no se pudieron reencolar los planes en cola");
+  }
+}
+
 async function resumeAutoPublish(): Promise<void> {
   try {
     const resumed = await resumeAutoPublishAtStart({ ...autoPublish, contentRuns }, logger);
@@ -491,6 +650,19 @@ async function requeueContent(): Promise<void> {
     }
   } catch (error) {
     logger.warn({ err: error }, "no se pudieron reencolar las corridas en cola");
+  }
+  // Las de posts van a `post.draft`, nunca a `content.prepare` (F9-T05; su handler, F9-T11).
+  try {
+    const { requeued, failed } = await requeueQueuedPostRuns(contentRuns, queue);
+    if (requeued > 0) logger.info({ requeued }, "corridas de posts en cola reencoladas");
+    if (failed.length > 0) {
+      logger.warn(
+        { contentRunIds: failed },
+        "no se pudieron reencolar algunas corridas de posts: se reintenta al próximo arranque",
+      );
+    }
+  } catch (error) {
+    logger.warn({ err: error }, "no se pudieron reencolar las corridas de posts en cola");
   }
 }
 
@@ -611,6 +783,7 @@ try {
   await sweepMarketplaceWindows();
   await failAbandonedRuns();
   await failAbandonedContent();
+  await failAbandonedPlans();
   await cleanStaging(true);
   // Una señal durante el arranque: `shutdown` ya está deteniendo pg-boss; no se registra nada más.
   const registered =
@@ -625,6 +798,7 @@ try {
     // Una señal mientras empezaba a latir: el apagado ya pasó por `stopHeartbeat` sin latido.
     if (shuttingDown) await heartbeat.stop();
     await requeueContent();
+    await requeuePlans();
     await requeuePublications();
     await resumeAutoPublish();
     await requestLiveSyncs();

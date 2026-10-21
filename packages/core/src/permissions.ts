@@ -8,6 +8,11 @@ import type { User } from "./user.js";
 export const PERMISSIONS = [
   /** Ver, cargar, preparar, editar textos, aprobar, publicar, programar y cambiar propiedades. */
   "listings.manage",
+  /**
+   * Los posts de su marca (F9, ADR-0029): crear, editar, subir medios, pedir textos, aprobar,
+   * programar, publicar y archivar. El dueño de un post es su corredor o marca.
+   */
+  "posts.manage",
   /** "Lo publiqué" o "No lo publiqué" en Marketplace. */
   "marketplace.confirm",
   /** Editar la marca, subir el logo y bajar la planilla. */
@@ -21,6 +26,22 @@ export const PERMISSIONS = [
    * Cuentas, ADR-0028). No renueva ni desconecta: eso sigue siendo de `accounts.manage`.
    */
   "instagram.connect",
+  /**
+   * F9-T16 (spec F9 §4.7): conectar **su propia** cuenta de X con OAuth y PKCE. Renovar, desconectar
+   * y fijar el tope de gasto siguen siendo de `accounts.manage`.
+   */
+  "x.connect",
+  /**
+   * Conectar **su propio** perfil de LinkedIn con el OAuth (el botón de Cuentas, como
+   * `instagram.connect`; spec F9 §4.7, F9-T15). Renovar, desconectar y cambiar el modo siguen
+   * siendo de `accounts.manage`.
+   */
+  "linkedin.connect",
+  /**
+   * Conectar **su propia** cuenta de TikTok con Login Kit (spec F9 §4.7, F9-T26), como
+   * `instagram.connect`: renovar y desconectar siguen siendo de `accounts.manage`.
+   */
+  "tiktok.connect",
   /** Publicación automática, tope de IA y "corredor propio". */
   "broker.settings",
   "brokers.create",
@@ -34,10 +55,16 @@ export type Permission = (typeof PERMISSIONS)[number];
 /** Lo que un usuario de corredor puede hacer, siempre con lo suyo. */
 const BROKER_PERMISSIONS: ReadonlySet<Permission> = new Set([
   "listings.manage",
+  "posts.manage",
   "marketplace.confirm",
   "brand.edit",
   "broker.view",
   "instagram.connect",
+  // F9-T16: su propia cuenta de X.
+  "x.connect",
+  "linkedin.connect",
+  // F9-T26: el corredor o la marca conecta su TikTok.
+  "tiktok.connect",
 ]);
 
 type Actor = Pick<User, "role" | "brokerId">;

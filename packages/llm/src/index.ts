@@ -1,4 +1,4 @@
-import type { LLMProvider } from "@agentsales/core";
+import type { LLMProvider, LLMRequest } from "@agentsales/core";
 import { type AnthropicApiOptions, createAnthropicApiProvider } from "./anthropic-api.js";
 import { type ClaudeCliOptions, createClaudeCliProvider } from "./claude-cli.js";
 
@@ -23,19 +23,28 @@ export type LlmProviderOptions =
       provider: "fake";
       /** Lo que devuelve siempre (por ejemplo, un borrador de ejemplo de core). */
       data: unknown;
+      /**
+       * Si está, arma la respuesta con la petición en vez de devolver `data` (F9-T20: el plan de
+       * ejemplo lee del prompt el período y la cadencia, `samplePlanResponse` de core). Sin red.
+       */
+      respond?: (request: LLMRequest) => unknown;
       model?: string;
     };
 
 /**
  * Proveedor `fake` de ejecución (`LLM_PROVIDER=fake`, `eval:content --provider fake`): devuelve
- * siempre el mismo dato, sin red. Los tests de core usan su propio doble en
- * `@agentsales/core/testing`, con respuestas en orden.
+ * siempre el mismo dato (o lo que arma `respond` con la petición), sin red. Los tests de core usan
+ * su propio doble en `@agentsales/core/testing`, con respuestas en orden.
  */
-function createFakeProvider(data: unknown, model = "fake"): LLMProvider {
+function createFakeProvider(
+  data: unknown,
+  model = "fake",
+  respond?: (request: LLMRequest) => unknown,
+): LLMProvider {
   return {
     name: "fake",
-    async generateStructured() {
-      return { data: structuredClone(data), model };
+    async generateStructured(request) {
+      return { data: structuredClone(respond === undefined ? data : respond(request)), model };
     },
   };
 }
@@ -48,6 +57,6 @@ export function createLlmProvider(options: LlmProviderOptions): LLMProvider {
     case "anthropic-api":
       return createAnthropicApiProvider(options);
     case "fake":
-      return createFakeProvider(options.data, options.model);
+      return createFakeProvider(options.data, options.model, options.respond);
   }
 }

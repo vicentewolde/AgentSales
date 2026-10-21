@@ -1,5 +1,6 @@
 import { formatChileTime } from "./chile-time.js";
 import type { ContentReelOutcome, ContentRun } from "./content.js";
+import type { EditorialWeekday } from "./editorial-profile.js";
 import type {
   BrokerKind,
   CloseReason,
@@ -7,8 +8,10 @@ import type {
   ContentRunStatus,
   ContentStatus,
   ImportRunStatus,
+  Language,
   ListingStatus,
   Operation,
+  PlanRunStatus,
   Platform,
   PlatformAccountStatus,
   PublicationFormat,
@@ -81,6 +84,23 @@ export const PLATFORM_TEXT: Readonly<Record<Platform, string>> = {
   tiktok: "TikTok",
 };
 
+/** Los idiomas de un perfil editorial y de un texto (F9). */
+export const LANGUAGE_TEXT: Readonly<Record<Language, string>> = {
+  es: "español",
+  en: "inglés",
+};
+
+/** Los días de la cadencia del perfil editorial (F9-T09), abreviados como en Chile. */
+export const EDITORIAL_WEEKDAY_TEXT: Readonly<Record<EditorialWeekday, string>> = {
+  mon: "lun",
+  tue: "mar",
+  wed: "mié",
+  thu: "jue",
+  fri: "vie",
+  sat: "sáb",
+  sun: "dom",
+};
+
 /** Qué es un corredor (`brokers.kind`, F9): lo que muestran la CLI y el panel. */
 export const BROKER_KIND_TEXT: Readonly<Record<BrokerKind, string>> = {
   broker: "corredor",
@@ -91,6 +111,14 @@ export const CONTENT_RUN_STATUS_TEXT: Readonly<Record<ContentRunStatus, string>>
   queued: "en cola",
   running: "preparando",
   succeeded: "lista",
+  failed: "falló",
+};
+
+/** El estado de un plan de ideas en palabras (la CLI y el panel, F9-T21). */
+export const PLAN_RUN_STATUS_TEXT: Readonly<Record<PlanRunStatus, string>> = {
+  queued: "en cola",
+  running: "la IA está proponiendo ideas",
+  succeeded: "listo",
   failed: "falló",
 };
 
@@ -128,10 +156,15 @@ export const PUBLICATION_FORMAT_TEXT: Readonly<Record<PublicationFormat, string>
 
 /**
  * El formato de una publicación según su canal (spec F4 §4.8): en Portal y Marketplace hay uno
- * solo, el aviso (`post`); en Instagram, carrusel o reel. Lo usan la CLI y el panel.
+ * solo, el aviso (`post`); en Instagram, carrusel o reel; en las redes de F9 (X, LinkedIn, Discord
+ * y TikTok), el post (desde F9-T08, que las muestra en la agenda). Lo usan la CLI y el panel.
  */
 export const publicationFormatText = (platform: Platform, format: PublicationFormat): string =>
-  platform === "instagram" ? PUBLICATION_FORMAT_TEXT[format] : "aviso";
+  platform === "instagram"
+    ? PUBLICATION_FORMAT_TEXT[format]
+    : platform === "portal_inmobiliario" || platform === "fb_marketplace"
+      ? "aviso"
+      : "post";
 
 /** El modo de un intento de publicación (`publications.dry_run`, D11 del spec F3). */
 export const publicationModeText = (dryRun: boolean): string => (dryRun ? "simulación" : "en vivo");
@@ -143,6 +176,7 @@ export const PUBLISH_ATTEMPT_RESULT_TEXT: Readonly<Record<PublishAttemptResult, 
   failed: "falló",
   awaiting_manual_confirm: "formulario listo, espera tu clic final",
   rescheduled: "reprogramada hasta que se libere el límite",
+  outcome_unknown: "no se sabe si salió: di si salió o no",
 };
 
 /** Quién hizo un cambio en la bitácora de una publicación. */
@@ -336,11 +370,13 @@ export const CLOSE_REASON_TEXT: Readonly<Record<CloseReason, string>> = {
 export const AGENDA_KIND_TEXT: Readonly<Record<AgendaKind, string>> = {
   overdue: "Atrasadas",
   your_turn: "Te toca (Marketplace)",
+  outcome_unknown: "No se sabe si salieron",
   stuck: "Atascadas",
   failed: "Fallaron",
   manual_task: "Tareas a mano",
   needs_review: "Esperan tu revisión",
   approved_waiting: "Aprobadas sin publicar",
+  token_expiring: "Cuentas por reconectar",
   expiring: "Portal por vencer",
   upcoming: "Próximas (7 días)",
   backup: "Respaldo de la base",
@@ -413,17 +449,33 @@ export const ONBOARDING_STEP_TEXT: Readonly<Record<OnboardingStepKey, string>> =
   brand: "Marca y colores",
   logo: "Logo",
   whatsapp: "WhatsApp",
+  editorial: "Perfil editorial",
   user: "Usuario con contraseña",
   instagram: "Instagram",
   mercadolibre: "Mercado Libre",
   marketplace: "Marketplace",
+  networks: "Una red para los posts",
 };
 
-/** Quién hace un paso que falta. */
+/**
+ * El nombre de un paso de la lista de alta; un paso sin texto sale con su clave. No protege de una
+ * CLI o un panel más viejo que la API: el contrato valida la clave con un enum cerrado y rechaza un
+ * paso nuevo antes de llegar aquí (la CLI y el panel van con la misma versión que la API).
+ */
+export function onboardingStepText(key: string): string {
+  return (ONBOARDING_STEP_TEXT as Readonly<Partial<Record<string, string>>>)[key] ?? key;
+}
+
+/** Quién hace un paso que falta, en un corredor. En una marca, `onboardingOwnerText`. */
 export const ONBOARDING_OWNER_TEXT: Readonly<Record<OnboardingOwner, string>> = {
   broker: "lo hace el corredor",
   admin: "lo hace el administrador",
 };
+
+/** Quién hace un paso que falta, según qué es: en una marca, "lo hace la marca". */
+export function onboardingOwnerText(owner: OnboardingOwner, kind: BrokerKind): string {
+  return owner === "broker" && kind === "brand" ? "lo hace la marca" : ONBOARDING_OWNER_TEXT[owner];
+}
 
 /** El estado de un usuario, en pocas palabras (CLI y panel). */
 export function userStateText(user: {

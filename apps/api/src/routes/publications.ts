@@ -8,6 +8,7 @@ import {
   confirmManualPublication,
   isAppError,
   type ListingRepository,
+  listingSubject,
   type MediaRepository,
   type MediaStorage,
   type MercadoLibreAuth,
@@ -25,6 +26,7 @@ import {
   type RetirePublicationDeps,
   relistPublication,
   requestPublicationSync,
+  resolvePublication,
   resumePublication,
   retirePublication,
   type StartPublicationDeps,
@@ -50,6 +52,7 @@ import {
   publicationCloseBodySchema,
   publicationConfirmBodySchema,
   publicationConfirmedBodySchema,
+  publicationResolveBodySchema,
   publicationRetireBodySchema,
   publicationScheduleBodySchema,
 } from "../contracts/index.js";
@@ -72,7 +75,7 @@ export type PublicationRoutesDeps = PublishListingDeps &
      * Fuera del candado solo se lee: los cambios de estado van dentro, con sus repositorios
      * (ADR-0014). El tipo lo hace cumplir.
      */
-    publications: Pick<PublicationRepository, "get" | "listByListing" | "listEvents">;
+    publications: Pick<PublicationRepository, "get" | "listBySubject" | "listEvents">;
     /** `getSourceHash`: Actualizar compara la versión de la propiedad (F6-T07). */
     listings: Pick<ListingRepository, "get" | "getSourceHash">;
     /** Actualizar en Portal (F6-T07): el texto vigente y el contacto del corredor. */
@@ -80,7 +83,7 @@ export type PublicationRoutesDeps = PublishListingDeps &
     brokers: Pick<BrokerRepository, "findById">;
     /** El nombre de cada persona de la bitácora (spec F7 §4.3). */
     auth: { users: Pick<UserRepository, "get"> };
-    media: Pick<MediaRepository, "listByListing">;
+    media: Pick<MediaRepository, "listBySubject">;
     /** Solo para las miniaturas de `GET /listings/:id/publications` (R2 es privado, ADR-0007). */
     storage: Pick<MediaStorage, "signedReadUrl">;
     /** El modo de los intentos que se piden por la API (D11): nunca sale del cuerpo. */
@@ -161,8 +164,8 @@ export function listingPublicationRoutes(deps: PublicationRoutesDeps) {
         });
       }
       const [publications, media] = await Promise.all([
-        deps.publications.listByListing(id),
-        deps.media.listByListing(id),
+        deps.publications.listBySubject(listingSubject(id)),
+        deps.media.listBySubject(listingSubject(id)),
       ]);
       // Cada medio se firma una vez, aunque lo compartan varias publicaciones. Solo los que siguen
       // en R2 y no son originales (una publicación fija derivados y renders), y solo para las
@@ -371,12 +374,27 @@ export function publicationRoutes(deps: PublicationRoutesDeps) {
       validated("param", idParamSchema),
       validated("json", publicationRetireBodySchema),
       async (c) => {
-        const { removedByHand } = c.req.valid("json");
-        const result = await retirePublication(deps, {
-          publicationId: c.req.valid("param").id,
-          actor: actorOf(c),
-          ...(removedByHand === undefined ? {} : { removedByHand }),
-        });
+        const { removedByHand, deleteRemote } = c.req.valid("json");
+        // F9-T19: borrar por la API (LinkedIn en modo `api`) es síncrono, con el tope de las
+        // operaciones; el modo lo decide la publicación y la API (nunca en simulación).
+        const result = await retirePublication(
+          {
+            ...deps,
+            removal: {
+              apiMode: deps.publishMode,
+              platformAccounts: deps.platformAccounts,
+              operationsFor: deps.operationsFor,
+              onWarning: operations.onWarning,
+            },
+          },
+          {
+            publicationId: c.req.valid("param").id,
+            actor: actorOf(c),
+            ...(removedByHand === undefined ? {} : { removedByHand }),
+            ...(deleteRemote === undefined ? {} : { deleteRemote }),
+            ...(deleteRemote === true ? { signal: timeout() } : {}),
+          },
+        );
         const body: PublicationRetireResponse = {
           publication: publicationView(result.publication),
           listingBackToReady: result.listingBackToReady,
@@ -429,6 +447,30 @@ export function publicationRoutes(deps: PublicationRoutesDeps) {
         const { url } = c.req.valid("json");
         const { publication, changed } = await confirmManualPublication(deps, {
           publicationId: c.req.valid("param").id,
+          actor: actorOf(c),
+          ...(url === undefined ? {} : { url }),
+        });
+        const body: PublicationConfirmResponse = {
+          publication: publicationView(publication),
+          changed,
+        };
+        return c.json(body, 200);
+      },
+    )
+    .post(
+      "/:id/resolve",
+      validated("param", idParamSchema),
+      validated("json", publicationResolveBodySchema),
+      async (c) => {
+        // Resultado dudoso (ADR-0029 punto 8, F9-T12): el operador dice si salió o no. Como
+        // `confirm`, el enlace nunca vuelve en un error ni va al log. Como `confirm` y `publish`,
+        // en una publicación de post solo pasa por `ownedBy` (lo ajeno es 404), sin revisar
+        // `posts.manage`: hoy el administrador y el corredor lo tienen; si un rol lo pierde, la
+        // revisión va aquí (o en core) para todo `/publications/:id/*`.
+        const { outcome, url } = c.req.valid("json");
+        const { publication, changed } = await resolvePublication(deps, {
+          publicationId: c.req.valid("param").id,
+          outcome,
           actor: actorOf(c),
           ...(url === undefined ? {} : { url }),
         });

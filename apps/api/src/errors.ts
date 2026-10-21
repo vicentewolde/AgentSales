@@ -49,7 +49,12 @@ const CONFLICTS = new Set([
   // confirmar el cierre, o lo guardado de la publicación no sirve (se cambia a mano en Mercado
   // Libre); Mercado Libre rechazó el cambio o hubo un conflicto; el sync leyó algo que cambió.
   "RETIRE_NOT_SUPPORTED",
+  // F9-T19: borrar por la API al retirar no se puede (la red, el modo de la cuenta o el enlace).
+  "RETIRE_DELETE_UNSUPPORTED",
+  "LINKEDIN_DELETE_UNSUPPORTED",
   "OPERATION_NOT_SUPPORTED",
+  // F9-T15: el modo `manual`/`api` es solo de las redes de contenido de marca.
+  "ACCOUNT_MODE_NOT_SUPPORTED",
   "PUBLISH_MODE_MISMATCH",
   "CLOSE_NOT_CONFIRMED",
   "PORTAL_PROGRESS_UNUSABLE",
@@ -95,10 +100,30 @@ const CONFLICTS = new Set([
   "BROKER_SLUG_TAKEN",
   // F9 (ADR-0029): cargar propiedades en una marca o activar su publicación automática.
   "BROKER_IS_BRAND",
+  // F9-T05 (spec F9 §4.2): pedir o aprobar los textos de un post que es una idea sin aceptar o
+  // está archivado.
+  "POST_NOT_READY",
+  // F9-T05: `/contents/:id` es solo de avisos hasta las rutas de posts (T12).
+  "CONTENT_NOT_FOR_LISTING",
+  // F9-T06 (ADR-0029 punto 8): una publicación con resultado dudoso espera que el operador diga si
+  // salió (descartar, reintentar, programar, quitar la aprobación, cerrar o archivar).
+  "OUTCOME_UNKNOWN_PENDING",
+  // F9-T11: pedir los textos de un post de una marca sin redes (ni cuentas ni cadencia en su
+  // perfil): se conecta una cuenta o se define la cadencia y se vuelve a pedir.
+  "POST_NO_PLATFORMS",
   // F7-T12 (spec F7 §4.7): el corredor llegó a su tope de IA del mes (subir el tope o esperar).
   "LLM_BUDGET_EXCEEDED",
   // F8 (spec §4.14): empezar una carga a la que le faltan archivos (subirlos y volver a empezar).
   "IMPORT_UPLOAD_INCOMPLETE",
+  // F9-T10: editar o subir medios a un post archivado, o archivar uno con publicaciones pendientes.
+  "POST_ARCHIVED",
+  "POST_HAS_PENDING_PUBLICATIONS",
+  // F9-T20 (ADR-0030): aceptar o descartar algo que ya no es una idea del plan.
+  "POST_NOT_IDEA",
+  // F9-T20: dos pedidos de plan cruzados (no debería llegar: `requestPlanRun` devuelve el activo).
+  "PLAN_RUN_CONFLICT",
+  // F9-T21: aprobar, publicar o programar una red que no está entre las del post (se agrega al post).
+  "POST_PLATFORM_EXCLUDED",
 ]);
 
 /**
@@ -107,6 +132,8 @@ const CONFLICTS = new Set([
  */
 const CLIENT_MISSING = new Set([
   "MARKETPLACE_URL_REQUIRED",
+  // F9-T06: confirmar en vivo una publicación a mano de otra red sin su enlace.
+  "PUBLISHED_URL_REQUIRED",
   // F6-T10: una hora de programar fuera del rango (2 min a 60 días) y cerrar sin el motivo.
   "SCHEDULE_TOO_SOON",
   "SCHEDULE_TOO_FAR",
@@ -133,6 +160,23 @@ const PLATFORM_REJECTIONS = new Set([
   "ML_PERMISSION_DENIED",
   "ML_SITE_MISMATCH",
   "ML_REQUEST_REJECTED",
+  // Discord al conectar (F9-T14): un webhook borrado o con el token roto se cambia por otro (400,
+  // no el 404 del sufijo: la ruta existe), y uno que Discord no deja usar también es del cliente.
+  "DISCORD_WEBHOOK_NOT_FOUND",
+  "DISCORD_WEBHOOK_INVALID",
+  "DISCORD_FORBIDDEN",
+  "DISCORD_REQUEST_REJECTED",
+  // LinkedIn al conectar (F9-T15): un código vencido o usado, un token rechazado o sin el permiso
+  // para publicar se arreglan conectando de nuevo.
+  "LINKEDIN_AUTH_INVALID",
+  "LINKEDIN_PERMISSION_DENIED",
+  "LINKEDIN_FORBIDDEN",
+  "LINKEDIN_REQUEST_REJECTED",
+  // TikTok al conectar o renovar (F9-T26): un código vencido o un permiso que falta se arreglan
+  // conectando de nuevo.
+  "TIKTOK_AUTH_INVALID",
+  "TIKTOK_PERMISSION_DENIED",
+  "TIKTOK_REQUEST_REJECTED",
 ]);
 
 /**
@@ -143,8 +187,15 @@ const PLATFORM_REJECTIONS = new Set([
 const PLATFORM_UNEXPECTED = new Set([
   "IG_UNEXPECTED_RESPONSE",
   "ML_UNEXPECTED_RESPONSE",
+  "DISCORD_UNEXPECTED_RESPONSE",
+  "LINKEDIN_UNEXPECTED_RESPONSE",
+  "TIKTOK_UNEXPECTED_RESPONSE",
   // F7-T11: la API de Anthropic rechazó una petición que arma el servidor (en la corrida, no aquí).
   "LLM_REQUEST_REJECTED",
+  // La IA no entregó los textos en el formato pedido (en la corrida de `post.draft` o
+  // `content.prepare`; por si llegara): un fallo del modelo, no del cliente (sin el 400 de
+  // `_INVALID`).
+  "LLM_OUTPUT_INVALID",
   "UF_UNEXPECTED_RESPONSE",
   "UF_VALUE_INVALID",
   "UF_VALUE_SUSPICIOUS",
@@ -160,6 +211,13 @@ const NOT_CONFIGURED = new Set([
   // F4-T19: la API no tiene las operaciones de esa plataforma (no debería pasar: `server.ts` las
   // compone).
   "PUBLISHER_NOT_CONFIGURED",
+  // F9-T06: falta la app de una red con token que rota (X, TikTok) para renovar el acceso.
+  "TOKEN_REFRESH_NOT_CONFIGURED",
+  // F9-T15: falta el par de la app de LinkedIn, o LinkedIn no lo reconoce.
+  "LINKEDIN_NOT_CONFIGURED",
+  "LINKEDIN_APP_CREDENTIALS_INVALID",
+  // F9-T26: TikTok no reconoce el par de la app.
+  "TIKTOK_APP_CREDENTIALS_INVALID",
   // La UF (spec F5 §4.6): sin token del Banco Central, o con uno que rechaza; el Banco Central
   // todavía no publica el valor de hoy (se reintenta más tarde).
   "UF_SOURCE_NOT_CONFIGURED",
@@ -182,6 +240,17 @@ const BUSY = new Set([
   // F4-T19: una operación cortada por el tope de la API (las rutas de operaciones le ponen su
   // mensaje: ya pidió el sync).
   "ML_ABORTED",
+  // F9-T14: conectar Discord no llegó a conectar o se cortó: se repite en un momento.
+  "DISCORD_UNREACHABLE",
+  "DISCORD_ABORTED",
+  // F9-T15: conectar LinkedIn no llegó a conectar o se cortó.
+  "LINKEDIN_UNREACHABLE",
+  "LINKEDIN_ABORTED",
+  // F9-T19: borrar un post de LinkedIn al retirar, y LinkedIn pidió reintentar (409).
+  "LINKEDIN_CONFLICT",
+  // F9-T26: conectar o renovar TikTok no llegó a conectar o se cortó.
+  "TIKTOK_UNREACHABLE",
+  "TIKTOK_ABORTED",
   // F5: el perfil de Facebook lo tiene otra ventana un momento.
   "MARKETPLACE_PROFILE_BUSY",
   // F6-T14: otro respaldo en curso, o uno cortado por el apagado (no llegan a la API).
@@ -194,6 +263,9 @@ const BUSY = new Set([
  * repositorio de publicaciones recibe de core (F3-T15). Son 500 aunque terminen en `_INVALID`.
  */
 const SERVER_INVALID = new Set([
+  // F9-T11: revisar un texto de post sin el perfil editorial es un error de cableado (`postReview`),
+  // no un servicio caído: 500, no el 503 de `*_UNAVAILABLE`.
+  "POST_REVIEW_UNAVAILABLE",
   "JOB_PAYLOAD_INVALID",
   "IMPORT_RUN_INVALID",
   "PUBLICATION_EVENT_INVALID",
@@ -216,6 +288,13 @@ const SERVER_INVALID = new Set([
   "ACCOUNT_CREDENTIALS_NOT_ALLOWED",
   "MARKETPLACE_PROFILE_PATH_INVALID",
   "MARKETPLACE_SESSION_ID_INVALID",
+  // F9-T04 (ADR-0029): una referencia que no existe al crear un post, una subida, un plan o un
+  // perfil, y un medio de un aviso y de un post a la vez: errores de programación.
+  "POST_REFERENCE_INVALID",
+  "POST_UPLOAD_REFERENCE_INVALID",
+  "PLAN_RUN_REFERENCE_INVALID",
+  "EDITORIAL_PROFILE_REFERENCE_INVALID",
+  "MEDIA_SUBJECT_INVALID",
 ]);
 
 /**
@@ -237,6 +316,8 @@ export function httpStatusFor(code: string): ContentfulStatusCode {
   if (code === "INVALID_TRANSITION" || CONFLICTS.has(code)) return 409;
   // F8 (spec §4.14): un archivo de la carga, o el Excel descomprimido, sobre su tope.
   if (code === "REQUEST_TOO_LARGE" || code === "IMPORT_UPLOAD_TOO_LARGE") return 413;
+  // F9-T10: un medio de un post sobre el tope de la carga.
+  if (code === "POST_UPLOAD_TOO_LARGE") return 413;
   if (code === "IMPORT_XLSX_TOO_LARGE") return 413;
   // F7-T14: el logo no es PNG, JPEG ni WebP.
   if (code === "LOGO_INVALID") return 415;
@@ -282,19 +363,28 @@ const READINESS_CODES = new Set([
   "MARKETPLACE_NOT_READY",
   // F7-T13: el campo de la marca que no sirve (`BROKER_FIELD_INVALID`, su campo y el motivo).
   "BROKER_INVALID",
+  // F9-T09: el campo del perfil editorial que no sirve (`EDITORIAL_PROFILE_FIELD_INVALID`).
+  "EDITORIAL_PROFILE_INVALID",
 ]);
 
 /** Los errores que nombran la publicación de Marketplace que espera el clic final. */
-const WAITING_PUBLICATION_CODES = new Set(["MANUAL_CONFIRM_PENDING", "MARKETPLACE_FORM_OPEN"]);
+const WAITING_PUBLICATION_CODES = new Set([
+  "MANUAL_CONFIRM_PENDING",
+  "MARKETPLACE_FORM_OPEN",
+  // F9-T06: la publicación con resultado dudoso que hay que resolver primero.
+  "OUTCOME_UNKNOWN_PENDING",
+]);
 
 /**
  * Lo único de `details` que sale (seguimiento de ADR-0011), campo por campo y validado; si no
  * calza, la respuesta va sin ello:
  * - `issues` de `PORTAL_NOT_READY` (desde F4-T19) y `MARKETPLACE_NOT_READY` (F5-T08): código,
- *   campo del Excel y motivo en español, sin datos del aviso; y de `BROKER_INVALID` (F7-T13): el
- *   campo de la marca y el motivo;
+ *   campo del Excel y motivo en español, sin datos del aviso; de `BROKER_INVALID` (F7-T13): el
+ *   campo de la marca y el motivo; y de `EDITORIAL_PROFILE_INVALID` (F9-T09): el campo del perfil
+ *   (`pillars[1].key`) y el motivo;
  * - `publicationId` de `MANUAL_CONFIRM_PENDING` y `MARKETPLACE_FORM_OPEN` (F5-T08): la publicación
- *   que espera el clic final (un id, para ofrecer "lo publiqué" o "no lo publiqué").
+ *   que espera el clic final (un id, para ofrecer "lo publiqué" o "no lo publiqué"); y desde F9-T06
+ *   de `OUTCOME_UNKNOWN_PENDING`: la que espera que el operador diga si salió.
  */
 function extrasOf(code: string, details: Record<string, unknown> | undefined): ErrorExtras {
   if (READINESS_CODES.has(code)) {

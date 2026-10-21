@@ -151,3 +151,127 @@ Revisa el título y el cuerpo, sin mayúsculas ni tildes, y no se guarda: se cal
 - Las notas internas no se buscan en los hashtags.
 
 Las listas de términos viven en `packages/core/src/content/check-terms.ts`. Ampliarlas no cambia `CONTENT_PROMPT_VERSION`, porque no cambian los textos generados.
+
+## Posts de marca: el texto por red (F9-T11, spec F9 §4.4, ADR-0030)
+
+Un post de marca no tiene datos estructurados que ensamblar: **la IA escribe el texto completo de cada red** (ADR-0030 modifica ADR-0013 solo para posts), un texto por red **e idioma**, y el código lo valida y lo revisa. Todo vive en `packages/core/src/social/`.
+
+**Las fuentes de hechos** (ADR-0030, punto 1). La IA solo afirma lo que está en:
+- el **perfil editorial** de la marca: `facts` (lo principal: una frase por hecho), el público, la línea de contenido del post y los hashtags del perfil y de la marca, además del nombre de la marca;
+- el **brief del post, solo si lo escribió o editó el operador** (`brief_origin = operator`). El brief de una idea de la IA (`brief_origin = ai`) **no viaja** a la IA ni cuenta como fuente;
+- el **tema**, solo en un post manual (`source = manual`): el tema de una idea lo escribió la IA, así que viaja como tema pero no como fuente.
+
+`avoid` no es fuente (es lo que no se usa), y nunca viajan notas internas ni nada de otra marca: el perfil y el corredor son siempre los del propio post. Sin `facts`, la IA escribe sobre ideas y criterios, sin cifras, clientes ni resultados.
+
+**Las redes y los idiomas.** Las redes de un post son las de `POST_PLATFORMS` donde la marca tiene una cuenta no desconectada (una vencida o con error cuenta: se reconecta) **o** una cadencia en su perfil (`postPlatforms`); sin ninguna, la corrida falla con `POST_NO_PLATFORMS`. Con dos idiomas en el perfil (P4), se redacta un texto por red **en cada idioma**, el principal primero; cada uno se aprueba y se publica por separado, como publicaciones distintas de la misma cuenta, espaciadas por la cadencia. El texto en inglés no es una traducción literal.
+
+**El prompt** (`social-post-v1`, `SOCIAL_PROMPT_VERSION`, guardado en `contents.prompt_version` y en el reporte): las reglas en el prompt de sistema y los datos como JSON en un bloque `<datos_del_post>`, escapado como el de los avisos (un brief no puede cerrarlo) y con la instrucción de tratarlo solo como datos. Reglas: solo afirmar lo de las fuentes; toda cifra, nombre propio, enlace y mención (@) debe estar tal cual en ellas; nunca `@everyone` ni `@here`; en X, un enlace solo si está en `enlaces_permitidos_en_x`; respetar `evitar`; el tono de `brokers.tone`; mayúscula solo al inicio de frase y en nombres propios (sin "Title Case"); texto plano, sin markdown; los hashtags en su lista, nunca dentro del texto (Instagram y TikTok de 3 a 8, LinkedIn hasta 3, X hasta 2, Discord ninguno). Los largos que pide van al 90 % del máximo de cada red.
+
+**Lo que devuelve la IA** (`socialDraftSchema`, estricto; el JSON Schema del proveedor no lleva topes):
+
+```json
+{
+  "texts": [{ "platform": "x", "language": "es", "body": "...", "hashtags": ["#..."] }],
+  "warnings": ["..."]
+}
+```
+
+Tiene que traer **un texto por cada red e idioma pedidos** (`validateSocialDraft`): uno que falta es un motivo de reintento (`texts: falta el texto de x en en`, sin citar a la IA); los que no se pidieron o se repiten se descartan. Los hashtags se normalizan (`#` y solo letras, con tildes y mayúsculas, números y `_`; sin repetir). Como en los avisos, se reintenta una vez y después la corrida queda `failed` con `LLM_OUTPUT_INVALID`.
+
+### Reglas por red
+
+El texto de cada red se mide **con los hashtags**, en un párrafo aparte separados por espacios (`joinedPostText`, como el caption de Instagram); `postTextLength` lo cuenta como lo cuenta cada red, y la usan la revisión y el contador del editor. El texto que se envía a cada red (`socialCaption`, F9-T06) debe armarse igual.
+
+| Red | Largo | Cómo se cuenta y qué más |
+|---|---|---|
+| Instagram | 2.200 | En UTF-16, como hoy. Hasta 30 hashtags (contando los que vayan dentro del texto). Necesita imagen o video |
+| X | 280 **ponderados** | `xWeightedLength`, sin la librería `twitter-text`: cada URL pesa 23 (también un dominio suelto como `agentpey.com`), cada emoji 2 (con sus modificadores y uniones), las letras latinas con tilde 1 y los CJK 2; el texto se normaliza a NFC. Hasta 4 imágenes o 1 video. Un enlace solo si el operador lo puso en el brief y marcó el post (ver abajo) |
+| LinkedIn | 3.000 | Contando los **escapes**: el campo `commentary` exige escapar con `\` los 15 caracteres reservados <code>&#124; { } @ [ ] ( ) &lt; &gt; # \ * _ ~</code> (`escapeLinkedInText`, probada con todos; los hashtags quedan como texto). Si el límite de LinkedIn cuenta la cadena escapada o la visible no está verificado (`linkedin.md` §5.3): se mide la escapada, la más larga. El publisher (T15) envía el texto escapado |
+| Discord | 2.000 | `@everyone` y `@here` impiden aprobar; además, el publisher (T14) envía siempre `allowed_mentions: { parse: [] }` y neutraliza las menciones masivas en el texto (`discord.md` §4). Hasta 10 archivos. Muestra markdown |
+| TikTok | 2.200 | El texto que acompaña al video (solo video en F9) |
+
+**Lo que se envía** (`socialCaption`, `content/assemble.ts`): en Instagram, LinkedIn, X y TikTok, el cuerpo y, tras una línea en blanco, los hashtags (`instagramCaption`); en Discord, solo el cuerpo (el prompt no le pide hashtags). Sobre eso, cada publisher aplica lo de su red: LinkedIn escapa el `commentary` (`escapeLinkedInText`), Discord neutraliza `@everyone`/`@here` y X revisa otra vez el largo ponderado. **TikTok no envía el texto:** en el modo *Upload* el video llega como borrador a la bandeja y el operador pega el texto de AgentSales en la app antes de publicar (el texto igual se revisa y se aprueba aquí).
+
+**Enlaces en X (D6).** Un post de X con enlace cuesta US$0,20 en vez de US$0,015 (`x.md` §2). Un enlace en X necesita **dos** cosas del operador: que esté en el **brief del post** (F9-T11; uno que está en los `facts` pero no en el brief es `LINK_NOT_ALLOWED`: sirve en las demás redes, no en X) y la **marca explícita en el post** (`posts.x_link_allowed`, F9-T16: `PATCH /api/posts/:id` con `xLinkAllowed: true`, que usan `post edit <id> --x-link` en la CLI y la casilla «Permitir un enlace en X» del detalle del post en el panel). Sin la marca, la IA no recibe enlaces para X (`enlaces_permitidos_en_x` va vacío) y un enlace en el texto de X es `LINK_NOT_ALLOWED`, aunque esté en el brief; con ella, se permite con la advertencia `LINK_COST`. Al publicar, el costo estimado queda en `publications.cost_usd` y, si la marca se quitó después de aprobar, el intento falla con `X_LINK_NOT_ALLOWED` sin llamar a X.
+
+### Cómo revisa (`checkPostContent`)
+
+Como `checkContent`, es una función pura que corre sobre el texto final, también después de una edición a mano, y no se guarda (se calcula al leer y al aprobar; el reporte de la corrida guarda solo los códigos por red e idioma, `postChecks`). Al aprobar, editar o quitar la aprobación, el post y el perfil de su marca se leen **antes** del candado del post (`beforeContentLock` con `postReview`), porque el candado no trae ese repositorio.
+
+| Código | Severidad | Cómo lo detecta |
+|---|---|---|
+| `TOO_LONG` | error | El largo de la red con los hashtags (tabla de arriba) |
+| `HASHTAG_LIMIT` | error | Más de 30 hashtags en Instagram |
+| `MASS_MENTION` | error | `@everyone` o `@here` (sin mirar mayúsculas), en cualquier red y en cualquier parte del texto o de los hashtags, también pegada a otra palabra (`a@everyone`, `.@here`), con caracteres de ancho cero en medio (U+200B a U+200D, U+2060, U+FEFF) o con la arroba ancha `＠` |
+| `FACT_NOT_IN_PROFILE` | error | Un hecho que no está en las fuentes (heurística, abajo): una **cifra**, un posible **nombre propio**, un **enlace** o una **mención** |
+| `LINK_NOT_ALLOWED` | error | En X, un enlace de las fuentes que el operador no puso en el brief del post, o cualquier enlace si el post no tiene la marca `xLinkAllowed` (F9-T16) |
+| `MEDIA_REQUIREMENT` | error | Un post de video sin video (un reel exige video); Instagram sin imagen ni video; un carrusel de Instagram fuera de 2 a 10 imágenes (F9-T13; una imagen suelta usa solo la primera foto); TikTok sin video; X con más de 4 imágenes; Discord con más de 10; un post de imágenes sin imágenes. Se cuentan los originales que subió el operador |
+| `LINK_COST` | advertencia | X con un enlace: cuesta US$0,20 en vez de US$0,015 |
+| `MEDIA_UNUSED` | advertencia | Un post de imagen con varias fotos en Instagram: sale solo la primera; para publicarlas todas, carrusel (F9-T13) |
+| `AVOID_TERM` | advertencia | Algo de `avoid` del perfil (como palabra o frase completa, sin mirar tildes ni mayúsculas) |
+| `MARKDOWN` | advertencia | `**`, `__`, una línea que empieza con `# ` o un link `[texto](url)`, salvo en Discord |
+
+**La heurística de hechos** (`FACT_NOT_IN_PROFILE`), contra todo el texto de las fuentes junto:
+- **Cifras:** cada número del texto y de los hashtags (`5.800`, `1,000`, `2026`) debe aparecer en las fuentes; se comparan sin separadores (`1.000` y `1,000` son el mismo en los dos idiomas). No son cifras: un número pegado a una letra (`B2B`, `web3`), el marcador de una lista numerada al inicio de una línea (`1. …`, `2) …`; las cifras del resto de la línea sí se revisan) ni `24/7`.
+- **Nombres propios:** una palabra con alguna mayúscula (`Banco`, `AgentPey`) que **no abre** una frase, una línea ni va tras `¿`, `¡` o una comilla, y que no está entre las palabras de las fuentes ni en una lista corta de palabras comunes con mayúscula (las redes donde se publica; los días y los meses con su nombre completo, en inglés y en español; los idiomas en inglés, `I`, y siglas como `IA`, `API`, `CEO`, `CRM`, `UF`). Las **abreviaturas** de días y meses (`Oct`, `Mon`, `Ene`, `Mié`, con o sin punto) se ignoran solo **junto a una fecha**: pegadas a una cifra (`Oct 9`, `9 oct.`, `Oct 9-12`, `26 de ene.`), a un día o mes completo, o a otra abreviatura que lo está (`Mon, Oct 9`); sueltas se revisan como cualquier nombre, porque muchas lo son (`Mon Laferte`, `Viña del Mar`). Las seguidas se informan juntas (`Banco Central`). No se marcan: las palabras **toda en mayúsculas de 2 a 6 caracteres** (`GRATIS`, `IA`, `B2B`: siglas o énfasis), ni las de una **línea con forma de título** en inglés ("How We Pick Our Networks": sin puntuación final, de 2 a 10 palabras y toda palabra de 4 letras o más con mayúscula inicial), cuyas mayúsculas son de estilo; en esa línea sí se revisan las cifras, los enlaces y las menciones. Las ciudades, regiones y países son nombres como los demás: valen si aparecen en el perfil (en un hecho, el público o una línea) o en el brief del operador; si la marca habla de su ciudad, conviene escribirla en el público o en un hecho.
+- **Enlaces:** con `http`, `www.` o un dominio suelto de los frecuentes (`.com`, `.cl`, `.io`, `.ai`, `.dev`…), comparados sin protocolo, `www.`, mayúsculas ni la barra final; la ruta cuenta (`agentpey.com/precios` no es `agentpey.com`).
+- **Menciones:** `@algo` debe estar en las fuentes (un correo no es una mención, pero su dominio es un enlace).
+
+**Límites conocidos:** no ve un nombre propio escrito en minúsculas, uno que abre una frase, uno de 2 a 6 mayúsculas (`ACME`) ni uno dentro de una línea con forma de título, ni una cifra escrita con palabras ("tres clientes"); un número se acepta si aparece en cualquier fuente, aunque hable de otra cosa; y un hashtag inventado sin cifras (`#RemaxChile`) no se revisa como nombre. Un nombre real que coincide con una abreviatura de fecha pasa si va pegado a una cifra (`Mar 3`, `Sun 24`), y una abreviatura de fecha suelta (`los Lun`, `on Mon and Fri`) se marca aunque sea una fecha: el operador la corrige o la aprueba editando. La regla del prompt es la primera barrera y el operador aprueba cada texto. Ampliar la lista de palabras comunes no cambia `SOCIAL_PROMPT_VERSION`.
+
+## Posts de marca: el plan de ideas (F9-T20, spec F9 §4.9, ADR-0030)
+
+La IA propone **ideas** para un período, no textos: cada idea queda como un post en estado `idea` (`source = ai`, `brief_origin = ai`, sin brief, sin textos ni publicaciones) y los textos se redactan recién al **aceptarla** (`post.draft`, la sección anterior). Una idea sin aceptar no gasta IA en textos ni tiene publicaciones: no se programa ni ocupa un horario del calendario de publicación. Mientras no se descarte, sí cuenta en los posts por semana de la cadencia cuando se pide otro plan que cubre su fecha (`plannedSlots`), para que dos planes no llenen dos veces la misma semana; descartarla, o moverla fuera del período, libera ese cupo. Código en `packages/core/src/social/plan.ts` (período, verificaciones, reporte), `plan-prompt.ts` (el prompt) y `plan-sample.ts` (el plan de ejemplo de `fake`).
+
+**Lo pedido** (`requestPlanRun`, en `plan_runs.request`): las redes (por defecto, todas las de la marca: con cuenta o con cadencia en el perfil, `postPlatforms`), el período (por defecto desde mañana y 14 días, en días de Chile; de 1 a 31 días, empezando hoy o hasta 60 días más adelante) y cuántas ideas (de 1 a 20; por defecto, los posts por semana de la red pedida que más publica por las semanas del período, o 3 por semana si ninguna tiene cadencia).
+
+**Lo que ve la IA** (`buildPlanBrief`, solo de **su** marca): nombre, tono, público, idiomas (el tema y el porqué van en el principal), líneas de contenido con su clave y su peso, `facts`, `avoid`, el período con **cada día y su día de la semana** (la IA no calcula calendarios), las redes pedidas con su cadencia (posts por semana, días y horas de Chile), cuántas ideas, y lo que no repite: los **temas de los últimos 60 días** (los posts de la marca creados o planificados en ese plazo, manuales o ideas, incluidas las que esperan decisión) y las **ideas descartadas** de los mismos 60 días (las de la IA que se archivaron; después, el tema vuelve a estar disponible). Como mucho 100 de cada lista, las más recientes. Además, lo **ya planificado** en el período (`plannedSlots`: ideas, borradores y listos de la marca con `planned_at` dentro del período, con sus redes entre las pedidas; uno sin redes propias cuenta en todas), que ocupa su cupo semanal. Nunca `internal_notes`, los briefs de los posts ni nada de otra marca.
+
+**El prompt** (`social-plan-v1`, `PLAN_PROMPT_VERSION`, guardado en `plan_runs.prompt_version`): las reglas en el prompt de sistema y los datos como JSON en un bloque `<datos_del_plan>`, escapado como el de los textos y con la instrucción de tratarlo solo como datos. La versión es **propia del plan**, no `SOCIAL_PROMPT_VERSION`: los dos prompts cambian por separado. Reglas: exactamente las ideas pedidas, distintas; solo apoyarse en `hechos`; en el tema y el porqué, sin cifras ni nombres propios que no estén en los datos, sin enlaces ni menciones y nunca `@everyone`/`@here` (la fecha va solo en `fecha` y `hora`); `linea` es la clave de una línea (repartidas según su peso) o `null`; `redes` solo de las pedidas; Instagram necesita imagen, carrusel o video y TikTok, video; la fecha es un día del período y la hora, de Chile, dentro de la cadencia de cada red (días, horas y posts por semana, de lunes a domingo); no repetir ni parafrasear lo reciente ni lo descartado; respetar `evitar`; el tema, una frase corta en sentence case; el porqué, una o dos frases.
+
+**Salida estructurada:** `{ ideas: [{ tema, linea, redes, formato, fecha, hora, porque }], warnings }`. El sobre se valida entero (hasta 40 ideas y 10 advertencias; si no calza, un reintento con los motivos y después `LLM_OUTPUT_INVALID`); **cada idea se valida por separado**, así una mal formada se descarta sin tumbar el plan.
+
+**Las verificaciones** (`checkPlanIdeas`), en orden; una idea que no pasa se **descarta** y queda en el reporte con su código:
+
+| Código | Cuándo |
+|---|---|
+| `FORMAT_INVALID` | La idea no tiene la forma pedida (falta un campo, un formato que no existe, un tema de más de 200 caracteres…) |
+| `DATE_INVALID` | La fecha o la hora no existen en Chile |
+| `OUT_OF_PERIOD` | La fecha está fuera del período |
+| `IN_THE_PAST` | Dentro del período, pero ya pasó (el plan corrió tarde) |
+| `PILLAR_UNKNOWN` | La línea no está en el perfil (`null` sí vale) |
+| `MASS_MENTION` | `@everyone` o `@here` en el tema o el porqué |
+| `FACT_NOT_IN_PROFILE` | Una cifra, un posible nombre propio, un enlace o una mención del tema o el porqué que no están en el perfil (la misma heurística de `checkPostContent`, `unsupportedFacts`; las fuentes son las del perfil, `profileSources`: una idea no tiene brief del operador) |
+| `REPEATED_TOPIC` | El tema repite uno de los últimos 60 días (se compara sin tildes, mayúsculas ni puntuación) |
+| `DISCARDED_TOPIC` | El tema repite una idea descartada |
+| `DUPLICATE_IN_PLAN` | El tema repite otra idea del mismo plan |
+| `OVER_COUNT` | Ya hay tantas ideas como las pedidas |
+| `PLATFORM_NOT_REQUESTED`, `FORMAT_NOT_SUPPORTED`, `OUT_OF_CADENCE`, `WEEK_FULL` | Cada red de la idea: que se haya pedido, que admita el formato (`kindProblem`, la misma regla que usa `post.draft`), que el día y la hora estén en su cadencia y que la semana no tenga ya sus posts por semana (contando lo ya planificado y las ideas del plan). Una red que no sirve **se le quita** a la idea (queda en sus `notes`); si no le queda ninguna, la idea se descarta con el motivo de la primera |
+
+**El reporte** (`planRunReportSchema`, en `plan_runs.report`): las ideas guardadas con el id de su post, el tema, la línea, sus redes, el formato, la fecha y las notas; las descartadas con su tema, código y detalle; las advertencias de la IA; y la llamada (proveedor, modelo, intentos y duración). Cero ideas válidas también es un plan terminado (`succeeded`): el reporte dice por qué. El reporte es una foto al terminar: después manda el post. Cada idea guarda **sus redes** en `posts.platforms` y, al aceptarla, `post.draft` redacta solo para esas (decisión del operador); un post manual tiene `null` (todas las de la marca). En los dos casos, `post.draft` deja fuera las redes que no sirven al tipo del post (Instagram sin imagen ni video; TikTok sin video, `kindProblem`); si no queda ninguna, `POST_NO_PLATFORMS`.
+
+**Sin la base (T22):** `proposePlanIdeas({ llm, beforeCall?, onUsage? }, { brief, period, sources, now })` hace la llamada, la validación y las verificaciones sin escribir nada; `runPlan` la usa y guarda el resultado, y `pnpm eval:social` la usa sin guardar nada (sección siguiente).
+
+**El plan de ejemplo** (`LLM_PROVIDER=fake`, `samplePlanResponse`): lee lo pedido del bloque de datos del prompt y entrega, sin red ni azar, las ideas pedidas de una red cada una, en los días y horas de la cadencia (las 10:00 si no tiene) sin pasar los posts por semana, repartidas en el período, con las líneas por turno y temas que no repiten lo reciente ni lo descartado. Pasan todas las verificaciones con cualquier perfil. Si el período y la cadencia no dan para todas, entrega menos con una advertencia.
+
+**Límites conocidos:** la repetición se detecta por tema igual (normalizado), no por parecido: parafrasear lo reciente queda a cargo del prompt y del operador, que acepta o descarta cada idea. La heurística de hechos tiene los mismos límites que la de los textos (arriba).
+
+## La evaluación del plan y los textos (`pnpm eval:social`, F9-T22)
+
+Mide las reglas de las dos secciones anteriores con la IA de verdad, sin la base: sobre tres marcas **inventadas** (`apps/worker/src/eval/social-profiles.ts`: una sin hechos, una con hechos y dos idiomas en cuatro redes, y una con temas recientes y descartados), corre el plan (`proposePlanIdeas`) y redacta los textos de las primeras ideas aceptadas (`draftPostTexts`, por red e idioma, con los medios que pide su formato supuestos subidos). Cuenta:
+
+| Qué | Cómo |
+|---|---|
+| Ideas repetidas | Las descartadas por `REPEATED_TOPIC`, `DISCARDED_TOPIC` o `DUPLICATE_IN_PLAN` |
+| Ideas parecidas (advertencia) | Una aceptada que comparte el 60 % o más de sus palabras con peso (4 letras o más, sin "cómo", "para"…) con un tema del historial o con otra idea del plan: lo que la verificación no ve (arriba). El umbral queda en 60 % hasta la primera corrida real del operador; con el plan de `fake` ya marca como parecidos un mismo ángulo en dos líneas distintas |
+| Fuera del perfil | Las ideas descartadas por `FACT_NOT_IN_PROFILE` y cada `FACT_NOT_IN_PROFILE` o `LINK_NOT_ALLOWED` de los textos |
+| Largos | `TOO_LONG` y `HASHTAG_LIMIT` de los textos |
+| Escapes | LinkedIn que cabe sin los escapes y no con ellos; un hashtag dentro del cuerpo (va aparte y en LinkedIn saldría escapado); caracteres de ancho cero (U+200B a U+200D, U+2060, U+FEFF) o la arroba ancha (U+FF20). El markdown no cuenta aquí: es la advertencia `MARKDOWN` de la revisión y se muestra una vez, con ella |
+| Menciones masivas | Ideas descartadas por `MASS_MENTION` y `MASS_MENTION` de los textos |
+| Términos a evitar (advertencia) | `AVOID_TERM` de los textos |
+
+Imprime cada idea (aceptada o descartada con su motivo) y cada texto con su revisión, y el costo estimado del plan y de los textos por separado y en total (tokens y US$ con la tabla de precios de core; `fake` y la CLI de Claude cuestan 0; si solo algunas llamadas informaron tokens, dice cuántas y marca el costo como parcial). La medición del costo con la API está en `docs/integraciones/anthropic-api.md` §13.
+
+**Código de salida:** 1 si hubo fallas de la IA, un corte, o problemas que **llegan al operador**: textos con errores de la revisión o con problemas de escape. Las ideas que el plan descarta (repetidas, fuera del perfil, menciones masivas…) son la defensa funcionando: se muestran como estadística ("descartadas por el plan", por motivo) y no cambian la salida, salvo con `--strict`, que también sale con 1 si el plan descartó alguna. Las advertencias (parecidas y términos a evitar) nunca la cambian.
+
+**Límite conocido: "fuera del perfil" no es una garantía.** Cuenta lo que ve la heurística de hechos de core (`unsupportedFacts` y `checkPostContent`), con sus mismos límites (sección del texto por red). En particular, no ve clientes con nombre de empresa en una línea con forma de título: "Trabajamos con Banco Estado y Falabella", sin punto final y con sus palabras largas en mayúscula, se toma como título y no se revisa como nombres (con el perfil `sin-hechos` da `[]`). Un cero en ese contador no reemplaza leer las ideas y los textos: el operador sigue aprobando cada uno.

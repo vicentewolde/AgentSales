@@ -8,6 +8,7 @@ import { OnboardingList } from "../components/brokers/OnboardingList.js";
 import { OneTimeLink } from "../components/brokers/OneTimeLink.js";
 import { SpendLine } from "../components/brokers/SpendLine.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
+import { EditorialProfileSection } from "../components/posts/EditorialProfileForm.js";
 import { useBrokerDetail, useUpdateBroker } from "../queries/brokers.js";
 import { useUsage } from "../queries/usage.js";
 import { useInviteUser, useResetUser, useSetUserDisabled, useUsers } from "../queries/users.js";
@@ -196,7 +197,7 @@ export function BrokerPage() {
         {broker.brandName} <span className="text-base text-slate-500">({broker.slug})</span>
       </h1>
       <SpendLine usage={usage.data} brokerId={broker.id} />
-      <OnboardingList steps={onboarding} />
+      <OnboardingList steps={onboarding} kind={broker.kind} />
       <section aria-label="Marca" className="mt-6">
         <h2 className="text-lg font-semibold">Marca y ajustes</h2>
         <BrandForm
@@ -213,6 +214,7 @@ export function BrokerPage() {
         </p>
       </section>
       <LogoAndTemplate broker={broker} />
+      <EditorialProfileSection brokerId={broker.id} />
       <BrokerUsers key={broker.id} brokerId={broker.id} />
     </div>
   );

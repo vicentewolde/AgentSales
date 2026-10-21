@@ -1,6 +1,6 @@
 # Spec F9 · Contenido de marca
 
-- **Estado:** **Aprobado** el 2026-10-19 por el operador (revisado por el `arquitecto`; P1 a P6 respondidas; tres entregas, ejecución en paralelo y la decisión de arquitectura D19)
+- **Estado:** **Cerrado** el 2026-10-20 (`v1.3.0`; la prueba en vivo de T24 queda pendiente del operador, red por red, tras S1 a S6). **Aprobado** el 2026-10-19 por el operador (revisado por el `arquitecto`; P1 a P6 respondidas; tres entregas, ejecución en paralelo y la decisión de arquitectura D19)
 - **Rama base:** `main`, con F8 cerrada (`v1.0.0`)
 - **Tag al cerrar:** `v1.1.0` (entrega 1), `v1.2.0` (entrega 2) y `v1.3.0` (entrega 3, cierre de la fase)
 - **Referencias:** `docs/00-vision.md`, ADR-0006, ADR-0013, ADR-0014, ADR-0015, ADR-0017, ADR-0018, ADR-0019, ADR-0021 a ADR-0023, ADR-0025, ADR-0027, ADR-0029 y ADR-0030 (nuevos), `docs/01-arquitectura.md`, `docs/02-modelo-datos.md`, `docs/04-formato-publicaciones.md`, `docs/10-despliegue.md`, `docs/11-app-review-meta.md`, `docs/integraciones/meta-verificacion-empresa.md`, ADR-0028 (el corredor conecta su Instagram, F8), y las notas de integración nuevas: `docs/integraciones/x.md`, `linkedin.md`, `discord.md`, `tiktok.md`, `instagram-contenido-propio.md`, `meta-ads.md` y `manychat.md` (2026-10-19)
@@ -18,7 +18,7 @@ AgentSales deja de ser solo para avisos: el operador gestiona su contenido de ma
 - **La IA propone** (ADR-0030): un plan de ideas con fecha sugerida para un período; el operador acepta, edita o descarta cada idea; al aceptar, se redactan los textos.
 - **Verificaciones por red** antes de aprobar: largo, escape de caracteres, menciones masivas, enlaces en X, datos que no están en el perfil.
 - **Panel y CLI:** Contenido (lista, editor por red con conteo de caracteres, medios), Plan (ideas), calendario semanal que mezcla posts y avisos, y la CLI `post`, `plan` y `brand`.
-- **Pruebas de entrada** (§4.8) con las cuentas reales, que hace el operador, antes de construir lo que dependa de ellas.
+- **Pruebas de entrada** (§4.8) con las cuentas reales, que hace el operador: desde el 2026-10-20, verificación obligatoria antes de publicar de verdad en cada red, no antes de construir.
 - **Costos y topes:** gasto de IA por marca (tope de F7, ahora también con posts y planes) y el costo de X anotado por publicación.
 
 ## 3. Fuera de alcance
@@ -59,6 +59,8 @@ Un post tiene un estado propio:
 | `ready` | Al menos un texto aprobado (las publicaciones nacen de ahí, como en ADR-0014) |
 | `archived` | Descartado o terminado; no se programa |
 
+Reglas de los posts (F9-T10): un post archivado no se edita ni recibe medios (`POST_ARCHIVED`, 409); un post con publicaciones pendientes (`PENDING_PUBLICATION_STATUSES`) no se archiva hasta cancelarlas o resolverlas (`POST_HAS_PENDING_PUBLICATIONS`, 409); un post tiene hasta 20 medios, contando las subidas pendientes. Desde F9-T21, sus redes (`posts.platforms`) mandan al aprobar, publicar y programar (`POST_PLATFORM_EXCLUDED`; el texto aprobado se revisa antes: una red quitada, pedida a mano y sin texto aprobado da `CONTENT_NOT_APPROVED`) y una red con publicaciones pendientes no se le quita (`POST_HAS_PENDING_PUBLICATIONS`, 409, con sus ids: primero se cancelan o resuelven).
+
 El estado de la publicación de cada red es el de ADR-0014 más `outcome_unknown` (§4.6), con la misma bitácora. La agenda y el seguimiento (F6) muestran posts y avisos juntos, con el tema del post como título.
 
 ### 4.3 Marcas y perfil editorial
@@ -94,7 +96,7 @@ Verificaciones comunes (`checkPostContent`): largo, caracteres reservados, menci
 
 ### 4.5 Los medios de un post
 - Subida directa a R2 con URL prefirmada (ADR-0025), por la misma ruta de la API y del panel que las cargas: `POST /api/posts/:id/uploads` y `…/uploads/complete`. El registro de lo pendiente vive en `post_uploads` (la tabla de cargas, `import_runs`, es de planillas); un trabajo periódico borra de R2 lo abandonado, como la limpieza de las cargas. Imágenes (JPEG, PNG, WebP, HEIC) y videos (MP4, MOV), con los topes de la carga. Las claves de R2 de un post van bajo `posts/{postId}/…`.
-- El worker procesa lo subido con el pipeline existente (`MediaProcessor`): variantes `ig_4x5` y `thumb`, y el reel 9:16 con tope de 90 s. Para X se agrega una variante de video reducida (la doc fija un máximo de 1280×1024: NO VERIFICADO, `x.md` §5), y para Discord un video bajo 20 MiB o, si no cabe, solo un enlace (D8).
+- El worker procesa lo subido con el pipeline existente (`MediaProcessor`): variantes `ig_4x5` y `thumb`, y el reel 9:16 con tope de 90 s. Para X se agrega una variante de video reducida (la doc fija un máximo de 1280×1024: NO VERIFICADO, `x.md` §5), y para Discord un video bajo 20 MiB o, si no cabe, solo un enlace (D8). **Así quedó en F9-T14:** Discord no tiene variante propia; su publicación fija la más liviana del video entre `x_video` (720p, 8 Mbps como mucho) e `ig_reel`, y el publisher la adjunta si pesa hasta 20 MiB. Si no cabe, no se adjunta y, como hoy no hay un enlace al video que no exponga una URL firmada de larga vida (R2 no tiene un dominio público), se publica **solo el texto** con una nota en la bitácora; el enlace estable queda pendiente (un dominio público de medios, después de S5).
 - Cada publicación fija los medios (`media_ids`) al nacer, como en ADR-0014.
 
 ### 4.6 Las cuatro redes
@@ -106,7 +108,7 @@ Verificaciones comunes (`checkPostContent`): largo, caracteres reservados, menci
 | Modo | Siempre por API | Siempre por API | **`manual` por defecto** (P1); `api` cuando LinkedIn aclare su término | Siempre por API |
 | Qué publica | Imagen, carrusel, reel | Texto y hasta 10 archivos de 20 MiB | Texto, imagen, varias imágenes, video | Texto con 4 imágenes o 1 video |
 | Medios | URL firmada de R2 (ya probado) | Se suben los bytes | Se suben los bytes | Se suben los bytes (por partes) |
-| Programar | Calendario propio (la API no programa) | Calendario propio | Calendario propio en modo `api`; en `manual`, un recordatorio (como Marketplace) | Calendario propio |
+| Programar | Calendario propio (la API no programa) | Calendario propio | Calendario propio en modo `api`; en `manual`, a la hora programada el reloj la deja lista para publicar a mano (`awaiting_manual_confirm`, sin llamar a la red): ese es el recordatorio | Calendario propio |
 | Borrar | A mano | Con el webhook | `DELETE` | `DELETE` |
 | Idempotencia | Progreso del contenedor (F3) | **Ninguna:** ante un corte justo al enviar queda `outcome_unknown` | URN del post | X rechaza el texto repetido (403, NO VERIFICADO): se trata como `outcome_unknown`, no como "ya publicado" |
 | Costo | Gratis | Gratis | Gratis | Pago por uso: US$0,015 por post; US$0,20 con enlace |
@@ -127,8 +129,8 @@ Todas respetan `PUBLISH_MODE` y el `dry-run` de la publicación (ADR-0016): en `
 - `meta` por plataforma con su esquema zod, como Instagram y Mercado Libre. LinkedIn suma `mode` (`api` | `manual`); X suma `spendLimitUsd`.
 - Los secretos nunca van a logs ni a la bitácora: `redactText` reconoce la URL del webhook de Discord (`discord.com/api/webhooks/<id>/<token>`) y los `Bearer`, antes de que exista el primer publisher nuevo (T02).
 
-### 4.8 Pruebas de entrada (las hace el operador, antes de construir lo que dependa)
-Se hacen **a mano**, con la consola o el generador de tokens de cada plataforma y los comandos de la sección 8 de su nota de integración; no necesitan el código de la aplicación. Cada una responde un NO VERIFICADO que decide el diseño. Después, cada publisher trae su propio `pnpm social:smoke --platform …` (que sí publica de verdad y por eso se declara en `CLAUDE.md` como `ml:test-user`, solo para el operador, en cuentas o servidores de prueba y con su instrucción en el chat).
+### 4.8 Pruebas de entrada (las hace el operador; ninguna bloquea construir: todas son verificación obligatoria antes de publicar de verdad)
+**Ninguna prueba bloquea construir** (decisiones del operador del 2026-10-20): S1 (Instagram) y S5 (Discord) para T13 y T14, y después S2 y S3 (LinkedIn), S4 (X) y S6 (TikTok) para T15, T16 y T26. Todo se construye contra simulaciones (`msw`), y cada prueba es una **verificación obligatoria antes de cualquier publicación real** en esa red; si falla, se ajusta el código (o el modo de la cuenta) antes de publicar. En LinkedIn, además, la cuenta nace en modo `manual` (D5) y solo pasa a `api` con S2 y S3 resueltas. Se hacen **a mano**, con la consola o el generador de tokens de cada plataforma y los comandos de la sección 8 de su nota de integración; no necesitan el código de la aplicación. Cada una responde un NO VERIFICADO que decide el diseño. Después, cada publisher trae su propio `pnpm social:smoke --platform …` (que sí publica de verdad y por eso se declara en `CLAUDE.md` como `ml:test-user`, solo para el operador, en cuentas o servidores de prueba y con su instrucción en el chat).
 
 | # | Prueba | Si falla |
 |---|---|---|
@@ -137,7 +139,7 @@ Se hacen **a mano**, con la consola o el generador de tokens de cada plataforma 
 | S3 | **LinkedIn:** respuesta de LinkedIn Developer Support sobre el §3.1(26) de sus términos (¿un calendario propio cuenta como "automatizar publicaciones"?) | LinkedIn queda siempre en modo `manual` |
 | S4 | **X:** crear un post, ver el saldo descontado, un reply a uno mismo, el rechazo de texto repetido y si un 4xx cobra | Sin hilos; el costo real se ajusta en `x.md` |
 | S5 | **Discord:** un webhook de prueba con texto, imagen y un video, en un servidor privado | Se ajusta la variante de video (D8) |
-| S6 | **TikTok:** crear la app con tu cuenta de Chile, autorizar una cuenta personal con `video.upload`, subir un video de R2 y ver el borrador en la bandeja; ver si acepta un redirect `https://localhost` y si el refresh rota | Si una cuenta personal no puede autorizar, se prueba una Creator o Business; si el borrador no llega sin auditoría, TikTok pasa al piloto |
+| S6 | **TikTok:** crear la app con tu cuenta de Chile, autorizar una cuenta personal con `video.upload`, subir un video de R2 y ver el borrador en la bandeja; ver si el refresh rota (TikTok exige `https`: la app quedó en un Sandbox y S6 se hace desde el servidor, `docs/integraciones/tiktok.md` §0) | Si una cuenta personal no puede autorizar, se prueba una Creator o Business; si el borrador no llega sin auditoría, TikTok pasa al piloto |
 
 ### 4.9 La IA propone (ADR-0030)
 ```
@@ -149,10 +151,10 @@ panel o CLI (plan) → requestPlanRun (core): período (por defecto, las próxim
     → cada idea queda como post en estado idea (source = ai, brief_origin = ai, plan_run_id)
   → plan_run en succeeded o failed, con el gasto de IA anotado
 operador: acepta (→ draft y se encola post.draft), edita el brief, mueve la fecha o descarta
-post.draft → la IA redacta el texto de cada red e idioma de la idea → verificaciones → contents en draft
+post.draft → la IA redacta el texto de cada idioma de las redes sugeridas de la idea que sirven al formato → verificaciones → contents en draft
 operador: revisa, edita, aprueba y programa (o publica)
 ```
-Una idea sin aceptar no gasta IA en textos y no ocupa un cupo del calendario. `auto_publish` no aplica (ADR-0030, punto 4).
+Una idea sin aceptar no gasta IA en textos ni tiene publicaciones: no se programa ni ocupa un horario del calendario de publicación. Mientras no se descarte, sí cuenta en los posts por semana de la cadencia cuando se pide otro plan que cubre su fecha (`plannedSlots`), para que dos planes no llenen dos veces la misma semana; descartarla, o moverla fuera del período, libera ese cupo. `auto_publish` no aplica (ADR-0030, punto 4).
 
 ### 4.10 Contratos (API, ADR-0011; todo bajo `/api` con sesión y alcance por marca)
 - `GET/PUT /api/brokers/:id/editorial-profile`.
@@ -160,18 +162,18 @@ Una idea sin aceptar no gasta IA en textos y no ocupa un cupo del calendario. `a
 - `POST /api/posts/:id/uploads` y `…/uploads/complete` (medios, ADR-0025).
 - `POST /api/posts/:id/draft` (pide los textos); `PATCH /api/posts/:id/contents/:platform/:language` (edita); `POST …/approve` y `…/unapprove`.
 - `POST /api/posts/:id/publish` y `/schedule` (como los avisos); `POST /api/publications/:id/resolve` (`outcome_unknown`: `{ outcome: "published" | "not_published", url? }`) y `…/confirm` para el modo `manual`.
-- `POST /api/plans` (pedir un plan); `GET /api/plans/:id`; `POST /api/posts/:id/accept` y `/discard` (ideas).
+- `POST /api/plans` (pedir un plan); `GET /api/plans?brokerId` (los planes de una marca, `listPlanRuns`); `GET /api/plans/:id`; `POST /api/posts/:id/accept` y `/discard` (ideas).
 - `GET /oauth/linkedin/start|callback` y `GET /oauth/x/start|callback`.
 - Permisos (ADR-0022): `posts.manage`, y cada ruta nueva entra a la tabla de permisos; un test la revisa. Un corredor ve solo los posts de su marca; el administrador ve todos.
-- CLI: `post create|list|show|draft|edit|approve|publish|schedule|archive`, `plan [--days 14] [--platform …]`, `plan show <id>`, `post accept|discard <id>`, `brand show|edit` (perfil editorial), `publications resolve <id> --published|--not-published`, `accounts connect linkedin|x|discord`.
+- CLI: `post create|list|show|draft|edit|approve|publish|schedule|archive`, `plan [--days 14] [--platform …]`, `plan show <id>`, `plan list` (F9-T21), `post accept|discard <id>`, `post edit --platforms|--date|--brief` (F9-T21), `brand show|edit` (perfil editorial), `publications resolve <id> --published|--not-published`, `accounts connect linkedin|x|discord`. Así quedó (F9-T12 a T21): además `post upload <id> <archivos…>`, `publications retry <id>`, `accounts connect tiktok`, `accounts mode <id> manual|api`, `accounts spend-limit <id> <dólares>` y `publications retire <id> --delete` (LinkedIn); `post edit --x-link|--no-x-link` (la marca del enlace en X). Tras el ensayo de la demo (PR #201): `post accept <id> --wait` (espera los textos de esa aceptación) y `--broker` en `listing ready|pause|resume|reopen|archive|close`, antes o después del subcomando.
 
 ### 4.11 Datos
 Migraciones desde la `0014` (o la siguiente libre). Reglas: **`ALTER TYPE … ADD VALUE` para todo valor nuevo de un enum** (nunca recrear el tipo: la `0006` se detiene si la tabla tiene filas), y ninguna migración usa en la misma transacción un valor recién agregado.
 - `platform` suma `x`, `linkedin`, `discord` y `tiktok`; `publication_status` suma `outcome_unknown`.
 - `brokers.kind` enum nuevo (`broker` default, `brand`).
 - `editorial_profiles` (`broker_id` PK/FK, `languages` text[], `audience`, `pillars` jsonb, `facts` text[], `avoid` text[], `cadence` jsonb, `default_hashtags` text[], timestamps).
-- `posts` (`id`, `broker_id`, `topic`, `brief`, `brief_origin` `operator|ai`, `kind` `text|image|carousel|video`, `status`, `source` `manual|ai`, `pillar` null, `planned_at` null, `plan_run_id` FK null, `created_by`, `rationale` null, timestamps). Índice `(broker_id, status, planned_at)`.
-- `plan_runs` (`id`, `broker_id`, `period_start`, `period_end`, `status`, `request` jsonb, `report` jsonb, `llm_*` como `content_runs`, timestamps): **se crea junto con `posts`** (T03) porque `posts.plan_run_id` la referencia; la lógica llega en T20.
+- `posts` (`id`, `broker_id`, `topic`, `brief`, `brief_origin` `operator|ai`, `kind` `text|image|carousel|video`, `status`, `source` `manual|ai`, `pillar` null, `planned_at` null, `plan_run_id` FK null, `created_by`, `rationale` null, timestamps). Índice `(broker_id, status, planned_at)`. Desde F9-T20 (migración `0018`), `platforms` text[] null: las redes del post (las de una idea; `null` = todas las de la marca).
+- `plan_runs` (`id`, `broker_id`, `period_start`, `period_end`, `status`, `request` jsonb, `report` jsonb, `llm_*` como `content_runs`, timestamps): **se crea junto con `posts`** (T03) porque `posts.plan_run_id` la referencia; la lógica llega en T20, con un índice único parcial: un plan activo (`queued` o `running`) por marca.
 - `contents`, `content_runs`, `publications`: `post_id` null, `listing_id` null y `CHECK (num_nonnulls(listing_id, post_id) = 1)`. `contents` y `publications` suman `language` (`es` por defecto: lo existente es español). Únicos: una publicación activa por `(post_id, platform_account_id, format, language)` y la actual por aviso; una corrida activa por post; `contents` único por `(content_run_id, platform, language)`. `publications` suma `cost_usd numeric(10,4)` null (el costo estimado, hoy solo X; suma mensual por cuenta para `spendLimitUsd`). `publications.listing_source_hash` ya es nulo. Los `NOT NULL` que se quitan son solo de metadatos y el `CHECK` es válido sobre los datos de hoy (todas las filas tienen `listing_id`).
 - Índices nuevos: `(post_id)` en `publications`, `(post_id, platform, created_at)` en `contents`, `(post_id, created_at)` en `content_runs`.
 - `media`: `post_id` null y `CHECK (num_nonnulls(listing_id, post_id) <= 1)`; único `(post_id, checksum) WHERE role = 'original'`.
@@ -180,7 +182,7 @@ Migraciones desde la `0014` (o la siguiente libre). Reglas: **`ALTER TYPE … AD
 - **Borrado de Meta (ADR-0027):** no cambia. `eraseInstagramUser` ya filtra por cuenta e incluye las publicaciones de posts en esa cuenta; `posts` y `contents` son textos del operador y también alimentan X y LinkedIn, así que no se borran. T03 suma un test que lo fija.
 
 ### 4.12 Costos
-- **IA:** el plan y los textos van por `LLMProvider` y se anotan por marca (F7); en el servidor, la API de Anthropic con el tope mensual. `sumLlmCost` cuenta las corridas de avisos, las de posts y los planes (T11 y T20). Con dos idiomas, un post cuesta el doble de textos. Un plan de 10 ideas más sus textos es del orden de centavos de dólar (a medir en T22).
+- **IA:** el plan y los textos van por `LLMProvider` y se anotan por marca (F7); en el servidor, la API de Anthropic con el tope mensual. `sumLlmCost` cuenta las corridas de avisos, las de posts y los planes (T11 y T20). Con dos idiomas, un post cuesta el doble de textos. Un plan de 10 ideas más sus textos es del orden de centavos de dólar (a medir en T22: la estimación, unos US$ 0,12 con Sonnet 5.5 en dos idiomas, está en `docs/integraciones/anthropic-api.md` §13; la medición con la API la corre el operador).
 - **X:** pago por uso con créditos prepagados. El sistema anota el costo estimado de cada publicación en `cost_usd` (US$0,015; US$0,20 con enlace) y respeta `spendLimitUsd` de la cuenta (por defecto **US$10 al mes**, P2): pasado el límite, la publicación queda `failed` con la causa. El tope duro está en la consola de X.
 - Instagram, LinkedIn y Discord no cobran.
 
@@ -201,7 +203,7 @@ Migraciones desde la `0014` (o la siguiente libre). Reglas: **`ALTER TYPE … AD
 | D5 | LinkedIn: perfil personal, cuenta en modo `manual`; pasa a `api` solo si LinkedIn aclara su término (S3) | **Respondida (P1)** |
 | D6 | X: enlaces permitidos y marcados (cuestan más), sin hilos, tope por defecto de US$10 al mes; en `dry-run` no se escribe | **Respondida (P2)** |
 | D7 | Discord: webhook de canal, sin bot, sin foros ni embeds | Tomada |
-| D8 | Discord y videos: variante bajo 20 MiB si cabe; si no, un enlace al video | **Respondida (P5)** |
+| D8 | Discord y videos: variante bajo 20 MiB si cabe; si no, un enlace al video (F9-T14: mientras no haya un enlace seguro, solo el texto con una nota en la bitácora, §4.5) | **Respondida (P5)** |
 | D9 | Las ideas de la IA son posts `idea`; aceptar, aprobar y programar son pasos distintos (ADR-0030) | Tomada |
 | D10 | La IA solo afirma lo que está en `facts` o en un brief escrito por el operador (ADR-0030) | Tomada |
 | D11 | Instagram solo imagen, carrusel y reel; sin Stories ni música en F9 | Tomada |
@@ -235,7 +237,7 @@ Una tarea (o un lote de tareas relacionadas) = una rama = un PR. F8 cerró (`v1.
 
 - **A** · el sujeto genérico, sin cambiar los avisos: T01 a T08
 - **B** · la marca, los posts y el texto: T09 a T12
-- **C** · las redes: T13 a T16 y T26 (TikTok); cada una sigue a su prueba de entrada
+- **C** · las redes: T13 a T16 y T26 (TikTok); cada una se construye contra simulaciones y su prueba de entrada se hace antes de publicar de verdad (decisión del operador, 2026-10-20)
 - **D** · panel y CLI: T17 a T19
 - **E** · la IA propone: T20 a T22
 - **F** · cierre: T23 a T25
@@ -254,8 +256,8 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 
 ### 5.2 Ejecución en paralelo (D21)
 **Olas** (lo que se puede hacer a la vez, según las dependencias):
-- **Entrega 1:** ola 1, T01 y T27 → ola 2, T02 y T03 → ola 3, T04 → ola 4, dos cadenas a la vez: el núcleo (T05 → T06 → T07 → T08) y la marca y el texto (T09 → T10 → T11) → ola 5, T12, T13 (tras S1) y T14 (tras S5).
-- **Entrega 2:** T15, T16, T26 y la cadena T17 → T18 a la vez; T19 al final (depende de los publishers).
+- **Entrega 1:** ola 1, T01 y T27 → ola 2, T02 y T03 → ola 3, T04 → ola 4, dos cadenas a la vez: el núcleo (T05 → T06 → T07 → T08) y la marca y el texto (T09 → T10 → T11) → ola 5, T12, T13 y T14 (S1 y S5, antes de publicar de verdad en Instagram y Discord; decisión del operador 2026-10-20).
+- **Entrega 2:** T15, T16, T26 y la cadena T17 → T18 a la vez (S2 y S3, S4 y S6, antes de publicar de verdad en LinkedIn, X y TikTok; decisión del operador 2026-10-20); T19 al final (depende de los publishers).
 - **Entrega 3:** T20 → T21 y T22 a la vez → T23, T24 y T25.
 
 **Reglas:**
@@ -270,195 +272,226 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 - **Descripción:** `x`, `linkedin`, `discord` y `tiktok` en `PLATFORMS` (una sola migración para las cuatro), sus etiquetas y nombres cortos; `outcome_unknown` en los estados de publicación (transiciones, `PENDING_PUBLICATION_STATUSES`, único parcial activo); `brokers.kind` y `agentsales brokers create --kind`; la regla «un aviso solo cuelga de un corredor `kind = broker`» (un post, de cualquiera) y `auto_publish` fuera de los posts; el panel esconde lo de avisos en una `brand`. En `CLAUDE.md`: el glosario (`Post`, marca) y la regla de `social:smoke`. Sin publishers todavía.
 - **Archivos principales:** `packages/core/src/enums.ts`, `labels.ts`, `publication-state.ts`, `broker.ts`; `packages/db/src/schema.ts` y migración `0014` (solo `ALTER TYPE … ADD VALUE` y la columna `kind`); `apps/cli`, `apps/web` (navegación); `CLAUDE.md`.
 - **Hecho cuando:**
-  - [ ] la migración aplica sobre una base con filas en `publications` (PGlite con datos de F3 a F8) y las marcas existentes quedan `broker`
-  - [ ] la tabla de transiciones cubre `publishing → outcome_unknown → published | failed` con tests, y una `outcome_unknown` cuenta como activa
-  - [ ] `docs/10-despliegue.md` explica que volver atrás después de usar los valores nuevos rompe la lectura
-  - [ ] `pnpm check` pasa, y docs y `docs/ESTADO.md` actualizados
+  - [x] la migración aplica sobre una base con filas en `publications` (PGlite con datos de F3 a F8) y las marcas existentes quedan `broker` (`packages/db/test/f9-platforms-migration.test.ts:139`)
+  - [x] la tabla de transiciones cubre `publishing → outcome_unknown → published | failed` con tests, y una `outcome_unknown` cuenta como activa (`packages/core/src/publication-state.test.ts:114`)
+  - [x] `docs/10-despliegue.md` explica que volver atrás después de usar los valores nuevos rompe la lectura (`docs/10-despliegue.md`, paso 9)
+  - [x] `pnpm check` pasa, y docs y `docs/ESTADO.md` actualizados (CI en verde, PR #170)
 
 ### F9-T02 · Credenciales por plataforma y redactor
 - **Depende de:** T01
 - **Descripción:** la unión de credenciales por plataforma en core y en `platform_accounts` (con la AAD de siempre), con TikTok y con un token que no vence; `redactText` con la URL del webhook de Discord y los `Bearer`; `checkConnectedCredentials` por plataforma.
 - **Archivos principales:** `packages/core/src/platform-account.ts`, `redact.ts`, `packages/db/src/repositories/platform-accounts.ts`, `packages/config`
 - **Hecho cuando:**
-  - [ ] `{ webhookUrl }` se guarda cifrada y se lee descifrada solo por `getCredentials`; las cuentas existentes siguen leyéndose
-  - [ ] un test de redacción cubre la URL del webhook en logs, errores y eventos
-  - [ ] `pnpm check` pasa
+  - [x] `{ webhookUrl }` se guarda cifrada y se lee descifrada solo por `getCredentials`; las cuentas existentes siguen leyéndose (`packages/db/test/platform-accounts.contract.ts:144`)
+  - [x] un test de redacción cubre la URL del webhook en logs, errores y eventos (`packages/config/src/logger.test.ts:177` y `packages/core/src/use-cases/publish-publication.test.ts:376`)
+  - [x] `pnpm check` pasa (CI en verde, PR #171)
 
 ### F9-T03 · Esquema de posts y migración
 - **Depende de:** T01
 - **Descripción:** `posts`, `plan_runs`, `post_uploads`, `editorial_profiles`; `post_id` y `language` donde corresponde; los `CHECK`, únicos e índices de §4.11; `publications.cost_usd`; seeds de las dos marcas. Solo esquema: los repositorios llegan en T04.
 - **Archivos principales:** `packages/db/src/schema.ts`, migración `0015`, `packages/db/test`
 - **Hecho cuando:**
-  - [ ] la migración aplica sobre datos reales de avisos (filas de todas las tablas tocadas) y no cambia ninguna fila
-  - [ ] el `CHECK` rechaza una fila con los dos sujetos o con ninguno (`media` admite ninguno)
-  - [ ] un test fija que el borrado de Meta no toca `posts` ni `contents`
-  - [ ] `docs/02-modelo-datos.md` actualizado; `pnpm check` pasa
+  - [x] la migración aplica sobre datos reales de avisos (filas de todas las tablas tocadas) y no cambia ninguna fila (`packages/db/test/f9-posts-migration.test.ts:199`)
+  - [x] el `CHECK` rechaza una fila con los dos sujetos o con ninguno (`media` admite ninguno) (`packages/db/test/f9-posts-migration.test.ts:285-322`)
+  - [x] un test fija que el borrado de Meta no toca `posts` ni `contents` (`packages/db/test/meta-deletion.test.ts:345`)
+  - [x] `docs/02-modelo-datos.md` actualizado; `pnpm check` pasa (CI en verde, PR #172)
 
 ### F9-T04 · Repositorios con sujeto y `PostLock`
 - **Depende de:** T03
 - **Descripción:** `Subject`, `PostRepository`, `PostUploadRepository`, `PlanRunRepository`, `EditorialProfileRepository` (solo lectura y escritura básica); los repositorios existentes aceptan `postId`; `PostLock` con las reglas de `ListingLock`; `sumLlmCost` suma avisos, posts y planes; el permiso `posts.manage` y el dueño de un post por su marca.
 - **Archivos principales:** `packages/core/src/subject.ts`, `ports/post-repository.ts`, `ports/post-lock.ts`, `packages/db/src/repositories/*`, `packages/core/src/permissions.ts`, `apps/api/src/app.ts`, `request-context.ts`
 - **Hecho cuando:**
-  - [ ] contratos de repositorio con PGlite para posts, y los de avisos con las mismas aserciones
-  - [ ] `PostLock` serializa dos operaciones sobre el mismo post y la bitácora anota al usuario (`request-context`)
-  - [ ] `sumLlmCost` cuenta una corrida de post y un plan
-  - [ ] la tabla de permisos tiene `posts.manage` y su test pasa; `pnpm check` pasa
+  - [x] contratos de repositorio con PGlite para posts, y los de avisos con las mismas aserciones (`packages/db/test/subject-repositories.contract.ts:82`)
+  - [x] `PostLock` serializa dos operaciones sobre el mismo post y la bitácora anota al usuario (`request-context`) (`packages/db/test/subject-repositories.contract.ts:394`)
+  - [x] `sumLlmCost` cuenta una corrida de post y un plan (`packages/db/test/subject-repositories.contract.ts:919`)
+  - [x] la tabla de permisos tiene `posts.manage` y su test pasa; `pnpm check` pasa (CI en verde, PR #173)
 
 ### F9-T05 · Aprobar, editar y abrir publicaciones sobre un sujeto
 - **Depende de:** T04
 - **Descripción:** `approve-content`, `unapprove-content`, `edit-content`, `open-publications`, `request-content-run` y los jobs que reencolan corridas (`requeueQueuedContentRuns`, `resumeCutAutoPublish`) aceptan un sujeto y usan el candado que corresponde; las corridas de posts no caen en `content.prepare`; lo propio del aviso sigue solo para avisos.
 - **Archivos principales:** `packages/core/src/use-cases/*`, `apps/worker/src/jobs/content-prepare.ts`
 - **Hecho cuando:**
-  - [ ] los tests de avisos pasan y hay tests nuevos para posts (aprobar, quitar la aprobación, editar con la corrida activa)
-  - [ ] una corrida de post `queued` no se reencola como `content.prepare`
-  - [ ] `pnpm check` pasa
+  - [x] los tests de avisos pasan y hay tests nuevos para posts (aprobar, quitar la aprobación, editar con la corrida activa) (`packages/core/src/use-cases/post-content.test.ts:237`)
+  - [x] una corrida de post `queued` no se reencola como `content.prepare` (`apps/worker/src/jobs/content-prepare.test.ts:479`)
+  - [x] `pnpm check` pasa (CI en verde, PR #176)
 
 ### F9-T06 · El intento de publicar, el traspaso por cuenta y el resultado dudoso
 - **Depende de:** T05
 - **Descripción:** `publish-publication` y `publish/input.ts` sobre un sujeto (medios por sujeto, `socialCaption` en vez de enviar solo `body`); el contrato `Publisher` con `OUTCOME_UNKNOWN` y el progreso "enviando"; `requiresManualConfirm` por plataforma y cuenta; `confirmManualPublication` y `resolvePublication` genéricos; `ensureAccessToken` por plataforma al publicar. Marketplace y Portal no cambian de comportamiento.
 - **Archivos principales:** `packages/core/src/use-cases/publish-publication.ts`, `confirm-manual-publication.ts`, `ensure-access-token.ts`, `ports/publisher.ts`, `publish/input.ts`
 - **Hecho cuando:**
-  - [ ] con un publisher falso: un corte tras "enviando" deja `outcome_unknown` y ningún reintento llama otra vez; el reencolado al arrancar el worker no vuelve a publicar
-  - [ ] una cuenta en `manual` no llama a la red y la confirmación guarda el enlace; los tests de Marketplace pasan sin cambios
-  - [ ] `docs/01-arquitectura.md` (contrato Publisher, estados, flujo 3) actualizada; `pnpm check` pasa
+  - [x] con un publisher falso: un corte tras "enviando" deja `outcome_unknown` y ningún reintento llama otra vez; el reencolado al arrancar el worker no vuelve a publicar (`packages/core/src/use-cases/publish-subject.test.ts:139`)
+  - [x] una cuenta en `manual` no llama a la red y la confirmación guarda el enlace; los tests de Marketplace pasan sin cambios (`packages/core/src/use-cases/publish-subject.test.ts:476`)
+  - [x] el filtro `listing_id IS NOT NULL` de `listByStatus`, `listDue` y `listStalePublishing` (F9-T04) se quita o se parametriza cuando sus casos de uso trabajen con sujeto: las publicaciones `publishing` de posts también se reencolan al arrancar el worker (sin republicar: el progreso "enviando" las lleva a `outcome_unknown`) y la vigilancia las ve (`packages/db/test/listing-sweeps.test.ts:165`)
+  - [x] `docs/01-arquitectura.md` (contrato Publisher, estados, flujo 3) actualizada; `pnpm check` pasa (CI en verde, PR #178)
 
 ### F9-T07 · Programar, reloj, vigilancia y cancelar sobre un sujeto
 - **Depende de:** T06
 - **Descripción:** `publish-listing`/`publication-start`, `schedule-publications`, `start-due-publications`, `cancel-publication`, `retire-publication` y la vigilancia de F6 sobre un sujeto; el paso a `active` y el cierre por venta solo en avisos.
 - **Archivos principales:** `packages/core/src/use-cases/*`, `apps/worker/src/jobs/*`
 - **Hecho cuando:**
-  - [ ] un post con un publisher falso recorre aprobar → programar → publicar → reintento → `published`
+  - [x] un post con un publisher falso recorre aprobar → programar → publicar → reintento → `published` (`packages/core/src/use-cases/schedule-subject.test.ts:58`)
   - [ ] el reloj de un minuto publica posts programados y la vigilancia no confunde un post con un aviso
-  - [ ] `pnpm check` pasa
+  - [x] `pnpm check` pasa (CI en verde, PR #179)
 
 ### F9-T08 · Agenda y seguimiento con posts
 - **Depende de:** T07
 - **Descripción:** la agenda y el seguimiento muestran posts y avisos juntos (`tracking/agenda.ts`, `row.ts`); las clases nuevas `outcome_unknown` y "token por vencer"; la agenda ya no da por hecho el aviso.
 - **Archivos principales:** `packages/core/src/tracking/*`, `apps/api`, `apps/cli`
 - **Hecho cuando:**
-  - [ ] la agenda ordena posts y avisos juntos; una `outcome_unknown` y un token de LinkedIn a 7 días aparecen con su comando
-  - [ ] `pnpm check` pasa
+  - [x] la agenda ordena posts y avisos juntos; una `outcome_unknown` y un token de LinkedIn a 7 días aparecen con su comando (`packages/core/src/tracking/agenda.test.ts:234`, `:271` y `:328`)
+  - [x] `SubjectRef` ya no admite `string` (el id de un aviso, la rama de transición de F9-T04): todo llamador pasa un `Subject`; `listByListing` de medios y de publicaciones queda absorbido por `listBySubject`, y `listCurrent`, `findActive` y `listBySubject` tienen la misma firma (un `Subject`) (los tipos de `packages/core/src/subject.ts:20`)
+  - [x] `pnpm check` pasa (CI en verde, PR #181)
 
 ### F9-T09 · Perfil editorial
 - **Depende de:** T04
 - **Descripción:** casos de uso, `GET/PUT /api/brokers/:id/editorial-profile` y `agentsales brand show|edit`; el perfil se valida (idiomas, líneas con peso, cadencia por red).
 - **Archivos principales:** `packages/core/src/editorial-profile.ts`, `apps/api`, `apps/cli`
 - **Hecho cuando:**
-  - [ ] solo lo edita el administrador o el corredor de esa marca, y el perfil de una marca nunca se entrega a otra (tabla de permisos)
-  - [ ] `pnpm check` pasa
+  - [x] solo lo edita el administrador o el corredor de esa marca, y el perfil de una marca nunca se entrega a otra (tabla de permisos) (`apps/api/src/routes/editorial-profile.test.ts:92`, `:109` y `:153`)
+  - [x] `pnpm check` pasa (CI en verde, PR #175)
 
 ### F9-T10 · Posts manuales y sus medios
 - **Depende de:** T04, T09
 - **Descripción:** crear, listar, ver, editar y archivar posts (`brief_origin = operator`); subir medios directo a R2 con `post_uploads`; el worker procesa lo subido con el pipeline de medios (variantes de Instagram y X) y limpia lo abandonado.
 - **Archivos principales:** `packages/core/src/use-cases/*post*.ts`, `apps/api/src/routes/posts.ts`, `apps/worker`, `packages/media`
 - **Hecho cuando:**
-  - [ ] subir una imagen y un video a un post con R2 falso, con avance y reintento; una subida abandonada se borra
-  - [ ] el único `(post_id, checksum)` evita duplicados y las claves van bajo `posts/{postId}/`
-  - [ ] tabla de permisos y su test al día; `pnpm check` pasa
+  - [x] subir una imagen y un video a un post con R2 falso, con avance y reintento; una subida abandonada se borra (`packages/core/src/use-cases/post-uploads.test.ts:112` y `:305`)
+  - [x] el único `(post_id, checksum)` evita duplicados y las claves van bajo `posts/{postId}/` (`packages/core/src/use-cases/post-uploads.test.ts:197`)
+  - [x] tabla de permisos y su test al día; `pnpm check` pasa (CI en verde, PR #177)
 
 ### F9-T11 · El texto por red con IA
 - **Depende de:** T09, T10
 - **Descripción:** prompt de redes (`SOCIAL_PROMPT_VERSION`) y brief con el perfil editorial; un texto por red e idioma; `checkPostContent` con las reglas de §4.4; `socialCaption`; job `post.draft`; gasto de IA por marca.
 - **Archivos principales:** `packages/core/src/social/*`, `apps/worker/src/jobs/post-draft.ts`
 - **Hecho cuando:**
-  - [ ] con `fake` y respuestas fijas, el texto de cada red e idioma cumple su largo y su escape; un `@everyone` o una cifra ajena al perfil impide aprobar; un brief de la IA no vale como fuente de hechos
-  - [ ] el gasto queda anotado por marca y respeta el tope
-  - [ ] `docs/04-formato-publicaciones.md` tiene la sección de redes; `pnpm check` pasa
+  - [x] con `fake` y respuestas fijas, el texto de cada red e idioma cumple su largo y su escape; un `@everyone` o una cifra ajena al perfil impide aprobar; un brief de la IA no vale como fuente de hechos (`packages/core/src/use-cases/draft-post.test.ts:299` y `:326`)
+  - [x] el gasto queda anotado por marca y respeta el tope (`packages/core/src/use-cases/draft-post.test.ts:355` y `:383`)
+  - [x] al terminar una corrida `post.draft` pedida con `replaceEdits` que sustituye textos aprobados, se llama a `settlePostStatus` (F9-T05): el post no queda `ready` sin un texto vigente aprobado, con test (`packages/core/src/use-cases/draft-post.test.ts:517` y `:544`)
+  - [x] `docs/04-formato-publicaciones.md` tiene la sección de redes; `pnpm check` pasa (CI en verde, PR #180)
 
 ### F9-T12 · Aprobar, publicar y programar un post (CLI)
 - **Depende de:** T08, T11
 - **Descripción:** `agentsales post …` completo contra la API; `publications resolve` y `confirm`.
 - **Archivos principales:** `apps/cli/src/commands/post.ts`, `apps/api/src/routes/posts.ts`
 - **Hecho cuando:**
-  - [ ] con un publisher falso, `post create → draft → approve → schedule` deja la publicación programada y `agenda` la muestra
-  - [ ] `pnpm check` pasa
+  - [x] los comandos que la agenda ya sugiere para posts existen: `post show <id>`, `publications resolve <id> --published|--not-published`, `publications confirm <id> --url-stdin` y `publications not-published <id>` para un post, y uno para reintentar o publicar por id de publicación (revisión de F9-T08) (`apps/cli/src/commands/post.test.ts:338` y `:396`)
+  - [x] con un publisher falso, `post create → draft → approve → schedule` deja la publicación programada y `agenda` la muestra (`apps/cli/src/commands/post.test.ts:182`)
+  - [x] `pnpm check` pasa (CI en verde, PR #182)
 
 ### F9-T13 · Instagram para posts
-- **Depende de:** T07, T10, **prueba S1**
+- **Depende de:** T07, T10 (S1: verificación obligatoria antes de publicar de verdad, no antes de construir; decisión del operador 2026-10-20)
 - **Descripción:** el publisher de Instagram arma su input desde un post (imagen suelta, carrusel de 2 a 10, reel) y comparte la cuota de la cuenta con los avisos.
 - **Archivos principales:** `packages/core/src/publish/input.ts`, `packages/publishers/src/instagram`
 - **Hecho cuando:**
-  - [ ] contratos con `msw` para los tres formatos y para el límite de cuota compartido
+  - [x] contratos con `msw` para los tres formatos y para el límite de cuota compartido (`packages/publishers/src/instagram/post.test.ts:208` y `:325`)
   - [ ] el resultado de S1 queda anotado en `instagram-contenido-propio.md` y en `docs/ESTADO.md`
-  - [ ] `pnpm check` pasa
+  - [x] `pnpm check` pasa (CI en verde, PR #184)
 
 ### F9-T14 · Discord
-- **Depende de:** T07, T10, **prueba S5**
+- **Depende de:** T07, T10 (S5: verificación obligatoria antes de publicar de verdad, no antes de construir; decisión del operador 2026-10-20)
 - **Descripción:** publisher de webhook (texto y archivos), `allowed_mentions` fijo, `outcome_unknown` ante un corte, límites y 429, conexión con `accounts connect discord --webhook-stdin`, `social:smoke --platform discord`.
 - **Archivos principales:** `packages/publishers/src/discord/*`, `packages/core/src/use-cases/connect-account.ts`
+- **Nota (2026-10-20):** `social:smoke --platform discord` no se construyó: S5 se hace a mano (§4.8) y es la verificación antes de publicar de verdad. El lector del enlace del mensaje (`parseDiscordMessageUrl`, en core y sin red) deja como `external_id` el id del mensaje, el mismo que guarda el publisher.
 - **Hecho cuando:**
-  - [ ] contratos con `msw` (éxito, 429 con `retry_after`, 404 del webhook, corte → `outcome_unknown`)
-  - [ ] la URL del webhook no aparece en ningún log ni evento
-  - [ ] `pnpm check` pasa
+  - [x] contratos con `msw` (éxito, 429 con `retry_after`, 404 del webhook, corte → `outcome_unknown`) (`packages/publishers/src/discord/publisher.test.ts:150`, `:258`, `:304` y `:341`)
+  - [x] la URL del webhook no aparece en ningún log ni evento (`packages/publishers/src/discord/publish-attempt.test.ts:57`)
+  - [x] `pnpm check` pasa (CI en verde, PR #183)
 
 ### F9-T15 · LinkedIn
-- **Depende de:** T07, T10, **pruebas S2 y S3**
+- **Depende de:** T07, T10 (S2 y S3: verificación obligatoria antes de publicar de verdad, no antes de construir; decisión del operador 2026-10-20)
 - **Descripción:** OAuth del perfil personal (con `state` firmado y de un solo uso), publisher de texto, imagen, varias imágenes y video por `/rest/posts` con la cabecera de versión, función de escape de `commentary`, modo `manual` por defecto (deja el texto listo y espera la confirmación), recordatorio en la agenda, aviso 7 días antes de que venza el token.
 - **Archivos principales:** `packages/publishers/src/linkedin/*`, `apps/api/src/routes/oauth.ts`
+- **Nota (2026-10-20):** el OAuth vive en `apps/api/src/routes/oauth-linkedin.ts` (montado en `/oauth/linkedin`, con el `state` de `oauth.ts`). `accounts connect linkedin --broker <slug>` abre el inicio del OAuth en el navegador (con la sesión del panel); el botón del panel queda para T17/T19. `accounts mode <id> manual|api` (administrador) cambia el modo; reconectar el mismo perfil conserva el modo. El lector del enlace (`parseLinkedInPostUrl`, en core y sin red) deja como `external_id` el URN del post, el mismo formato que guarda el publisher (`x-restli-id`); el enlace de «Copiar enlace» trae un URN `activity`, que no es el `share` de la API. El `DELETE` está en el cliente (`deleteLinkedInPost`, solo con URN `share` o `ugcPost`), pero retirar desde AgentSales sigue marcándose a mano (`retirePublication`): conectarlo queda para T19. `social:smoke --platform linkedin` no se construyó: S2 se hace a mano (§4.8).
 - **Hecho cuando:**
-  - [ ] contratos con `msw` y tests del escape con todos los caracteres reservados
-  - [ ] en modo `manual` no se llama a la red y la confirmación guarda el enlace
-  - [ ] el `state` del OAuth es de un solo uso y va amarrado a la marca
-  - [ ] `pnpm check` pasa
+  - [x] contratos con `msw` y tests del escape con todos los caracteres reservados (`packages/publishers/src/linkedin/publisher.test.ts:250`)
+  - [x] en modo `manual` no se llama a la red y la confirmación guarda el enlace (`packages/publishers/src/linkedin/publish-attempt.test.ts:53`)
+  - [x] el `state` del OAuth es de un solo uso y va amarrado a la marca (`apps/api/src/routes/oauth-linkedin.test.ts:197`)
+  - [x] `pnpm check` pasa (CI en verde, PR #185)
 
 ### F9-T16 · X
-- **Depende de:** T07, T10, **prueba S4**
+- **Depende de:** T07, T10 (S4: verificación obligatoria antes de publicar de verdad, no antes de construir; decisión del operador 2026-10-20)
 - **Descripción:** OAuth 2.0 con PKCE (el verificador en la cookie firmada), refresco al publicar y en `tokens.refresh`, publisher de texto con imágenes o video (subida por partes), conteo ponderado de caracteres, `cost_usd`, `spendLimitUsd`, el 403 por texto repetido como `outcome_unknown`.
 - **Archivos principales:** `packages/publishers/src/x/*`
+- **Nota (2026-10-20):** construido contra simulaciones (msw); S4 es la verificación obligatoria antes de publicar de verdad (`x.md` §0). La marca del enlace es **por post** (`posts.x_link_allowed`, migración `0016`, `PATCH /api/posts/:id`): se suma al brief (el enlace tiene que estar en los dos), y sin ella la IA no recibe enlaces para X. El tope se fija con `accounts spend-limit <id> <dólares>` (administrador) y suma el `cost_usd` en `live` del mes de Chile de la cuenta sin contar las fallidas. `social:smoke --platform x` no se construyó (S4 se hace a mano). **Corrección (2026-10-20):** el criterio de la marca explícita del enlace en X ya tiene dónde marcarse: `post edit <id> --x-link` / `--no-x-link` en la CLI (`post show` la muestra y `post approve` da ese comando cuando un texto de X con enlace no la tiene) y «Permitir un enlace en X» en el detalle del post del panel, con el aviso del costo (los montos de core, `X_LINK_POST_COST_USD`); las dos mandan `PATCH /api/posts/:id` con `xLinkAllowed`.
 - **Hecho cuando:**
-  - [ ] contratos con `msw`: éxito, 402 por saldo, 429, 403 por texto repetido, refresh que rota
-  - [ ] un post con enlace pide la marca explícita y anota US$0,20; pasado el límite mensual, `failed` con la causa
-  - [ ] `pnpm check` pasa
+  - [x] contratos con `msw`: éxito, 402 por saldo, 429, 403 por texto repetido, refresh que rota (`packages/publishers/src/x/publisher.test.ts:181`, `:305`, `:324` y `:345`)
+  - [x] un post con enlace pide la marca explícita y anota US$0,20; pasado el límite mensual, `failed` con la causa (`packages/core/src/use-cases/publish-x.test.ts:58`, `:75` y `:114`)
+  - [x] un enlace en X requiere una marca explícita del operador por post (no basta con que el enlace esté en el brief), con el aviso del costo US$0,20. Hasta T16, "marcar" es escribirlo en el brief del operador (`checkPostContent`, F9-T11; `docs/04-formato-publicaciones.md`) (`packages/core/src/social/check.test.ts:264` y `:276`)
+  - [x] `pnpm check` pasa (CI en verde, PR #187)
 
 ### F9-T17 · Panel: Contenido
 - **Depende de:** T12
 - **Descripción:** lista de posts por marca y estado; editor con una pestaña por red e idioma (conteo de caracteres, vista previa, verificaciones), medios con avance, aprobar, programar y publicar; editor del perfil editorial; resolver una `outcome_unknown` y confirmar una publicación a mano.
-- **Archivos principales:** `apps/web/src/pages/Posts*.tsx`, `BrandPage.tsx`
+- **Archivos principales:** `apps/web/src/pages/Posts*.tsx`, `apps/web/src/components/posts/EditorialProfileForm.tsx`
+- **Nota (2026-10-20):** ver el registro de cambios (fila de F9-T17).
 - **Hecho cuando:**
+  - [x] el sha256 de un medio es obligatorio hasta 100 MB y opcional sobre eso, como ADR-0025 punto 2 (el navegador no puede hashear en streaming): la clave pasa a `posts/{postId}/original/{uploadId}.{ext}`, `post_uploads` suma un estado `uploaded` y el worker calcula el sha256 en streaming, crea el medio y deduplica; con un seguimiento en ADR-0025 (hoy, F9-T10, el sha256 es obligatorio siempre) (`packages/core/src/use-cases/post-uploads.test.ts:479` y `:488`)
   - [ ] tests de componentes y de las consultas; sin dependencias nuevas
-  - [ ] `pnpm check` pasa
+  - [x] `pnpm check` pasa (CI en verde, PR #189)
 
 ### F9-T18 · Panel: calendario
 - **Depende de:** T17
 - **Descripción:** vista semanal y mensual de lo programado, con posts y avisos, y mover una fecha.
 - **Archivos principales:** `apps/web/src/pages/CalendarPage.tsx`
+- **Nota (2026-10-20):** la lectura es `GET /calendar?from=&to=&broker=` (en `routes/tracking.ts`, con `calendarEntries` de core y hasta 43 días por pedido); muestra las programadas por su hora y, para ver la semana completa, también lo ya publicado por su `publishedAt` (lo aprobado, publicándose o fallido sigue en Seguimiento). Mover una fecha no suma ruta: es `POST /publications/:id/schedule` (`schedulePublication`, F6) con el `ScheduleForm` de siempre (confirmación en vivo incluida). Sin arrastrar (opcional, sin dependencias nuevas). `chileDateStart` y `chileDateOf` (core) dan los bordes de los días de Chile.
 - **Hecho cuando:**
-  - [ ] la hora se muestra en hora de Chile; reprogramar usa el mismo caso de uso de F6
-  - [ ] `pnpm check` pasa
+  - [x] la hora se muestra en hora de Chile; reprogramar usa el mismo caso de uso de F6 (`apps/web/src/pages/CalendarPage.test.tsx:171` y `:198`)
+  - [x] `pnpm check` pasa (CI en verde, PR #190)
 
 ### F9-T19 · CLI de cuentas y guía del operador
 - **Depende de:** T12, T14 a T16
 - **Descripción:** `accounts connect linkedin|x|discord|tiktok`, mensajes de error con "qué hacer", y la guía en `docs/08-guia-operador.md`.
+- **Nota (2026-10-20):** cada código de los publishers y de la conexión de Instagram, LinkedIn, X, Discord y TikTok tiene su consejo (`publicationErrorAdvice`). Las pruebas: `packages/publishers/src/error-advice.test.ts` lee el código de cada red (los literales `IG_`, `LINKEDIN_`, `X_`, `DISCORD_` y `TIKTOK_` de su carpeta) y falla si uno nuevo no tiene consejo (los motivos de `validate` van dentro de `PUBLISH_INPUT_INVALID` y quedan en una lista aparte); `packages/core/src/publish/error-advice.test.ts` fija a mano los de conectar y retirar (`F9_CONNECT_AND_RETIRE`) y los de core; `apps/api/src/routes/oauth-errors.test.ts` recorre `OAUTH_REDIRECT_ERRORS` del contrato (con un `<RED>_NOT_CONFIGURED` por cada red de `OAUTH_PROVIDERS`) contra `publicationErrorAdvice`; y `apps/web/src/components/accounts/accounts.test.ts` exige, por cada código de `OAUTH_REDIRECT_ERRORS` y cada red de `OAUTH_PROVIDERS`, el texto propio que muestra el panel al volver del OAuth (`oauthErrorText`, sin el genérico "No se pudo conectar" y con el nombre de la red puesto), que es donde el operador ve esos errores. La CLI muestra el consejo también en `publications`, `publish` y `post show`. `accounts` dice las redes que faltan con su comando; `accounts connect` explica las variables cuando falta la app. `connect.x` y `connect.tiktok` pasan a obligatorios (`AppDeps.tiktok` también); `OAUTH_PROVIDERS` suma `x`. Cuentas del panel suma Discord (solo el comando de la CLI: la URL del webhook no se pega en el panel), LinkedIn, X y TikTok (botón del OAuth, con su permiso `*.connect`). **Retirar en LinkedIn por la API:** `Publisher.remove` (opcional, idempotente), `createLinkedInOperations` en `operationsFor` de la API, `retirePublication` con `deleteRemote` (solo publicación y API en `live`, cuenta en modo `api`; si no, `PUBLISH_MODE_MISMATCH` o `RETIRE_DELETE_UNSUPPORTED`) y `publications retire <id> --delete` en la CLI; el panel no tiene retirar para los posts todavía. Las redes con token que rota (X y TikTok, `ROTATING_TOKEN_PLATFORMS`) dan `RETIRE_DELETE_UNSUPPORTED` sin llamar hasta que retirar use `ensureRotatingAccessToken` (seguimiento de ADR-0029). La guía del operador suma "Conectar las redes de los posts (F9)".
 - **Hecho cuando:**
-  - [ ] cada error de una red tiene su consejo (como `error-advice.ts`)
-  - [ ] `pnpm check` pasa
+  - [x] cada error de una red tiene su consejo (como `error-advice.ts`)
+  - [x] retirar con `--delete`: en simulación no se llama a la red (una publicación de `dry-run` se retira sin llamar; `retire-publication.test.ts`)
+  - [x] con la publicación en vivo y la API en simulación, `PUBLISH_MODE_MISMATCH` sin llamar (`retire-publication.test.ts` y `publications-retire.test.ts`)
+  - [x] una cuenta a mano no borra: `RETIRE_DELETE_UNSUPPORTED` y sigue sirviendo retirar a mano (`retire-publication.test.ts`; el 409, también `publications-retire.test.ts`)
+  - [x] un 404 de LinkedIn cuenta como borrado (`packages/publishers/src/linkedin/publisher.test.ts`)
+  - [x] X y TikTok no borran todavía: `RETIRE_DELETE_UNSUPPORTED` sin llamar (`retire-publication.test.ts`)
+  - [x] `pnpm check` pasa (CI en verde, PR #191)
 
 ### F9-T20 · El plan de ideas (core y worker)
 - **Depende de:** T09, T11
 - **Descripción:** `requestPlanRun`, el prompt del plan, su validación (fechas, líneas, cadencia, sin hechos nuevos) y el job `content.plan`; aceptar y descartar ideas; el gasto del plan entra a `sumLlmCost`.
 - **Archivos principales:** `packages/core/src/social/plan.ts`, `apps/worker/src/jobs/content-plan.ts`
+- **Nota (2026-10-20):** lo puro vive en `social/` (`plan.ts`: período, lo que ve la IA, verificaciones y reporte; `plan-prompt.ts`; `plan-sample.ts`, el plan de ejemplo de `fake`) y los casos de uso en `use-cases/` (`requestPlanRun` y `getPlanRun` en `request-plan-run.ts`, `runPlan` en `run-plan.ts`, `acceptIdea` y `discardIdea` en `plan-ideas.ts`). Decisiones: (1) el prompt del plan tiene su versión propia, `PLAN_PROMPT_VERSION` (`social-plan-v1`), y no `SOCIAL_PROMPT_VERSION` (seguimiento en ADR-0030); (2) cada idea se valida por separado: una mal formada, con fecha fuera del período o de la cadencia, con una línea que no existe, con cifras o nombres fuera del perfil o con un tema repetido se descarta al reporte (`plan_runs.report`, `planRunReportSchema`) y el plan sigue; cero ideas válidas también es `succeeded`; (3) una red de la idea que no se pidió, que no admite el formato (Instagram sin imagen, TikTok sin video), fuera de su cadencia o con la semana llena se le **quita** a la idea, que sigue con las demás (se descarta si no le queda ninguna); (4) **decisión del operador:** las redes de cada idea se guardan en el post (`posts.platforms`, text[] null, migración `0018`; `null` = todas las de la marca, como un post manual) y, al aceptarla, `post.draft` redacta solo para esas; `updatePost` las cambia. Además, para todo post, `post.draft` deja fuera las redes que no sirven a su `kind` (`kindProblem`, la misma regla del plan: Instagram sin imagen o video, TikTok sin video), y sin ninguna es `POST_NO_PLATFORMS`; (5) **decisión del operador:** "descartadas" son las ideas de la IA archivadas de los últimos 60 días (después el tema vuelve a estar disponible), y "recientes" los demás posts creados o planificados en 60 días, incluidas las ideas sin decidir; la repetición se compara por tema normalizado (`topicKey`). Lo ya planificado en el período (ideas, borradores y listos con `planned_at`; uno sin redes propias cuenta en todas) ocupa su cupo de posts por semana (`plannedSlots`, también en el prompt como `ya_planificados`). Lo programado en `publications` sin `planned_at` en su post no se cuenta (sería otra consulta); (6) las ideas y el `succeeded` se guardan en una transacción (`PlanRunRepository.markSucceeded` con `ideas`, con el id de cada post puesto por core para anotarlo en el reporte): un intento repetido no duplica; (7) un plan activo por marca, respaldado en la base (índice único parcial `plan_runs_one_active_per_broker`, migración `0018`; un segundo `create` es `PLAN_RUN_CONFLICT`): una marca con un plan en cola o corriendo recibe ese (`reused`), también si dos pedidos se cruzan; (8) el plan de ejemplo se arma con lo que pide el prompt (`samplePlanResponse`, con la opción `respond` nueva del proveedor `fake` de `packages/llm`); (9) aceptar cambia `idea → draft` en el candado del post y después llama a `requestContentRun` tal cual (si eso falla, la idea queda aceptada y los textos se piden de nuevo); el tope de IA se revisa antes de cambiar nada; (10) `proposePlanIdeas` (`social/plan-propose.ts`) es la llamada, la validación y las verificaciones sin repositorios: la usan `runPlan` y T22; (11) `listPlanRuns` lista los planes de una marca con su alcance (para T21); (12) si quien pidió el plan ya no existe al guardarlo, las ideas quedan sin autor (`created_by = null`) en vez de fallar; (13) `contentRunErrorOf` vive en `content/run-error.ts`, compartido por las tres corridas. Editar el brief o mover la fecha de una idea es `updatePost` (F9-T10), que ya sirve. Código nuevo de cara al operador: `POST_NOT_IDEA` (409); `PLAN_RUN_INVALID` (400), `PLAN_RUN_ABORTED` y `PLAN_RUN_ABANDONED` son del plan. Las rutas, la CLI y el panel son de T21.
 - **Hecho cuando:**
-  - [ ] con `fake`: un plan de N ideas crea N posts `idea` (`brief_origin = ai`), sin textos ni publicaciones
-  - [ ] el plan no repite temas de los últimos 60 días ni ideas descartadas; una idea con fecha fuera del período se descarta
-  - [ ] el gasto se anota y respeta el tope; `pnpm check` pasa
+  - [x] con `fake`: un plan de N ideas crea N posts `idea` (`brief_origin = ai`), sin textos ni publicaciones (`use-cases/plan-run.test.ts`, `apps/worker/src/jobs/content-plan.test.ts`)
+  - [x] el plan no repite temas de los últimos 60 días ni ideas descartadas; una idea con fecha fuera del período se descarta (`social/plan.test.ts`, `use-cases/plan-run.test.ts`)
+  - [x] el gasto se anota (también si falla después de llamar), entra a `sumLlmCost` y respeta el tope (`use-cases/plan-run.test.ts`; los repositorios, `packages/db/test/subject-repositories.contract.ts`)
+  - [x] aceptar → `draft` + corrida + `post.draft` encolado; descartar → `archived`; aceptar o descartar algo que no es `idea` → `POST_NOT_IDEA`; `auto_publish` no aplica (`use-cases/plan-run.test.ts`)
+  - [x] `pnpm check` pasa (CI en verde, PR #194)
 
 ### F9-T21 · Plan en el panel y la CLI
 - **Depende de:** T17, T20
 - **Descripción:** pedir un plan, ver las ideas por semana, aceptar, editar, mover y descartar, y "redactar lo aceptado"; `agentsales plan`.
+- **Core listo (F9-T20):** `requestPlanRun`, `getPlanRun`, `listPlanRuns` (para `GET /api/plans?brokerId`, con alcance y `posts.manage`), `acceptIdea`, `discardIdea` y `updatePost` (también cambia las redes de una idea, `platforms`). `POST_NOT_IDEA` ya es 409 en la API.
+- **Nota (2026-10-20):** **API** (`apps/api/src/routes/plans.ts`): `POST /plans` (202; encola `content.plan` después de crear, o devuelve el plan en curso con `reused`), `GET /plans?brokerId` (el administrador manda la marca: sin ella, `PLAN_RUN_INVALID`) y `GET /plans/:id` (el plan con su período en días de Chile, lo pedido, el error con su consejo, `planRunErrorAdvice` en core; el reporte reducido a lo descartado y las advertencias, sin el proveedor; y cada idea con las redes que se le quitaron, cuántos textos vigentes tiene y su última corrida). `POST /posts/:id/accept` (202, con la corrida) y `/discard`; `PATCH /posts/:id` suma `platforms`. Todas en la tabla de permisos como de sesión, con `posts.manage` en core; un plan ajeno es 404 por `ownedBy` (`/plans/:id/*`), como un post; `AppDeps.planRuns` es nuevo. **CLI:** `plan [--broker] [--days] [--platform] [--count] [--start] [--no-wait]` espera como `prepare` y muestra las ideas por semana (`groupByPlanWeek` y `planWeekText`, core) con su id y su comando; `plan show <id>` y `plan list`; `post accept|discard <id>` (aceptar no espera los textos: se aceptan varias seguidas y se miran con `post show`; **corrección (2026-10-20, PR #201):** `post accept --wait` espera la corrida que acaba de crear, y `post draft` no sirve para esperarla: pide textos nuevos y vuelve a gastar IA, salvo mientras esa corrida sigue activa, que la reutiliza); `post edit` suma `--platforms` (`todas` = `null`), `--date` (`ninguna` la quita) y `--brief`. **Panel:** página **Plan** (`/plan`, en el menú después de Contenido) con pedir un plan (días, redes de la marca —con cuenta o cadencia— y cantidad), el estado que se actualiza solo mientras está en cola o corriendo (y mientras se redactan los textos de una aceptada, con el tope de `RUN_WAIT`), el error con su consejo, las ideas por semana con aceptar, editar (brief, fecha y redes) y descartar (con confirmación), y **Redactar lo aceptado** (las aceptadas sin textos ni corrida activa: pide sus textos una por una). El administrador elige la marca en el selector (con "Todos" se le pide elegir una). **Decisiones:** (1) las redes del post mandan en todos los caminos (`requirePostPlatform` en core; ajustado tras la revisión del `arquitecto`, con la decisión del operador de rechazar también una red quitada pedida a mano): sin redes pedidas, `schedulePost` y `post publish` usan solo `posts.platforms`; `POST_PLATFORM_EXCLUDED` es 409 al aprobar su texto (`POST /posts/:id/contents/:platform/:language/approve`), al publicar (`POST /posts/:id/publish` con esa red) y al empezar o programar una publicación suya (`POST /publications/:id/publish` y `/schedule`); en `POST /posts/:id/schedule` con esa red pedida sale una fila `skipped` con ese código (200), y sin redes pedidas no se informa; y el reloj deja una programada suya en `failed` con ese código, no reintentable. Aprobar el texto de una red quitada también es `POST_PLATFORM_EXCLUDED`, y `updatePost` no quita una red con publicaciones pendientes (`POST_HAS_PENDING_PUBLICATIONS`, 409). Los textos no se borran y vuelven a servir si la red vuelve al post; (2) `post show` y el detalle del post en el panel dicen las redes del post, avisan del texto que falta de una red agregada (con un botón para redactar) y de los textos de redes quitadas; (3) `plannedSlots` cuenta lo planificado en las semanas completas del período (`planWeeks`: del lunes de la primera al domingo de la última, hora de Chile), leído con `PostRepository.list` por rango de `planned_at` (sin el tope de 300 de `listRecent`, que queda solo para los temas: a la IA viajan como mucho 100); (4) el plan no muestra su gasto de IA (eso es de `usage`); (5) `GET /plans` da los 20 más recientes, fijo; `GET /plans/:id` lee textos y corridas solo de las ideas aceptadas; (6) la CLI y el panel muestran las redes con las mismas funciones de core (`postPublishesOn`, `postNetworkGaps` —con `kindProblem`—, `ideaNeedsDraft`), y el panel no ofrece publicar una red quitada.
 - **Hecho cuando:**
-  - [ ] aceptar una idea encola `post.draft` y la idea pasa a `draft`
-  - [ ] `pnpm check` pasa
+  - [x] aceptar una idea encola `post.draft` y la idea pasa a `draft` (`apps/api/src/routes/plans.test.ts`, `apps/cli/src/commands/plan.test.ts`, `apps/web/src/pages/PlanPage.test.tsx`)
+  - [x] cada ruta nueva está en la tabla de permisos y lo de otra marca es 404 (`plans.test.ts`, `scope.test.ts`)
+  - [x] las redes del post mandan al aprobar, publicar, programar, empezar y en el reloj, y no se quita una red con pendientes (`schedule-subject.test.ts`, `post-content.test.ts`, `posts-content.test.ts`, `post.test.ts`, `PlanPage.test.tsx`); las semanas del borde cuentan completas (`social/plan.test.ts`, `use-cases/plan-run.test.ts`); un segundo `POST_REFERENCE_INVALID` al guardar las ideas sube y deja el plan en `failed` (`plan-run.test.ts`)
+  - [x] `pnpm check` pasa (lo juzga la CI del PR) (CI en verde, PR #196)
 
 ### F9-T22 · Evaluación de la calidad
 - **Depende de:** T20
 - **Descripción:** `pnpm eval:social` sobre perfiles de prueba, sin escribir en la base (`--provider fake` no gasta cuota): cuenta ideas repetidas, afirmaciones fuera del perfil, largos y escapes; imprime el costo estimado.
+- **Archivos principales:** `apps/worker/src/scripts/eval-social.ts`, `apps/worker/src/eval/run-social-eval.ts`, `social-profiles.ts`, `social-options.ts`
 - **Hecho cuando:**
-  - [ ] un perfil sin `facts` produce un plan sin cifras ni clientes inventados
-  - [ ] el costo de un plan y sus textos (con dos idiomas) queda medido en `docs/integraciones/anthropic-api.md`
+  - [x] un perfil sin `facts` produce un plan sin cifras ni clientes inventados
+  - [ ] el costo de un plan y sus textos (con dos idiomas) queda medido en `docs/integraciones/anthropic-api.md` (parcial: la estimación y el comando están en §13; la medición real queda pendiente del operador)
+- **Nota (2026-10-20):** `pnpm eval:social [--provider fake|claude-cli|anthropic-api] [--model <id>] [--profile <nombre>] [--ideas N] [--strict] [--out]` corre el plan (`proposePlanIdeas`) y los textos de las primeras `N` ideas aceptadas (`draftPostTexts`, 3 por defecto) sobre tres marcas **inventadas** en el repo (`sin-hechos`, `dos-idiomas` con 10 ideas en cuatro redes, y `con-historial`), sin la base: no recibe repositorios ni se conecta, y con `fake` ni siquiera lee el `.env`. Cuenta ideas repetidas (los descartes por tema igual) y **parecidas** (advertencia: 60 % de palabras en común, lo que la verificación no ve), afirmaciones fuera del perfil (ideas y textos), largos, escapes (LinkedIn que solo cabe sin escapes, hashtags en el cuerpo, caracteres invisibles; el markdown queda como la advertencia de la revisión), menciones masivas, términos a evitar (advertencia) y los descartes por motivo; imprime el costo del plan y de los textos por separado y en total (parcial si no todas las llamadas informaron tokens). Sale con 1 solo si hay fallas, un corte o problemas que llegan al operador (textos con errores o escapes); las ideas que el plan descarta son la defensa funcionando y quedan como estadística, salvo con `--strict` (revisión del 2026-10-20). Un error de la IA queda en su perfil, salvo los que no se arreglan reintentando (sin sesión o clave, sin saldo, el límite de la CLI) o uno inesperado, que detienen la evaluación conservando el informe parcial. Los medios se suponen subidos según el formato de la idea (los textos no se evalúan por medios). El primer criterio lo prueba un test con `sin-hechos` y un `fake` que inyecta ideas con cifras y clientes inventados ("Atendimos a 300 clientes", "Nuestra clienta María González triplicó sus ventas", "Más de 50 marcas confían en nosotros"): se descartan con `FACT_NOT_IN_PROFILE` y se cuentan; los demás contadores, con respuestas inyectadas. **Límite:** el contador "fuera del perfil" no es una garantía, porque hereda los límites de la heurística de core; por ejemplo, "Trabajamos con Banco Estado y Falabella" (sin punto final) se toma como un título y no se marca. El umbral de "parecidas" (60 %) queda así, como advertencia, hasta la primera corrida real del operador. **La medición real del costo queda pendiente del operador** (`pnpm eval:social --provider anthropic-api --profile dos-idiomas --ideas 10 --out`, y con `--model claude-haiku-5-5`): la estimación de §13 de `anthropic-api.md` es de unos US$ 0,12 con Sonnet 5.5 y US$ 0,006 con Haiku 5.5 por un plan de 10 ideas y sus textos en dos idiomas.
 
 ### F9-T23 · Documentación
 - **Depende de:** T01 a T22 y T26
 - **Descripción:** `03-plataformas.md`, `02-modelo-datos.md`, `01-arquitectura.md`, `04-formato-publicaciones.md`, `07-checklist-cuentas.md`, `10-despliegue.md`, `00-vision.md`, `06-roadmap.md`, y el seguimiento de ADR-0014, ADR-0015 y ADR-0023. `00-vision.md` se actualiza ya al aprobar el spec.
+- **Nota (2026-10-20):** revisados contra el código de `main` (hasta F9-T22): `00-vision.md` (F9 en la solución, la marca como usuario, las entregas y lo que queda fuera), `01-arquitectura.md` (los dos sujetos y el recorrido de un post, las redes en el diagrama, los puertos nuevos, los jobs `post.media` y `post.draft` en la tabla de colas, `tokens.refresh` con X y TikTok, `awaiting_manual_confirm` de las cuentas a mano y de TikTok, el panel con Plan y Calendario, la seguridad de los OAuth nuevos, y sin las frases de transición de T04 a T07), `02-modelo-datos.md` (la `meta`, el `external_account_id` y el vencimiento de LinkedIn, X y Discord, el progreso de las redes, los `nonce` de los OAuth nuevos y la tabla de las migraciones `0014` a `0018`), `03-plataformas.md` (Instagram para posts y el resumen de las cinco redes: conexión, modo, token, límites, costo, retirar, prueba y `dry-run`), `04-formato-publicaciones.md` (lo que se envía a cada red y TikTok sin texto), `06-roadmap.md` (F9 a F11 en la tabla y las tres entregas), `07-checklist-cuentas.md` (los trámites de cada red y S1 a S6), `08-guia-operador.md` (el recorrido de punta a punta y el calendario), `10-despliegue.md` (las variables de las redes, las marcas del operador, las migraciones `0016` a `0018` y las apps de la segunda instancia), `README.md` y los comandos de `CLAUDE.md`; seguimiento de F9 en ADR-0006, ADR-0014, ADR-0015, ADR-0017 y ADR-0023. Diferencias con el código que quedan como deuda: `IG_PUBLISH_OUTCOME_UNKNOWN` sigue en `failed` porque el panel resuelve un resultado dudoso solo en los posts; y `pnpm social:smoke` no existe (S1 a S6 son a mano). **Los "Hecho cuando" de las tareas ya en `main`** se recorrieron uno por uno y se marcaron con la prueba o el archivo que los demuestra; los de `pnpm check`, con su PR. Quedan abiertos, a propósito: T07 (la vigilancia: no hay un test de `watchPublications` que mezcle un aviso y un post en la misma vuelta; la mezcla está probada solo en el repositorio, `packages/db/test/listing-sweeps.test.ts:165`, y en el candado, `packages/core/src/subject-lock.test.ts:38`), T13 (el resultado de S1, que hace el operador), T17 (no hay un test propio de `apps/web/src/queries/posts.ts`: las consultas se ejercitan solo a través de las pruebas de las páginas), T22 (la medición real del costo, del operador) y el de la CI de esta tarea. T27 (el flujo sin parámetros despliega como antes) se verificó leyendo `deploy.yml`, sin test automatizado; el de la revisión del `arquitecto` de T27 se da por la sección "Una segunda instancia" de `docs/10-despliegue.md`.
+- **Hecho cuando:**
+  - [x] cada doc de la descripción dice lo que hace el código de `main` (nota de arriba)
+  - [x] el seguimiento de ADR-0014, ADR-0015 y ADR-0023 (y de ADR-0006 y ADR-0017, que ADR-0029 también modifica)
+  - [ ] la CI pasa sobre el PR de la tarea
 
 ### F9-T24 · Prueba con las cuentas reales (contigo)
 - **Depende de:** T19, T21 y T26
@@ -466,25 +499,25 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 
 ### F9-T25 · Cierre de fase
 - **Depende de:** T24
-- **Descripción:** `/fase-cerrar 9`: criterios, changelog y tag `v1.1.0`.
+- **Descripción:** `/fase-cerrar 9`: criterios, changelog y tag `v1.3.0` (la etiqueta de la entrega 3, §5.1; `v1.1.0` y `v1.2.0` ya cerraron las entregas 1 y 2).
 
 ### F9-T27 · Despliegue parametrizado por instancia
 - **Depende de:** —
 - **Descripción:** deja listo desplegar una segunda instancia del mismo código (D19) sin cambiar la actual: el nombre de la app de Fly, el dominio y el Environment de GitHub pasan a ser parámetros del flujo de despliegue (por ejemplo, un `fly.<instancia>.toml` y una entrada `instance` en `deploy.yml`). La guía `docs/10-despliegue.md` explica cómo crear la segunda instancia (app de Fly, base de Neon, bucket de R2, secretos, y sus propias apps de Meta, TikTok y X). **No se despliega nada:** desplegar es del operador (D8 de F8).
 - **Archivos principales:** `fly.toml`, `.github/workflows/deploy.yml`, `docs/10-despliegue.md`
 - **Hecho cuando:**
-  - [ ] sin parámetros, el flujo despliega la instancia de hoy igual que antes (mismo `app`, mismo Environment, mismos guardias de la CI)
-  - [ ] la guía de la segunda instancia está escrita y revisada por el `arquitecto`
-  - [ ] `pnpm check` (o la CI) pasa
+  - [x] sin parámetros, el flujo despliega la instancia de hoy igual que antes (mismo `app`, mismo Environment, mismos guardias de la CI) (verificado leyendo `.github/workflows/deploy.yml`; sin test automatizado)
+  - [x] la guía de la segunda instancia está escrita y revisada por el `arquitecto` (`docs/10-despliegue.md`, "Una segunda instancia")
+  - [x] `pnpm check` (o la CI) pasa (CI en verde, PR #169)
 
 ### F9-T26 · TikTok (video como borrador)
-- **Depende de:** T07, T10, **prueba S6**
+- **Depende de:** T07, T10 (S6: verificación obligatoria antes de publicar de verdad, no antes de construir; decisión del operador 2026-10-20)
 - **Descripción:** OAuth (Login Kit) con refresco que rota, publisher en modo *Upload* (`video.upload`, `FILE_UPLOAD` por partes desde R2), estado asíncrono (consulta o webhook), traspaso a mano (`awaiting_manual_confirm`) hasta que el operador pega el enlace, variante de video para TikTok, `accounts connect tiktok`.
 - **Archivos principales:** `packages/publishers/src/tiktok/*`, `apps/api/src/routes/oauth.ts`
 - **Hecho cuando:**
-  - [ ] contratos con `msw`: init, subida por trozos en orden, estados `PROCESSING_UPLOAD` / `SEND_TO_USER_INBOX` / `FAILED`, límite de envíos pendientes (5 por 24 h) y refresh que rota
-  - [ ] en `dry-run` no se llama a TikTok; el `state` del OAuth es de un solo uso
-  - [ ] `pnpm check` pasa
+  - [x] contratos con `msw`: init, subida por trozos en orden, estados `PROCESSING_UPLOAD` / `SEND_TO_USER_INBOX` / `FAILED`, límite de envíos pendientes (5 por 24 h) y refresh que rota (`packages/publishers/src/tiktok/publisher.test.ts:264`, `:339`, `:366` y `:392`)
+  - [x] en `dry-run` no se llama a TikTok; el `state` del OAuth es de un solo uso (`packages/publishers/src/tiktok/publisher.test.ts:538` y `apps/api/src/routes/oauth-tiktok.test.ts:172`)
+  - [x] `pnpm check` pasa (CI en verde, PR #186)
 
 ## 6. Criterios de aceptación de la fase
 1. Las dos marcas (personal y AgentPey) existen, sin propiedades en el panel, cada una con su perfil editorial y sus cuentas.
@@ -498,6 +531,11 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 9. Un corredor o marca no ve posts, perfiles ni cuentas de otra (tabla de permisos y su test).
 10. El gasto de IA (avisos, posts y planes) y el de X quedan anotados y se respetan los topes.
 11. `pnpm check` y la CI pasan.
+
+**Verificación del cierre (2026-10-20, sobre `main` en `60c049e`, CI en verde; 47 archivos de prueba puntuales y el ensayo de la demo en simulación con la IA real y la marca AgentPey):**
+- **Demostrados:** 2 (`post-uploads.test.ts`, `draft-post.test.ts`, `post-content.test.ts`, `PostDetailPage.test.tsx`), 4 en `dry-run` (`publish/dry-run.test.ts` y el `dry-run` de cada publisher), 6 (`social/plan.test.ts`, `plan-run.test.ts`, `run-social-eval.test.ts`, y el ensayo), 7 (`plan-run.test.ts`, `schedule-subject.test.ts`), 8 (el diff de las pruebas desde `v1.0.0` solo cambia firmas y datos), 9 (`auth.test.ts`, `scope.test.ts`, `plans.test.ts`), 10 (`draft-post.test.ts`, `plan-run.test.ts`, `subject-repositories.contract.ts`, `publish-x.test.ts`; la medición real del costo la hace el operador) y 11 (la CI de `main` y de cada PR).
+- **Del operador (T24, en vivo):** 1 (sembrar `--operator-brands` en su instancia, llenar los perfiles y conectar las cuentas), 3 (publicar con el Mac apagado, con el worker del servidor encendido) y 4 en `live` (solo con su instrucción). Las piezas están probadas: `publication-due.test.ts`, `schedule-subject.test.ts` y los publishers con `msw`.
+- **Parcial, declarado como deuda:** 5 en Instagram (y en Portal, `ML_PUBLISH_OUTCOME_UNKNOWN`, que es de los avisos). Su resultado dudoso (`IG_PUBLISH_OUTCOME_UNKNOWN`) queda `failed`, sin reintento solo, y no se resuelve con «salió / no salió» (`publish/outcome.ts`; seguimiento en `docs/ESTADO.md`). Discord, LinkedIn, X y TikTok sí pasan a `outcome_unknown`. Tampoco hay un test de la vigilancia que mezcle un aviso y un post en la misma vuelta (T07).
 
 ## 7. Plan de demo
 1. `agentsales brand edit` en la marca AgentPey: idiomas, líneas de contenido y tres hechos.
@@ -513,7 +551,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 ## 8. Riesgos y mitigaciones
 | Riesgo | Mitigación |
 |---|---|
-| La app de Meta en desarrollo no muestra lo publicado a quien no tiene rol (`instagram-contenido-propio.md` §5) | Prueba S1 antes de construir; si falla, Instagram espera la aprobación de F8 |
+| La app de Meta en desarrollo no muestra lo publicado a quien no tiene rol (`instagram-contenido-propio.md` §5) | Prueba S1 antes de publicar de verdad en Instagram (T13 se construye antes, contra simulaciones; decisión del operador 2026-10-20); si falla, Instagram espera la aprobación de F8 |
 | Los términos de LinkedIn prohíben "automatizar publicaciones" | Modo `manual` por defecto (P1) y consulta a LinkedIn (S3); sin navegador automatizado |
 | La IA inventa datos de la marca | Solo `facts` y un brief escrito por el operador; `checkPostContent` bloquea cifras y nombres ajenos; `eval:social` (T22); el humano aprueba |
 | X cobra más de lo previsto o suspende la cuenta por automatización | `spendLimitUsd` de US$10, el aviso de costo por enlace, tope en la consola de X, publicar solo posts aprobados y declarar la cuenta si X lo pide |
@@ -523,7 +561,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 | El token de LinkedIn vence cada 60 días y nadie lo nota | Clase "token por vencer" en la agenda, 7 días antes |
 | El alcance es grande para una fase | Los lotes se pueden cerrar por separado: A y B dejan un gestor manual; cada red del lote C es independiente; E es el último y se puede mover a F10 |
 | Cuentas personales o de marca restringidas por las redes | Cuentas de prueba en las pruebas de entrada, ritmo bajo y publicación solo con aprobación humana |
-| El App Review de Meta no está enviado y tarda unas 5 semanas: mientras, los corredores son evaluadores y puede que el público no vea lo publicado | Prueba S1 antes de construir Instagram; la verificación del negocio con Certilink SpA ya está en marcha y sirve también a la app de anuncios del piloto |
+| El App Review de Meta no está enviado y tarda unas 5 semanas: mientras, los corredores son evaluadores y puede que el público no vea lo publicado | Prueba S1 antes de publicar de verdad en Instagram; la verificación del negocio con Certilink SpA ya está en marcha y sirve también a la app de anuncios del piloto |
 | TikTok pide auditoría para publicar en público y puede rechazarla si la app solo atiende al operador | F9 solo usa el modo borrador; la auditoría se presenta con el piloto, que es el caso de uso real |
 
 ## 9. Preguntas abiertas
@@ -542,3 +580,18 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 | 2026-10-19 | Respuestas del operador: LinkedIn a mano (P1), X con enlaces y tope de US$10 (P2), prueba de Instagram por el operador (P3) y dos idiomas por marca (P4, pendiente la forma de publicarlos) |
 | 2026-10-19 | F8 cerró (`v1.0.0`): ADR renumerados (el 0028 lo tomó «el corredor conecta su propio Instagram»; los de este spec pasan a 0029 y 0030). Acuerdos con el operador: orden F9 → piloto con una oficina → organizaciones (§4.17), TikTok como borrador de video (D16, T26), posts en cualquier corredor, `kind` extensible, alcance siempre por `inScope`/`can`, credenciales que admiten tokens que no vencen y los permisos de anuncios en otra app de Meta (D13). Anuncios, dinero y leads quedan como borradores ADR-0031 a ADR-0033 |
 | 2026-10-19 | **Aprobado por el operador**: el plan tal como está; tres entregas (D20, §5.1); ejecución en paralelo con agentes en worktrees y la CI como juez (D21, §5.2); P4 y P5 con las recomendaciones; la decisión de arquitectura D19 (una instancia ahora, dos del mismo código al llegar el primer cliente) y su tarea T27. ADR-0029 y ADR-0030 pasan a Aceptados |
+| 2026-10-20 | Revisión de F9-T10: §4.2 suma las reglas de los posts (archivado no se edita, no se archiva con publicaciones pendientes, hasta 20 medios); F9-T17 suma el criterio del sha256 opcional sobre 100 MB (ADR-0025 punto 2); el video para X sale con la duración completa (su límite lo revisa T16) |
+| 2026-10-20 | F9-T07: aclarado que una publicación de una cuenta en modo `manual` (LinkedIn) programada no es solo un recordatorio como Marketplace: a la hora el reloj la deja en `awaiting_manual_confirm`, lista para publicar a mano, sin llamar a la red |
+| 2026-10-20 | Revisión de F9-T11: F9-T16 suma el criterio de la marca explícita del operador por post para un enlace en X (hasta T16, "marcar" es escribirlo en el brief del operador) |
+| 2026-10-20 | Revisión de F9-T08: T12 suma el criterio de los comandos que la agenda ya sugiere para posts (incluido reintentar por id de publicación) |
+| 2026-10-20 | F9-T17: el perfil editorial se edita en Mi marca y en la página de cada corredor (no hay `BrandPage.tsx`); sin sha256 (sobre 100 MB) cada pedido es una subida nueva y las `uploaded` cuentan en el tope de 20 medios; el worker las revisa al empezar `post.media` (`finalizePostUploads`); la respuesta de `complete` suma `uploaded` |
+| 2026-10-20 | **Decisión del operador:** T13 (Instagram) y T14 (Discord) se construyen ya, contra simulaciones (`msw`); S1 y S5 pasan a ser verificación obligatoria **antes de cualquier publicación real**, no antes de construir (§4.8, dependencias de T13 y T14, §5.2 y riesgos). F9-T14: el video de Discord es la variante más liviana entre `x_video` e `ig_reel`, y si no cabe en 20 MiB sale solo el texto con una nota (sin enlace seguro todavía, §4.5 y D8); `social:smoke --platform discord` queda sin construir (S5 es a mano) |
+| 2026-10-20 | **Decisión del operador:** LinkedIn (T15), X (T16) y TikTok (T26) también se construyen ya, contra simulaciones (`msw`); S2 y S3 (LinkedIn), S4 (X) y S6 (TikTok) pasan a ser verificación obligatoria **antes de cualquier publicación real**, no antes de construir (§4.8 y dependencias de T15, T16 y T26). S4 (X) y S6 (TikTok) quedan igual que S2 y S3: se verifican antes de publicar de verdad en X y TikTok, no antes de construir T16 y T26. F9-T15: el OAuth en `routes/oauth-linkedin.ts`, `accounts connect linkedin` abre el inicio del OAuth (el botón del panel, T17/T19), `accounts mode` cambia el modo, el `DELETE` existe en el cliente pero retirar sigue a mano hasta T19, y `social:smoke --platform linkedin` queda sin construir (S2 es a mano) |
+| 2026-10-20 | F9-T19: consejos para cada error de las redes (con su prueba que lee el código), conectar LinkedIn, X y TikTok desde Cuentas del panel y Discord con el comando de la CLI, `connect.x` y `connect.tiktok` obligatorios en el contrato, retirar un post de LinkedIn borrándolo por la API (`publications retire --delete`, `Publisher.remove`) y la sección de F9 en la guía del operador |
+| 2026-10-20 | F9-T20: el prompt del plan con versión propia (`PLAN_PROMPT_VERSION`, seguimiento en ADR-0030); una red que no sirve se le quita a la idea en vez de descartarla entera; ideas y `succeeded` en una transacción. Decisiones del operador en la revisión: al aceptar una idea se redacta solo para sus redes (`posts.platforms`, migración `0018`) y las descartadas dejan de bloquear un tema a los 60 días. Del `arquitecto`: un plan activo por marca con índice único parcial (`0018`), `post.draft` sin las redes que no sirven al tipo del post, `proposePlanIdeas` sin repositorios y `listPlanRuns` para T21 (§4.9, §4.10, §4.11 y F9-T21 al día) |
+| 2026-10-20 | F9-T25: la etiqueta del cierre es `v1.3.0` (decía `v1.1.0`, la de la entrega 1) |
+| 2026-10-20 | F9-T21: las rutas, la CLI y la pantalla Plan del plan de ideas; las redes del post mandan también al publicar y programar (`POST_PLATFORM_EXCLUDED`); `plannedSlots` cuenta las semanas completas del borde, leídas por rango de `planned_at` (§4.10 y F9-T21 al día) |
+| 2026-10-20 | F9-T16 (PR #199): la marca del enlace en X (`posts.x_link_allowed`) ya se pone y se quita desde la CLI, `post edit <id> --x-link` / `--no-x-link` (`post show` la muestra y `post approve` sugiere ese comando cuando un texto de X con enlace no la tiene), y desde el panel, con la casilla «Permitir un enlace en X» del detalle del post y el aviso del costo (US$0,20 en vez de US$0,015, los montos de core); las dos mandan `PATCH /api/posts/:id` con `xLinkAllowed`. La marca se exige además del enlace en el brief (nota de F9-T16) |
+| 2026-10-20 | F9-T23: la documentación de la fase revisada contra el código (nota de F9-T23); los "Hecho cuando" de `pnpm check` de las tareas ya mergeadas, marcados con su PR |
+| 2026-10-20 | Ensayo de la demo (§7, en simulación con `agentpey`): (1) la lista de alta de una marca (`onboardingSteps` con `kind = brand`) ya no pide WhatsApp, logo, Mercado Libre ni Marketplace, que son de los avisos (el logo solo lo usan la portada y la ficha de un aviso); pide la marca, el perfil editorial (al menos una línea y un hecho), el usuario y al menos una red de `POST_PLATFORMS` conectada (pasos nuevos `editorial` y `networks`; los de un corredor no cambian); (2) `post accept --wait` espera la corrida que acaba de crear, y la CLI ya no sugiere `post draft` para esperar (pide textos nuevos y vuelve a gastar IA; F9-T21 decía que "sigue la misma corrida", y solo es cierto mientras está activa); (3) `plan list` y las acciones de `listing` reciben `--broker` antes o después del subcomando (`optsWithGlobals`: commander se la entrega al padre); (4) sin cuenta conectada, `post approve` sugiere conectarla en vez de publicar, y el detalle del post desactiva Publicar y Programar para esas redes, con el enlace a Cuentas; (5) la revisión de los posts ya no toma por nombre propio una abreviatura de día o mes (inglés o español: `Oct`, `Mon`, `Ene`, `Mié`…) **junto a una fecha** (`Oct 9`, `9 oct.`, `Mon, Oct 9`); suelta se sigue revisando, porque puede ser un nombre real (`Mon Laferte`, `Viña del Mar`). «Up to Oct 9» daba `FACT_NOT_IN_PROFILE` con la IA real. Tras la revisión: la lista de alta elige sus pasos con un `switch` exhaustivo sobre `kind`; Instagram (corredor) y la red de los posts (marca) los hace el corredor o la marca (ADR-0022 y ADR-0028; Discord, el administrador) |
+| 2026-10-20 | **Cierre de la fase** (`/fase-cerrar 9`, `v1.3.0`): criterios verificados sobre `main` (§6, verificación del cierre); T24 hecha como ensayo en simulación con la IA real, y la prueba en vivo queda del operador; el resultado dudoso de Instagram queda como deuda declarada |

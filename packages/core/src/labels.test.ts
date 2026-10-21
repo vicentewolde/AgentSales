@@ -109,6 +109,9 @@ describe("publicationFormatText (F4-T20)", () => {
     expect(publicationFormatText("fb_marketplace", "post")).toBe("aviso");
     expect(publicationFormatText("instagram", "post")).toBe("carrusel");
     expect(publicationFormatText("instagram", "reel")).toBe("reel");
+    // F9-T08: las redes del contenido de marca.
+    expect(publicationFormatText("linkedin", "post")).toBe("post");
+    expect(publicationFormatText("x", "post")).toBe("post");
   });
 });
 

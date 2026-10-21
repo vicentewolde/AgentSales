@@ -4,6 +4,7 @@ import { createLogger } from "@agentsales/config";
 import {
   ALL_SCOPE,
   type JobQueue,
+  listingSubject,
   type Publication,
   type PublishMode,
   publishPublication,
@@ -496,7 +497,7 @@ describe("publicar Marketplace (spec F5 §4.6 y §4.7)", () => {
   it("mientras espera: descartar, quitar la aprobación y desconectar responden 409 MANUAL_CONFIRM_PENDING con la publicación", async () => {
     const { app, t, awaiting } = await publicationSetup();
     const id = await awaiting();
-    const content = (await t.contents.listCurrent(t.listingId)).find(
+    const content = (await t.contents.listCurrent(listingSubject(t.listingId))).find(
       (item) => item.platform === MARKETPLACE,
     );
     const account = (await t.platformAccounts.list(ALL_SCOPE))[0];

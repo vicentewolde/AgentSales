@@ -1,0 +1,1 @@
+ALTER TABLE "posts" ADD COLUMN "x_link_allowed" boolean DEFAULT false NOT NULL;

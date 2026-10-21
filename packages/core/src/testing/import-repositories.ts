@@ -28,9 +28,10 @@ export type InMemoryBrokerRepository = BrokerRepository & {
 export type InMemoryBrokerRepositoryOptions = {
   /**
    * Medios para validar `setLogo` como Postgres (que el medio exista, sea del corredor y no sea de
-   * un aviso). Sin ellos, `setLogo` no valida el medio: solo sirve para tests que no lo ejercen.
+   * un aviso ni de un post). Sin ellos, `setLogo` no valida el medio: solo sirve para tests que no
+   * lo ejercen.
    */
-  media?: { all(): Pick<MediaRecord, "id" | "brokerId" | "listingId">[] };
+  media?: { all(): Pick<MediaRecord, "id" | "brokerId" | "listingId" | "postId">[] };
   /** Ids de los corredores nuevos (por defecto `broker-N`; la API usa uuid, como Postgres). */
   nextId?: () => string;
 };
@@ -93,7 +94,7 @@ export function createInMemoryBrokerRepository(
       }
       if (options.media !== undefined) {
         const logo = options.media.all().find((media) => media.id === mediaId);
-        if (logo?.brokerId !== id || logo.listingId !== null) {
+        if (logo?.brokerId !== id || logo.listingId !== null || logo.postId !== null) {
           throw new AppError("MEDIA_NOT_FOUND", `El medio ${mediaId} no es un logo del corredor`);
         }
       }

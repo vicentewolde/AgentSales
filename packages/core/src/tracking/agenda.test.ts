@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Publication } from "../publication.js";
 import { GENERIC_ERROR_ADVICE } from "../publish/error-advice.js";
-import { AGENDA_KINDS, agendaItems, pendingReviewsOf } from "./agenda.js";
-import { trackingRow } from "./row.js";
+import { AGENDA_KINDS, type AgendaAccount, agendaItems, pendingReviewsOf } from "./agenda.js";
+import { trackingPostRow, trackingRow } from "./row.js";
 
 // Spec F6 §4.9: la agenda y la matriz, puras.
 
@@ -20,6 +20,7 @@ function publication(extra: Partial<Publication> = {}): Publication {
     platformAccountId: "acc",
     platform: "instagram",
     format: "post",
+    language: "es",
     contentId: "c",
     mediaIds: [],
     status: "approved",
@@ -34,11 +35,37 @@ function publication(extra: Partial<Publication> = {}): Publication {
     remoteState: null,
     listingSourceHash: "h",
     relistedFrom: null,
+    costUsd: null,
     createdAt: minutes(-600),
     updatedAt: minutes(-60),
     ...extra,
+    // El sujeto sigue al aviso del caso (`listingId` es su atajo).
+    subject: { kind: "listing", id: extra.listingId ?? "l1" },
   };
 }
+
+/** Una publicación de un post (F9-T08): sin aviso y con el post como sujeto. */
+function postPublication(postId: string, extra: Partial<Publication> = {}): Publication {
+  return {
+    ...publication({ listingSourceHash: null, ...extra }),
+    listingId: null,
+    subject: { kind: "post", id: postId },
+  };
+}
+
+const post = (id: string, brokerId = "b1") => ({ id, brokerId, topic: `Tema ${id}` });
+
+const account = (extra: Partial<AgendaAccount> = {}): AgendaAccount => ({
+  id: "acc-li",
+  brokerId: "b1",
+  brokerSlug: "marca",
+  platform: "linkedin",
+  displayName: "Vinny en LinkedIn",
+  status: "connected",
+  tokenExpiresAt: days(7),
+  meta: { mode: "manual" },
+  ...extra,
+});
 
 const remote = (stopTime: Date, status = "active", subStatus: string[] = []) => ({
   status,
@@ -97,9 +124,11 @@ describe("agendaItems", () => {
           dryRun: false,
           remoteState: remote(days(3)),
         }), // expiring
+        publication({ status: "outcome_unknown" }), // outcome_unknown (F9)
       ],
       {
         pendingReviews: [{ listingId: "l1", platform: "portal_inmobiliario" }],
+        accounts: [account()], // token_expiring (F9)
         backup: null,
       },
     );
@@ -107,10 +136,12 @@ describe("agendaItems", () => {
     expect(items.map((item) => [item.kind, item.action])).toEqual([
       ["overdue", "publish"],
       ["your_turn", "publish"],
+      ["outcome_unknown", "resolve"],
       ["stuck", "requeue"],
       ["failed", "retry"],
       ["manual_task", "retire"],
       ["needs_review", "review"],
+      ["token_expiring", "reconnect"],
       ["expiring", "none"],
       ["upcoming", "none"],
       ["backup", "backup"],
@@ -167,7 +198,9 @@ describe("agendaItems", () => {
         }),
       ]),
     ).toEqual([]);
-    expect(run([{ ...expired, listingId: "l2" }])).toEqual([]);
+    expect(run([{ ...expired, listingId: "l2", subject: { kind: "listing", id: "l2" } }])).toEqual(
+      [],
+    );
     // Vencida pero todavía publicada: primero un sync (republicar exige `unpublished`).
     expect(run([{ ...expired, status: "published", remoteState: remote(days(-1)) }])).toMatchObject(
       [{ kind: "expiring", action: "sync", expired: true }],
@@ -189,6 +222,137 @@ describe("agendaItems", () => {
       { kind: "backup", action: "backup", code: "BACKUP_FAILED" },
     ]);
     expect(run([])).toEqual([]);
+  });
+});
+
+describe("agendaItems con posts (F9-T08)", () => {
+  const withPosts = (
+    publications: Publication[],
+    extra: Partial<Parameters<typeof agendaItems>[0]> = {},
+  ) => run(publications, { posts: [post("p1"), post("p2", "b2")], ...extra });
+
+  it("ordena posts y avisos juntos, con el tema del post como título", () => {
+    const later = publication({ status: "scheduled", scheduledAt: minutes(120) });
+    const sooner = postPublication("p1", { status: "scheduled", scheduledAt: minutes(60) });
+    const postFailed = postPublication("p2", {
+      platform: "x",
+      status: "failed",
+      lastError: { code: "RARO", message: "x", retriable: false },
+    });
+    const items = withPosts([later, sooner, postFailed]);
+
+    expect(items.map((item) => [item.kind, item.publicationId])).toEqual([
+      ["failed", postFailed.id],
+      ["upcoming", sooner.id],
+      ["upcoming", later.id],
+    ]);
+    expect(items[1]).toMatchObject({
+      postId: "p1",
+      listingId: null,
+      externalRef: null,
+      title: "Tema p1",
+      platform: "instagram",
+    });
+    expect(items[2]).toMatchObject({ listingId: "l1", postId: null, title: "L1" });
+    // Con la misma hora, por título.
+    const tie = withPosts([
+      publication({ status: "scheduled", scheduledAt: minutes(60) }),
+      postPublication("p1", { status: "scheduled", scheduledAt: minutes(60) }),
+    ]);
+    expect(tie.map((item) => item.title)).toEqual(["L1", "Tema p1"]);
+  });
+
+  it("un post que no está entre los del alcance no aparece", () => {
+    const ajena = postPublication("otro", { status: "failed" });
+    expect(withPosts([ajena])).toEqual([]);
+    expect(run([postPublication("p1", { status: "failed" })])).toEqual([]);
+  });
+
+  it("outcome_unknown pide resolverla, con su código y consejo", () => {
+    const unknown = postPublication("p1", {
+      platform: "discord",
+      status: "outcome_unknown",
+      updatedAt: minutes(-5),
+      lastError: { code: "OUTCOME_UNKNOWN", message: "x", retriable: false },
+    });
+    expect(withPosts([unknown])).toMatchObject([
+      {
+        kind: "outcome_unknown",
+        action: "resolve",
+        postId: "p1",
+        publicationId: unknown.id,
+        at: minutes(-5),
+        code: "OUTCOME_UNKNOWN",
+      },
+    ]);
+    expect(withPosts([unknown])[0]?.advice).not.toBeNull();
+  });
+
+  it("un LinkedIn a mano listo para publicar es una tarea a mano; la de Marketplace sigue su flujo", () => {
+    const readyAt = minutes(-30);
+    const linkedin = postPublication("p1", {
+      platform: "linkedin",
+      status: "awaiting_manual_confirm",
+      progress: {
+        manual: { attempt: 1, simulated: true, readyAt: readyAt.toISOString(), media: 1 },
+      },
+    });
+    const marketplace = publication({
+      platform: "fb_marketplace",
+      status: "awaiting_manual_confirm",
+    });
+    expect(withPosts([linkedin, marketplace])).toMatchObject([
+      {
+        kind: "manual_task",
+        action: "confirm",
+        postId: "p1",
+        platform: "linkedin",
+        publicationId: linkedin.id,
+        at: readyAt,
+      },
+    ]);
+  });
+
+  it("lo que depende de la propiedad no aplica a un post", () => {
+    expect(
+      withPosts(
+        [
+          postPublication("p1", { status: "approved" }),
+          postPublication("p1", { status: "published", dryRun: false, publishedAt: minutes(-9) }),
+        ],
+        { autoPublishBrokerIds: new Set(["b1"]) },
+      ),
+    ).toEqual([]);
+  });
+
+  it("token por vencer: LinkedIn a 7 días o vencido, con su cuenta; no lo que se renueva solo", () => {
+    const items = run([], {
+      accounts: [
+        account(),
+        account({ id: "acc-8", tokenExpiresAt: days(8) }),
+        account({ id: "acc-vencida", status: "expired", tokenExpiresAt: days(-1) }),
+        account({ id: "acc-nunca", tokenExpiresAt: null, meta: { tokenNeverExpires: true } }),
+        account({ id: "acc-sin-fecha", tokenExpiresAt: null }),
+        account({ id: "acc-revocada", status: "revoked" }),
+        account({ id: "acc-ig", platform: "instagram", tokenExpiresAt: days(2) }),
+        account({ id: "acc-x", platform: "x", tokenExpiresAt: days(1) }),
+      ],
+    });
+    expect(items.map((item) => [item.accountId, item.daysLeft, item.expired])).toEqual([
+      ["acc-vencida", -1, true],
+      ["acc-li", 7, false],
+    ]);
+    expect(items[1]).toMatchObject({
+      kind: "token_expiring",
+      action: "reconnect",
+      title: "Vinny en LinkedIn",
+      brokerSlug: "marca",
+      platform: "linkedin",
+      at: days(7),
+      publicationId: null,
+      listingId: null,
+      postId: null,
+    });
   });
 });
 
@@ -240,6 +404,39 @@ describe("trackingRow", () => {
     expect(row.cells.instagram[1]?.errorAdvice).not.toBe(GENERIC_ERROR_ADVICE);
     expect(row.cells.portal_inmobiliario[0]?.expiry).toMatchObject({ daysLeft: 2, soon: true });
     expect(row.cells.fb_marketplace).toEqual([]);
+  });
+});
+
+describe("trackingPostRow", () => {
+  it("por red, la más reciente de cada formato e idioma del post; ignora otros posts y avisos", () => {
+    const row = trackingPostRow(
+      {
+        id: "p1",
+        brokerId: "b1",
+        topic: "Bastidores",
+        status: "ready",
+        kind: "image",
+        plannedAt: null,
+      },
+      [
+        postPublication("p1", { platform: "x", status: "failed", createdAt: minutes(-900) }),
+        postPublication("p1", { platform: "x", status: "scheduled", createdAt: minutes(-100) }),
+        postPublication("p1", { platform: "linkedin", language: "en", status: "published" }),
+        postPublication("p1", { platform: "linkedin", status: "awaiting_manual_confirm" }),
+        postPublication("p2", { platform: "discord" }),
+        publication({ platform: "instagram" }),
+      ],
+      NOW,
+    );
+    expect(row.post).toMatchObject({ id: "p1", topic: "Bastidores" });
+    expect(row.cells.x.map((p) => p.status)).toEqual(["scheduled"]);
+    expect(row.cells.linkedin.map((p) => [p.language, p.status, p.manualTask])).toEqual([
+      ["es", "awaiting_manual_confirm", false],
+      ["en", "published", false],
+    ]);
+    expect(row.cells.discord).toEqual([]);
+    expect(row.cells.instagram).toEqual([]);
+    expect(row.cells.tiktok).toEqual([]);
   });
 });
 

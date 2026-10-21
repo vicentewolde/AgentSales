@@ -2,12 +2,18 @@ import {
   AppError,
   type ConnectAccountDeps,
   connectAccount,
+  connectDiscordAccount,
   connectManualMarketplaceAccount,
   connectMercadoLibreAccount,
+  type DiscordWebhooks,
   disconnectAccount,
+  discordAccountMetaSchema,
   instagramAccountMetaSchema,
   isAppError,
+  isManualAccount,
   type JobQueue,
+  linkedinAccountMetaSchema,
+  MANUAL_MODE_PLATFORMS,
   type MercadoLibreAuth,
   marketplaceAccountMetaSchema,
   marketplaceLoginErrorText,
@@ -20,19 +26,26 @@ import {
   refreshAccountToken,
   requestMarketplaceLogin,
   requireBroker,
+  setAccountMode,
+  setXSpendLimit,
   type TokenRefreshResult,
+  xAccountMetaSchema,
+  xSpendLimitOf,
 } from "@agentsales/core";
 import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
 import type { AppEnv } from "../auth.js";
 import {
   type AccountListResponse,
+  type AccountModeResponse,
   type AccountRefreshResponse,
   type AccountResponse,
   accountDisconnectBodySchema,
   accountListQuerySchema,
+  accountModeBodySchema,
   accountRefreshBodySchema,
   connectTokenBodySchema,
+  discordConnectBodySchema,
   idParamSchema,
   type MarketplaceLoginResponse,
   type MercadoLibreAuthorizeUrlResponse,
@@ -41,6 +54,7 @@ import {
   mercadoLibreAuthorizeUrlBodySchema,
   mercadoLibreConnectBodySchema,
   type PlatformAccountView,
+  xSpendLimitBodySchema,
 } from "../contracts/index.js";
 import type { AppLogger } from "../logger.js";
 import { listScope } from "../scope.js";
@@ -51,6 +65,7 @@ import {
   OAUTH_STATE_TTL_SECONDS,
   type OAuthStateSigner,
   oauthStateCookieOptions,
+  type TikTokOAuthDeps,
   verifyOAuthStateData,
 } from "./oauth.js";
 
@@ -84,6 +99,23 @@ export type AccountRoutesDeps = ConnectAccountDeps &
     queue: JobQueue;
     /** Si el ambiente permite el formulario automático (no en producción, spec F8 §4.10, D4). */
     marketplaceAutomation: boolean;
+    /** Discord (F9-T14): leer el webhook al conectarlo, sin publicar. */
+    discord: DiscordWebhooks;
+    /**
+     * X (F9-T16): si la API tiene el par de la app y el inicio del OAuth con PKCE (en el host de
+     * `X_REDIRECT_URI`), para `GET /accounts`.
+     */
+    x: { configured: boolean; startUrl: string };
+    /**
+     * LinkedIn (F9-T15): si está el par de la app y dónde empieza su OAuth (en el host de
+     * `LINKEDIN_REDIRECT_URI`), para la CLI.
+     */
+    linkedin: { configured: boolean; startUrl: string };
+    /**
+     * TikTok (F9-T26): si está configurado y dónde empieza el OAuth (para la lista), y su
+     * renovación del token que rota (para el refresco a pedido).
+     */
+    tiktok: TikTokOAuthDeps;
   };
 
 /** Sin el par de la app no se arma la URL ni se canjea: el canje mandaría un secret vacío. */
@@ -184,6 +216,45 @@ function shownMeta(account: PlatformAccount): ShownMeta | null {
       marketplaceMode: meta.data.mode,
     };
   }
+  if (account.platform === "discord") {
+    // Un webhook no tiene token que venza ni permisos: solo cuándo se conectó (F9-T14).
+    const meta = discordAccountMetaSchema.safeParse(account.meta);
+    if (!meta.success) return null;
+    return {
+      tokenExpiryEstimated: false,
+      connectedAt: meta.data.connectedAt,
+      tokenRefreshedAt: null,
+      accountType: null,
+      permissions: null,
+      ...NO_SESSION,
+    };
+  }
+  if (account.platform === "x") {
+    // X (F9-T16): el usuario, los permisos y el último refresco; el token vive 2 h y se renueva.
+    const meta = xAccountMetaSchema.safeParse(account.meta);
+    if (!meta.success) return null;
+    return {
+      tokenExpiryEstimated: false,
+      connectedAt: meta.data.connectedAt,
+      tokenRefreshedAt: meta.data.tokenRefreshedAt,
+      accountType: null,
+      permissions: meta.data.scopes,
+      ...NO_SESSION,
+    };
+  }
+  if (account.platform === "linkedin") {
+    // LinkedIn (F9-T15): el token de 60 días no se renueva solo; los permisos del canje.
+    const meta = linkedinAccountMetaSchema.safeParse(account.meta);
+    if (!meta.success) return null;
+    return {
+      tokenExpiryEstimated: false,
+      connectedAt: meta.data.connectedAt,
+      tokenRefreshedAt: null,
+      accountType: null,
+      permissions: meta.data.scopes,
+      ...NO_SESSION,
+    };
+  }
   if (account.platform === "portal_inmobiliario") {
     const meta = mercadoLibreAccountMetaSchema.safeParse(account.meta);
     if (!meta.success) return null;
@@ -228,6 +299,14 @@ export function accountView(account: PlatformAccount): PlatformAccountView {
             at: new Date(known.lastLoginError.at),
           },
     marketplaceMode: known?.marketplaceMode ?? null,
+    // X (F9-T16): el tope de gasto del mes.
+    ...(account.platform === "x" ? { spendLimitUsd: xSpendLimitOf(account) } : {}),
+    // F9-T15: el modo de una red de contenido de marca (ADR-0029 punto 9); sin `mode`, por API.
+    publishingMode: (MANUAL_MODE_PLATFORMS as readonly string[]).includes(account.platform)
+      ? isManualAccount(account)
+        ? "manual"
+        : "api"
+      : null,
     createdAt: account.createdAt,
     updatedAt: account.updatedAt,
   };
@@ -252,7 +331,8 @@ function refreshView(result: TokenRefreshResult): AccountRefreshResponse {
  * refrescar el token a pedido (Instagram o Mercado Libre, cada una con su política) y desconectar
  * (Marketplace pide `confirmed`: borra el perfil del navegador). Conectar y
  * refrescar llaman a la plataforma de forma síncrona (seguimiento de ADR-0014, punto 9). Desde
- * F7-T15 (ADR-0023), el administrador activa Marketplace a mano (`/marketplace/manual`). El token
+ * F7-T15 (ADR-0023), el administrador activa Marketplace a mano (`/marketplace/manual`), y desde
+ * F9-T14 conecta el webhook de un canal de Discord (`/discord/connect`). El token
  * nunca vuelve en la respuesta ni va al log (el log de la API no registra cuerpos, y la URL del
  * refresco de Instagram no sale de su cliente).
  */
@@ -280,6 +360,9 @@ export function accountRoutes(deps: AccountRoutesDeps) {
               ),
           },
           marketplace: { automation: deps.marketplaceAutomation },
+          x: { configured: deps.x.configured, startUrl: deps.x.startUrl },
+          linkedin: { configured: deps.linkedin.configured, startUrl: deps.linkedin.startUrl },
+          tiktok: { configured: deps.tiktok.configured, startUrl: deps.tiktok.startUrl },
         },
       };
       return c.json(body, 200);
@@ -292,6 +375,18 @@ export function accountRoutes(deps: AccountRoutesDeps) {
         signal: c.req.raw.signal,
       }).catch((error: unknown) => {
         throw tokenError(error);
+      });
+      const body: AccountResponse = { account: accountView(account) };
+      return c.json(body, 200);
+    })
+    .post("/discord/connect", validatedWithReason("json", discordConnectBodySchema), async (c) => {
+      // Discord (F9-T14): la URL del webhook pegada por la entrada estándar de la CLI. Se lee en
+      // Discord sin publicar y se guarda cifrada; nunca vuelve en la respuesta ni va al log.
+      const { broker, webhookUrl } = c.req.valid("json");
+      const account = await connectDiscordAccount(deps, {
+        broker,
+        webhookUrl,
+        signal: c.req.raw.signal,
       });
       const body: AccountResponse = { account: accountView(account) };
       return c.json(body, 200);
@@ -404,6 +499,35 @@ export function accountRoutes(deps: AccountRoutesDeps) {
           },
         );
         return c.json(refreshView(result), 200);
+      },
+    )
+    .post(
+      "/:id/spend-limit",
+      validated("param", idParamSchema),
+      validated("json", xSpendLimitBodySchema),
+      async (c) => {
+        // X (F9-T16, spec F9 §4.12): el tope de gasto del mes; no llama a X.
+        const account = await setXSpendLimit(deps, {
+          accountId: c.req.valid("param").id,
+          spendLimitUsd: c.req.valid("json").spendLimitUsd,
+        });
+        const body: AccountResponse = { account: accountView(account) };
+        return c.json(body, 200);
+      },
+    )
+    .post(
+      "/:id/mode",
+      validated("param", idParamSchema),
+      validated("json", accountModeBodySchema),
+      async (c) => {
+        // F9-T15 (ADR-0029 punto 9): `manual` o `api` en una red de contenido de marca; solo el
+        // administrador (`ROUTE_ACCESS`). LinkedIn pasa a `api` cuando S2 y S3 estén resueltas.
+        const { account, changed } = await setAccountMode(deps, {
+          accountId: c.req.valid("param").id,
+          mode: c.req.valid("json").mode,
+        });
+        const body: AccountModeResponse = { account: accountView(account), changed };
+        return c.json(body, 200);
       },
     )
     .post(

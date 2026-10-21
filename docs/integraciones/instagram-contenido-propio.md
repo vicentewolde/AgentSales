@@ -16,6 +16,7 @@ Aviso de método: las páginas de Meta se leyeron con una herramienta que extrae
 - **Métricas:** existen con `instagram_business_manage_insights` en `graph.instagram.com`; el permiso es nuevo y la doc se contradice sobre su revisión (sección 5).
 - **Comentarios:** viable como paso futuro con `instagram_business_manage_comments`, también con acceso estándar para cuentas propias (sección 6).
 - **Terceros:** acceso avanzado, App Review, verificación del negocio y Access Verification, ya descritos en la nota principal §13; esta nota agrega qué pasa con los dos permisos nuevos (sección 7).
+- **Qué publica hoy AgentSales para posts (F9-T13):** imagen suelta, carrusel de 2 a 10 y reel, con la cuota de la cuenta compartida con los avisos (sección 13). **La prueba S1 pasó el 2026-10-21** (sección 13): una cuenta sin rol en la app vio el post de prueba.
 
 ## 2. Cuentas y app para cuentas propias
 
@@ -251,3 +252,25 @@ Pistas no oficiales (nunca como fuente final):
 
 - Programación con `scheduled_publish_time` en Instagram (afirmación aislada de un proveedor, contradicha por otros): https://posteverywhere.ai/blog/schedule-instagram-posts-api (contraste: https://postproxy.dev/how-to/schedule-instagram-stories/ y https://bundle.social/blog/instagram-graph-api)
 - Fin de la Basic Display API y de las cuentas personales (2024-12-04): https://help.zapier.com/hc/en-us/articles/32429170578317-Instagram-app-deprecation-on-Dec-4-2024
+
+## 13. Qué publica hoy AgentSales para posts (F9-T13, 2026-10-20)
+
+**Prueba S1, primera parte hecha (2026-10-21, en el Mac con `PUBLISH_MODE=live` y la base de desarrollo; la hizo Claude con la autorización explícita del operador):** con el token de *Generate token* de `@vicentewoldec` (marca AgentPey), un post de imagen (JPEG 1080×1350, variante `ig_4x5`) se publicó de verdad por la API y quedó `published` con su `permalink` (`https://www.instagram.com/p/<código>/`). La cuenta dueña lo ve como una publicación normal (con «View insights» y «Boost post»). La tabla de `publications` lo muestra con formato `carrusel` aunque es una sola imagen (revisar la etiqueta). **Confirmado el mismo día por el operador:** otra persona, desde su teléfono y su propia cuenta de Instagram (sin rol en la app), vio el post.
+
+**Estado de la prueba S1 (visibilidad en modo desarrollo, sección 2.3 y prueba 1 de la sección 9): PASADA (2026-10-21).** Lo que publica la API con la app en modo desarrollo lo ve una cuenta sin rol; los posts de marca pueden salir en `live` por Instagram (siempre con la instrucción del operador). El App Review de Meta sigue haciendo falta para que **otros** (corredores que no son evaluadores) conecten su cuenta, no para la visibilidad. Por decisión del operador (2026-10-20), F9-T13 se construyó contra simulaciones (msw), sin ninguna llamada a Meta. **S1 es obligatoria antes de cualquier publicación real de un post en Instagram**: hasta que el operador la haga y anote aquí el resultado, ningún post de marca sale en `live` por Instagram. Lo que S1 tiene que confirmar: que una publicación real y neutra hecha por la API en la cuenta propia (app en modo desarrollo) la ve una cuenta **sin rol** en la app (su `permalink`, el perfil y el feed de un seguidor). Si no la ve, los posts de Instagram esperan la aprobación de Meta (App Review, `docs/11-app-review-meta.md`) y el resto de las redes sigue.
+
+Lo que el código publica de un post (`postPublicationPlan` en `packages/core/src/use-cases/open-publications.ts`, y el mismo publisher de los avisos, `packages/publishers/src/instagram/publisher.ts`):
+
+| Tipo del post (`post.kind`) | Formato | Medios | Llamadas |
+|---|---|---|---|
+| `image` | `post` (imagen suelta) | El `ig_4x5` (1080×1350, JPEG) de la **primera** foto, aunque el post tenga más (la revisión lo advierte con `MEDIA_UNUSED`, sin impedir aprobar) | Un contenedor con `image_url` y `caption`, sin `media_type` |
+| `carousel` | `post` (carrusel) | Los `ig_4x5` de **2 a 10** fotos, en su orden. Con menos de 2 procesadas no se abre (`CONTENT_NOT_READY`); fuera de 2 a 10 originales, la revisión del texto no lo aprueba (`MEDIA_REQUIREMENT`) | Un hijo por foto (`is_carousel_item`), sin caption; el carrusel con `children` y `caption` |
+| `video` | `reel` | El `ig_reel` (9:16, de 3 a 90 s, **sin texto encima** en un post) del primer video | `media_type=REELS`, `video_url`, `thumb_offset=1000` (la portada es el cuadro del segundo 1, el mismo del `thumb` del panel) y `share_to_feed=true` |
+| `text` | — | — | **No se publica en Instagram**: Instagram no publica solo texto (sección 8). La revisión del texto lo frena (`MEDIA_REQUIREMENT`), el plan no abre la publicación y el publisher rechaza un input sin medios (`NO_MEDIA`) |
+
+- **Caption:** `instagramCaption`, el cuerpo y, tras una línea en blanco, los hashtags (hasta 2.200 caracteres y 30 hashtags, revisados al aprobar y otra vez en el publisher). Sin título.
+- **Idiomas:** una marca con dos idiomas tiene un texto por idioma y, con eso, **dos publicaciones** de la misma cuenta, cada una con el caption de su idioma, que se programan por separado (la cadencia las espacia).
+- **Cuota compartida:** el cupo (`content_publishing_limit`) es de la cuenta de Instagram (sección 3). Si un post y los avisos de un corredor salen por la misma cuenta, suman en el mismo contador; antes de crear contenedores el publisher consulta el cupo de esa cuenta y, sin cupo, la publicación del post se reprograma 6 h después (`IG_PUBLISH_LIMIT` con la señal de espera, hasta 3 veces seguidas), igual que la de un aviso. Otra cuenta (AgentPey) tiene su propio cupo.
+- **Sin publicar dos veces:** el mismo progreso del contenedor de F3 (ADR-0014). Un medio que Instagram no pudo descargar (`IG_MEDIA_FETCH_FAILED`) se reintenta con un contenedor nuevo y URLs firmadas nuevas; un corte después de crear el contenedor retoma ese contenedor, y si ya estaba publicado busca el medio por caption y formato en vez de pedir otro `media_publish`.
+- **Fuera de F9-T13 (sección 8, sin usar todavía):** carrusel mixto foto + video, `cover_url` del reel (está documentado, pero sin login declarado), `alt_text`, Stories, `collaborators`, `user_tags` e `is_ai_generated`.
+- **Contratos:** `packages/publishers/src/instagram/post.test.ts` (los tres formatos, dos idiomas, la cuota compartida con un aviso, otra cuenta con su propio cupo, el error de descarga y dos cortes). Ningún test llama a Meta.

@@ -7,10 +7,20 @@ import type { PlatformAccountRepository } from "../ports/platform-account-reposi
  * repetido después de refrescar, `rejected_after_refresh`, o un refresco rechazado).
  */
 // `MARKETPLACE_SESSION_EXPIRED`: Facebook pidió iniciar sesión (spec F5 §4.2); se reconecta igual.
+// Discord (F9-T14, `discord.md` §6.1 y §7.1): el webhook se borró (404) o su token no sirve
+// (401). Volver a usarlo puede bloquear la IP por un tiempo: la cuenta queda vencida al primero.
 const ACCESS_REJECTED = new Set([
   "IG_AUTH_INVALID",
   "ML_AUTH_INVALID",
   "MARKETPLACE_SESSION_EXPIRED",
+  "DISCORD_WEBHOOK_NOT_FOUND",
+  "DISCORD_WEBHOOK_INVALID",
+  // LinkedIn (F9-T15, `linkedin.md` §7): un 401 es un token vencido o revocado; no se renueva solo,
+  // se reconecta.
+  "LINKEDIN_AUTH_INVALID",
+  // TikTok (F9-T26): el token rechazado después de renovarlo una vez, o el acceso que el usuario
+  // quitó a la app (`auth_removed`).
+  "TIKTOK_AUTH_INVALID",
 ]);
 
 export const isAccessRejected = (error: unknown): boolean =>

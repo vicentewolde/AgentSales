@@ -3,6 +3,10 @@ import {
   CLOSE_REASON_TEXT,
   LISTING_PLATFORMS,
   LISTING_STATUS_TEXT,
+  PLATFORM_TEXT,
+  type Platform,
+  POST_PLATFORMS,
+  type PostStatus,
   PUBLICATION_STATUS_TEXT,
   publicationFormatText,
 } from "@agentsales/core";
@@ -13,19 +17,26 @@ import { type CliContext, exitWith } from "../context.js";
 import { guarded, type Io, renderTable } from "../output.js";
 import { brokerSlugOf } from "./shared.js";
 
-// F6-T11 (spec F6 §4.9): la matriz de seguimiento en una tabla compacta.
+// F6-T11 (spec F6 §4.9): la matriz de seguimiento en una tabla compacta. Desde F9-T08 (spec F9
+// §4.2), los posts van en el mismo comando, en su propia tabla (sus redes no son las de un aviso),
+// con el tema como título.
 
 export type TrackingDeps = Io & { client: ApiClient };
 export type TrackingOptions = { broker?: string; archived?: boolean; json?: boolean };
 
 type Row = TrackingResponse["rows"][number];
+type PostRow = TrackingResponse["posts"][number];
 type Cell = Row["cells"][keyof Row["cells"]][number];
 
-function cellText(
-  platform: (typeof LISTING_PLATFORMS)[number],
-  publication: Cell,
-  c: Colors,
-): string {
+/** El estado de un post (spec F9 §4.2), como lo ve el operador. */
+export const POST_STATUS_TEXT: Readonly<Record<PostStatus, string>> = {
+  idea: "idea",
+  draft: "borrador",
+  ready: "listo",
+  archived: "archivado",
+};
+
+function cellText(platform: Platform, publication: Cell, c: Colors): string {
   const notes = [
     publication.schedule === "overdue" ? c.yellow("atrasada") : null,
     publication.manualTask ? c.yellow("a mano") : null,
@@ -33,7 +44,9 @@ function cellText(
     publication.lastError === null ? null : c.red(publication.lastError.code),
     publication.dryRun ? null : c.red("vivo"),
   ].filter(Boolean);
-  return `${publicationFormatText(platform, publication.format)} ${PUBLICATION_STATUS_TEXT[publication.status]}${notes.length === 0 ? "" : ` (${notes.join(", ")})`}`;
+  // Un post con dos idiomas tiene una publicación por idioma: se dice cuál es la inglesa.
+  const language = publication.language === "es" ? "" : ` [${publication.language}]`;
+  return `${publicationFormatText(platform, publication.format)}${language} ${PUBLICATION_STATUS_TEXT[publication.status]}${notes.length === 0 ? "" : ` (${notes.join(", ")})`}`;
 }
 
 export function renderTracking(rows: readonly Row[], c: Colors): string {
@@ -54,6 +67,24 @@ export function renderTracking(rows: readonly Row[], c: Colors): string {
   );
 }
 
+/** Los posts (F9-T08): el tema como título, su estado y una columna por red. */
+export function renderTrackingPosts(posts: readonly PostRow[], c: Colors): string {
+  return renderTable(
+    ["Post", "Estado", ...POST_PLATFORMS.map((platform) => PLATFORM_TEXT[platform])],
+    posts.map((row) => [
+      row.post.topic,
+      POST_STATUS_TEXT[row.post.status],
+      ...POST_PLATFORMS.map((platform) => {
+        const cell = row.cells[platform];
+        return cell.length === 0
+          ? c.dim("—")
+          : cell.map((p) => cellText(platform, p, c)).join(", ");
+      }),
+    ]),
+    c,
+  );
+}
+
 /** `agentsales tracking [--broker <slug>] [--archived] [--json]`. */
 export function runTracking(deps: TrackingDeps, options: TrackingOptions = {}) {
   return guarded(deps, async () => {
@@ -61,10 +92,18 @@ export function runTracking(deps: TrackingDeps, options: TrackingOptions = {}) {
       ...(options.broker === undefined ? {} : { broker: brokerSlugOf(options.broker) }),
       ...(options.archived ? { archived: "1" as const } : {}),
     };
-    const { rows } = await unwrap(deps.client.tracking.$get({ query }), trackingResponseSchema);
-    deps.print(
-      options.json ? JSON.stringify({ rows }, null, 2) : renderTracking(rows, deps.colors),
+    const { rows, posts } = await unwrap(
+      deps.client.tracking.$get({ query }),
+      trackingResponseSchema,
     );
+    if (options.json) {
+      deps.print(JSON.stringify({ rows, posts }, null, 2));
+      return 0;
+    }
+    // Una marca no tiene propiedades: si hay posts y ninguna propiedad, solo los posts.
+    const parts = rows.length === 0 && posts.length > 0 ? [] : [renderTracking(rows, deps.colors)];
+    if (posts.length > 0) parts.push(renderTrackingPosts(posts, deps.colors));
+    deps.print(parts.join("\n\n"));
     return 0;
   });
 }
@@ -72,8 +111,10 @@ export function runTracking(deps: TrackingDeps, options: TrackingOptions = {}) {
 export function register(program: Command, ctx: CliContext): void {
   program
     .command("tracking")
-    .description("Seguimiento: cada propiedad con su estado en Instagram, Portal y Marketplace")
-    .option("--broker <slug>", "solo las propiedades de un corredor")
+    .description(
+      "Seguimiento: cada propiedad con su estado en Instagram, Portal y Marketplace, y cada post con el suyo en sus redes",
+    )
+    .option("--broker <slug>", "solo lo de un corredor o marca")
     .option("--archived", "incluye las archivadas")
     .option("--json", "salida en JSON")
     .action((options: TrackingOptions) =>

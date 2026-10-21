@@ -39,10 +39,13 @@ export const publicationView = (publication: Publication): PublicationView =>
  */
 export const publicationViewAt = (publication: Publication, now: Date): PublicationView => ({
   id: publication.id,
-  listingId: publication.listingId,
+  // El sujeto en sus dos campos (F9-T06): exactamente uno tiene valor.
+  listingId: publication.subject.kind === "listing" ? publication.subject.id : null,
+  postId: publication.subject.kind === "post" ? publication.subject.id : null,
   platformAccountId: publication.platformAccountId,
   platform: publication.platform,
   format: publication.format,
+  language: publication.language,
   contentId: publication.contentId,
   mediaIds: publication.mediaIds,
   status: publication.status,
@@ -108,6 +111,8 @@ const STATUS_PAYLOAD_KEYS = [
   "code",
   "attempt",
   "removedByHand",
+  // F9-T19: retirada borrando por la API (LinkedIn en modo `api`).
+  "removedByApi",
   // Pausar, reactivar, cerrar y el sync (F4-T17): la operación y el estado en la plataforma.
   "operation",
   "sync",
@@ -121,6 +126,8 @@ const STATUS_PAYLOAD_KEYS = [
   "due",
   "byListing",
   "action",
+  // Resolver una con resultado dudoso (F9-T06): lo que dijo el operador.
+  "outcome",
 ] as const;
 
 /**

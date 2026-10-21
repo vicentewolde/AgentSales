@@ -32,6 +32,22 @@ export const isListingPlatform = (platform: Platform): platform is ListingPlatfo
   (LISTING_PLATFORMS as readonly Platform[]).includes(platform);
 
 /**
+ * Las redes que publican posts de marca (F9, ADR-0029): todas menos Portal y Marketplace, que son
+ * de los avisos. La cadencia del perfil editorial va por estas (spec F9 §4.3).
+ */
+export const POST_PLATFORMS = [
+  "instagram",
+  "x",
+  "linkedin",
+  "discord",
+  "tiktok",
+] as const satisfies readonly Platform[];
+export type PostPlatform = (typeof POST_PLATFORMS)[number];
+
+export const isPostPlatform = (platform: string): platform is PostPlatform =>
+  (POST_PLATFORMS as readonly string[]).includes(platform);
+
+/**
  * Los nombres cortos de los canales para la CLI (`--platform portal`, spec F2 §4.7): se traducen a
  * `PLATFORMS` solo aquí.
  */
@@ -120,10 +136,24 @@ export type MediaRole = (typeof MEDIA_ROLES)[number];
 
 /**
  * Variantes de un original (`role = processed`, spec F2 §4.2): miniatura para el panel, recortes
- * por canal y el reel. Una vigente por original y variante.
+ * por canal, el reel y, desde F9 (spec §4.5, solo posts), el video reducido para X. Una vigente
+ * por original y variante.
  */
-export const PROCESSED_MEDIA_VARIANTS = ["thumb", "ig_4x5", "pi_4x3", "ig_reel"] as const;
+export const PROCESSED_MEDIA_VARIANTS = [
+  "thumb",
+  "ig_4x5",
+  "pi_4x3",
+  "ig_reel",
+  "x_video",
+] as const;
 export type ProcessedMediaVariant = (typeof PROCESSED_MEDIA_VARIANTS)[number];
+
+/** Las variantes que son video (el resto, y los renders, son imágenes JPEG). */
+export const VIDEO_MEDIA_VARIANTS = [
+  "ig_reel",
+  "x_video",
+] as const satisfies readonly ProcessedMediaVariant[];
+export type VideoMediaVariant = (typeof VIDEO_MEDIA_VARIANTS)[number];
 
 /** Renders de plantillas (`role = rendered`): portada y ficha del carrusel. Uno por aviso. */
 export const RENDERED_MEDIA_VARIANTS = ["cover", "spec_sheet"] as const;
@@ -223,10 +253,12 @@ export type PlanRunStatus = (typeof PLAN_RUN_STATUSES)[number];
 
 /**
  * Estado de una subida pendiente de un post (`post_uploads`, spec F9 §4.5, ADR-0025): `pending`
- * (con su URL prefirmada), `completed` (subida y registrada como medio) o `abandoned` (vencida; la
- * limpieza periódica la borra de R2).
+ * (con su URL prefirmada), `uploaded` (F9-T17: un archivo de más de 100 MB que llegó sin sha256; el
+ * worker lo calcula en streaming, crea el medio y deduplica), `completed` (subida y registrada como
+ * medio) o `abandoned` (vencida; la limpieza periódica la borra de R2). `uploaded` se agregó con
+ * `ALTER TYPE … ADD VALUE` (migración 0017), al final del tipo.
  */
-export const POST_UPLOAD_STATUSES = ["pending", "completed", "abandoned"] as const;
+export const POST_UPLOAD_STATUSES = ["pending", "completed", "abandoned", "uploaded"] as const;
 export type PostUploadStatus = (typeof POST_UPLOAD_STATUSES)[number];
 
 /**

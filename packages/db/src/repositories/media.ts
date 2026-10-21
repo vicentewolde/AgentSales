@@ -2,28 +2,45 @@ import {
   AppError,
   checkArrangement,
   checkDerivative,
+  checkNewMedia,
   type Media,
   type MediaRecord,
   type MediaRepository,
   mediaSchema,
   type NewMedia,
+  type Subject,
 } from "@agentsales/core";
 import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { isUniqueViolation, withDbErrors } from "../errors.js";
-import { listings, media } from "../schema.js";
+import { listings, media, posts } from "../schema.js";
 
-/** Únicos de `media` (migraciones `0001` y `0005`) que dan `MEDIA_CONFLICT`. */
+/** Únicos de `media` (migraciones `0001`, `0005` y, de posts, `0015`) que dan `MEDIA_CONFLICT`. */
 const CHECKSUM_UNIQUE = "media_original_listing_checksum_unique";
+const POST_CHECKSUM_UNIQUE = "media_original_post_checksum_unique";
 const STORAGE_PATH_UNIQUE = "media_storage_path_unique";
 const PROCESSED_UNIQUE = "media_processed_parent_variant_unique";
 const RENDERED_UNIQUE = "media_rendered_listing_variant_unique";
-const MEDIA_UNIQUES = [CHECKSUM_UNIQUE, STORAGE_PATH_UNIQUE, PROCESSED_UNIQUE, RENDERED_UNIQUE];
+const MEDIA_UNIQUES = [
+  CHECKSUM_UNIQUE,
+  POST_CHECKSUM_UNIQUE,
+  STORAGE_PATH_UNIQUE,
+  PROCESSED_UNIQUE,
+  RENDERED_UNIQUE,
+];
+
+/** La condición de los medios de un aviso o post. */
+const ofSubject = (subject: Subject) =>
+  subject.kind === "listing" ? eq(media.listingId, subject.id) : eq(media.postId, subject.id);
+
+const subjectName = (subject: Subject) => (subject.kind === "listing" ? "aviso" : "post");
+const subjectDetails = (subject: Subject) =>
+  subject.kind === "listing" ? { listingId: subject.id } : { postId: subject.id };
 
 const isMediaConflict = (error: unknown) =>
   MEDIA_UNIQUES.some((constraint) => isUniqueViolation(error, constraint));
 
-/** Orden de `listByListing`: originales, variantes y renders (el enum sigue `MEDIA_ROLES`). */
+/** Orden de `listBySubject`: originales, variantes y renders (el enum sigue `MEDIA_ROLES`). */
 const roleOrder = sql`case ${media.role} when 'original' then 0 when 'processed' then 1 else 2 end`;
 
 /**
@@ -34,6 +51,7 @@ function toMedia(row: typeof media.$inferSelect): Media {
   const parsed = mediaSchema.safeParse({
     id: row.id,
     listingId: row.listingId,
+    postId: row.postId,
     brokerId: row.brokerId,
     kind: row.kind,
     role: row.role,
@@ -60,6 +78,7 @@ function toMedia(row: typeof media.$inferSelect): Media {
 const recordColumns = {
   id: media.id,
   listingId: media.listingId,
+  postId: media.postId,
   brokerId: media.brokerId,
   kind: media.kind,
   storagePath: media.storagePath,
@@ -76,12 +95,12 @@ const isOriginal = eq(media.role, "original");
 /** `MediaRepository` sobre Drizzle (node-postgres en las apps, PGlite en los tests). */
 export function createMediaRepository(db: SchemaDatabase): MediaRepository {
   return {
-    listOriginals(listingId) {
+    listOriginals(subject) {
       return withDbErrors(() =>
         db
           .select(recordColumns)
           .from(media)
-          .where(and(eq(media.listingId, listingId), isOriginal))
+          .where(and(ofSubject(subject), isOriginal))
           .orderBy(asc(media.sortOrder), asc(media.id)),
       );
     },
@@ -110,11 +129,12 @@ export function createMediaRepository(db: SchemaDatabase): MediaRepository {
     },
 
     async create(data: NewMedia) {
+      checkNewMedia(data);
       try {
         return await withDbErrors(async (): Promise<MediaRecord> => {
           const [row] = await db
             .insert(media)
-            .values({ ...data, role: "original" })
+            .values({ ...data, postId: data.postId ?? null, role: "original" })
             .returning(recordColumns);
           if (row === undefined) throw new AppError("MEDIA_WRITE_FAILED", "No se creó el medio");
           return row;
@@ -131,62 +151,66 @@ export function createMediaRepository(db: SchemaDatabase): MediaRepository {
       }
     },
 
-    async arrange(listingId, items) {
+    async arrange(subject, items) {
       checkArrangement(items);
       if (items.length === 0) return;
+      const own = ofSubject(subject);
       await withDbErrors(() =>
         db.transaction(async (tx) => {
-          // Bloquea el aviso: dos `arrange` del mismo aviso (intentos del job solapados) se
+          // Bloquea el aviso (o el post): dos `arrange` del mismo (intentos del job solapados) se
           // serializan. Sin esto, en READ COMMITTED cada uno desmarcaría solo las portadas ya
           // confirmadas y podrían quedar dos, o un orden cruzado de filas daría un deadlock.
-          await tx
-            .select({ id: listings.id })
-            .from(listings)
-            .where(eq(listings.id, listingId))
-            .for("no key update");
+          if (subject.kind === "listing") {
+            await tx
+              .select({ id: listings.id })
+              .from(listings)
+              .where(eq(listings.id, subject.id))
+              .for("no key update");
+          } else {
+            await tx
+              .select({ id: posts.id })
+              .from(posts)
+              .where(eq(posts.id, subject.id))
+              .for("no key update");
+          }
           const ids = items.map((item) => item.id);
           const found = await tx
             .select({ id: media.id })
             .from(media)
-            .where(and(inArray(media.id, ids), eq(media.listingId, listingId), isOriginal));
+            .where(and(inArray(media.id, ids), own, isOriginal));
           if (found.length !== ids.length) {
             const known = new Set(found.map((row) => row.id));
             const missing = ids.filter((id) => !known.has(id));
-            throw new AppError("MEDIA_NOT_FOUND", "Hay medios que no son originales de ese aviso", {
-              details: { listingId, missing },
-            });
+            throw new AppError(
+              "MEDIA_NOT_FOUND",
+              `Hay medios que no son originales de ese ${subjectName(subject)}`,
+              { details: { ...subjectDetails(subject), missing } },
+            );
           }
-          // Una sola portada por aviso: la nueva desmarca las demás, vengan o no en `items`.
+          // Una sola portada por aviso o post: la nueva desmarca las demás, vengan o no en `items`.
           const cover = items.find((item) => item.isCover);
           if (cover !== undefined) {
             await tx
               .update(media)
               .set({ isCover: false })
-              .where(
-                and(
-                  eq(media.listingId, listingId),
-                  isOriginal,
-                  eq(media.isCover, true),
-                  ne(media.id, cover.id),
-                ),
-              );
+              .where(and(own, isOriginal, eq(media.isCover, true), ne(media.id, cover.id)));
           }
           for (const { id, sortOrder, isCover } of items) {
             await tx
               .update(media)
               .set({ sortOrder, isCover })
-              .where(and(eq(media.id, id), eq(media.listingId, listingId), isOriginal));
+              .where(and(eq(media.id, id), own, isOriginal));
           }
         }),
       );
     },
 
-    listByListing(listingId) {
+    listBySubject(subject) {
       return withDbErrors(async () => {
         const rows = await db
           .select()
           .from(media)
-          .where(eq(media.listingId, listingId))
+          .where(ofSubject(subject))
           .orderBy(roleOrder, asc(media.sortOrder), asc(media.id));
         return rows.map(toMedia);
       });
@@ -232,6 +256,11 @@ export function createMediaRepository(db: SchemaDatabase): MediaRepository {
 
     async upsertDerivative(derivative) {
       checkDerivative(derivative);
+      // Un render siempre es de un aviso (`checkDerivative` rechaza el de un post).
+      const subject: Subject =
+        derivative.postId === undefined
+          ? { kind: "listing", id: derivative.listingId }
+          : { kind: "post", id: derivative.postId };
       try {
         return await withDbErrors(() =>
           db.transaction(async (tx) => {
@@ -243,7 +272,7 @@ export function createMediaRepository(db: SchemaDatabase): MediaRepository {
                 .where(
                   and(
                     eq(media.id, derivative.parentMediaId),
-                    eq(media.listingId, derivative.listingId),
+                    ofSubject(subject),
                     eq(media.brokerId, derivative.brokerId),
                     isOriginal,
                   ),
@@ -252,10 +281,10 @@ export function createMediaRepository(db: SchemaDatabase): MediaRepository {
               if (parent === undefined) {
                 throw new AppError(
                   "MEDIA_NOT_FOUND",
-                  "El original del derivado no es de ese aviso",
+                  `El original del derivado no es de ese ${subjectName(subject)}`,
                   {
                     details: {
-                      listingId: derivative.listingId,
+                      ...subjectDetails(subject),
                       parentMediaId: derivative.parentMediaId,
                     },
                   },
@@ -266,19 +295,14 @@ export function createMediaRepository(db: SchemaDatabase): MediaRepository {
               const [listing] = await tx
                 .select({ id: listings.id })
                 .from(listings)
-                .where(
-                  and(
-                    eq(listings.id, derivative.listingId),
-                    eq(listings.brokerId, derivative.brokerId),
-                  ),
-                )
+                .where(and(eq(listings.id, subject.id), eq(listings.brokerId, derivative.brokerId)))
                 .for("no key update");
               if (listing === undefined) {
                 throw new AppError(
                   "MEDIA_NOT_FOUND",
                   "El aviso del render no existe o es de otro corredor",
                   {
-                    details: { listingId: derivative.listingId },
+                    details: { listingId: subject.id },
                   },
                 );
               }
@@ -295,11 +319,17 @@ export function createMediaRepository(db: SchemaDatabase): MediaRepository {
                     )
                   : and(
                       eq(media.role, "rendered"),
-                      eq(media.listingId, derivative.listingId),
+                      eq(media.listingId, subject.id),
                       eq(media.variant, derivative.variant),
                     ),
               );
-            const values = { ...derivative, sortOrder: 0, isCover: false };
+            const values = {
+              ...derivative,
+              listingId: derivative.listingId ?? null,
+              postId: derivative.postId ?? null,
+              sortOrder: 0,
+              isCover: false,
+            };
             const [row] =
               current === undefined
                 ? await tx.insert(media).values(values).returning()

@@ -8,15 +8,20 @@ import {
   BRAND_TEXT_MAX,
   BROKER_KINDS,
   brokerSchema,
+  CALENDAR_ENTRY_KINDS,
+  CALENDAR_MAX_RANGE_MS,
   CLOSE_REASONS,
   CONTENT_CHECK_CODES,
   CONTENT_CHECK_SEVERITY_LEVELS,
   CONTENT_STATUSES,
   contentRunReportSchema,
   contentRunSchema,
+  EDITORIAL_LIMITS,
+  editorialProfileSchema,
   FIELD_TYPES,
   IMPORT_UPLOAD,
   importRunSchema,
+  LANGUAGES,
   LISTING_ACTIONS,
   LISTING_PLATFORMS,
   LISTING_STATUSES,
@@ -28,12 +33,21 @@ import {
   MEDIA_VARIANTS,
   ONBOARDING_STEPS,
   OPERATIONS,
+  PLAN_RUN_STATUSES,
   PLATFORM_ACCOUNT_STATUSES,
   PLATFORMS,
+  POST_KINDS,
+  POST_LIMITS,
+  POST_PLATFORMS,
+  POST_STATUSES,
+  POST_UPLOAD,
+  PROCESSED_MEDIA_VARIANTS,
   PUBLICATION_ACTORS,
   PUBLICATION_EVENT_TYPES,
   PUBLICATION_FORMATS,
+  PUBLICATION_RESOLUTIONS,
   PUBLICATION_STATUSES,
+  postSchema,
   publicationErrorSchema,
   remoteStateSchema,
   SCHEDULE_STATES,
@@ -338,6 +352,11 @@ export type ContentCheckView = z.infer<typeof contentCheckSchema>;
 export const contentViewSchema = z.object({
   id: z.string(),
   platform: z.enum(PLATFORMS),
+  /**
+   * El idioma del texto (F9-T12): un post tiene uno por red e idioma; un aviso, siempre `es`. Un
+   * servidor anterior no lo manda: se lee como `es`.
+   */
+  language: z.enum(LANGUAGES).default("es"),
   /** Portal y Marketplace; `null` en Instagram. */
   title: z.string().nullable(),
   body: z.string(),
@@ -429,10 +448,18 @@ export type MarketplaceManualView = z.infer<typeof marketplaceManualSchema>;
  */
 export const publicationViewSchema = z.object({
   id: z.string(),
-  listingId: z.string(),
+  /** El aviso de la publicación; `null` si es de un post (F9-T06, ADR-0029). */
+  listingId: z.string().nullable(),
+  /**
+   * El post de la publicación (F9-T06, ADR-0029); `null` si es de un aviso. Un servidor anterior a
+   * F9-T06 no lo manda: se lee como `null` (sus publicaciones son todas de avisos).
+   */
+  postId: z.string().nullable().default(null),
   platformAccountId: z.string(),
   platform: z.enum(PLATFORMS),
   format: z.enum(PUBLICATION_FORMATS),
+  /** El idioma de su texto (F9-T12; un aviso, siempre `es`). Sin él (otro servidor), `es`. */
+  language: z.enum(LANGUAGES).default("es"),
   contentId: z.string(),
   mediaIds: z.array(z.string()),
   status: z.enum(PUBLICATION_STATUSES),
@@ -589,8 +616,15 @@ export type PublicationConfirmResponse = z.infer<typeof publicationConfirmRespon
 /**
  * `POST /publications/:id/retire`: en `live`, `removedByHand: true` confirma que se borró a mano en
  * la plataforma (Instagram Login no deja borrar por la API, D8). El cuerpo va siempre (`{}`).
+ * F9-T19: `deleteRemote: true` la borra AgentSales por la API (LinkedIn con la cuenta en modo
+ * `api`, con la API en `live`); no se junta con `removedByHand`.
  */
-export const publicationRetireBodySchema = z.object({ removedByHand: z.boolean().optional() });
+export const publicationRetireBodySchema = z
+  .object({ removedByHand: z.boolean().optional(), deleteRemote: z.boolean().optional() })
+  .refine((body) => !(body.removedByHand === true && body.deleteRemote === true), {
+    message:
+      "o la borraste a mano (removedByHand) o la borra AgentSales (deleteRemote), no las dos",
+  });
 export type PublicationRetireBody = z.infer<typeof publicationRetireBodySchema>;
 
 /** `listingBackToReady`: era la última publicada en `live` y el aviso volvió de `active` a `ready`. */
@@ -690,6 +724,16 @@ export const platformAccountViewSchema = z.object({
    * `manual` (el corredor publica él mismo); `null` en las demás plataformas.
    */
   marketplaceMode: z.enum(["profile", "manual"]).nullable(),
+  /**
+   * X (F9-T16, spec F9 §4.12): el tope de gasto del mes de la cuenta (`meta.spendLimitUsd`, o el de
+   * por defecto, US$10). Ausente en las demás plataformas.
+   */
+  spendLimitUsd: z.number().nonnegative().optional(),
+  /**
+   * Las redes de contenido de marca con modo por cuenta (ADR-0029 punto 9; LinkedIn desde F9-T15):
+   * `manual` (deja el texto listo y se publica a mano) o `api`; `null` en las demás plataformas.
+   */
+  publishingMode: z.enum(["api", "manual"]).nullable(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
 });
@@ -727,6 +771,29 @@ export const accountListResponseSchema = z.object({
      * quedó de antes se pasa a mano.
      */
     marketplace: z.object({ automation: z.boolean() }),
+    /**
+     * X (F9-T16, spec F9 §4.7): `configured` si la API tiene el par de la app (`X_CLIENT_ID` y
+     * `X_CLIENT_SECRET`), y el inicio del OAuth con PKCE en el host de `X_REDIRECT_URI` (la cookie
+     * firmada del `state` y del verificador lo distingue): el panel y la CLI le suman
+     * `?broker=<slug>` y lo abren en el navegador con la sesión del panel. Siempre presente desde
+     * F9-T19 (como LinkedIn y TikTok).
+     */
+    x: z.object({ configured: z.boolean(), startUrl: z.url({ protocol: /^https?$/ }) }),
+    /**
+     * LinkedIn (F9-T15): `configured` si la API tiene el par de la app (sin él, el inicio vuelve al
+     * panel con `LINKEDIN_NOT_CONFIGURED`), y el inicio del OAuth en el host de la dirección de
+     * retorno: la CLI le suma `?broker=<slug>` y lo abre en el navegador con la sesión del panel.
+     */
+    linkedin: z.object({
+      configured: z.boolean(),
+      startUrl: z.url({ protocol: /^https?$/ }),
+    }),
+    /**
+     * TikTok (F9-T26): `configured` si la API tiene el par de la app (sin él, el inicio vuelve al
+     * panel con `TIKTOK_NOT_CONFIGURED`), y el inicio del OAuth (`/api/oauth/tiktok/start`), que el
+     * panel y la CLI abren con `?broker=<slug>`. Siempre presente desde F9-T19.
+     */
+    tiktok: z.object({ configured: z.boolean(), startUrl: z.url({ protocol: /^https?$/ }) }),
   }),
 });
 export type AccountListResponse = z.infer<typeof accountListResponseSchema>;
@@ -745,6 +812,13 @@ export type AccountResponse = z.infer<typeof accountResponseSchema>;
  */
 export const accountRefreshBodySchema = z.object({ force: z.boolean().optional() });
 export type AccountRefreshBody = z.infer<typeof accountRefreshBodySchema>;
+
+/**
+ * `POST /accounts/:id/spend-limit` (F9-T16, spec F9 §4.12; administrador): el tope de gasto del mes
+ * de una cuenta de X, en dólares (0 a 1.000). Core lo redondea a 4 decimales.
+ */
+export const xSpendLimitBodySchema = z.object({ spendLimitUsd: z.number().finite() }).strict();
+export type XSpendLimitBody = z.infer<typeof xSpendLimitBodySchema>;
 
 /**
  * Lo que pasó al refrescar (los valores vienen de core): `refreshed` (token nuevo y vencimiento
@@ -787,6 +861,38 @@ export const connectTokenBodySchema = z.object({
     .regex(/^\S+$/, "el token no puede tener espacios ni saltos de línea"),
 });
 export type ConnectTokenBody = z.infer<typeof connectTokenBodySchema>;
+
+/**
+ * `POST /accounts/discord/connect` (spec F9 §4.6, F9-T14): la URL del webhook del canal, que es el
+ * secreto. Aquí solo el largo y sin espacios; que sea la de un webhook lo revisa core
+ * (`DISCORD_WEBHOOK_URL_INVALID`), sin repetirla. Nunca vuelve en la respuesta ni va al log.
+ */
+export const discordConnectBodySchema = z
+  .object({
+    broker: brokerSlugSchema,
+    webhookUrl: z
+      .string({ error: "falta la URL del webhook" })
+      .trim()
+      .min(1, "falta la URL del webhook")
+      .max(512, "la URL del webhook es demasiado larga: copia solo la URL")
+      .regex(/^\S+$/, "la URL del webhook no puede tener espacios ni saltos de línea"),
+  })
+  .strict();
+export type DiscordConnectBody = z.infer<typeof discordConnectBodySchema>;
+
+/**
+ * `POST /accounts/:id/mode` (F9-T15, ADR-0029 punto 9): el modo de una cuenta de una red de
+ * contenido de marca, `manual` o `api` (solo el administrador; LinkedIn nace `manual`, D5).
+ */
+export const accountModeBodySchema = z.object({ mode: z.enum(["api", "manual"]) }).strict();
+export type AccountModeBody = z.infer<typeof accountModeBodySchema>;
+
+/** La respuesta de cambiar el modo: la cuenta y si cambió. */
+export const accountModeResponseSchema = z.object({
+  account: platformAccountViewSchema,
+  changed: z.boolean(),
+});
+export type AccountModeResponse = z.infer<typeof accountModeResponseSchema>;
 
 /**
  * `POST /accounts/:id/disconnect` (spec F5 §4.2): Marketplace exige `confirmed: true` (borra el
@@ -866,6 +972,12 @@ export const OAUTH_REDIRECT_ERRORS = [
   "OAUTH_CODE_MISSING",
   "INSTAGRAM_NOT_CONFIGURED",
   "MERCADOLIBRE_NOT_CONFIGURED",
+  // F9-T15: falta el par de la app de LinkedIn.
+  "LINKEDIN_NOT_CONFIGURED",
+  // F9-T16: falta el par de la app de X (`/oauth/x/*` vuelve con `proveedor=x`).
+  "X_NOT_CONFIGURED",
+  // F9-T26: a la API le falta el par de la app de TikTok.
+  "TIKTOK_NOT_CONFIGURED",
   "BROKER_NOT_FOUND",
   "INTERNAL_ERROR",
 ] as const;
@@ -875,7 +987,7 @@ export type OAuthRedirectError = (typeof OAUTH_REDIRECT_ERRORS)[number];
  * El proveedor con que vuelve el OAuth (`/cuentas?proveedor=…`, F8-T19): sin él, Instagram (la vuelta
  * de F3). Cambia el texto del aviso del panel.
  */
-export const OAUTH_PROVIDERS = ["instagram", "mercadolibre"] as const;
+export const OAUTH_PROVIDERS = ["instagram", "mercadolibre", "linkedin", "x", "tiktok"] as const;
 export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
 
 // --- F6-T10: calendario, la propiedad, Portal y el seguimiento (spec F6 §4.13) ---
@@ -941,6 +1053,8 @@ export const agendaQuerySchema = z.object({ broker: brokerSlugSchema.optional() 
 export const trackingPublicationSchema = z.object({
   id: z.string(),
   format: z.enum(PUBLICATION_FORMATS),
+  /** El idioma del texto (un post puede tener dos; un aviso, siempre `es`). */
+  language: z.enum(LANGUAGES),
   status: z.enum(PUBLICATION_STATUSES),
   dryRun: z.boolean(),
   externalUrl: z.string().nullable(),
@@ -972,14 +1086,43 @@ export const trackingRowSchema = z.object({
     fb_marketplace: z.array(trackingPublicationSchema),
   }),
 });
-export const trackingResponseSchema = z.object({ rows: z.array(trackingRowSchema) });
+/** La fila de un post (F9-T08): el tema es su título, y una celda por red (`POST_PLATFORMS`). */
+export const trackingPostRowSchema = z.object({
+  post: z.object({
+    id: z.string(),
+    brokerId: z.string(),
+    topic: z.string(),
+    status: z.enum(POST_STATUSES),
+    kind: z.enum(POST_KINDS),
+    plannedAt: z.coerce.date().nullable(),
+  }),
+  cells: z.object({
+    instagram: z.array(trackingPublicationSchema),
+    x: z.array(trackingPublicationSchema),
+    linkedin: z.array(trackingPublicationSchema),
+    discord: z.array(trackingPublicationSchema),
+    tiktok: z.array(trackingPublicationSchema),
+  }),
+});
+/** Las propiedades (`rows`) y, desde F9-T08, los posts del alcance (`posts`), en el mismo pedido. */
+export const trackingResponseSchema = z.object({
+  rows: z.array(trackingRowSchema),
+  posts: z.array(trackingPostRowSchema),
+});
 export type TrackingResponse = z.infer<typeof trackingResponseSchema>;
 
 export const agendaItemSchema = z.object({
   kind: z.enum(AGENDA_KINDS),
   action: z.enum(AGENDA_ACTIONS),
   listingId: z.string().nullable(),
+  /** El post de la publicación (F9-T08); `null` en un aviso. */
+  postId: z.string().nullable(),
   externalRef: z.string().nullable(),
+  /** El `id_propiedad`, el tema del post o el nombre de la cuenta; `null` en el respaldo. */
+  title: z.string().nullable(),
+  /** La cuenta de un token por vencer, con el `slug` de su corredor. */
+  accountId: z.string().nullable(),
+  brokerSlug: z.string().nullable(),
   platform: z.enum(PLATFORMS).nullable(),
   format: z.enum(PUBLICATION_FORMATS).nullable(),
   publicationId: z.string().nullable(),
@@ -993,6 +1136,50 @@ export const agendaItemSchema = z.object({
 });
 export const agendaResponseSchema = z.object({ items: z.array(agendaItemSchema) });
 export type AgendaResponse = z.infer<typeof agendaResponseSchema>;
+
+/**
+ * `GET /calendar?from=&to=&broker=` (F9-T18): el rango `[from, to)` en ISO con zona (el panel lo
+ * arma con los días de Chile), de hasta 43 días (`CALENDAR_MAX_RANGE_MS`: la vista mensual de seis
+ * semanas), y el corredor o marca (slug; todo el alcance si falta).
+ */
+export const calendarQuerySchema = z
+  .object({
+    from: z.iso.datetime({ offset: true }),
+    to: z.iso.datetime({ offset: true }),
+    broker: brokerSlugSchema.optional(),
+  })
+  .refine(
+    ({ from, to }) => {
+      const span = Date.parse(to) - Date.parse(from);
+      return span > 0 && span <= CALENDAR_MAX_RANGE_MS;
+    },
+    { message: "El rango va de from a to, después de from y de hasta 43 días", path: ["to"] },
+  );
+export type CalendarQuery = z.infer<typeof calendarQuerySchema>;
+
+/** Una entrada del calendario: una publicación programada (se puede mover) o ya publicada. */
+export const calendarEntrySchema = z.object({
+  publicationId: z.string(),
+  kind: z.enum(CALENDAR_ENTRY_KINDS),
+  at: z.coerce.date(),
+  platform: z.enum(PLATFORMS),
+  format: z.enum(PUBLICATION_FORMATS),
+  language: z.enum(LANGUAGES),
+  status: z.enum(PUBLICATION_STATUSES),
+  dryRun: z.boolean(),
+  schedule: z.enum(SCHEDULE_STATES).nullable(),
+  /** El aviso o el post (uno de los dos), con su `id_propiedad` o su tema como título. */
+  listingId: z.string().nullable(),
+  postId: z.string().nullable(),
+  title: z.string(),
+  brokerId: z.string(),
+  /** El `slug` de su corredor o marca (para "Todos"); `null` si no se encontró. */
+  brokerSlug: z.string().nullable(),
+  externalUrl: z.string().nullable(),
+});
+export const calendarResponseSchema = z.object({ entries: z.array(calendarEntrySchema) });
+export type CalendarEntryView = z.infer<typeof calendarEntrySchema>;
+export type CalendarResponse = z.infer<typeof calendarResponseSchema>;
 
 /** `GET /usage?month=AAAA-MM` (spec F7 §4.7): por defecto, el mes de hoy en Chile. */
 export const usageQuerySchema = z.object({
@@ -1097,6 +1284,406 @@ export const brokerLogoFormSchema = z.object({ logo: fileSchema });
 /** El tipo del archivo de `GET /brokers/:id/template.xlsx`. */
 export const XLSX_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+// ── Perfil editorial (F9-T09, spec F9 §4.3 y §4.10) ────────────────────────
+
+// Solo la forma y topes holgados (el tamaño del pedido): las reglas, con sus mensajes en español,
+// son de core (`normalizeEditorialProfile`, `EDITORIAL_PROFILE_INVALID` con `issues`).
+const profileText = (max: number) => z.string().max(max + 50);
+const profileList = (items: number, length: number) => z.array(profileText(length)).max(items * 2);
+
+/**
+ * `PUT /brokers/:id/editorial-profile`: el perfil completo (reemplaza al anterior). Estricto: un
+ * campo desconocido (o un `brokerId`, que es siempre el de la ruta) es 400.
+ */
+export const editorialProfileBodySchema = z
+  .object({
+    languages: profileList(EDITORIAL_LIMITS.languages, 10),
+    audience: profileText(EDITORIAL_LIMITS.audience).nullable(),
+    pillars: z
+      .array(
+        z
+          .object({
+            key: profileText(EDITORIAL_LIMITS.pillarKey),
+            name: profileText(EDITORIAL_LIMITS.pillarName),
+            description: profileText(EDITORIAL_LIMITS.pillarDescription).optional(),
+            weight: z.number(),
+          })
+          .strict(),
+      )
+      .max(EDITORIAL_LIMITS.pillars * 2),
+    facts: profileList(EDITORIAL_LIMITS.facts, EDITORIAL_LIMITS.fact),
+    avoid: profileList(EDITORIAL_LIMITS.avoid, EDITORIAL_LIMITS.avoidItem),
+    cadence: z
+      .record(
+        z.string().max(40),
+        z
+          .object({
+            postsPerWeek: z.number(),
+            days: profileList(7, 10).optional(),
+            hours: profileList(EDITORIAL_LIMITS.hoursPerPlatform, 10).optional(),
+            languageGapHours: z.number().optional(),
+          })
+          .strict(),
+      )
+      .refine((cadence) => Object.keys(cadence).length <= 20, { message: "Demasiadas redes" }),
+    defaultHashtags: profileList(EDITORIAL_LIMITS.hashtags, EDITORIAL_LIMITS.hashtag),
+  })
+  .strict();
+export type EditorialProfileBody = z.infer<typeof editorialProfileBodySchema>;
+
+/** El perfil como viaja en JSON: `updatedAt` es `null` si el corredor todavía no lo guarda. */
+export const editorialProfileViewSchema = editorialProfileSchema
+  .omit({ createdAt: true, updatedAt: true })
+  .extend({ updatedAt: z.coerce.date().nullable() });
+export type EditorialProfileJson = z.infer<typeof editorialProfileViewSchema>;
+
+/** `GET` y `PUT /brokers/:id/editorial-profile`: el guardado o, si no tiene, el vacío por defecto. */
+export const editorialProfileResponseSchema = z.object({ profile: editorialProfileViewSchema });
+export type EditorialProfileResponse = z.infer<typeof editorialProfileResponseSchema>;
+
+// ── Posts y sus medios (F9-T10, spec F9 §4.2, §4.5 y §4.10) ─────────────────
+
+// Solo la forma y topes holgados (el tamaño del pedido): las reglas, con sus mensajes en español,
+// son de core (`POST_INVALID`, `POST_UPLOAD_INVALID`, `POST_UPLOAD_TOO_LARGE`).
+
+/** Una fecha en ISO con zona (el filtro de la lista queda como texto: ver `postQuerySchema`). */
+const postDateText = z.iso.datetime({ offset: true });
+
+/**
+ * La fecha de un cuerpo: ISO con zona, que el esquema entrega como `Date` (la ruta no convierte).
+ * El cliente `hc` la tipa como `Date`, que viaja como su ISO en UTC (`JSON.stringify`) y calza.
+ */
+const postDateSchema = postDateText.transform((value) => new Date(value));
+
+/** Un post tal como viaja en JSON: las fechas llegan como texto ISO y se vuelven `Date`. */
+export const postJsonSchema = postSchema.extend({
+  plannedAt: z.coerce.date().nullable(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+});
+export type PostJson = z.infer<typeof postJsonSchema>;
+
+/**
+ * Filtros de `GET /posts`: el corredor o marca (su id; un corredor que pide otro recibe 404), el
+ * estado y el rango de `planned_at` `[from, to)` (los sin fecha quedan fuera si viene alguno).
+ * `from` y `to` quedan como texto ISO: el cliente `hc` tipa la consulta con lo que sale del
+ * validador y arma la URL con `String(valor)`, que de un `Date` no da un ISO. La ruta los convierte.
+ */
+export const postQuerySchema = z.object({
+  brokerId: z.uuid().optional(),
+  status: z.enum(POST_STATUSES).optional(),
+  from: postDateText.optional(),
+  to: postDateText.optional(),
+});
+export type PostQuery = z.infer<typeof postQuerySchema>;
+
+const postTopic = z.string().max(POST_LIMITS.topic + 50);
+const postBrief = z
+  .string()
+  .max(POST_LIMITS.brief + 100)
+  .nullable();
+const postPillar = z.string().max(100).nullable();
+
+/**
+ * `POST /posts`: un post manual (en `draft`, con el brief del operador). El administrador manda el
+ * corredor o marca; un usuario corredor lo omite (o manda el suyo). `kind` por defecto `text`.
+ */
+export const createPostBodySchema = z
+  .object({
+    brokerId: z.uuid().optional(),
+    topic: postTopic,
+    brief: postBrief.optional(),
+    kind: z.enum(POST_KINDS).optional(),
+    pillar: postPillar.optional(),
+    plannedAt: postDateSchema.nullable().optional(),
+    /** La marca que permite un enlace en el texto de X (F9-T16: cuesta US$0,20); por defecto no. */
+    xLinkAllowed: z.boolean().optional(),
+  })
+  .strict();
+export type CreatePostBody = z.infer<typeof createPostBodySchema>;
+
+/** `PATCH /posts/:id`: lo que cambia (`null` borra el brief, la línea o la fecha). */
+export const updatePostBodySchema = z
+  .object({
+    topic: postTopic.optional(),
+    brief: postBrief.optional(),
+    kind: z.enum(POST_KINDS).optional(),
+    pillar: postPillar.optional(),
+    plannedAt: postDateSchema.nullable().optional(),
+    /** La marca que permite un enlace en el texto de X (F9-T16: cuesta US$0,20). */
+    xLinkAllowed: z.boolean().optional(),
+    /**
+     * Las redes del post (F9-T20 y T21): `post.draft` redacta solo para estas y, sin redes
+     * pedidas, programar o publicar usa solo estas; `null` = todas las de la marca.
+     */
+    platforms: z.array(z.enum(POST_PLATFORMS)).max(POST_PLATFORMS.length).nullable().optional(),
+  })
+  .strict();
+export type UpdatePostBody = z.infer<typeof updatePostBodySchema>;
+
+/**
+ * Un medio original de un post con su URL de lectura temporal y su miniatura, como los de un aviso,
+ * más las variantes que ya tiene (`thumb`, `ig_4x5`, `ig_reel`, `x_video`): mientras falten, el
+ * worker las está armando.
+ */
+export const postMediaItemSchema = mediaItemSchema.extend({
+  variants: z.array(z.enum(PROCESSED_MEDIA_VARIANTS)),
+});
+export type PostMediaItem = z.infer<typeof postMediaItemSchema>;
+
+/** `POST /posts`, `PATCH /posts/:id` y `POST /posts/:id/archive`. */
+export const postResponseSchema = z.object({ post: postJsonSchema });
+export type PostResponse = z.infer<typeof postResponseSchema>;
+
+/**
+ * `GET /posts/:id`: el post y sus medios originales, en orden; desde F9-T12, también sus textos
+ * vigentes por red e idioma con su revisión (`POST_PLATFORMS` y `LANGUAGES` en orden), la última
+ * corrida de textos y todas sus publicaciones (las más nuevas primero). Un servidor anterior no los
+ * manda: se leen vacíos.
+ */
+export const postDetailResponseSchema = z.object({
+  post: postJsonSchema,
+  media: z.array(postMediaItemSchema),
+  contents: z.array(contentViewSchema).default([]),
+  latestRun: contentRunViewSchema.nullable().default(null),
+  publications: z.array(publicationViewSchema).default([]),
+  /**
+   * Los archivos grandes sin sha256 que llegaron y el worker todavía revisa (`uploaded`, F9-T17):
+   * todavía no son medios. Un servidor anterior no lo manda: se lee 0.
+   */
+  uploadsInReview: z.number().int().nonnegative().default(0),
+});
+export type PostDetailResponse = z.infer<typeof postDetailResponseSchema>;
+
+export const postListResponseSchema = z.object({ posts: z.array(postJsonSchema) });
+export type PostListResponse = z.infer<typeof postListResponseSchema>;
+
+/**
+ * `POST /posts/:id/uploads` (ADR-0025): cada archivo con su nombre, su tamaño exacto y su sha256 en
+ * hexadecimal: obligatorio hasta 100 MB (`UPLOAD_SHA256_UP_TO_BYTES`, es su identidad) y opcional
+ * sobre eso (F9-T17: el navegador no puede hashear en streaming; lo calcula el worker). Tipos y
+ * topes, en core.
+ */
+export const postUploadRequestSchema = z
+  .object({
+    files: z
+      .array(
+        z
+          .object({ name: uploadName, size: uploadSize, sha256: z.string().max(64).optional() })
+          .strict(),
+      )
+      .max(2 * POST_UPLOAD.maxFilesPerRequest),
+  })
+  .strict();
+export type PostUploadRequest = z.infer<typeof postUploadRequestSchema>;
+
+/**
+ * Por archivo, en el orden pedido: `upload` (un `PUT` a `url` con exactamente `headers` y el
+ * archivo como cuerpo; `uploadId` es la subida), o `existing` (ese contenido ya es un medio del
+ * post: nada que subir).
+ */
+export const postUploadTargetSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("upload"),
+    name: z.string(),
+    uploadId: z.string(),
+    url: z.string(),
+    headers: z.record(z.string(), z.string()),
+  }),
+  z.object({ status: z.literal("existing"), name: z.string(), mediaId: z.string() }),
+]);
+export type PostUploadTargetView = z.infer<typeof postUploadTargetSchema>;
+
+/** `POST /posts/:id/uploads` (201). */
+export const postUploadResponseSchema = z.object({
+  post: postJsonSchema,
+  uploads: z.array(postUploadTargetSchema),
+});
+export type PostUploadResponse = z.infer<typeof postUploadResponseSchema>;
+
+/**
+ * `POST /posts/:id/uploads/complete`: las subidas que quedaron como medios (`completed`), las que
+ * siguen sin llegar a R2 (`missing`: se suben y se vuelve a llamar) y los medios del post.
+ */
+export const postUploadCompleteResponseSchema = z.object({
+  post: postJsonSchema,
+  completed: z.array(z.string()),
+  missing: z.array(z.string()),
+  /**
+   * Las subidas grandes sin sha256 que llegaron (F9-T17): el worker calcula su sha256, crea su
+   * medio y deduplica. Un servidor anterior no lo manda: se lee vacío.
+   */
+  uploaded: z.array(z.string()).default([]),
+  media: z.array(postMediaItemSchema),
+});
+export type PostUploadCompleteResponse = z.infer<typeof postUploadCompleteResponseSchema>;
+
+// ── Textos, aprobación, publicar y programar un post (F9-T12, spec F9 §4.10) ──
+
+/** `POST /posts/:id/draft`: pide los textos; `replaceEdits` reemplaza también los editados o aprobados. */
+export const postDraftBodySchema = z.object({ replaceEdits: z.boolean().optional() }).strict();
+export type PostDraftBody = z.infer<typeof postDraftBodySchema>;
+
+/** `/posts/:id/contents/:platform/:language`: el texto vigente de una red (de posts) e idioma. */
+export const postContentParamSchema = z.object({
+  id: z.uuid(),
+  platform: z.enum(POST_PLATFORMS),
+  language: z.enum(LANGUAGES),
+});
+export type PostContentParam = z.infer<typeof postContentParamSchema>;
+
+/**
+ * `POST /posts/:id/publish`: una red del post (todos sus idiomas); el modo lo pone la API
+ * (`PUBLISH_MODE`), nunca el cuerpo. Sin `--platform`, la CLI publica una red tras otra.
+ */
+export const postPublishBodySchema = z.object({ platform: z.enum(POST_PLATFORMS) }).strict();
+export type PostPublishBody = z.infer<typeof postPublishBodySchema>;
+
+/** Lo que hizo publicar una red del post: lo mismo que publicar un canal de un aviso. */
+export const postPublishResponseSchema = listingPublishResponseSchema;
+export type PostPublishResponse = ListingPublishResponse;
+
+/**
+ * `POST /posts/:id/schedule`: las redes (sin ellas, cada una con texto aprobado y la cuenta
+ * conectada) y la hora (ISO con zona; la CLI la pide en hora de Chile).
+ */
+export const postScheduleBodySchema = z
+  .object({
+    platforms: z.array(z.enum(POST_PLATFORMS)).min(1).optional(),
+    at: scheduleAtSchema,
+  })
+  .strict();
+export type PostScheduleBody = z.infer<typeof postScheduleBodySchema>;
+
+/** Una fila por red: programada (con su hora y sus publicaciones) o saltada (con el motivo). */
+export const postScheduleResponseSchema = z.object({
+  results: z.array(
+    z.object({
+      /** `null` si la fila es del post entero (`NOTHING_TO_PUBLISH`: ninguna red sirve). */
+      platform: z.enum(PLATFORMS).nullable(),
+      outcome: z.enum(["scheduled", "skipped"]),
+      at: z.coerce.date().optional(),
+      publications: z.array(publicationViewSchema).optional(),
+      code: z.string().optional(),
+      message: z.string().optional(),
+    }),
+  ),
+});
+export type PostScheduleResponse = z.infer<typeof postScheduleResponseSchema>;
+
+/**
+ * `POST /publications/:id/resolve` (ADR-0029 punto 8): el operador dice si una publicación con
+ * resultado dudoso salió (con su enlace, si lo tiene; en simulación se ignora) o no. El enlace nunca
+ * vuelve en un error ni va al log. Responde como `confirm` (`changed: false` si ya estaba así).
+ */
+export const publicationResolveBodySchema = z
+  .object({
+    outcome: z.enum(PUBLICATION_RESOLUTIONS),
+    url: z
+      .string()
+      .trim()
+      .min(1, "falta el enlace")
+      .max(MARKETPLACE_URL_MAX_LENGTH, "el enlace es demasiado largo")
+      .optional(),
+  })
+  .strict();
+export type PublicationResolveBody = z.infer<typeof publicationResolveBodySchema>;
+
+// ── El plan de ideas (F9-T21, spec F9 §4.9 y §4.10, ADR-0030) ──────────────
+
+/**
+ * `POST /plans`: la marca (el administrador la manda; un corredor la omite o manda la suya), el
+ * primer día (`AAAA-MM-DD`, hora de Chile; por defecto mañana), los días (por defecto 14), las
+ * redes (por defecto, todas las de la marca) y cuántas ideas (por defecto, según la cadencia). Los
+ * rangos los revisa core (`PLAN_RUN_INVALID`, con su mensaje).
+ */
+export const planRequestBodySchema = z
+  .object({
+    brokerId: z.uuid().optional(),
+    startDay: z.string().max(10).optional(),
+    days: z.number().int().optional(),
+    platforms: z.array(z.enum(POST_PLATFORMS)).max(POST_PLATFORMS.length).optional(),
+    count: z.number().int().optional(),
+  })
+  .strict();
+export type PlanRequestBody = z.infer<typeof planRequestBodySchema>;
+
+/**
+ * `GET /plans`: los planes de una marca (el administrador la manda; un corredor ve los suyos), los
+ * 20 más recientes (fijo: el contrato no expone `limit`).
+ */
+export const planQuerySchema = z.object({ brokerId: z.uuid().optional() });
+
+/**
+ * Un plan como lo ven la CLI y el panel: su período (en días de Chile, los dos incluidos), su
+ * estado, lo pedido (redes y cuántas ideas) y, si falló, el error con qué hacer (`errorAdvice`).
+ * Sin el gasto ni el proveedor de IA (eso lo muestra `usage`).
+ */
+export const planRunViewSchema = z.object({
+  id: z.string(),
+  brokerId: z.string(),
+  periodStart: z.coerce.date(),
+  periodEnd: z.coerce.date(),
+  firstDay: z.string(),
+  lastDay: z.string(),
+  status: z.enum(PLAN_RUN_STATUSES),
+  platforms: z.array(z.enum(POST_PLATFORMS)),
+  count: z.number().int().nullable(),
+  error: z.object({ code: z.string(), message: z.string() }).nullable(),
+  errorAdvice: z.string().nullable(),
+  promptVersion: z.string().nullable(),
+  startedAt: z.coerce.date().nullable(),
+  finishedAt: z.coerce.date().nullable(),
+  createdAt: z.coerce.date(),
+});
+export type PlanRunView = z.infer<typeof planRunViewSchema>;
+
+/**
+ * Una idea del plan (un post con `plan_run_id`, en cualquier estado): el post, las redes que se le
+ * quitaron al proponerla (`notes`), cuántos textos vigentes tiene y su última corrida de textos.
+ * Una idea aceptada sin textos ni corrida activa es la que "Redactar lo aceptado" pide de nuevo.
+ */
+export const planIdeaViewSchema = postJsonSchema.extend({
+  notes: z.array(z.string()),
+  texts: z.number().int().nonnegative(),
+  latestRun: contentRunViewSchema.nullable(),
+});
+export type PlanIdeaView = z.infer<typeof planIdeaViewSchema>;
+
+/** Lo que las verificaciones descartaron (con su motivo) y las advertencias de la IA. */
+export const planReportViewSchema = z.object({
+  discarded: z.array(z.object({ topic: z.string(), code: z.string(), message: z.string() })),
+  warnings: z.array(z.string()),
+});
+export type PlanReportView = z.infer<typeof planReportViewSchema>;
+
+/** `GET /plans/:id`: el plan, su reporte (`null` mientras corre o si falló) y sus ideas. */
+export const planDetailResponseSchema = z.object({
+  plan: planRunViewSchema,
+  report: planReportViewSchema.nullable(),
+  ideas: z.array(planIdeaViewSchema),
+});
+export type PlanDetailResponse = z.infer<typeof planDetailResponseSchema>;
+
+/** `POST /plans` (202): el plan y `reused` si la marca ya tenía uno en cola o corriendo. */
+export const planRequestResponseSchema = z.object({ plan: planRunViewSchema, reused: z.boolean() });
+export type PlanRequestResponse = z.infer<typeof planRequestResponseSchema>;
+
+/** `GET /plans`: los de la marca, los más recientes primero. */
+export const planListResponseSchema = z.object({ plans: z.array(planRunViewSchema) });
+export type PlanListResponse = z.infer<typeof planListResponseSchema>;
+
+/**
+ * `POST /posts/:id/accept` (202): la idea aceptada (en `draft`) y la corrida de sus textos
+ * (`post.draft` encolado; `reused` si ya había una activa).
+ */
+export const ideaAcceptResponseSchema = z.object({
+  post: postJsonSchema,
+  contentRun: contentRunViewSchema,
+  reused: z.boolean(),
+});
+export type IdeaAcceptResponse = z.infer<typeof ideaAcceptResponseSchema>;
 
 // ── Usuarios y sesiones (F7-T04 y T05, spec F7 §4.13, ADR-0021) ────────────
 

@@ -1,8 +1,10 @@
 import {
   AppError,
+  COST_COUNTED_STATUSES,
   canTransition,
   checkPublicationProgress,
   checkRemoteState,
+  DEFAULT_LANGUAGE,
   normalizeEventPayload,
   type Publication,
   type PublicationChanges,
@@ -11,9 +13,11 @@ import {
   publicationEventSchema,
   publicationSchema,
   requirePublicationMode,
+  subjectFieldsOf,
+  subjectOfInput,
   TERMINAL_PUBLICATION_STATUSES,
 } from "@agentsales/core";
-import { and, asc, eq, gte, inArray, lt, lte, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lt, lte, ne, notInArray, or, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { isUniqueViolation, sqlStateOf, withDbErrors } from "../errors.js";
 import { publicationEvents, publications } from "../schema.js";
@@ -28,16 +32,21 @@ type EventRow = typeof publicationEvents.$inferSelect;
 type Writer = Pick<SchemaDatabase, "insert">;
 
 const ONE_ACTIVE_PER_FORMAT = "publications_one_active_per_format";
+/** F9: una activa por post, cuenta, formato e idioma; da el mismo `PUBLICATION_CONFLICT`. */
+const ONE_ACTIVE_PER_POST_FORMAT = "publications_one_active_per_post_format";
 const ONE_RELIST_PER_PUBLICATION = "publications_relisted_from_unique";
 
 /** Fila → entidad. Una fila que no calza (también un `progress` ajeno) es `PUBLICATION_ROW_INVALID`. */
 function toPublication(row: Row): Publication {
   const parsed = publicationSchema.safeParse({
     id: row.id,
-    listingId: row.listingId,
+    // Exactamente uno de `listing_id` y `post_id` (ADR-0029); si no, la fila no valida.
+    ...subjectFieldsOf(row),
     platformAccountId: row.platformAccountId,
     platform: row.platform,
     format: row.format,
+    // Texto en la base: se valida con `LANGUAGES` al leer.
+    language: row.language,
     contentId: row.contentId,
     mediaIds: row.mediaIds,
     status: row.status,
@@ -52,6 +61,8 @@ function toPublication(row: Row): Publication {
     remoteState: row.remoteState,
     listingSourceHash: row.listingSourceHash,
     relistedFrom: row.relistedFrom,
+    // `numeric` llega como texto.
+    costUsd: row.costUsd === null ? null : Number(row.costUsd),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });
@@ -169,21 +180,31 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
   return {
     async create(input, event) {
       const payload = normalizeEventPayload(event.payload);
+      const subject = subjectOfInput(input);
+      const subjectDetails =
+        subject.kind === "listing" ? { listingId: subject.id } : { postId: subject.id };
       try {
         return await withDbErrors(() =>
           db.transaction(async (tx) => {
             const [row] = await tx
               .insert(publications)
               .values({
-                listingId: input.listingId,
+                ...(subject.kind === "listing"
+                  ? { listingId: subject.id }
+                  : { postId: subject.id }),
                 platformAccountId: input.platformAccountId,
                 platform: input.platform,
                 format: input.format,
+                language: input.language ?? DEFAULT_LANGUAGE,
                 contentId: input.contentId,
                 mediaIds: [...input.mediaIds],
                 // Vacío cuenta como sin versión: nunca se compara contra "".
                 listingSourceHash: input.listingSourceHash || null,
                 relistedFrom: input.relistedFrom ?? null,
+                costUsd:
+                  input.costUsd === undefined || input.costUsd === null
+                    ? null
+                    : String(input.costUsd),
                 status: "approved",
                 // El valor seguro: el modo de verdad se fija al pasar a `publishing`.
                 dryRun: true,
@@ -208,7 +229,20 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
           throw new AppError(
             "PUBLICATION_CONFLICT",
             "Ya hay una publicación activa de ese aviso, cuenta y formato",
-            { details: { listingId: input.listingId, format: input.format } },
+            { details: { ...subjectDetails, format: input.format } },
+          );
+        }
+        if (isUniqueViolation(error, ONE_ACTIVE_PER_POST_FORMAT)) {
+          throw new AppError(
+            "PUBLICATION_CONFLICT",
+            "Ya hay una publicación activa de ese post, cuenta, formato e idioma",
+            {
+              details: {
+                ...subjectDetails,
+                format: input.format,
+                language: input.language ?? DEFAULT_LANGUAGE,
+              },
+            },
           );
         }
         if (isUniqueViolation(error, ONE_RELIST_PER_PUBLICATION)) {
@@ -216,12 +250,14 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
             details: { relistedFrom: input.relistedFrom },
           });
         }
-        // Una FK (aviso, cuenta o texto) que no existe: un bug de quien llama.
+        // Una FK (aviso o post, cuenta o texto) que no existe: un bug de quien llama.
         if (sqlStateOf(error) === "23503") {
           throw new AppError(
             "PUBLICATION_REFERENCE_INVALID",
-            "El aviso, la cuenta o el texto de la publicación no existen",
-            { details: { listingId: input.listingId } },
+            subject.kind === "listing"
+              ? "El aviso, la cuenta o el texto de la publicación no existen"
+              : "El post, la cuenta o el texto de la publicación no existen",
+            { details: subjectDetails },
           );
         }
         throw error;
@@ -233,12 +269,16 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
       return row === undefined ? null : toPublication(row);
     },
 
-    listByListing(listingId) {
+    listBySubject(subject) {
       return withDbErrors(async () => {
         const rows = await db
           .select()
           .from(publications)
-          .where(eq(publications.listingId, listingId))
+          .where(
+            subject.kind === "listing"
+              ? eq(publications.listingId, subject.id)
+              : eq(publications.postId, subject.id),
+          )
           .orderBy(asc(publications.createdAt), asc(publications.id));
         return rows.map(toPublication);
       });
@@ -295,19 +335,27 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
       });
     },
 
-    listForTracking({ listingIds, since }) {
-      if (listingIds.length === 0) return Promise.resolve([]);
+    listForTracking({ listingIds, postIds = [], since }) {
+      if (listingIds.length === 0 && postIds.length === 0) return Promise.resolve([]);
+      const ofSubjects = [
+        ...(listingIds.length === 0 ? [] : [inArray(publications.listingId, [...listingIds])]),
+        ...(postIds.length === 0 ? [] : [inArray(publications.postId, [...postIds])]),
+      ];
       return withDbErrors(async () => {
         const rows = await db
           .select()
           .from(publications)
           .where(
-            and(
-              inArray(publications.listingId, [...listingIds]),
-              or(sql`${activeStatus}`, gte(publications.updatedAt, since)),
-            ),
+            and(or(...ofSubjects), or(sql`${activeStatus}`, gte(publications.updatedAt, since))),
           )
-          .orderBy(asc(publications.listingId), asc(publications.createdAt), asc(publications.id));
+          // Los avisos primero (en Postgres `NULL` va al final de un orden ascendente), después
+          // los posts.
+          .orderBy(
+            asc(publications.listingId),
+            asc(publications.postId),
+            asc(publications.createdAt),
+            asc(publications.id),
+          );
         return rows.map(toPublication);
       });
     },
@@ -503,6 +551,49 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
           payload,
         }),
       );
+    },
+
+    async setCostUsd(id, costUsd) {
+      const [row] = await withDbErrors(() =>
+        db
+          .update(publications)
+          .set({
+            costUsd: costUsd === null ? null : (Math.round(costUsd * 10_000) / 10_000).toFixed(4),
+            updatedAt: sql`clock_timestamp()`,
+          })
+          .where(and(eq(publications.id, id), eq(publications.status, "publishing")))
+          .returning(),
+      );
+      if (row === undefined) {
+        if ((await findRow(id)) === undefined) throw notFound(id);
+        throw new AppError(
+          "PUBLICATION_NOT_PUBLISHING",
+          "La publicación ya no se está publicando",
+          { details: { publicationId: id } },
+        );
+      }
+      return toPublication(row);
+    },
+
+    sumCostUsdSince(platformAccountId, since, options = {}) {
+      return withDbErrors(async () => {
+        const [row] = await db
+          .select({ total: sql<string | null>`sum(${publications.costUsd})` })
+          .from(publications)
+          .where(
+            and(
+              eq(publications.platformAccountId, platformAccountId),
+              eq(publications.dryRun, false),
+              sql`${publications.costUsd} IS NOT NULL`,
+              inArray(publications.status, [...COST_COUNTED_STATUSES]),
+              sql`coalesce(${publications.publishedAt}, ${publications.updatedAt}) >= ${since.toISOString()}::timestamptz`,
+              options.excludePublicationId === undefined
+                ? undefined
+                : ne(publications.id, options.excludePublicationId),
+            ),
+          );
+        return row?.total == null ? 0 : Number(row.total);
+      });
     },
 
     countLiveAttemptsSince(platformAccountId, since) {

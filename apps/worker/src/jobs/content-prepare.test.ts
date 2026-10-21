@@ -14,17 +14,21 @@ import {
 } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
 import { captureLogger, contentJobSetup, silentLogger } from "../../test/content-fixture.js";
+import type { ContentPlanJobDeps } from "./content-plan.js";
 import {
   CONTENT_PREPARE_QUEUE,
   CONTENT_RUN_ABANDONED_AFTER_MS,
   contentPrepareJob,
   failAbandonedContentRuns,
   requeueQueuedContentRuns,
+  requeueQueuedPostRuns,
   resumeAutoPublishAtStart,
 } from "./content-prepare.js";
 import type { DbBackupJobDeps } from "./db-backup.js";
 import { buildJobs } from "./index.js";
 import type { MarketplaceProfileJobDeps } from "./marketplace-profile.js";
+import type { PostDraftJobDeps } from "./post-draft.js";
+import type { PostMediaJobDeps } from "./post-media.js";
 import type { PublicationDueJobDeps } from "./publication-due.js";
 import type { PublicationPublishJobDeps } from "./publication-publish.js";
 import type { PublicationSyncJobDeps } from "./publication-sync.js";
@@ -80,6 +84,9 @@ describe("job content.prepare · cola", () => {
         publicationDue: {} as PublicationDueJobDeps,
         publicationsWatch: {} as PublicationsWatchJobDeps,
         dbBackup: {} as DbBackupJobDeps,
+        postMedia: {} as PostMediaJobDeps,
+        postDraft: {} as PostDraftJobDeps,
+        contentPlan: {} as ContentPlanJobDeps,
       }).map((job) => job.name),
     ).toEqual([
       "system.ping",
@@ -92,6 +99,9 @@ describe("job content.prepare · cola", () => {
       "publication.due",
       "publications.watch",
       "db.backup",
+      "post.media",
+      "post.draft",
+      "content.plan",
     ]);
   });
 });
@@ -110,6 +120,9 @@ describe("jobs · Marketplace en producción (F8-T20, D4)", () => {
         publicationDue: {} as PublicationDueJobDeps,
         publicationsWatch: {} as PublicationsWatchJobDeps,
         dbBackup: {} as DbBackupJobDeps,
+        postMedia: {} as PostMediaJobDeps,
+        postDraft: {} as PostDraftJobDeps,
+        contentPlan: {} as ContentPlanJobDeps,
       }).map((job) => job.name);
 
     expect(names(null)).not.toContain("marketplace.profile");
@@ -461,6 +474,81 @@ describe("job content.prepare · arranque", () => {
     });
     expect(queue.jobs.map((job) => job.data)).toEqual([{ contentRunId: second.id }]);
   });
+
+  // F9-T05: una corrida de post en cola no es de `content.prepare`; tiene su propio barrido.
+  it("una corrida de post en queued no se reencola como content.prepare, sino como post.draft", async () => {
+    const repos = createInMemoryContentRepositories();
+    const listingRun = await repos.contentRuns.create({ listingId: "l1", texts: true });
+    const postRun = await repos.contentRuns.create({
+      postId: "00000000-0000-4000-8000-000000000001",
+      texts: true,
+    });
+    const runningPost = await repos.contentRuns.create({
+      postId: "00000000-0000-4000-8000-000000000002",
+      texts: true,
+    });
+    await repos.contentRuns.markRunning(runningPost.id);
+    const queue = createInMemoryJobQueue();
+
+    expect(await requeueQueuedContentRuns(repos.contentRuns, queue)).toEqual({
+      requeued: 1,
+      failed: [],
+    });
+    expect(await requeueQueuedPostRuns(repos.contentRuns, queue)).toEqual({
+      requeued: 1,
+      failed: [],
+    });
+    expect(queue.jobs).toEqual([
+      {
+        name: "content.prepare",
+        data: { contentRunId: listingRun.id },
+        options: { singletonKey: listingRun.id },
+      },
+      {
+        name: "post.draft",
+        data: { contentRunId: postRun.id },
+        options: { singletonKey: postRun.id },
+      },
+    ]);
+  });
+
+  it("sin la cola de post.draft (antes de F9-T11), la corrida de post queda para el próximo arranque", async () => {
+    const repos = createInMemoryContentRepositories();
+    const postRun = await repos.contentRuns.create({
+      postId: "00000000-0000-4000-8000-000000000001",
+      texts: true,
+    });
+    const queue = createInMemoryJobQueue({
+      fail: () =>
+        new AppError("QUEUE_UNAVAILABLE", "La cola post.draft no existe", { retriable: true }),
+    });
+
+    expect(await requeueQueuedPostRuns(repos.contentRuns, queue)).toEqual({
+      requeued: 0,
+      failed: [postRun.id],
+    });
+    expect(await repos.contentRuns.get(postRun.id)).toMatchObject({ status: "queued" });
+  });
+
+  it("failAbandoned también cierra una corrida de post abandonada en running", async () => {
+    const repos = createInMemoryContentRepositories();
+    const postRun = await repos.contentRuns.create({
+      postId: "00000000-0000-4000-8000-000000000001",
+      texts: true,
+    });
+    await repos.contentRuns.markRunning(postRun.id);
+
+    const closed = await failAbandonedContentRuns(
+      repos.contentRuns,
+      Date.now() + CONTENT_RUN_ABANDONED_AFTER_MS + 1000,
+    );
+
+    expect(closed).toEqual([postRun.id]);
+    expect(await repos.contentRuns.get(postRun.id)).toMatchObject({
+      status: "failed",
+      error: { code: "CONTENT_RUN_ABANDONED" },
+    });
+  });
 });
 
 // F8-T12 (spec F8 §4.10): el arranque retoma un `auto_publish` cortado (las reglas, en core:
@@ -493,7 +581,7 @@ describe("auto_publish cortado · al arrancar", () => {
       brokers: { findById: async () => ({ id: "b", autoPublish: false }) },
       lock: {
         run: async (_id: string, fn: (locked: unknown) => Promise<unknown>) =>
-          fn({ publications: { listByListing: async () => [] } }),
+          fn({ publications: { listBySubject: async () => [] } }),
       },
     } as unknown as AutoPublishDeps;
 

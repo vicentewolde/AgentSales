@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  LANGUAGES,
   MEDIA_KINDS,
   PLATFORMS,
   type Platform,
@@ -11,6 +12,8 @@ import {
 import { AppError } from "./errors.js";
 import { marketplaceProgressSchema } from "./marketplace/progress.js";
 import { portalProgressSchema } from "./portal/progress.js";
+import { socialProgressSchema } from "./publish/outcome.js";
+import { subjectFields } from "./subject.js";
 
 /**
  * Lo que el publisher de Instagram ya creó en la plataforma (`publications.progress`, ADR-0014):
@@ -32,11 +35,19 @@ export const instagramProgressSchema = z.object({
 });
 export type InstagramProgress = z.infer<typeof instagramProgressSchema>;
 
-/** Esquema del progreso de cada plataforma; las que aún no publican no tienen. */
+/**
+ * Esquema del progreso de cada plataforma. Las redes de contenido de marca (F9-T06) parten con el
+ * genérico: el "enviando" del resultado dudoso o el traspaso a mano de una cuenta en modo `manual`
+ * (`socialProgressSchema`); cada publisher lo puede reemplazar por uno propio que lo extienda.
+ */
 export const PUBLICATION_PROGRESS_SCHEMAS = {
   instagram: instagramProgressSchema,
   portal_inmobiliario: portalProgressSchema,
   fb_marketplace: marketplaceProgressSchema,
+  x: socialProgressSchema,
+  linkedin: socialProgressSchema,
+  discord: socialProgressSchema,
+  tiktok: socialProgressSchema,
 } as const satisfies Readonly<Partial<Record<Platform, z.ZodType>>>;
 
 /**
@@ -204,16 +215,19 @@ export const publicationErrorSchema = z.object({
 export type PublicationError = z.infer<typeof publicationErrorSchema>;
 
 /**
- * Un aviso en una cuenta y un formato (`publications`, ADR-0014). Nace en `approved` con
- * `contentId` y `mediaIds` fijos; `progress` debe calzar con el esquema de su plataforma.
+ * Un aviso (o, desde F9, un post: `subject`, ADR-0029) en una cuenta, un formato y un idioma
+ * (`publications`, ADR-0014). Nace en `approved` con `contentId` y `mediaIds` fijos; `progress` debe
+ * calzar con el esquema de su plataforma.
  */
 export const publicationSchema = z
   .object({
     id: z.string(),
-    listingId: z.string(),
+    ...subjectFields,
     platformAccountId: z.string(),
     platform: z.enum(PLATFORMS),
     format: z.enum(PUBLICATION_FORMATS),
+    /** El idioma de su texto (`LANGUAGES`): las de un aviso son `es` (spec F9 §4.4). */
+    language: z.enum(LANGUAGES),
     contentId: z.string(),
     /** Medios que se publican, en orden. */
     mediaIds: z.array(z.string()),
@@ -236,6 +250,8 @@ export const publicationSchema = z
     listingSourceHash: z.string().min(1).nullable(),
     /** La publicación de Portal que esta republica (ADR-0020); `null` en las demás. */
     relistedFrom: z.string().nullable(),
+    /** El costo estimado en dólares (spec F9 §4.12): hoy solo X; `null` si la red no cobra. */
+    costUsd: z.number().nonnegative().nullable(),
     createdAt: z.date(),
     updatedAt: z.date(),
   })
@@ -341,8 +357,9 @@ export const publishAttemptRecordSchema = z.object({
 export type PublishAttemptRecord = z.infer<typeof publishAttemptRecordSchema>;
 
 /**
- * Resultado de un intento: publicado, se reintenta (sigue en `publishing`), quedó `failed` o, en
- * Marketplace, el formulario quedó listo (`awaiting_manual_confirm`).
+ * Resultado de un intento: publicado, se reintenta (sigue en `publishing`), quedó `failed`, quedó
+ * listo para el clic o el traspaso a mano (`awaiting_manual_confirm`), se reprogramó por un límite
+ * o no se sabe si salió (`outcome_unknown`).
  */
 export const PUBLISH_ATTEMPT_RESULTS = [
   "published",
@@ -352,6 +369,8 @@ export const PUBLISH_ATTEMPT_RESULTS = [
   "awaiting_manual_confirm",
   // F6 (ADR-0018): un límite de la plataforma; la publicación volvió a quedar programada.
   "rescheduled",
+  // F9 (ADR-0029 punto 8): no se sabe si la red publicó; espera la palabra del operador.
+  "outcome_unknown",
 ] as const;
 export type PublishAttemptResult = (typeof PUBLISH_ATTEMPT_RESULTS)[number];
 

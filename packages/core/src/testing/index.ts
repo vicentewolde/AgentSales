@@ -21,11 +21,14 @@ export {
 export { fakeHash } from "./fake-hash.js";
 export {
   createFakePublisher,
+  createSendOncePublisher,
   type FakeOperationCall,
   type FakePublishCall,
   type FakePublisher,
   type FakePublisherOptions,
   type FakePublishStep,
+  type FakeSendStep,
+  type SendOncePublisher,
 } from "./fake-publisher.js";
 export {
   type FieldDefinitionFixtureRow,
@@ -81,6 +84,22 @@ export {
   createInMemoryPlatformCatalogRepository,
   type InMemoryPlatformCatalogRepository,
 } from "./platform-catalog.js";
+export {
+  createPostPublicationScenario,
+  POST_SCENARIO_TOKEN,
+  type PostPublicationScenario,
+  type PostScenarioAccount,
+  type PostScenarioText,
+} from "./post-publication-scenario.js";
+export {
+  createInMemoryEditorialProfileRepository,
+  createInMemoryPlanRunRepository,
+  createInMemoryPostLock,
+  createInMemoryPostRepository,
+  createInMemoryPostUploadRepository,
+  type InMemoryPlanRunRepository,
+  type InMemoryPostRepository,
+} from "./posts.js";
 export {
   createPublicationScenario,
   PORTAL_SCENARIO_TOKENS,

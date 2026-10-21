@@ -7,6 +7,7 @@ let next = 0;
 const item = (overrides: Partial<Media>): Media => ({
   id: `m${++next}`,
   listingId: "l",
+  postId: null,
   brokerId: "b",
   kind: "image",
   role: "original",

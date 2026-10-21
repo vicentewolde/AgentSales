@@ -10,11 +10,18 @@ import {
 import { describe, expect, it } from "vitest";
 import {
   accountListResponseSchema,
+  accountModeResponseSchema,
   accountRefreshResponseSchema,
   accountResponseSchema,
   errorBodySchema,
 } from "../contracts/index.js";
-import { adminApp, fakeInstagramAuth, TEST_ML_REDIRECT_URI, testDeps } from "../testing/index.js";
+import {
+  adminApp,
+  fakeDiscordWebhooks,
+  fakeInstagramAuth,
+  TEST_ML_REDIRECT_URI,
+  testDeps,
+} from "../testing/index.js";
 
 const TOKEN = "IGAA-token-del-panel-0123456789";
 /** Un POST sin cuerpo: con `Content-Type` JSON, como la CLI (sin él, el CSRF lo trata como formulario). */
@@ -244,6 +251,9 @@ describe("cuentas · seguridad y mensajes", () => {
         instagram: { oauth: true, startUrl },
         mercadolibre: { configured: true, redirectUri, automatic: false },
         marketplace: { automation: true },
+        linkedin: { configured: true, startUrl },
+        x: { configured: true, startUrl },
+        tiktok: { configured: true, startUrl },
       },
     });
     expect(accountListResponseSchema.safeParse(body("https://agentsales.test/x")).success).toBe(
@@ -258,6 +268,28 @@ describe("cuentas · seguridad y mensajes", () => {
         accountListResponseSchema.safeParse(body("https://agentsales.test/x", bad)).success,
       ).toBe(false);
     }
+  });
+
+  it("GET /accounts siempre dice cómo conectar X, LinkedIn y TikTok (F9-T19), aunque falte el par", async () => {
+    const app = adminApp(testDeps());
+    const { connect } = accountListResponseSchema.parse(
+      await (await app.request("/accounts")).json(),
+    );
+    expect(connect.x).toEqual({
+      configured: true,
+      startUrl: "http://127.0.0.1:8787/api/oauth/x/start",
+    });
+    expect(connect.linkedin.configured).toBe(true);
+    // Los tests de siempre no tienen el par de TikTok: igual llega, sin configurar.
+    expect(connect.tiktok).toEqual({
+      configured: false,
+      startUrl: "http://localhost:8787/api/oauth/tiktok/start",
+    });
+    // Sin `x` o sin `tiktok`, el contrato ya no se lee (la CLI y el panel cuentan con ellos).
+    const { tiktok: _tiktok, ...withoutTikTok } = connect;
+    expect(
+      accountListResponseSchema.safeParse({ accounts: [], connect: withoutTikTok }).success,
+    ).toBe(false);
   });
 
   it("GET /accounts dice si el panel puede ofrecer el OAuth (par de la app y https)", async () => {
@@ -557,5 +589,191 @@ describe("POST /accounts/:id/refresh", () => {
       }),
     );
     expect(JSON.stringify(lines)).not.toContain(TOKEN);
+  });
+});
+
+describe("POST /accounts/discord/connect (F9-T14)", () => {
+  const WEBHOOK_TOKEN = "tokenSecretoDelWebhook-123_abc";
+  const WEBHOOK_URL = `https://discord.com/api/webhooks/987654321/${WEBHOOK_TOKEN}`;
+
+  function discordSetup() {
+    const lines: string[] = [];
+    const logger = createLogger(
+      { level: "debug" },
+      new Writable({
+        write(chunk, _encoding, callback) {
+          lines.push(chunk.toString());
+          callback();
+        },
+      }),
+    );
+    const broker = contentBrokerFixture({ kind: "brand" });
+    const platformAccounts = createInMemoryPlatformAccountRepository({ nextId: randomUUID });
+    const discord = fakeDiscordWebhooks();
+    const app = adminApp(
+      testDeps({
+        logger,
+        brokers: createInMemoryBrokerRepository([broker]),
+        platformAccounts,
+        discord,
+      }),
+    );
+    const connect = (body: Record<string, unknown>) =>
+      app.request("/accounts/discord/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    return { app, broker, platformAccounts, discord, connect, log: () => lines.join("\n") };
+  }
+
+  it("conecta el webhook: cifrado, a la vista su nombre, y la URL ni en la respuesta ni en el log", async () => {
+    const { app, broker, platformAccounts, discord, connect, log } = discordSetup();
+    const response = await connect({ broker: broker.slug, webhookUrl: WEBHOOK_URL });
+
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    expect(text).not.toContain(WEBHOOK_TOKEN);
+    const { account } = accountResponseSchema.parse(JSON.parse(text));
+    expect(account).toMatchObject({
+      platform: "discord",
+      displayName: "AgentSales",
+      status: "connected",
+      tokenExpiresAt: null,
+      connectedAt: expect.any(Date),
+    });
+    expect(platformAccounts.storedCredentials(account.id)).toEqual({ webhookUrl: WEBHOOK_URL });
+    expect(discord.calls).toEqual(["get"]);
+    const list = await (await app.request("/accounts")).text();
+    expect(list).not.toContain(WEBHOOK_TOKEN);
+    expect(log()).not.toContain(WEBHOOK_TOKEN);
+  });
+
+  it("una URL que no es de un webhook es 400 sin llamar a Discord ni repetirla", async () => {
+    const { broker, discord, connect, log } = discordSetup();
+    for (const webhookUrl of [
+      "https://example.com/api/webhooks/1/otroSecreto",
+      `${WEBHOOK_URL} ${WEBHOOK_URL}`,
+    ]) {
+      const response = await connect({ broker: broker.slug, webhookUrl });
+      expect(response.status).toBe(400);
+      const text = await response.text();
+      expect(text).not.toContain("otroSecreto");
+      expect(text).not.toContain(WEBHOOK_TOKEN);
+    }
+    expect(discord.calls).toEqual([]);
+    expect(log()).not.toContain("otroSecreto");
+    expect(log()).not.toContain(WEBHOOK_TOKEN);
+  });
+
+  it("un webhook borrado o con el token roto es 400 con su código, sin guardar nada", async () => {
+    const { broker, platformAccounts, connect, log } = discordSetup();
+    for (const [token, code] of [
+      ["borradoToken", "DISCORD_WEBHOOK_NOT_FOUND"],
+      ["maloToken", "DISCORD_WEBHOOK_INVALID"],
+    ] as const) {
+      const response = await connect({
+        broker: broker.slug,
+        webhookUrl: `https://discord.com/api/webhooks/987654321/${token}`,
+      });
+      expect(response.status).toBe(400);
+      const text = await response.text();
+      expect(errorBodySchema.parse(JSON.parse(text)).error.code).toBe(code);
+      expect(text).not.toContain(token);
+      expect(log()).not.toContain(token);
+    }
+    expect(await platformAccounts.list(ALL_SCOPE)).toEqual([]);
+  });
+});
+
+describe("LinkedIn en /accounts (F9-T15)", () => {
+  async function linkedinSetup() {
+    const broker = contentBrokerFixture({ kind: "brand" });
+    const brokers = createInMemoryBrokerRepository([broker]);
+    const platformAccounts = createInMemoryPlatformAccountRepository({ nextId: randomUUID });
+    const app = adminApp(testDeps({ brokers, platformAccounts }));
+    const stored = await brokers.findBySlug(broker.slug);
+    const account = await platformAccounts.upsertConnected(
+      {
+        brokerId: stored?.id ?? "",
+        platform: "linkedin",
+        externalAccountId: "miembro-123",
+        displayName: "Vicente Wolde",
+        tokenExpiresAt: new Date("2026-12-19T12:00:00Z"),
+        meta: {
+          mode: "manual",
+          scopes: ["openid", "profile", "w_member_social"],
+          connectedAt: "2026-10-20T12:00:00.000Z",
+        },
+        credentials: { accessToken: "token-linkedin-de-prueba" },
+      },
+      { revokeOthers: true },
+    );
+    const mode = (id: string, body: unknown) =>
+      app.request(`/accounts/${id}/mode`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    return { app, platformAccounts, account, mode };
+  }
+
+  it("GET /accounts: la cuenta con su modo y permisos, y dónde empieza el OAuth", async () => {
+    const { app } = await linkedinSetup();
+    const response = await app.request("/accounts");
+    const text = await response.text();
+    expect(text).not.toContain("token-linkedin-de-prueba");
+    const body = accountListResponseSchema.parse(JSON.parse(text));
+    expect(body.connect.linkedin).toEqual({
+      configured: true,
+      startUrl: "http://localhost:8787/api/oauth/linkedin/start",
+    });
+    expect(body.accounts[0]).toMatchObject({
+      platform: "linkedin",
+      publishingMode: "manual",
+      permissions: ["openid", "profile", "w_member_social"],
+      connectedAt: new Date("2026-10-20T12:00:00.000Z"),
+    });
+  });
+
+  it("POST /accounts/:id/mode cambia a api y vuelve a manual; dice si cambió", async () => {
+    const { account, mode, platformAccounts } = await linkedinSetup();
+    const toApi = await mode(account.id, { mode: "api" });
+    expect(toApi.status).toBe(200);
+    expect(accountModeResponseSchema.parse(await toApi.json())).toMatchObject({
+      changed: true,
+      account: { publishingMode: "api" },
+    });
+    expect((await platformAccounts.get(account.id))?.meta.mode).toBe("api");
+    const again = accountModeResponseSchema.parse(
+      await (await mode(account.id, { mode: "api" })).json(),
+    );
+    expect(again.changed).toBe(false);
+    expect(
+      accountModeResponseSchema.parse(await (await mode(account.id, { mode: "manual" })).json())
+        .account.publishingMode,
+    ).toBe("manual");
+  });
+
+  it("un modo inválido es 400; una cuenta de Instagram, 409 ACCOUNT_MODE_NOT_SUPPORTED", async () => {
+    const { account, mode, platformAccounts } = await linkedinSetup();
+    expect((await mode(account.id, { mode: "auto" })).status).toBe(400);
+    const instagram = await platformAccounts.upsertConnected(
+      {
+        brokerId: account.brokerId,
+        platform: "instagram",
+        externalAccountId: "1",
+        displayName: "@x",
+        tokenExpiresAt: null,
+        meta: {},
+        credentials: { accessToken: "token-instagram-de-prueba" },
+      },
+      { revokeOthers: true },
+    );
+    const response = await mode(instagram.id, { mode: "manual" });
+    expect(response.status).toBe(409);
+    expect(errorBodySchema.parse(await response.json()).error.code).toBe(
+      "ACCOUNT_MODE_NOT_SUPPORTED",
+    );
   });
 });

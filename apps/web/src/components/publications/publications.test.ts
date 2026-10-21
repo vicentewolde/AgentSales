@@ -20,6 +20,7 @@ const NOW = new Date("2026-10-06T12:00:00Z");
 const content = (overrides: Partial<ContentView> = {}): ContentView => ({
   id: "texto-1",
   platform: "instagram",
+  language: "es",
   title: null,
   body: "Departamento en Ñuñoa",
   hashtags: [],
@@ -33,9 +34,11 @@ const content = (overrides: Partial<ContentView> = {}): ContentView => ({
 const publication = (overrides: Partial<PublicationView> = {}): PublicationView => ({
   id: "p-1",
   listingId: "l-1",
+  postId: null,
   platformAccountId: "a-1",
   platform: "instagram",
   format: "post",
+  language: "es",
   contentId: "texto-1",
   mediaIds: [],
   status: "approved",

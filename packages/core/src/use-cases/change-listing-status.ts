@@ -5,6 +5,8 @@ import { canDoListingAction, type Listing, type ListingAction } from "../listing
 import { manualConfirmPending } from "../marketplace/limits.js";
 import type { LockedRepositories } from "../ports/listing-lock.js";
 import type { Publication, PublicationActor } from "../publication.js";
+import { outcomeUnknownPending } from "../publish/outcome.js";
+import { listingSubject } from "../subject.js";
 import { manualTasksOf } from "../tracking/manual-tasks.js";
 import {
   type OperationModeDeps,
@@ -109,7 +111,7 @@ export async function changeListingStatus(
       );
     }
     if (action === "ready") await requirePhoto(locked, listing);
-    const publications = await locked.publications.listByListing(listingId);
+    const publications = await locked.publications.listBySubject(listingSubject(listingId));
     requireNothingInFlight(action, publications);
     const portal = await portalSteps(locked, action, publications);
     requireLiveCompatible(deps, action, publications, portal);
@@ -142,7 +144,7 @@ export async function changeListingStatus(
     const listing = await locked.listings.get(listingId);
     if (listing === null) throw listingNotFound(listingId);
     if (listing.status !== first.listing.status) throw invalid(listing, action);
-    const publications = await locked.publications.listByListing(listingId);
+    const publications = await locked.publications.listBySubject(listingSubject(listingId));
     requireNothingInFlight(action, publications);
     // Una de Portal que salió (o se pausó) mientras se llamaba a Portal quedaría viva sin dueño:
     // se repite la acción, que la incluye.
@@ -174,7 +176,7 @@ const CONFIRM_TEXT: Readonly<Record<ListingAction, string>> = {
 
 /** Dejarla lista exige al menos una foto (un video no cuenta), como desde F1. */
 async function requirePhoto(locked: LockedRepositories, listing: Listing): Promise<void> {
-  const media = await locked.media.listOriginals(listing.id);
+  const media = await locked.media.listOriginals(listingSubject(listing.id));
   if (!media.some((item) => item.kind === "image")) {
     throw new AppError("INVALID_TRANSITION", "Para dejarla lista hace falta al menos una foto", {
       details: { listingId: listing.id, from: listing.status, to: "ready" },
@@ -182,11 +184,17 @@ async function requirePhoto(locked: LockedRepositories, listing: Listing): Promi
   }
 }
 
-/** Pausar, cerrar y archivar esperan a que nada se esté publicando ni espere el clic final. */
+/**
+ * Pausar, cerrar y archivar esperan a que nada se esté publicando, espere el clic final ni tenga
+ * un resultado dudoso (`OUTCOME_UNKNOWN_PENDING`, F9-T06).
+ */
 function requireNothingInFlight(action: ListingAction, publications: readonly Publication[]): void {
   if (action !== "pause" && action !== "close" && action !== "archive") return;
   const waiting = publications.find((p) => p.status === "awaiting_manual_confirm");
   if (waiting !== undefined) throw manualConfirmPending(waiting.id);
+  // Lo que pudo haber salido (ADR-0029 punto 8) se resuelve antes: no se descarta ni se deja colgado.
+  const unknown = publications.find((p) => p.status === "outcome_unknown");
+  if (unknown !== undefined) throw outcomeUnknownPending(unknown.id);
   const publishing = publications.find((p) => p.status === "publishing");
   if (publishing !== undefined) {
     throw new AppError(
@@ -354,7 +362,7 @@ async function applyFinal(
 ): Promise<ListingStatusChange> {
   const changed: Publication[] = [];
   if (action === "close") {
-    for (const publication of await locked.publications.listByListing(listing.id)) {
+    for (const publication of await locked.publications.listBySubject(listingSubject(listing.id))) {
       if (publication.platform === PORTAL || !publication.dryRun) continue;
       if (publication.status !== "published") continue;
       changed.push(
@@ -366,7 +374,7 @@ async function applyFinal(
       );
     }
   }
-  const publications = await locked.publications.listByListing(listing.id);
+  const publications = await locked.publications.listBySubject(listingSubject(listing.id));
   const stillLive = publications.some((p) => !p.dryRun && ON_PLATFORM.includes(p.status));
   const to: ListingStatus = TARGET[action](stillLive);
   const moved = await locked.listings.changeStatus(

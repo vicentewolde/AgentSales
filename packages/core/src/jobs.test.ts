@@ -34,6 +34,14 @@ describe("contrato de jobs", () => {
     ).toBe(false);
   });
 
+  it("content.plan lleva solo el id del plan, que debe ser un uuid (F9-T20)", () => {
+    const id = "7f1c2a4e-9b3d-4f6a-8c2e-1d5b9a7e3f10";
+    expect(JOB_PAYLOADS["content.plan"].parse({ planRunId: id, brokerId: "x" })).toEqual({
+      planRunId: id,
+    });
+    expect(JOB_PAYLOADS["content.plan"].safeParse({ planRunId: "plan-1" }).success).toBe(false);
+  });
+
   it("tokens.refresh no lleva datos: lo que sobre se descarta", () => {
     expect(JOB_PAYLOADS["tokens.refresh"].parse({ accountId: "x" })).toEqual({});
     expect(JOB_PAYLOADS["tokens.refresh"].safeParse(null).success).toBe(false);

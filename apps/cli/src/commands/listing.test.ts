@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
-import type { FieldDefinition } from "@agentsales/core";
+import { type FieldDefinition, listingSubject } from "@agentsales/core";
 import { createInMemoryFieldDefinitionRepository } from "@agentsales/core/testing";
-import { describe, expect, it } from "vitest";
+import { Command } from "commander";
+import { afterEach, describe, expect, it } from "vitest";
 import { brokerData, harness, newListing } from "../../test/harness.js";
-import { runListing } from "./listing.js";
+import { register, runListing } from "./listing.js";
 
 /** Definición global sintética: solo importan la clave, la etiqueta y el orden. */
 const definition = (key: string, label: string, sortOrder: number): FieldDefinition => ({
@@ -58,7 +59,9 @@ async function setup() {
     sortOrder: 0,
     isCover: false,
   });
-  await h.media.arrange(listing.id, [{ id: photo.id, sortOrder: 0, isCover: true }]);
+  await h.media.arrange(listingSubject(listing.id), [
+    { id: photo.id, sortOrder: 0, isCover: true },
+  ]);
   await h.listings.create(newListing(otra.id, "P-002"));
   return { h, listing, marca, otra };
 }
@@ -155,5 +158,35 @@ describe("runListing", () => {
     expect(h.text()).toContain("P-003 · Departamento\n");
     expect(h.text()).toContain("  Dirección: Calle Inventada 123, Metropolitana\n");
     expect(h.text()).toContain("Medios (0)\n  Sin fotos ni videos");
+  });
+});
+
+describe("listing <acción> --broker por commander (ensayo de la demo de F9)", () => {
+  afterEach(() => {
+    process.exitCode = undefined;
+  });
+
+  it("--broker llega a la acción, antes o después de su nombre", async () => {
+    const { h, listing, otra } = await setup();
+    await h.listings.create(newListing(otra.id, "P-001"));
+    const program = new Command().exitOverride();
+    register(program, {
+      ...h.io,
+      api: () => h.client,
+      confirm: async () => false,
+    } as unknown as Parameters<typeof register>[1]);
+
+    await program.parseAsync(["listing", "ready", "P-001", "--broker", "marca"], { from: "user" });
+    expect(h.errors()).not.toContain("LISTING_AMBIGUOUS");
+    expect(process.exitCode).toBe(0);
+    expect((await h.listings.get(listing.id))?.status).toBe("ready");
+
+    await program.parseAsync(
+      ["listing", "--broker", "marca", "close", "P-001", "--reason", "retirada", "--yes"],
+      { from: "user" },
+    );
+    expect(h.errors()).not.toContain("LISTING_AMBIGUOUS");
+    expect(process.exitCode).toBe(0);
+    expect((await h.listings.get(listing.id))?.status).toBe("closed");
   });
 });

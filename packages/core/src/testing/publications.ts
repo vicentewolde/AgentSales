@@ -1,5 +1,7 @@
+import { DEFAULT_LANGUAGE } from "../enums.js";
 import { AppError } from "../errors.js";
 import type { ListingLock, LockedRepositories } from "../ports/listing-lock.js";
+import { lockedMedia } from "../ports/media-repository.js";
 import type {
   PublicationChanges,
   PublicationEventInput,
@@ -18,6 +20,8 @@ import {
   canTransition,
   TERMINAL_PUBLICATION_STATUSES,
 } from "../publication-state.js";
+import { listingSubject, sameSubject, subjectFieldsFor, subjectOfInput } from "../subject.js";
+import { COST_COUNTED_STATUSES } from "../x/cost.js";
 import { structuredCopy } from "./copy.js";
 
 export type InMemoryPublicationRepository = PublicationRepository & {
@@ -84,18 +88,29 @@ export function createInMemoryPublicationRepository(
   return {
     async create(input, event) {
       normalizeEventPayload(event.payload);
+      const subject = subjectOfInput(input);
+      const language = input.language ?? DEFAULT_LANGUAGE;
+      // Como los únicos de Postgres: por aviso, cuenta y formato; por post, también por idioma.
       const clash = [...publications.values()].some(
         ({ publication }) =>
-          publication.listingId === input.listingId &&
+          sameSubject(publication.subject, subject) &&
           publication.platformAccountId === input.platformAccountId &&
           publication.format === input.format &&
+          (subject.kind === "listing" || publication.language === language) &&
           ACTIVE_PUBLICATION_STATUSES.includes(publication.status),
       );
       if (clash) {
         throw new AppError(
           "PUBLICATION_CONFLICT",
-          "Ya hay una publicación activa de ese aviso, cuenta y formato",
-          { details: { listingId: input.listingId, format: input.format } },
+          subject.kind === "listing"
+            ? "Ya hay una publicación activa de ese aviso, cuenta y formato"
+            : "Ya hay una publicación activa de ese post, cuenta, formato e idioma",
+          {
+            details:
+              subject.kind === "listing"
+                ? { listingId: subject.id, format: input.format }
+                : { postId: subject.id, format: input.format, language },
+          },
         );
       }
       const relistedFrom = input.relistedFrom ?? null;
@@ -114,10 +129,11 @@ export function createInMemoryPublicationRepository(
       const publication: Publication = {
         // Con forma de uuid, como en Postgres: los datos del job `publication.publish` lo exigen.
         id: `00000000-0000-4000-8000-${String(++nextPublication).padStart(12, "0")}`,
-        listingId: input.listingId,
+        ...subjectFieldsFor(subject),
         platformAccountId: input.platformAccountId,
         platform: input.platform,
         format: input.format,
+        language,
         contentId: input.contentId,
         mediaIds: [...input.mediaIds],
         status: "approved",
@@ -132,6 +148,7 @@ export function createInMemoryPublicationRepository(
         remoteState: null,
         listingSourceHash: input.listingSourceHash || null,
         relistedFrom,
+        costUsd: input.costUsd ?? null,
         createdAt: now,
         updatedAt: now,
       };
@@ -143,10 +160,11 @@ export function createInMemoryPublicationRepository(
       const found = publications.get(id);
       return found === undefined ? null : structuredCopy(found.publication);
     },
-    async listByListing(listingId) {
-      return ordered((publication) => publication.listingId === listingId);
+    async listBySubject(subject) {
+      return ordered((publication) => sameSubject(publication.subject, subject));
     },
     async listByStatus(status) {
+      // De avisos y de posts, como en Postgres (desde F9-T06).
       return ordered((publication) => publication.status === status);
     },
     async listDue({ now, since, excludePlatforms, limit }) {
@@ -180,19 +198,23 @@ export function createInMemoryPublicationRepository(
         .sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime() || a.id.localeCompare(b.id))
         .map((publication) => structuredCopy(publication));
     },
-    async listForTracking({ listingIds, since }) {
+    async listForTracking({ listingIds, postIds = [], since }) {
       const terminal: readonly Publication["status"][] = TERMINAL_PUBLICATION_STATUSES;
+      const ofSubject = ({ subject }: Publication) =>
+        subject.kind === "listing" ? listingIds.includes(subject.id) : postIds.includes(subject.id);
+      // Como en Postgres: los avisos primero (por id), después los posts (por id).
+      const order = ({ subject }: Publication) =>
+        `${subject.kind === "listing" ? 0 : 1}:${subject.id}`;
       return [...publications.values()]
         .filter(
           ({ publication }) =>
-            listingIds.includes(publication.listingId) &&
+            ofSubject(publication) &&
             (!terminal.includes(publication.status) ||
               publication.updatedAt.getTime() >= since.getTime()),
         )
         .sort(
           (a, b) =>
-            a.publication.listingId.localeCompare(b.publication.listingId) ||
-            a.sequence - b.sequence,
+            order(a.publication).localeCompare(order(b.publication)) || a.sequence - b.sequence,
         )
         .map(({ publication }) => structuredCopy(publication));
     },
@@ -324,6 +346,38 @@ export function createInMemoryPublicationRepository(
       find(publicationId);
       return pushEvent(publicationId, event.type, null, null, event);
     },
+    async setCostUsd(id, costUsd) {
+      const found = find(id);
+      if (found.publication.status !== "publishing") {
+        throw new AppError(
+          "PUBLICATION_NOT_PUBLISHING",
+          "La publicación ya no se está publicando",
+          { details: { publicationId: id, status: found.publication.status } },
+        );
+      }
+      const publication = {
+        ...found.publication,
+        costUsd: costUsd === null ? null : Math.round(costUsd * 10_000) / 10_000,
+        updatedAt: later(found.publication.updatedAt),
+      };
+      publications.set(id, { ...found, publication });
+      return structuredCopy(publication);
+    },
+    async sumCostUsdSince(platformAccountId, since, options = {}) {
+      const counted: ReadonlySet<string> = new Set(COST_COUNTED_STATUSES);
+      return [...publications.values()]
+        .map(({ publication }) => publication)
+        .filter(
+          (publication) =>
+            publication.platformAccountId === platformAccountId &&
+            publication.id !== options.excludePublicationId &&
+            !publication.dryRun &&
+            publication.costUsd !== null &&
+            counted.has(publication.status) &&
+            (publication.publishedAt ?? publication.updatedAt).getTime() >= since.getTime(),
+        )
+        .reduce((sum, publication) => sum + (publication.costUsd ?? 0), 0);
+    },
     async countLiveAttemptsSince(platformAccountId, since) {
       const own = new Set(
         [...publications.values()]
@@ -451,7 +505,7 @@ export function createInMemoryListingLock(repos: LockedRepositories): ListingLoc
             details: { listingId },
           });
         }
-        return await fn(repos);
+        return await fn({ ...repos, media: lockedMedia(repos.media, listingSubject(listingId)) });
       } finally {
         release();
         if (tails.get(listingId) === tail) tails.delete(listingId);

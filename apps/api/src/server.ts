@@ -26,6 +26,7 @@ import {
   createContentRepository,
   createContentRunRepository,
   createDb,
+  createEditorialProfileRepository,
   createFieldDefinitionRepository,
   createImportRunRepository,
   createInvitationRepository,
@@ -35,8 +36,12 @@ import {
   createMediaRepository,
   createMetaDeletionRepository,
   createOAuthStateRepository,
+  createPlanRunRepository,
   createPlatformAccountRepository,
   createPlatformCatalogRepository,
+  createPostLock,
+  createPostRepository,
+  createPostUploadRepository,
   createPublicationRepository,
   createSessionRepository,
   createUserRepository,
@@ -53,6 +58,12 @@ import {
   createMercadoLibreItems,
   MERCADOLIBRE_API_TIMEOUT_MS,
 } from "@agentsales/publishers";
+// La subruta de Discord (F9-T14): solo el cliente del webhook, para conectarlo sin publicar.
+import { createDiscordWebhooks } from "@agentsales/publishers/discord";
+// La subruta de LinkedIn (F9-T15): solo su OAuth, para conectar el perfil sin publicar.
+import { createLinkedInAuth } from "@agentsales/publishers/linkedin";
+import { createTikTokAuth } from "@agentsales/publishers/tiktok";
+import { createPkcePair, createXAuth } from "@agentsales/publishers/x";
 import { checkQueueSchema, createJobQueue } from "@agentsales/queue";
 import { createR2Storage, r2BucketOrigin } from "@agentsales/storage";
 import { serve } from "@hono/node-server";
@@ -63,7 +74,7 @@ import { backupStatusReader } from "./backup-status.js";
 import { createApiOperations } from "./portal.js";
 import { clientIpResolver, createRateLimiter } from "./rate-limit.js";
 import { createRequestContext } from "./request-context-node.js";
-import { instagramStartUrlOf } from "./routes/oauth.js";
+import { instagramStartUrlOf, oauthStartUrlOf } from "./routes/oauth.js";
 import { internetAccess, localAccess } from "./security.js";
 import { createServerApp } from "./server-app.js";
 import { readApiVersion } from "./version.js";
@@ -176,6 +187,12 @@ const app = createApp({
   contentRuns: createContentRunRepository(database.db),
   contents: createContentRepository(database.db),
   lock: createListingLock(database.db, { secretBox }),
+  posts: createPostRepository(database.db),
+  postLock: createPostLock(database.db, { secretBox }),
+  postUploads: createPostUploadRepository(database.db),
+  editorialProfiles: createEditorialProfileRepository(database.db),
+  // Los planes de ideas (F9-T21): la API los pide y lee; el worker los corre (`content.plan`).
+  planRuns: createPlanRunRepository(database.db),
   publications: createPublicationRepository(database.db),
   platformAccounts: createPlatformAccountRepository(database.db, { secretBox }),
   instagram: {
@@ -188,6 +205,48 @@ const app = createApp({
     }),
     oauthConfigured: Boolean(env.INSTAGRAM_APP_ID && env.INSTAGRAM_APP_SECRET),
     secureCookie: env.INSTAGRAM_REDIRECT_URI.startsWith("https://"),
+  },
+  // Conectar un webhook lo lee en Discord sin publicar (tope de 10 s: el operador espera).
+  discord: createDiscordWebhooks({ timeoutMs: 10_000 }),
+  // X (F9-T16): OAuth 2.0 con PKCE y el refresco a pedido. Sin el par de la app, `/oauth/x/start`
+  // vuelve al panel con X_NOT_CONFIGURED sin llamar. El canje y el refresco tienen tope de 10 s.
+  x: {
+    auth: createXAuth({
+      clientId: env.X_CLIENT_ID ?? "",
+      clientSecret: env.X_CLIENT_SECRET ?? "",
+      redirectUri: env.X_REDIRECT_URI,
+    }),
+    configured: Boolean(env.X_CLIENT_ID && env.X_CLIENT_SECRET),
+    secureCookie: env.X_REDIRECT_URI.startsWith("https://"),
+    pkce: createPkcePair,
+    // En el host de la vuelta: la cookie firmada con el verificador distingue `127.0.0.1`.
+    startUrl: instagramStartUrlOf(env.X_REDIRECT_URI),
+  },
+  // LinkedIn (F9-T15): sin el par de la app, el inicio vuelve al panel con LINKEDIN_NOT_CONFIGURED
+  // sin llamar. Tope de 10 s: el operador espera la vuelta.
+  linkedin: {
+    auth: createLinkedInAuth({
+      clientId: env.LINKEDIN_CLIENT_ID ?? "",
+      clientSecret: env.LINKEDIN_CLIENT_SECRET ?? "",
+      redirectUri: env.LINKEDIN_REDIRECT_URI,
+      timeoutMs: 10_000,
+    }),
+    configured: Boolean(env.LINKEDIN_CLIENT_ID && env.LINKEDIN_CLIENT_SECRET),
+    secureCookie: env.LINKEDIN_REDIRECT_URI.startsWith("https://"),
+    startUrl: instagramStartUrlOf(env.LINKEDIN_REDIRECT_URI),
+  },
+  // TikTok (F9-T26): Login Kit con la vuelta automática. Sin el par de la app, el inicio vuelve
+  // al panel con TIKTOK_NOT_CONFIGURED y el refresco a pedido no renueva. La renovación tiene su
+  // propio tope de 10 s.
+  tiktok: {
+    auth: createTikTokAuth({
+      clientKey: env.TIKTOK_CLIENT_KEY ?? "",
+      clientSecret: env.TIKTOK_CLIENT_SECRET ?? "",
+      redirectUri: env.TIKTOK_REDIRECT_URI,
+    }),
+    configured: Boolean(env.TIKTOK_CLIENT_KEY && env.TIKTOK_CLIENT_SECRET),
+    secureCookie: env.TIKTOK_REDIRECT_URI.startsWith("https://"),
+    startUrl: oauthStartUrlOf(env.TIKTOK_REDIRECT_URI),
   },
   mercadoLibre: {
     // Sin el par de la app, conectar responde MERCADOLIBRE_NOT_CONFIGURED sin llamar (el canje
@@ -225,6 +284,7 @@ const app = createApp({
   // Las cargas suben directo a R2 (spec F8 §4.4, ADR-0025): la API solo firma y revisa.
   newId: randomUUID,
   maxUploadBytes: env.MAX_IMPORT_UPLOAD_MB * 1024 * 1024,
+  maxVideoBytes: env.MAX_VIDEO_MB * 1024 * 1024,
   publishMode: env.PUBLISH_MODE,
   environment: env.NODE_ENV === "production" ? "production" : "development",
   // Marketplace (spec F5 §4.6 y §4.7): el límite diario y si se puede convertir la UF.

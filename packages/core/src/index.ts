@@ -37,6 +37,8 @@ export {
 } from "./broker.js";
 export {
   CHILE_TIME_ZONE,
+  chileDateOf,
+  chileDateStart,
   chileInputValue,
   chileMonthOf,
   chileMonthRange,
@@ -46,8 +48,12 @@ export {
 export * from "./content/index.js";
 export {
   beforeContentLock,
+  type ContentLockContext,
   type ContentLockDeps,
+  type LockedContent,
   lockedCurrentContent,
+  type PostReviewDeps,
+  settlePostStatus,
 } from "./content/locked-content.js";
 export {
   CONTENT_REEL_OUTCOMES,
@@ -61,6 +67,27 @@ export {
   contentRunSchema,
   contentSchema,
 } from "./content.js";
+export {
+  DEFAULT_LANGUAGE_GAP_HOURS,
+  EDITORIAL_LIMITS,
+  EDITORIAL_WEEKDAYS,
+  type EditorialCadence,
+  type EditorialCadenceEntry,
+  type EditorialPillar,
+  type EditorialProfile,
+  type EditorialProfileData,
+  type EditorialProfileInput,
+  type EditorialProfileIssue,
+  type EditorialProfileView,
+  type EditorialWeekday,
+  editorialCadenceEntrySchema,
+  editorialCadenceSchema,
+  editorialPillarSchema,
+  editorialProfileSchema,
+  editorialProfileView,
+  emptyEditorialProfileData,
+  normalizeEditorialProfile,
+} from "./editorial-profile.js";
 export * from "./enums.js";
 export { AppError, type AppErrorOptions, isAppError } from "./errors.js";
 export { type FieldDefinition, fieldDefinitionSchema } from "./field-definition.js";
@@ -106,9 +133,11 @@ export {
   CONTENT_RUN_STATUS_TEXT,
   CONTENT_STATUS_TEXT,
   contentRunProgressText,
+  EDITORIAL_WEEKDAY_TEXT,
   IMPORT_BROKER_OUTCOME_TEXT,
   IMPORT_ROW_OUTCOME_TEXT,
   IMPORT_RUN_STATUS_TEXT,
+  LANGUAGE_TEXT,
   LISTING_NOT_PREPARABLE_TEXT,
   LISTING_NOT_PUBLISHABLE_TEXT,
   LISTING_STATUS_TEXT,
@@ -120,6 +149,9 @@ export {
   ONBOARDING_OWNER_TEXT,
   ONBOARDING_STEP_TEXT,
   OPERATION_TEXT,
+  onboardingOwnerText,
+  onboardingStepText,
+  PLAN_RUN_STATUS_TEXT,
   PLATFORM_ACCOUNT_STATUS_TEXT,
   PLATFORM_TEXT,
   PUBLICATION_ACTOR_TEXT,
@@ -137,6 +169,21 @@ export {
   tokenStdinCommand,
   userStateText,
 } from "./labels.js";
+export {
+  isLinkedInPostUrn,
+  LINKEDIN_ACCOUNT_MODES,
+  LINKEDIN_DEFAULT_MODE,
+  LINKEDIN_PUBLISH_SCOPE,
+  LINKEDIN_TOKEN_DAYS,
+  type LinkedInAccountMeta,
+  type LinkedInAccountMode,
+  type LinkedInPostRef,
+  linkedinAccountMetaSchema,
+  linkedinMemberIdSchema,
+  linkedinPersonUrn,
+  linkedinPostUrl,
+  parseLinkedInPostUrl,
+} from "./linkedin.js";
 export {
   canChangeListingStatus,
   canDoListingAction,
@@ -296,6 +343,7 @@ export {
   type Permission,
   scopeOf,
 } from "./permissions.js";
+export { PLAN_RUNS_LIST_LIMIT, type PlanRun, planRunSchema } from "./plan-run.js";
 export {
   type AccessTokenCredentials,
   accessTokenCredentialsSchema,
@@ -304,8 +352,11 @@ export {
   checkConnectedCredentials,
   checkCredentials,
   checkTokenExpiry,
+  type DiscordAccountMeta,
   type DiscordCredentials,
+  discordAccountMetaSchema,
   discordCredentialsSchema,
+  discordWebhookParts,
   discordWebhookUrlSchema,
   ERASED_ACCOUNT_DISPLAY_NAME,
   erasedExternalAccountId,
@@ -313,8 +364,10 @@ export {
   INSTAGRAM_PUBLISH_SCOPE,
   type InstagramAccountMeta,
   instagramAccountMetaSchema,
+  isManualAccount,
   isManualMarketplaceAccount,
   MANUAL_MARKETPLACE_ACCOUNT_ID,
+  MANUAL_MODE_PLATFORMS,
   type MarketplaceAccountMeta,
   type MarketplaceManualMeta,
   type MarketplaceProfileMeta,
@@ -407,10 +460,13 @@ export {
   type ContentRepository,
   type ContentRunRepository,
   checkNewContents,
+  languageOf,
   type NewContent,
   type NewContentRun,
   pickContentChanges,
 } from "./ports/content-repository.js";
+export type { DiscordWebhookInfo, DiscordWebhooks } from "./ports/discord-webhooks.js";
+export type { EditorialProfileRepository } from "./ports/editorial-profile-repository.js";
 export type {
   FieldDefinitionQuery,
   FieldDefinitionRepository,
@@ -427,6 +483,7 @@ export type {
   InstagramToken,
 } from "./ports/instagram-auth.js";
 export type { EnqueueOptions, JobQueue } from "./ports/job-queue.js";
+export type { LinkedInAuth, LinkedInMember, LinkedInToken } from "./ports/linkedin-auth.js";
 export type { ListingLock, LockedRepositories } from "./ports/listing-lock.js";
 export type {
   ListingImportData,
@@ -451,11 +508,14 @@ export type {
   ProcessedImage,
   ProcessedVideo,
   VideoOutput,
+  VideoProcessOptions,
 } from "./ports/media-processor.js";
 export {
   checkArrangement,
   checkDerivative,
+  checkNewMedia,
   type DerivativeResult,
+  lockedMedia,
   type MediaArrangement,
   type MediaMeasurements,
   type MediaRecord,
@@ -488,6 +548,7 @@ export type {
   MetaDeletionRepository,
   MetaDeletionRequest,
 } from "./ports/meta-deletion-repository.js";
+export type { NewPlanRun, PlanRunRepository } from "./ports/plan-run-repository.js";
 export {
   type ConnectedAccount,
   CREDENTIALS_LOCK_TIMEOUT_MS,
@@ -497,8 +558,20 @@ export {
   type TokenUpdate,
 } from "./ports/platform-account-repository.js";
 export type { PlatformCatalogRepository } from "./ports/platform-catalog-repository.js";
+export type { PostLock, PostLockedRepositories } from "./ports/post-lock.js";
+export {
+  type NewPost,
+  type NewPostUpload,
+  type PostChanges,
+  type PostFilters,
+  type PostRepository,
+  type PostUploadRepository,
+  pickPostChanges,
+} from "./ports/post-repository.js";
 export type {
   DueQuery,
+  NewListingPublication,
+  NewPostPublication,
   NewPublication,
   NewPublicationEvent,
   PublicationChanges,
@@ -546,6 +619,8 @@ export {
   type SpecSheetData,
   slideKeyInput,
 } from "./ports/slide-templates.js";
+export type { TikTokAuth, TikTokCodeExchange, TikTokUser } from "./ports/tiktok-auth.js";
+export type { PlatformTokenRefresher, RefreshedTokens } from "./ports/token-refresher.js";
 export type { UfValue, UfValueSource } from "./ports/uf-value-source.js";
 export type {
   InvitationRepository,
@@ -559,6 +634,16 @@ export type {
   UserRepository,
 } from "./ports/user-repository.js";
 export type { WorkerHeartbeatRepository } from "./ports/worker-heartbeat-repository.js";
+// X (F9-T16): la cuenta, el tope de gasto, el costo, el enlace del post y la conexión por OAuth.
+export type { XAuth, XCodeExchange, XUser } from "./ports/x-auth.js";
+export {
+  canDraftPost,
+  type Post,
+  type PostUpload,
+  postNotReady,
+  postSchema,
+  postUploadSchema,
+} from "./post.js";
 export { formatListingPrice, formatNumber, formatPrice } from "./price.js";
 export {
   checkPublicationProgress,
@@ -608,7 +693,12 @@ export {
   TERMINAL_PUBLICATION_STATUSES,
   transition,
 } from "./publication-state.js";
-export { DRY_RUN_HANDOFF_NOTE, dryRunExternalId, withDryRun } from "./publish/dry-run.js";
+export {
+  DRY_RUN_HANDOFF_NOTE,
+  DRY_RUN_UPLOAD_NOTE,
+  dryRunExternalId,
+  withDryRun,
+} from "./publish/dry-run.js";
 export { GENERIC_ERROR_ADVICE, publicationErrorAdvice } from "./publish/error-advice.js";
 export {
   assemblePublishInput,
@@ -621,6 +711,36 @@ export {
   signPublishMedia,
   toPublishListing,
 } from "./publish/input.js";
+export {
+  isOutcomeUnknown,
+  type ManualHandoffProgress,
+  manualHandoffProgressSchema,
+  manualHandoffStateSchema,
+  OUTCOME_UNKNOWN,
+  OUTCOME_UNKNOWN_CODES,
+  type OutcomeUnknownReason,
+  outcomeUnknown,
+  outcomeUnknownPending,
+  type PendingSend,
+  pendingSend,
+  type SendOnceOptions,
+  type SendProgress,
+  type SendState,
+  type SentResult,
+  sendOnce,
+  sendProgressSchema,
+  sendStateSchema,
+  sentResultSchema,
+  socialProgressSchema,
+} from "./publish/outcome.js";
+export {
+  type DiscordMessageRef,
+  discordMessageUrl,
+  PUBLISHED_URL_MAX_LENGTH,
+  type PublishedRefFromUrl,
+  parseDiscordMessageUrl,
+  parsePublishedUrl,
+} from "./publish/published-url.js";
 export {
   consecutiveLimitWaits,
   MAX_LIMIT_WAIT_MINUTES,
@@ -640,10 +760,29 @@ export {
   scheduleAt,
   scheduleState,
 } from "./schedule.js";
+export * from "./social/index.js";
+export * from "./subject.js";
+export {
+  type LockedSubject,
+  runOnSubject,
+  type SubjectLockedRepositories,
+  type SubjectLocks,
+} from "./subject-lock.js";
+// TikTok (F9-T26): la cuenta, el enlace del video y conectar con Login Kit.
+export {
+  TIKTOK_PROFILE_SCOPE,
+  TIKTOK_REFRESH_TOKEN_DAYS,
+  TIKTOK_SCOPES,
+  TIKTOK_UPLOAD_SCOPE,
+  type TikTokAccountMeta,
+  tiktokAccountMetaSchema,
+} from "./tiktok/account.js";
+export { parseTikTokVideoUrl, type TikTokVideoRef, tiktokVideoUrl } from "./tiktok/url.js";
 export {
   AGENDA_ACTIONS,
   AGENDA_KINDS,
   AGENDA_UPCOMING_MS,
+  type AgendaAccount,
   type AgendaAction,
   type AgendaInput,
   type AgendaItem,
@@ -653,13 +792,29 @@ export {
   pendingReviewsOf,
   TRACKING_WINDOW_MS,
 } from "./tracking/agenda.js";
+export {
+  CALENDAR_ENTRY_KINDS,
+  CALENDAR_MAX_RANGE_MS,
+  type CalendarEntry,
+  type CalendarEntryKind,
+  type CalendarInput,
+  calendarEntries,
+} from "./tracking/calendar.js";
 export { isManualTask, manualTasksOf } from "./tracking/manual-tasks.js";
 export {
+  type TrackingPostRow,
   type TrackingPublication,
   type TrackingRow,
+  trackingPostRow,
   trackingPublication,
   trackingRow,
 } from "./tracking/row.js";
+export {
+  type AccountTokenExpiry,
+  accountTokenExpiry,
+  NON_RENEWING_TOKEN_PLATFORMS,
+  TOKEN_EXPIRY_NOTICE_DAYS,
+} from "./tracking/token-expiry.js";
 export {
   type ApproveContentDeps,
   type ApprovedContent,
@@ -735,10 +890,18 @@ export {
 export {
   type AccountGrant,
   type ConnectAccountDeps,
+  type ConnectDiscordAccountDeps,
   connectAccount,
+  connectDiscordAccount,
   INSTAGRAM_TOKEN_DAYS,
   requireBroker,
 } from "./use-cases/connect-account.js";
+export {
+  type ConnectLinkedInAccountDeps,
+  connectLinkedInAccount,
+  type SetAccountModeDeps,
+  setAccountMode,
+} from "./use-cases/connect-linkedin-account.js";
 export {
   type ConnectMarketplaceAccountDeps,
   connectManualMarketplaceAccount,
@@ -751,6 +914,10 @@ export {
   MERCADOLIBRE_REQUIRED_SCOPES,
 } from "./use-cases/connect-mercadolibre-account.js";
 export {
+  type ConnectTikTokAccountDeps,
+  connectTikTokAccount,
+} from "./use-cases/connect-tiktok-account.js";
+export {
   type CreateBrokerInput,
   createBroker,
 } from "./use-cases/create-broker.js";
@@ -759,19 +926,31 @@ export {
   disconnectAccount,
 } from "./use-cases/disconnect-account.js";
 export {
+  type DraftPostDeps,
+  type DraftPostParams,
+  type DraftPostResult,
+  draftPost,
+} from "./use-cases/draft-post.js";
+export {
   type ContentEdit,
   type EditContentDeps,
   editContent,
 } from "./use-cases/edit-content.js";
+export { getEditorialProfile, saveEditorialProfile } from "./use-cases/editorial-profile.js";
 export {
   ACCESS_TOKEN_REFRESH_MARGIN_MS,
   accessTokenProvider,
+  accessTokenStillFresh,
   type EnsureAccessTokenOptions,
   ensureAccessToken,
+  ensureRotatingAccessToken,
   type MercadoLibreRefreshResult,
   type MercadoLibreTokenDeps,
   mercadoLibreTokenStillFresh,
+  ROTATING_TOKEN_PLATFORMS,
+  type RotatingTokenDeps,
   refreshMercadoLibreToken,
+  rotatingAccessTokenProvider,
 } from "./use-cases/ensure-access-token.js";
 export {
   type EvaluatedText,
@@ -784,6 +963,12 @@ export {
   getListingContent,
   type ListingContent,
 } from "./use-cases/get-listing-content.js";
+export {
+  type GetPostContentDeps,
+  getPostContent,
+  type PostContent,
+  postContentId,
+} from "./use-cases/get-post-content.js";
 export {
   type ImportedRow,
   type ImportListingsDeps,
@@ -809,11 +994,17 @@ export {
 } from "./use-cases/meta-data-deletion.js";
 export {
   channelPublications,
+  createPostPublications,
   createPublications,
+  type PlannedPostPublication,
   type PlannedPublication,
+  type PostPublicationOpening,
   type PublicationOpening,
   type PublicationPlanItem,
+  planPostPublications,
   planPublications,
+  postPublicationMatchesSubject,
+  postPublicationPlan,
   publicationPlan,
   type SkippedPublication,
 } from "./use-cases/open-publications.js";
@@ -821,13 +1012,56 @@ export {
   type PausePublicationDeps,
   pausePublication,
 } from "./use-cases/pause-publication.js";
+export {
+  type AcceptIdeaDeps,
+  type AcceptIdeaResult,
+  acceptIdea,
+  discardIdea,
+} from "./use-cases/plan-ideas.js";
 export { expireAccountIfRejected, isAccessRejected } from "./use-cases/platform-auth.js";
+export {
+  type CloseAbandonedPostUploadsDeps,
+  type CloseAbandonedPostUploadsResult,
+  type CompletePostUploadsDeps,
+  type CompletePostUploadsResult,
+  closeAbandonedPostUploads,
+  completePostUploads,
+  type FinalizePostUploadsDeps,
+  type FinalizePostUploadsResult,
+  finalizePostUploads,
+  POST_MEDIA_TYPES,
+  POST_UPLOAD,
+  type PostUploadFile,
+  type PostUploadTarget,
+  type RequestPostUploadsDeps,
+  requestPostUploads,
+} from "./use-cases/post-uploads.js";
+export {
+  archivePost,
+  assertPostAccess,
+  type CreatePostDeps,
+  type CreatePostInput,
+  createPost,
+  getPost,
+  type ListPostsFilters,
+  listPosts,
+  POST_LIMITS,
+  type UpdatePostDeps,
+  type UpdatePostInput,
+  updatePost,
+} from "./use-cases/posts.js";
 export {
   type PrepareContentDeps,
   type PrepareContentParams,
   type PrepareContentResult,
   prepareContent,
 } from "./use-cases/prepare-content.js";
+export {
+  POST_PHOTO_VARIANTS,
+  type ProcessPostMediaDeps,
+  type ProcessPostMediaResult,
+  processPostMedia,
+} from "./use-cases/process-post-media.js";
 export {
   availablePublicationOperations,
   enqueueSync,
@@ -850,6 +1084,7 @@ export {
   type PublishListingDeps,
   type PublishListingResult,
   publishListing,
+  publishPost,
 } from "./use-cases/publish-listing.js";
 export {
   type PublishPublicationDeps,
@@ -882,6 +1117,8 @@ export {
 } from "./use-cases/relist-publication.js";
 export {
   enqueueContentRun,
+  enqueuePostDraft,
+  enqueueRunOf,
   type RequestContentRunDeps,
   type RequestContentRunParams,
   type RequestContentRunResult,
@@ -915,6 +1152,24 @@ export {
   requestMarketplaceLogin,
 } from "./use-cases/request-marketplace-login.js";
 export {
+  enqueuePlanRun,
+  getPlanRun,
+  listPlanRuns,
+  type PlanRunDetail,
+  type RequestPlanRunDeps,
+  type RequestPlanRunInput,
+  type RequestPlanRunResult,
+  requestPlanRun,
+} from "./use-cases/request-plan-run.js";
+export {
+  NOT_PUBLISHED_RESOLUTION_CODE,
+  PUBLICATION_RESOLUTIONS,
+  type PublicationResolution,
+  type ResolvePublicationDeps,
+  type ResolvePublicationResult,
+  resolvePublication,
+} from "./use-cases/resolve-publication.js";
+export {
   type ResumeAutoPublishDeps,
   type ResumedAutoPublish,
   resumeCutAutoPublish,
@@ -936,13 +1191,21 @@ export {
   runImport,
 } from "./use-cases/run-import.js";
 export {
+  type RunPlanDeps,
+  type RunPlanParams,
+  type RunPlanResult,
+  runPlan,
+} from "./use-cases/run-plan.js";
+export {
   type ChannelScheduled,
   MAX_SCHEDULE_BATCH,
   type ScheduleDeps,
   type ScheduleListingOutcome,
   type ScheduleListingsResult,
+  type SchedulePostOutcome,
   scheduleChannel,
   scheduleListings,
+  schedulePost,
   schedulePublication,
   unschedulePublication,
 } from "./use-cases/schedule-publications.js";
@@ -986,6 +1249,12 @@ export {
   type WatchPublicationsResult,
   watchPublications,
 } from "./use-cases/watch-publications.js";
+export {
+  type ConnectXAccountDeps,
+  connectXAccount,
+  type SetXSpendLimitDeps,
+  setXSpendLimit,
+} from "./use-cases/x-account.js";
 export * from "./user.js";
 export {
   WORKER_HEARTBEAT_INTERVAL_MS,
@@ -998,3 +1267,22 @@ export {
   workerStatusSchema,
   workerStatusText,
 } from "./worker-heartbeat.js";
+export {
+  X_DEFAULT_SPEND_LIMIT_USD,
+  X_MAX_SPEND_LIMIT_USD,
+  X_OAUTH_SCOPES,
+  X_REQUIRED_SCOPES,
+  type XAccountMeta,
+  xAccountMetaSchema,
+  xSpendLimitOf,
+  xSpendLimitSchema,
+} from "./x/account.js";
+export {
+  COST_COUNTED_STATUSES,
+  formatXUsd,
+  xLinkNotAllowed,
+  xPostCostUsd,
+  xPostHasLink,
+  xSpendLimitReached,
+} from "./x/cost.js";
+export { parseXPostUrl, type XPostRef, xPostUrl } from "./x/post-url.js";

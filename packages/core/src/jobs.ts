@@ -16,6 +16,9 @@ export const JOB_NAMES = [
   "publication.due",
   "publications.watch",
   "db.backup",
+  "post.draft",
+  "post.media",
+  "content.plan",
 ] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
@@ -75,6 +78,24 @@ export const JOB_PAYLOADS = {
    * último tiene más de 20 h. Sin datos.
    */
   "db.backup": z.object({}),
+  /**
+   * Los textos de un post (spec F9 §4.9, ADR-0030): la corrida de textos del post guarda lo pedido;
+   * el job lleva su id. Lo encolan `requestContentRun` con un post y el worker al arrancar
+   * (`requeueQueuedPostRuns`); lo atiende `draftPost` (F9-T11). Nunca va por `content.prepare`,
+   * que es de avisos.
+   */
+  "post.draft": z.object({ contentRunId: z.uuid() }),
+  /**
+   * Las variantes de los medios de un post (spec F9 §4.5, F9-T10): lo encola `…/uploads/complete`.
+   * Lee de la base los originales del post y arma solo lo que falta (`processPostMedia`).
+   */
+  "post.media": z.object({ postId: z.uuid() }),
+  /**
+   * Un plan de ideas de la IA (spec F9 §4.9, ADR-0030): el plan guarda lo pedido; el job lleva su
+   * id. Lo encolan `requestPlanRun` y el worker al arrancar (`requeueQueuedPlanRuns`); lo atiende
+   * `runPlan` (F9-T20).
+   */
+  "content.plan": z.object({ planRunId: z.uuid() }),
 } as const satisfies Record<JobName, z.ZodType>;
 
 export type JobPayload<N extends JobName> = z.infer<(typeof JOB_PAYLOADS)[N]>;

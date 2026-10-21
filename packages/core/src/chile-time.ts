@@ -121,5 +121,21 @@ export function chileMonthRange(month: string): { from: Date; to: Date } {
   return { from: chileDayStart(year, index, 1), to: chileDayStart(next.year, next.index, 1) };
 }
 
+const DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * El primer instante de un día de Chile (`"2026-10-19"`; si las 00:00 no existen por el cambio de
+ * horario, la 01:00): el borde de los días del calendario del panel (F9-T18). `RangeError` si no
+ * tiene esa forma.
+ */
+export function chileDateStart(day: string): Date {
+  const match = DAY.exec(day);
+  if (match === null) throw new RangeError(`El día debe ser "AAAA-MM-DD": "${day}"`);
+  return chileDayStart(Number(match[1]), Number(match[2]), Number(match[3]));
+}
+
+/** El día de Chile (`"2026-10-19"`) de un instante. */
+export const chileDateOf = (date: Date): string => formatChileTime(date).slice(0, 10);
+
 /** El mes de Chile (`"2026-10"`) de un instante. */
 export const chileMonthOf = (date: Date): string => formatChileTime(date).slice(0, 7);

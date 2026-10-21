@@ -14,6 +14,7 @@ import {
   type RemoteState,
   remoteStateSchema,
 } from "../publication.js";
+import { listingIdOf, listingSubject } from "../subject.js";
 import { accessTokenProvider } from "./ensure-access-token.js";
 import { expireAccountIfRejected } from "./platform-auth.js";
 import { modeOf, publicationNotFound } from "./publication-start.js";
@@ -22,16 +23,19 @@ import { modeOf, publicationNotFound } from "./publication-start.js";
 
 /**
  * Lo que una plataforma sabe hacer sobre lo publicado: lo implementa el publisher de Portal y lo
- * compone la API sin las fotos ni el catálogo (`createPortalOperations`, F4-T15).
+ * compone la API sin las fotos ni el catálogo (`createPortalOperations`, F4-T15); desde F9-T19,
+ * también borrar un post de LinkedIn (`remove`, para retirar). Tener operaciones no implica pausar
+ * ni cerrar; eso lo decide `OPERATION_PLATFORMS`.
  */
 export type PublicationOperations = Pick<
   Publisher,
-  "pause" | "resume" | "close" | "getStatus" | "update"
+  "pause" | "resume" | "close" | "getStatus" | "update" | "remove"
 >;
 
 /**
  * Las plataformas cuyas publicaciones se pausan, reactivan, cierran y sincronizan desde AgentSales.
- * Instagram no: se retira a mano (F3, D8).
+ * Instagram no: se retira a mano (F3, D8). Es aparte de `operationsFor`: LinkedIn tiene operaciones
+ * (`remove`, F9-T19) pero no está aquí, así que no se pausa ni se cierra (se retira).
  */
 export const OPERATION_PLATFORMS: ReadonlySet<Platform> = new Set(["portal_inmobiliario"]);
 
@@ -59,7 +63,8 @@ export type PublicationPlatformDeps = {
   mercadoLibre: Pick<MercadoLibreAuth, "refresh"> | null;
   /**
    * Las operaciones de una plataforma (sin envolver en `withDryRun`, que no las expone). Se pide
-   * **después** de decidir el modo con `publication.dryRun`: en `dry-run` no se llama.
+   * **después** de decidir el modo con `publication.dryRun`: en `dry-run` no se llama. Tener
+   * operaciones no implica pausar ni cerrar; eso lo decide `OPERATION_PLATFORMS`.
    */
   operationsFor(platform: Platform): PublicationOperations | undefined;
   now?: () => Date;
@@ -93,7 +98,7 @@ export function requireOperationPlatform(publication: Publication): void {
 export function operationsOf(
   deps: Pick<PublicationPlatformDeps, "operationsFor">,
   publication: Publication,
-): Required<Omit<PublicationOperations, "update">> {
+): Required<Omit<PublicationOperations, "update" | "remove">> {
   const operations = deps.operationsFor(publication.platform);
   const { pause, resume, close, getStatus } = operations ?? {};
   if (
@@ -231,7 +236,7 @@ export async function requestSync(
 ): Promise<void> {
   const publicationId = publication.id;
   await deps.lock
-    .run(publication.listingId, async (locked) => {
+    .run(listingIdOf(publication.subject), async (locked) => {
       const current = await locked.publications.get(publicationId);
       if (current !== null) {
         await locked.publications.setRemoteState(publicationId, current.remoteState);
@@ -263,7 +268,7 @@ export async function listingBackToReadyIfLast(
   listingId: string,
 ): Promise<boolean> {
   // Una que se está publicando en `live` no cuenta: si sale, el intento sube el aviso a `active`.
-  const stillLive = (await locked.publications.listByListing(listingId)).some(
+  const stillLive = (await locked.publications.listBySubject(listingSubject(listingId))).some(
     (other) => !other.dryRun && (other.status === "published" || other.status === "paused"),
   );
   if (stillLive) return false;
@@ -383,7 +388,7 @@ export async function operatePublication(
   }
 
   try {
-    return await deps.lock.run(found.listingId, async (locked) => {
+    return await deps.lock.run(listingIdOf(found.subject), async (locked) => {
       const current = await locked.publications.get(publicationId);
       if (current !== null && current.status === move.to && live) {
         // Un sync leyó Mercado Libre justo después del cambio y ya lo aplicó: lo pedido está hecho.
@@ -410,7 +415,7 @@ export async function operatePublication(
               );
         const listingBackToReady =
           operation === "close" && !keepListing
-            ? await listingBackToReadyIfLast(locked, found.listingId)
+            ? await listingBackToReadyIfLast(locked, listingIdOf(found.subject))
             : false;
         return { publication, listingBackToReady };
       }
@@ -434,7 +439,7 @@ export async function operatePublication(
       // Un error de la base dentro del candado no se recupera: deshace todo y el sync lo corrige.
       const listingBackToReady =
         live && operation === "close" && !keepListing
-          ? await listingBackToReadyIfLast(locked, found.listingId)
+          ? await listingBackToReadyIfLast(locked, listingIdOf(found.subject))
           : false;
       return { publication, listingBackToReady };
     });

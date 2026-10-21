@@ -4,10 +4,12 @@ import {
   CONTENT_RUN_STAGES,
   CONTENT_RUN_STATUSES,
   CONTENT_STATUSES,
+  LANGUAGES,
   LLM_PROVIDERS,
   PLATFORMS,
 } from "./enums.js";
 import { llmUsageSchema } from "./llm-usage.js";
+import { subjectFields } from "./subject.js";
 
 const count = z.number().int().nonnegative();
 
@@ -45,6 +47,19 @@ export const contentRunReportSchema = z.object({
    * revisión vigente se calcula al leer (`getListingContent`, F2-T12).
    */
   checks: z.partialRecord(z.enum(PLATFORMS), z.array(z.enum(CONTENT_CHECK_CODES))).optional(),
+  /**
+   * Corridas de posts (F9-T11): los códigos de la revisión de cada red **e idioma**
+   * (`checkPostContent`), con la misma salvedad que `checks` (es una foto de la corrida).
+   */
+  postChecks: z
+    .array(
+      z.object({
+        platform: z.enum(PLATFORMS),
+        language: z.enum(LANGUAGES),
+        codes: z.array(z.enum(CONTENT_CHECK_CODES)),
+      }),
+    )
+    .optional(),
   warnings: z.array(z.string()),
 });
 export type ContentRunReport = z.infer<typeof contentRunReportSchema>;
@@ -53,10 +68,13 @@ export type ContentRunReport = z.infer<typeof contentRunReportSchema>;
 export const contentRunErrorSchema = z.object({ code: z.string(), message: z.string() });
 export type ContentRunError = z.infer<typeof contentRunErrorSchema>;
 
-/** Corrida de contenido (`content_runs`, ADR-0012): la entidad que devuelve el repositorio. */
+/**
+ * Corrida de contenido (`content_runs`, ADR-0012): la entidad que devuelve el repositorio. Desde F9
+ * (ADR-0029), de un aviso o de un post (`subject`).
+ */
 export const contentRunSchema = z.object({
   id: z.string(),
-  listingId: z.string(),
+  ...subjectFields,
   status: z.enum(CONTENT_RUN_STATUSES),
   /** Si la corrida genera textos; `false` solo rehace medios y renders. */
   texts: z.boolean(),
@@ -74,15 +92,18 @@ export const contentRunSchema = z.object({
 export type ContentRun = z.infer<typeof contentRunSchema>;
 
 /**
- * Texto de un aviso para un canal (`contents`, ADR-0012 y ADR-0013). El **vigente** de cada canal
- * es el más reciente; los anteriores quedan como historial. `rawOutput` es la salida validada de
- * la IA (`contentDraftSchema`, F2-T05): aquí se guarda tal cual.
+ * Texto de un aviso (o, desde F9, de un post: `subject`) para un canal y un idioma (`contents`,
+ * ADR-0012 y ADR-0013). El **vigente** de cada canal e idioma es el más reciente; los anteriores
+ * quedan como historial. `rawOutput` es la salida validada de la IA (`contentDraftSchema`, F2-T05):
+ * aquí se guarda tal cual.
  */
 export const contentSchema = z.object({
   id: z.string(),
-  listingId: z.string(),
+  ...subjectFields,
   contentRunId: z.string(),
   platform: z.enum(PLATFORMS),
+  /** `LANGUAGES`: los textos de un aviso son `es`; un post puede tener uno por idioma (spec F9 §4.4). */
+  language: z.enum(LANGUAGES),
   /** Portal y Marketplace; `null` en Instagram. */
   title: z.string().nullable(),
   body: z.string(),

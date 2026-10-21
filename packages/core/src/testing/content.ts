@@ -1,13 +1,22 @@
 import type { Content, ContentRun } from "../content.js";
-import { isTerminalContentRun, LISTING_PLATFORMS } from "../enums.js";
+import { isTerminalContentRun, LANGUAGES, LISTING_PLATFORMS, PLATFORMS } from "../enums.js";
 import { AppError } from "../errors.js";
 import { addLlmCall } from "../llm-usage.js";
+import type { PlanRun } from "../plan-run.js";
 import {
   type ContentRepository,
   type ContentRunRepository,
   checkNewContents,
+  languageOf,
   pickContentChanges,
 } from "../ports/content-repository.js";
+import {
+  listingSubject,
+  type Subject,
+  sameSubject,
+  subjectFieldsFor,
+  subjectOfInput,
+} from "../subject.js";
 import { structuredCopy } from "./copy.js";
 
 export type InMemoryContentRepositories = {
@@ -21,8 +30,9 @@ const isActive = (status: ContentRun["status"]) => !isTerminalContentRun(status)
 
 /**
  * `ContentRunRepository` y `ContentRepository` en memoria, con la semántica de Postgres (spec F2
- * §4.3): una corrida activa por aviso (`CONTENT_RUN_CONFLICT`), cambios de estado condicionales,
- * `markSucceeded` todo o nada y el contenido vigente = el más reciente por canal. Comparten el
+ * §4.3): una corrida activa por aviso o post (`CONTENT_RUN_CONFLICT`), cambios de estado
+ * condicionales, `markSucceeded` todo o nada y el contenido vigente = el más reciente por canal e
+ * idioma. Comparten el
  * almacén porque `markSucceeded` escribe las dos tablas. El orden es el de creación: el doble no
  * tiene reloj propio. A diferencia de Postgres, no verifica que el aviso exista (allí, la FK da
  * `DB_QUERY_FAILED`): en la aplicación el aviso siempre se carga antes.
@@ -32,9 +42,14 @@ export function createInMemoryContentRepositories(
     nextId?: () => string;
     /**
      * El corredor de un aviso, para `sumLlmCost` (Postgres lo cruza con `listings`). Sin esto,
-     * `sumLlmCost` falla: solo lo necesitan los tests del gasto.
+     * `sumLlmCost` falla al encontrar una corrida de aviso con gasto: solo lo necesitan los tests
+     * del gasto.
      */
     brokerOfListing?: (listingId: string) => string | null | Promise<string | null>;
+    /** El corredor de un post, para `sumLlmCost` (F9). Sin esto, un post no suma. */
+    brokerOfPost?: (postId: string) => string | null | Promise<string | null>;
+    /** Los planes de ideas, que también suman en `sumLlmCost` (F9, ADR-0030). */
+    planRuns?: () => readonly PlanRun[] | Promise<readonly PlanRun[]>;
   } = {},
 ): InMemoryContentRepositories {
   let sequence = 0;
@@ -45,22 +60,25 @@ export function createInMemoryContentRepositories(
   const autoPublishDone = new Set<string>();
 
   const findRun = (id: string) => runs.find((run) => run.id === id);
+  const ofSubject = (subject: Subject) => (item: { subject: Subject }) =>
+    sameSubject(item.subject, subject);
   const replaceRun = (updated: ContentRun) => {
     runs[runs.findIndex((run) => run.id === updated.id)] = updated;
   };
 
   const contentRuns: ContentRunRepository = {
     async create(run) {
-      if (runs.some((stored) => stored.listingId === run.listingId && isActive(stored.status))) {
+      const subject = subjectOfInput(run);
+      if (runs.some((stored) => ofSubject(subject)(stored) && isActive(stored.status))) {
         throw new AppError(
           "CONTENT_RUN_CONFLICT",
-          `El aviso ${run.listingId} ya tiene una corrida de contenido en curso`,
+          `${subject.kind === "listing" ? "El aviso" : "El post"} ${subject.id} ya tiene una corrida de contenido en curso`,
           { retriable: true },
         );
       }
       const created: ContentRun = {
         id: nextId(),
-        listingId: run.listingId,
+        ...subjectFieldsFor(subject),
         status: "queued",
         texts: run.texts,
         stage: null,
@@ -78,16 +96,19 @@ export function createInMemoryContentRepositories(
       const run = findRun(id);
       return run === undefined ? null : structuredCopy(run);
     },
-    async findActive(listingId) {
-      const run = runs.find((stored) => stored.listingId === listingId && isActive(stored.status));
+    async findActive(subject) {
+      const run = runs.find((stored) => ofSubject(subject)(stored) && isActive(stored.status));
       return run === undefined ? null : structuredCopy(run);
     },
-    async latest(listingId) {
-      const run = runs.findLast((stored) => stored.listingId === listingId);
+    async latest(subject) {
+      const run = runs.findLast(ofSubject(subject));
       return run === undefined ? null : structuredCopy(run);
     },
-    async listQueued() {
-      return runs.filter((run) => run.status === "queued").map(structuredCopy);
+    async listQueued(kind = "listing") {
+      // Las de un solo tipo de sujeto, como en Postgres: las de posts no son de `content.prepare`.
+      return runs
+        .filter((run) => run.status === "queued" && run.subject.kind === kind)
+        .map(structuredCopy);
     },
     async markRunning(id) {
       const run = findRun(id);
@@ -105,19 +126,23 @@ export function createInMemoryContentRepositories(
       checkNewContents(rows);
       const run = findRun(id);
       if (run?.status !== "running") return false;
-      // Como el único (content_run_id, platform): un canal que ya tiene fila no guarda nada.
+      // Como el único (content_run_id, platform, language): un canal e idioma que ya tiene fila no
+      // guarda nada.
       const saved = contents.filter((content) => content.contentRunId === id);
-      if (rows.some((row) => saved.some((content) => content.platform === row.platform))) {
-        return false;
-      }
+      const taken = (row: (typeof rows)[number]) =>
+        saved.some(
+          (content) => content.platform === row.platform && content.language === languageOf(row),
+        );
+      if (rows.some(taken)) return false;
       const now = new Date();
       for (const row of rows) {
         contents.push({
           ...structuredCopy(row),
+          language: languageOf(row),
           // Como jsonb NOT NULL: una salida ausente se guarda como `null`.
           rawOutput: structuredCopy(row.rawOutput ?? null),
           id: nextId(),
-          listingId: run.listingId,
+          ...subjectFieldsFor(run.subject),
           contentRunId: id,
           status: "draft",
           createdAt: now,
@@ -132,6 +157,7 @@ export function createInMemoryContentRepositories(
         .filter(
           (run) =>
             run.status === "succeeded" &&
+            run.subject.kind === "listing" &&
             run.texts &&
             !autoPublishDone.has(run.id) &&
             run.finishedAt !== null &&
@@ -178,33 +204,58 @@ export function createInMemoryContentRepositories(
       return structuredCopy(updated);
     },
     async sumLlmCost({ from, to, brokerId }) {
-      const brokerOf = options.brokerOfListing;
-      if (brokerOf === undefined)
-        throw new Error("El doble necesita `brokerOfListing` para sumLlmCost");
       const totals = new Map<string, { costUsd: number; runs: number }>();
-      for (const run of runs) {
-        if (run.llmUsage === null || run.createdAt < from || run.createdAt >= to) continue;
-        const owner = await brokerOf(run.listingId);
-        if (owner === null || (brokerId !== undefined && owner !== brokerId)) continue;
+      const add = (owner: string | null, costUsd: number) => {
+        if (owner === null || (brokerId !== undefined && owner !== brokerId)) return;
         const total = totals.get(owner) ?? { costUsd: 0, runs: 0 };
-        totals.set(owner, { costUsd: total.costUsd + run.llmUsage.costUsd, runs: total.runs + 1 });
+        totals.set(owner, { costUsd: total.costUsd + costUsd, runs: total.runs + 1 });
+      };
+      const inRange = (createdAt: Date) => createdAt >= from && createdAt < to;
+      // Solo hace falta `brokerOfListing` si hay una corrida de aviso que sumar.
+      const brokerOfListingRun = (listingId: string) => {
+        if (options.brokerOfListing === undefined) {
+          throw new Error("El doble necesita `brokerOfListing` para sumar una corrida de aviso");
+        }
+        return options.brokerOfListing(listingId);
+      };
+      for (const run of runs) {
+        if (run.llmUsage === null || !inRange(run.createdAt)) continue;
+        // Como el `left join` de Postgres: el corredor del aviso o del post, el que exista.
+        const owner =
+          run.subject.kind === "listing"
+            ? await brokerOfListingRun(run.subject.id)
+            : ((await options.brokerOfPost?.(run.subject.id)) ?? null);
+        add(owner, run.llmUsage.costUsd);
+      }
+      for (const plan of (await options.planRuns?.()) ?? []) {
+        if (plan.llmUsage === null || !inRange(plan.createdAt)) continue;
+        add(plan.brokerId, plan.llmUsage.costUsd);
       }
       return [...totals].map(([id, total]) => ({ brokerId: id, ...total }));
     },
   };
 
   const contentRepository: ContentRepository = {
-    async listCurrent(listingId) {
-      return LISTING_PLATFORMS.flatMap((platform) => {
-        const current = contents.findLast(
-          (content) => content.listingId === listingId && content.platform === platform,
-        );
-        return current === undefined ? [] : [structuredCopy(current)];
-      });
+    async listCurrent(subject) {
+      // Un aviso tiene sus canales (en español); un post, uno por red e idioma.
+      const platforms = subject.kind === "listing" ? LISTING_PLATFORMS : PLATFORMS;
+      return platforms.flatMap((platform) =>
+        LANGUAGES.flatMap((language) => {
+          const current = contents.findLast(
+            (content) =>
+              ofSubject(subject)(content) &&
+              content.platform === platform &&
+              content.language === language,
+          );
+          return current === undefined ? [] : [structuredCopy(current)];
+        }),
+      );
     },
     async listCurrentMany(listingIds) {
       const wanted = [...new Set(listingIds)];
-      return (await Promise.all(wanted.map((id) => contentRepository.listCurrent(id)))).flat();
+      return (
+        await Promise.all(wanted.map((id) => contentRepository.listCurrent(listingSubject(id))))
+      ).flat();
     },
     async get(id) {
       const content = contents.find((stored) => stored.id === id);

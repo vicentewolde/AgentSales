@@ -5,6 +5,7 @@ import {
   type ContentRunRepository,
   isAppError,
   type ListingRepository,
+  listingSubject,
   type NewContent,
 } from "@agentsales/core";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -132,19 +133,21 @@ export function contentRepositoriesContract(
 
     it("findActive devuelve la corrida en cola o en curso; latest, la más reciente en cualquier estado", async () => {
       const listingId = await newListingId();
-      expect(await repos.contentRuns.findActive(listingId)).toBeNull();
-      expect(await repos.contentRuns.latest(listingId)).toBeNull();
+      expect(await repos.contentRuns.findActive(listingSubject(listingId))).toBeNull();
+      expect(await repos.contentRuns.latest(listingSubject(listingId))).toBeNull();
 
       const first = await repos.contentRuns.create({ listingId, texts: true });
-      expect((await repos.contentRuns.findActive(listingId))?.id).toBe(first.id);
+      expect((await repos.contentRuns.findActive(listingSubject(listingId)))?.id).toBe(first.id);
       await repos.contentRuns.markRunning(first.id);
-      expect((await repos.contentRuns.findActive(listingId))?.status).toBe("running");
+      expect((await repos.contentRuns.findActive(listingSubject(listingId)))?.status).toBe(
+        "running",
+      );
       await repos.contentRuns.markSucceeded(first.id, { report: REPORT, contents: [] });
-      expect(await repos.contentRuns.findActive(listingId)).toBeNull();
-      expect((await repos.contentRuns.latest(listingId))?.id).toBe(first.id);
+      expect(await repos.contentRuns.findActive(listingSubject(listingId))).toBeNull();
+      expect((await repos.contentRuns.latest(listingSubject(listingId)))?.id).toBe(first.id);
 
       const second = await repos.contentRuns.create({ listingId, texts: false });
-      expect((await repos.contentRuns.latest(listingId))?.id).toBe(second.id);
+      expect((await repos.contentRuns.latest(listingSubject(listingId)))?.id).toBe(second.id);
     });
 
     it("listQueued devuelve solo las en cola, las más antiguas primero", async () => {
@@ -222,7 +225,7 @@ export function contentRepositoriesContract(
       expect(done).toMatchObject({ status: "succeeded", report: REPORT, error: null });
       expect(done?.finishedAt).toBeInstanceOf(Date);
 
-      const current = await repos.contents.listCurrent(listingId);
+      const current = await repos.contents.listCurrent(listingSubject(listingId));
       expect(current.map((content) => content.platform)).toEqual([
         "instagram",
         "portal_inmobiliario",
@@ -251,7 +254,7 @@ export function contentRepositoriesContract(
         }),
       ).toBe(false);
       expect(await repos.contentRuns.get(queued.id)).toEqual(queued);
-      expect(await repos.contents.listCurrent(listingId)).toEqual([]);
+      expect(await repos.contents.listCurrent(listingSubject(listingId))).toEqual([]);
     });
 
     it("un canal repetido en la entrada es CONTENT_PLATFORM_DUPLICATED y no escribe nada", async () => {
@@ -265,7 +268,7 @@ export function contentRepositoriesContract(
         }),
       ).rejects.toMatchObject({ code: "CONTENT_PLATFORM_DUPLICATED", retriable: false });
       expect(await repos.contentRuns.get(run.id)).toEqual(before);
-      expect(await repos.contents.listCurrent(listingId)).toEqual([]);
+      expect(await repos.contents.listCurrent(listingSubject(listingId))).toEqual([]);
     });
 
     it("una salida de la IA ausente o null se guarda como null", async () => {
@@ -278,7 +281,7 @@ export function contentRepositoriesContract(
           newContent("portal_inmobiliario", { rawOutput: null }),
         ],
       });
-      const current = await repos.contents.listCurrent(listingId);
+      const current = await repos.contents.listCurrent(listingSubject(listingId));
       expect(current.map((content) => content.rawOutput)).toEqual([null, null]);
     });
 
@@ -294,7 +297,7 @@ export function contentRepositoriesContract(
 
       const saved = await repos.contentRuns.get(run.id);
       expect(saved?.report?.warnings).toEqual(REPORT.warnings);
-      const [content] = await repos.contents.listCurrent(listingId);
+      const [content] = await repos.contents.listCurrent(listingSubject(listingId));
       expect(content?.hashtags).toEqual(["#nunoa", "#departamentoventa"]);
 
       // Cambiar lo devuelto tampoco.
@@ -311,13 +314,13 @@ export function contentRepositoriesContract(
       const listingId = await newListingId();
       const first = await runningRun(listingId);
       await repos.contentRuns.markSucceeded(first.id, { report: REPORT, contents: ALL_PLATFORMS });
-      const [instagram] = await repos.contents.listCurrent(listingId);
+      const [instagram] = await repos.contents.listCurrent(listingSubject(listingId));
       if (instagram === undefined) throw new Error("se esperaba el texto de Instagram");
       await repos.contents.update(instagram.id, { body: "Editado a mano", status: "edited" });
 
       const mediaOnly = await runningRun(listingId, false);
       await repos.contentRuns.markSucceeded(mediaOnly.id, { report: REPORT, contents: [] });
-      expect((await repos.contents.listCurrent(listingId))[0]).toMatchObject({
+      expect((await repos.contents.listCurrent(listingSubject(listingId)))[0]).toMatchObject({
         id: instagram.id,
         body: "Editado a mano",
         status: "edited",
@@ -328,7 +331,7 @@ export function contentRepositoriesContract(
         report: REPORT,
         contents: [newContent("instagram", { body: "Regenerado" })],
       });
-      const current = await repos.contents.listCurrent(listingId);
+      const current = await repos.contents.listCurrent(listingSubject(listingId));
       expect(current.map((content) => [content.platform, content.contentRunId])).toEqual([
         ["instagram", second.id],
         ["portal_inmobiliario", first.id],
@@ -338,7 +341,7 @@ export function contentRepositoriesContract(
       // El editado sigue en la base como historial.
       expect((await repos.contents.get(instagram.id))?.body).toBe("Editado a mano");
       // Otro aviso no ve estos textos.
-      expect(await repos.contents.listCurrent(await newListingId())).toEqual([]);
+      expect(await repos.contents.listCurrent(listingSubject(await newListingId()))).toEqual([]);
     });
 
     it("markFailed desde queued o running, con error, reporte opcional y finished_at", async () => {
@@ -384,7 +387,9 @@ export function contentRepositoriesContract(
           false,
         );
         expect(await repos.contentRuns.get(run.id)).toEqual(before);
-        expect(await repos.contents.listCurrent(before?.listingId ?? "")).toEqual([]);
+        expect(await repos.contents.listCurrent(listingSubject(before?.listingId ?? ""))).toEqual(
+          [],
+        );
       }
     });
 
@@ -428,7 +433,7 @@ export function contentRepositoriesContract(
       const listingId = await newListingId();
       const run = await runningRun(listingId);
       await repos.contentRuns.markSucceeded(run.id, { report: REPORT, contents: ALL_PLATFORMS });
-      const portal = (await repos.contents.listCurrent(listingId))[1];
+      const portal = (await repos.contents.listCurrent(listingSubject(listingId)))[1];
       if (portal === undefined) throw new Error("se esperaba el texto de Portal");
 
       const updated = await repos.contents.update(portal.id, {
@@ -452,7 +457,7 @@ export function contentRepositoriesContract(
       const listingId = await newListingId();
       const run = await runningRun(listingId);
       await repos.contentRuns.markSucceeded(run.id, { report: REPORT, contents: ALL_PLATFORMS });
-      const portal = (await repos.contents.listCurrent(listingId))[1];
+      const portal = (await repos.contents.listCurrent(listingSubject(listingId)))[1];
       if (portal === undefined) throw new Error("se esperaba el texto de Portal");
 
       const bodyOnly = await repos.contents.update(portal.id, { title: undefined, body: "Nuevo" });

@@ -380,6 +380,16 @@ describe("createLlmProvider", () => {
     expect(fakeProvider.name).toBe("fake");
   });
 
+  it("fake con respond arma la respuesta con la petición (F9-T20), sin red", async () => {
+    const fakeProvider = createLlmProvider({
+      provider: "fake",
+      data: null,
+      respond: ({ prompt }) => ({ eco: prompt.length }),
+    });
+    const answer = await fakeProvider.generateStructured(request("exito"));
+    expect(answer).toEqual({ data: { eco: request("exito").prompt.length }, model: "fake" });
+  });
+
   it("anthropic-api arma el adaptador de la API (F7-T11; sus pruebas, en anthropic-api.test.ts)", () => {
     const api = createLlmProvider({
       provider: "anthropic-api",

@@ -10,11 +10,13 @@ import type {
 import {
   checkArrangement,
   checkDerivative,
+  checkNewMedia,
   type MediaRecord,
   type MediaRepository,
   type NewMedia,
 } from "../ports/media-repository.js";
 import type { MediaStorage, StoredObjectInfo } from "../ports/media-storage.js";
+import type { Subject } from "../subject.js";
 import { structuredCopy } from "./copy.js";
 
 export type InMemoryMediaRepository = MediaRepository & {
@@ -42,6 +44,7 @@ function toRecord(media: Media): MediaRecord {
   return {
     id: media.id,
     listingId: media.listingId,
+    postId: media.postId,
     brokerId: media.brokerId,
     kind: media.kind,
     storagePath: media.storagePath,
@@ -54,8 +57,9 @@ function toRecord(media: Media): MediaRecord {
 }
 
 /**
- * `MediaRepository` en memoria, con los mismos únicos que la base: `(listing_id, checksum)` para
- * los originales de un aviso, `storage_path`, `(parent_media_id, variant)` de las variantes y
+ * `MediaRepository` en memoria, con los mismos únicos que la base: `(listing_id, checksum)` y
+ * `(post_id, checksum)` para los originales de un aviso o post, `storage_path`,
+ * `(parent_media_id, variant)` de las variantes y
  * `(listing_id, variant)` de los renders. Como en Postgres, los métodos de la carga ven solo
  * originales. A diferencia de Postgres, no verifica que el aviso de un render exista (allí, la FK
  * o el bloqueo del aviso lo rechazan): en la aplicación el aviso siempre se carga antes.
@@ -73,14 +77,15 @@ export function createInMemoryMediaRepository(
     [...stored.values()].some(
       (other) => other.storagePath === storagePath && other.id !== exceptId,
     );
+  /** Si un medio es del aviso o post. */
+  const ofSubject = (subject: Subject) => (media: Media) =>
+    subject.kind === "listing" ? media.listingId === subject.id : media.postId === subject.id;
+  const subjectName = (subject: Subject) => (subject.kind === "listing" ? "aviso" : "post");
   const conflict = (storagePath: string) =>
     new AppError("MEDIA_CONFLICT", `Ya existe el medio ${storagePath}`, { retriable: true });
   return {
-    async listOriginals(listingId) {
-      return originals()
-        .filter((media) => media.listingId === listingId)
-        .sort(byOrder)
-        .map(toRecord);
+    async listOriginals(subject) {
+      return originals().filter(ofSubject(subject)).sort(byOrder).map(toRecord);
     },
     async listCovers(listingIds) {
       return originals()
@@ -98,15 +103,22 @@ export function createInMemoryMediaRepository(
     async create(media: NewMedia) {
       const failure = options.failCreate?.(media);
       if (failure !== undefined) throw failure;
+      checkNewMedia(media);
+      const postId = media.postId ?? null;
       const clash =
         pathTaken(media.storagePath) ||
         (media.listingId !== null &&
           originals().some(
             (other) => other.listingId === media.listingId && other.checksum === media.checksum,
+          )) ||
+        (postId !== null &&
+          originals().some(
+            (other) => other.postId === postId && other.checksum === media.checksum,
           ));
       if (clash) throw conflict(media.storagePath);
       const created: Media = {
         ...structuredCopy(media),
+        postId,
         id: `media-${++next}`,
         role: "original",
         variant: null,
@@ -118,24 +130,32 @@ export function createInMemoryMediaRepository(
       stored.set(created.id, created);
       return toRecord(created);
     },
-    async arrange(listingId, items) {
+    async arrange(subject, items) {
       arrangeCalls += 1;
+      const own = ofSubject(subject);
       // Todo o nada: se valida antes de cambiar algo.
       checkArrangement(items);
       const missing = items.filter(({ id }) => {
         const media = stored.get(id);
-        return media?.role !== "original" || media.listingId !== listingId;
+        return media?.role !== "original" || !own(media);
       });
       if (missing.length > 0) {
-        throw new AppError("MEDIA_NOT_FOUND", "Hay medios que no son originales de ese aviso", {
-          details: { listingId, missing: missing.map(({ id }) => id) },
-        });
+        throw new AppError(
+          "MEDIA_NOT_FOUND",
+          `Hay medios que no son originales de ese ${subjectName(subject)}`,
+          {
+            details: {
+              ...(subject.kind === "listing" ? { listingId: subject.id } : { postId: subject.id }),
+              missing: missing.map(({ id }) => id),
+            },
+          },
+        );
       }
-      // Una sola portada por aviso: la nueva desmarca las demás, vengan o no en `items`.
+      // Una sola portada por aviso o post: la nueva desmarca las demás, vengan o no en `items`.
       const cover = items.find((item) => item.isCover);
       if (cover !== undefined) {
         for (const record of originals()) {
-          if (record.listingId === listingId && record.isCover && record.id !== cover.id) {
+          if (own(record) && record.isCover && record.id !== cover.id) {
             stored.set(record.id, { ...record, isCover: false });
           }
         }
@@ -145,9 +165,9 @@ export function createInMemoryMediaRepository(
         if (current !== undefined) stored.set(id, { ...current, sortOrder, isCover });
       }
     },
-    async listByListing(listingId) {
+    async listBySubject(subject) {
       return [...stored.values()]
-        .filter((media) => media.listingId === listingId)
+        .filter(ofSubject(subject))
         .sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || byOrder(a, b))
         .map(structuredCopy);
     },
@@ -176,16 +196,26 @@ export function createInMemoryMediaRepository(
     },
     async upsertDerivative(derivative) {
       checkDerivative(derivative);
+      const listingId = derivative.listingId ?? null;
+      const postId = derivative.postId ?? null;
       if (derivative.role === "processed") {
         const parent = stored.get(derivative.parentMediaId);
         if (
           parent?.role !== "original" ||
-          parent.listingId !== derivative.listingId ||
+          parent.listingId !== listingId ||
+          parent.postId !== postId ||
           parent.brokerId !== derivative.brokerId
         ) {
-          throw new AppError("MEDIA_NOT_FOUND", "El original del derivado no es de ese aviso", {
-            details: { listingId: derivative.listingId, parentMediaId: derivative.parentMediaId },
-          });
+          throw new AppError(
+            "MEDIA_NOT_FOUND",
+            `El original del derivado no es de ese ${postId === null ? "aviso" : "post"}`,
+            {
+              details: {
+                ...(postId === null ? { listingId } : { postId }),
+                parentMediaId: derivative.parentMediaId,
+              },
+            },
+          );
         }
       }
       const current = [...stored.values()].find((media) =>
@@ -194,14 +224,15 @@ export function createInMemoryMediaRepository(
             media.parentMediaId === derivative.parentMediaId &&
             media.variant === derivative.variant
           : media.role === "rendered" &&
-            media.listingId === derivative.listingId &&
+            media.listingId === listingId &&
             media.variant === derivative.variant,
       );
       if (pathTaken(derivative.storagePath, current?.id)) throw conflict(derivative.storagePath);
       // Campo por campo, como las columnas de la tabla: nada extra que venga en el objeto.
       const media: Media = {
         id: current?.id ?? `media-${++next}`,
-        listingId: derivative.listingId,
+        listingId,
+        postId,
         brokerId: derivative.brokerId,
         kind: derivative.kind,
         role: derivative.role,

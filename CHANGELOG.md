@@ -4,6 +4,106 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 
 ## [Sin publicar]
 
+## [1.3.0] - 2026-10-20 · F9 Contenido de marca, entrega 3 (cierre de la fase)
+**La IA propone qué publicar y cuándo; tú decides.** Pides un plan para las próximas semanas y la IA propone ideas con fecha, línea de contenido, redes y el porqué, a partir del perfil editorial de tu marca. Una idea no gasta IA en textos ni se publica sola: la aceptas (y recién ahí se redactan sus textos), la apruebas y la programas. Con esto F9 queda completa.
+
+Probado contra simulaciones y en un ensayo de la demo en tu Mac (simulación, con la IA real y la marca AgentPey). **Nada se publicó de verdad:** la prueba en vivo de cada red (T24) queda para cuando hagas sus pruebas S1 a S6, y siempre con tu instrucción en el chat.
+
+### Añadido
+- **El plan de ideas:** `plan --broker <marca> [--days 14] [--count N] [--platform …]` y la página **Plan** del panel. Las ideas salen por semana, en los días y horas de la cadencia del perfil, sin repetir temas de los últimos 60 días ni ideas descartadas, y sin cifras ni nombres que no estén en tus hechos. `plan show <id>` y `plan list`.
+- **Decidir cada idea:** `post accept <id> [--wait]` (pasa a borrador y la IA redacta sus textos **solo para las redes sugeridas**), `post discard <id>` (no vuelve en 60 días) y `post edit <id> --brief … --date … --platforms …` antes de aceptarla. En el panel: Aceptar, Editar, Descartar y «Redactar lo aceptado».
+- **Las redes de un post mandan:** se redacta, aprueba, publica y programa solo en las redes del post; pedir a mano una red quitada se rechaza con su consejo, y quitar una red con publicaciones pendientes te pide cancelarlas primero.
+- **`pnpm eval:social`:** evalúa el plan y los textos con tres marcas inventadas, sin escribir en la base (`--provider fake` no gasta). Cuenta ideas repetidas, datos fuera del perfil, largos, escapes y menciones masivas, e imprime el costo estimado (~US$ 0,12 con Sonnet por un plan de 10 ideas y sus textos en dos idiomas).
+- **El enlace en X desde la CLI y el panel:** `post edit <id> --x-link | --no-x-link` y la casilla «Permitir un enlace en X» del post, con el aviso de su costo.
+- **La lista de alta de una marca:** pide el perfil editorial (al menos una línea y un hecho) y una red para los posts, en vez de WhatsApp, Mercado Libre y Marketplace.
+
+### Cambiado
+- El panel ya no ofrece publicar ni programar en una red sin cuenta conectada: el botón queda desactivado con el motivo y un enlace a Cuentas. `post approve` te dice que conectes la cuenta primero.
+- La revisión editorial ya no toma un mes o un día de la semana por un nombre propio cuando va con una fecha («Oct 9», «Mon, Oct 9»).
+- En la lista de alta, el Instagram de un corredor lo conecta el propio corredor con el botón del servidor (ADR-0028); en tu Mac sigue siendo del administrador.
+
+### Corregido
+- `plan list --broker` y `listing ready|pause|resume|reopen|archive|close --broker` ya reciben la marca o el corredor.
+- Aceptar una idea ya no sugiere `post draft` para esperar los textos (eso los redactaba dos veces): usa `post accept --wait` o `post show`.
+
+### Documentación
+- Todos los docs de la fase revisados contra el código (arquitectura, modelo de datos, plataformas, formato, checklist de cuentas, guía del operador, despliegue, visión y roadmap) y el seguimiento de los ADR que F9 modifica.
+- **Volver atrás en el servidor:** el procedimiento deshace las migraciones `0015` a `0018` juntas, con una guarda y una prueba que hace el ida y vuelta (`docs/10-despliegue.md`, paso 9).
+
+### Base de datos
+- Migración `0018`: las redes de un post (`posts.platforms`) y un solo plan activo por marca. Solo agrega.
+
+### Límites conocidos
+- En **Instagram y en Portal (Mercado Libre)**, un resultado dudoso (la red no confirmó si publicó) queda como fallido y no como `outcome_unknown`: no se reintenta solo (no publica dos veces), pero tampoco se resuelve con «salió / no salió». Antes de reintentar, mira la red. En Discord, LinkedIn, X y TikTok sí se resuelve en un paso.
+
+### Pendiente fuera del código
+- **Variables nuevas en tu `.env` y en `.env.example`** (desde la entrega 2): `LINKEDIN_*`, `X_*` y `TIKTOK_*`, sin ellas no se conectan esas redes (`docs/07-checklist-cuentas.md`).
+- **T24 en vivo:** por cada red, su prueba de entrada (S1 Instagram, S2 y S3 LinkedIn, S4 X, S5 Discord, S6 TikTok), después conectar la cuenta y publicar un post con tu instrucción en el chat (`docs/ESTADO.md`).
+- **El perfil editorial real de tus marcas** en el servidor (`brand edit`): la IA solo afirma lo que escribas en sus hechos.
+- **El costo real del plan:** `pnpm eval:social --provider anthropic-api --profile dos-idiomas --ideas 10 --out`, y anotarlo en `docs/integraciones/anthropic-api.md` §13.
+- **Desplegar** F9 lo haces tú (`docs/10-despliegue.md`): aplica las migraciones `0014` a `0018` y después `pnpm db:seed --operator-brands` en el servidor.
+
+## [1.2.0] - 2026-10-20 · F9 Contenido de marca, entrega 2
+Tu contenido llega a **LinkedIn, X y TikTok**, y ya se maneja desde el **panel**: la pantalla Contenido para crear, redactar, aprobar y publicar posts, y un calendario con lo programado y lo publicado de posts y avisos. La IA que propone ideas llega en la entrega 3 (spec `docs/specs/fase-9-contenido-de-marca.md`).
+
+Todo está probado contra simulaciones. **Nada se publicó de verdad:** antes de publicar en cada red van tus pruebas S1 (Instagram), S2 y S3 (LinkedIn), S4 (X), S5 (Discord) y S6 (TikTok), y siempre tu instrucción en el chat. El servidor sigue en `dry-run`.
+
+### Añadido
+- **LinkedIn (perfil personal):** se conecta con su OAuth (`accounts connect linkedin --broker <slug>` o el botón de Cuentas). La cuenta nace **a mano**: a la hora, AgentSales deja el texto listo y tú lo publicas y confirmas con el enlace. Con `accounts mode <id> api` (administrador) publica texto, hasta 20 imágenes o un video por la API. Un post de LinkedIn publicado por la API se puede retirar borrándolo: `publications retire <id> --delete` (pregunta antes; nunca en simulación).
+- **X:** se conecta con OAuth y PKCE (`accounts connect x --broker <slug>` o el botón). Publica texto, imágenes o un video, anota el costo de cada post y respeta un **tope de gasto mensual** por cuenta (`accounts spend-limit <id> <dólares>`, US$10 por defecto). Un post con enlace pide tu marca explícita (cuesta US$0,20). El token se renueva solo.
+- **TikTok:** se conecta con Login Kit (`accounts connect tiktok --broker <slug>` o el botón). El video sube como **borrador a tu bandeja** de TikTok; tú lo publicas en la app y confirmas con el enlace. El token se renueva solo.
+- **Panel · Contenido:** lista de posts por marca y estado; editor con una pestaña por red e idioma, conteo de caracteres, vista previa y verificaciones; subir medios con avance; aprobar, programar y publicar; el perfil editorial de la marca; resolver un resultado dudoso y confirmar una publicación a mano.
+- **Panel · Calendario:** vista semanal y mensual en hora de Chile, con posts y avisos juntos; mover una fecha usa el mismo programar de siempre (en vivo, con confirmación). Lo que falló o espera tu confirmación se resuelve en Seguimiento.
+- **Panel · Cuentas:** botones para conectar LinkedIn, X y TikTok, el modo de cada cuenta (a mano o por la API) y el tope de X; Discord muestra el comando para conectarlo por la CLI (la URL del webhook nunca se pega en el panel).
+- **Qué hacer ante cada error:** cada error de cada red tiene su consejo, en el panel y en la CLI (`publications`, `publish`, `post show`, `agenda`), con una prueba que falla si aparece un código sin consejo.
+- **Guía del operador:** sección nueva para conectar las redes de los posts, las variables de `.env` de cada una, el modo a mano, resolver y confirmar, y los errores comunes (`docs/08-guia-operador.md`).
+
+### Cambiado
+- **Medios grandes:** sobre 100 MB el panel ya no calcula el sha256 en el navegador; lo calcula el worker al terminar la subida, y deduplica igual (ADR-0025).
+- **`accounts`** lista las redes sin cuenta con el comando para conectar cada una.
+
+### Base de datos
+- Migraciones `0016` (la marca de enlace permitido en X por post) y `0017` (el estado `uploaded` de una subida grande). Solo agregan.
+
+### Pendiente fuera del código
+- **Variables nuevas en tu `.env` y en `.env.example`** (desde la entrega 2): `LINKEDIN_*`, `X_*` y `TIKTOK_*`, sin ellas no se conectan esas redes (`docs/07-checklist-cuentas.md`).
+- **Variables nuevas en tu `.env`** (vacías hasta que crees cada app): `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET`, `LINKEDIN_REDIRECT_URI`, `X_CLIENT_ID`, `X_CLIENT_SECRET`, `X_REDIRECT_URI`, `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI` (súmalas también a `.env.example`; detalle en `docs/08-guia-operador.md`).
+- **S1 a S6:** obligatorias antes de cualquier publicación real en cada red (`docs/ESTADO.md`).
+- **Desplegar** esta versión lo haces tú (`docs/10-despliegue.md`): primero el servidor y después usar la CLI nueva contra él.
+
+## [1.1.0] - 2026-10-20 · F9 Contenido de marca, entrega 1
+AgentSales ya no es solo para avisos: el contenido de tu marca personal y de AgentPey se crea, se redacta con IA por red e idioma, se aprueba, se programa y se publica con el mismo calendario, reintentos y seguimiento que los avisos. Esta primera entrega publica en **Instagram** y **Discord** y se maneja por la CLI; el panel, LinkedIn, X y TikTok llegan en la entrega 2, y la IA que propone ideas en la 3 (spec `docs/specs/fase-9-contenido-de-marca.md`, ADR-0029 y ADR-0030).
+
+Todo está probado contra simulaciones. **Nada se publicó de verdad:** publicar en Instagram exige antes la prueba S1 y en Discord la S5, y siempre tu instrucción en el chat. El servidor sigue en `dry-run`.
+
+### Añadido
+- **Marcas:** `brokers create --kind brand` crea una marca (solo contenido, sin propiedades en el panel). `pnpm db:seed --operator-brands` crea las tuyas, `vinny` y `agentpey`, solo en tu instancia.
+- **Perfil editorial de cada marca:** idiomas, público, líneas de contenido, **hechos que la IA puede afirmar**, cosas que evitar, cadencia por red y hashtags (`brand show|edit`, y en la API).
+- **Posts:** `post create|list|show|upload|draft|edit|approve|publish|schedule|archive`. Los medios suben directo a R2 (con su sha256) y el worker arma las variantes (4:5, reel 9:16 y una variante de video para X).
+- **Texto con IA por red e idioma:** la IA escribe un texto por red y por idioma con tu perfil y el brief que escribes tú. Antes de aprobar se revisa el largo de cada red, que no haya `@everyone`/`@here`, y que no aparezcan cifras, nombres ni enlaces que no estén en tu perfil o en tu brief. El gasto cuenta para el tope mensual de la marca.
+- **Instagram para posts:** imagen, carrusel de 2 a 10 o reel, con la cuota diaria compartida con los avisos de la misma cuenta.
+- **Discord:** se conecta con la URL del webhook de un canal (`pbpaste | pnpm -s cli accounts connect discord --broker <slug> --webhook-stdin`), que queda cifrada y nunca se imprime. Publica texto y hasta 10 archivos, siempre sin notificar a todo el canal.
+- **Resultado dudoso:** si una red pudo haber publicado y no se sabe (un corte justo al enviar), la publicación queda en "resultado dudoso" y no se reintenta sola; la resuelves con `publications resolve <id> --published|--not-published`. Así nunca sale dos veces.
+- **Publicar a mano por cuenta:** una cuenta en modo a mano (pensado para LinkedIn) nunca llama a la red; a la hora deja todo listo y tú confirmas con el enlace.
+- **`publications retry <id>`:** reintenta o publica ya una publicación, de un aviso o de un post.
+- **Agenda y seguimiento con posts:** avisos y posts juntos, más tres clases nuevas: resultado dudoso, tareas a mano fuera de Marketplace y cuentas por reconectar.
+- **Una segunda instancia del mismo código, cuando llegue el primer cliente:** el despliegue acepta `-f instance=<instancia>` sin cambiar la de hoy (guía en `docs/10-despliegue.md`).
+
+### Cambiado
+- **Más rápido:** desde esta fase se trabaja con hasta tres ramas en paralelo, cada una con su agente, y la CI de GitHub como juez (`CLAUDE.md`, regla 2).
+- **Credenciales por red:** cada red guarda lo suyo (Discord, la URL del webhook), y el redactor oculta en los logs las URLs de webhooks y los tokens `Bearer`.
+- **El gasto de IA de la marca** suma los textos de avisos, los de posts y los planes.
+
+### Base de datos
+- Migraciones `0014` (plataformas nuevas, estado `outcome_unknown` y el tipo de corredor) y `0015` (posts, planes, subidas, perfil editorial y el sujeto aviso o post en textos, corridas, publicaciones y medios). Solo agregan: no cambian ninguna fila. Volver a una versión anterior después de crear posts exige revertirlas a mano (`docs/10-despliegue.md`).
+
+### Pendiente fuera del código
+- **Variables nuevas en tu `.env` y en `.env.example`** (desde la entrega 2): `LINKEDIN_*`, `X_*` y `TIKTOK_*`, sin ellas no se conectan esas redes (`docs/07-checklist-cuentas.md`).
+- **S1 (Instagram) y S5 (Discord):** obligatorias antes de cualquier publicación real (`docs/ESTADO.md`).
+- **Desplegar** esta versión en el servidor lo haces tú (`docs/10-despliegue.md`), y después `pnpm db:seed --operator-brands` con `ENV_FILE=.env.production` si quieres tus marcas ahí. Para que el calendario publique con el Mac apagado, el worker del servidor tiene que estar encendido.
+- **Meta:** el App Review sigue sin enviar.
+
+
 ## [1.0.0] - 2026-10-19 · F8 En internet
 Es el MVP completo. AgentSales ya está en internet, en `https://agentsales.agentpey.com`, en simulación (`dry-run`). El operador y los corredores entran al panel desde cualquier lugar, la CLI del Mac habla con el servidor, las cargas suben directo a R2, y el calendario y los respaldos corren en el servidor con el Mac dormido. Por ahora es un **servidor de demostración** en Fly.io (el worker se enciende solo los días en que se muestra la herramienta); dejarlo siempre encendido es cambiar el plan, no el código. La conexión de Instagram con el botón funciona con el inicio de sesión de Instagram de verdad; el App Review de Meta **no está enviado** y queda como trámite tuyo (cerraste la fase así el 2026-10-19).
 
@@ -38,6 +138,7 @@ Demo (2026-10-19, en el servidor, en simulación; todo con el Mac dormido o sin 
 - Si Meta rechaza el canje de Instagram, el log dice el motivo (en la primera puesta en marcha era la clave secreta equivocada).
 
 ### Pendiente fuera del código
+- **Variables nuevas en tu `.env` y en `.env.example`** (desde la entrega 2): `LINKEDIN_*`, `X_*` y `TIKTOK_*`, sin ellas no se conectan esas redes (`docs/07-checklist-cuentas.md`).
 - **Meta:** verificación del negocio, verificación como proveedor técnico y el envío del App Review de `instagram_business_basic` e `instagram_business_content_publish` (los textos, el ícono, la categoría y el correo ya están puestos). Mientras tanto, los corredores del piloto que publican en Instagram son evaluadores de la app.
 - **Pruebas en vivo** de Portal (F4 y F6) y todo lo que publique de verdad: solo con tu instrucción en el chat. El servidor sigue en `dry-run`.
 

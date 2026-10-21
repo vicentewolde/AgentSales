@@ -1,7 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { importListings, ingestMedia, isAppError, type ListingSheetInput } from "@agentsales/core";
+import {
+  importListings,
+  ingestMedia,
+  isAppError,
+  type ListingSheetInput,
+  listingSubject,
+} from "@agentsales/core";
 import {
   createInMemoryBrokerRepository,
   createInMemoryImportRunRepository,
@@ -199,10 +205,10 @@ describe("repositorios Drizzle · lo que el puerto no muestra (PGlite)", () => {
       })
       .returning({ id: media.id });
 
-    expect(await repos.media.listOriginals(listingId)).toEqual([original]);
+    expect(await repos.media.listOriginals(listingSubject(listingId))).toEqual([original]);
     expect(await repos.media.findByStoragePath("derivado/ig_4x5.jpg")).toBeNull();
     const error = await repos.media
-      .arrange(listingId, [{ id: derived?.id ?? "", sortOrder: 0, isCover: true }])
+      .arrange(listingSubject(listingId), [{ id: derived?.id ?? "", sortOrder: 0, isCover: true }])
       .then(
         () => undefined,
         (caught: unknown) => caught,
@@ -215,8 +221,10 @@ describe("repositorios Drizzle · lo que el puerto no muestra (PGlite)", () => {
     const listingId = (await repos.listings.create(newListing(brokerId, "P-ATOM"))).id;
     const a = await repos.media.create(newMedia(brokerId, listingId, "atom-a", { sortOrder: 0 }));
     const b = await repos.media.create(newMedia(brokerId, listingId, "atom-b", { sortOrder: 1 }));
-    await repos.media.arrange(listingId, [{ id: a.id, sortOrder: 0, isCover: true }]);
-    const before = await repos.media.listOriginals(listingId);
+    await repos.media.arrange(listingSubject(listingId), [
+      { id: a.id, sortOrder: 0, isCover: true },
+    ]);
+    const before = await repos.media.listOriginals(listingSubject(listingId));
     // Un trigger que falla al escribir el orden 99: la transacción ya desmarcó la portada de `a`.
     await repos.db.execute(sql`
       CREATE FUNCTION fail_on_99() RETURNS trigger AS $$
@@ -226,7 +234,7 @@ describe("repositorios Drizzle · lo que el puerto no muestra (PGlite)", () => {
       WHEN (NEW.sort_order = 99) EXECUTE FUNCTION fail_on_99()`);
     try {
       const error = await repos.media
-        .arrange(listingId, [
+        .arrange(listingSubject(listingId), [
           { id: b.id, sortOrder: 0, isCover: true },
           { id: a.id, sortOrder: 99, isCover: false },
         ])
@@ -235,7 +243,7 @@ describe("repositorios Drizzle · lo que el puerto no muestra (PGlite)", () => {
           (caught: unknown) => caught,
         );
       expect(isAppError(error) && error.code).toBe("DB_QUERY_FAILED");
-      expect(await repos.media.listOriginals(listingId)).toEqual(before);
+      expect(await repos.media.listOriginals(listingSubject(listingId))).toEqual(before);
     } finally {
       await repos.db.execute(sql`DROP TRIGGER media_fail_99 ON media`);
       await repos.db.execute(sql`DROP FUNCTION fail_on_99()`);
@@ -248,7 +256,7 @@ describe("repositorios Drizzle · lo que el puerto no muestra (PGlite)", () => {
     const original = await repos.media.create(newMedia(brokerId, listingId, "sha-roto"));
     await repos.db.execute(sql`update media set variant = 'xyz' where id = ${original.id}`);
     for (const read of [
-      () => repos.media.listByListing(listingId),
+      () => repos.media.listBySubject(listingSubject(listingId)),
       () => repos.media.get(original.id),
     ]) {
       const error = await read().catch((caught: unknown) => caught);

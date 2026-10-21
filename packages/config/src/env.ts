@@ -289,6 +289,31 @@ const envSchema = z
     // Sin valor: `<PUBLIC_URL>/api/oauth/mercadolibre/callback`, o `.test` en desarrollo (ver abajo).
     ML_REDIRECT_URI: mercadoLibreRedirectUri.optional(),
 
+    // X (F9-T16): el par OAuth 2.0 de la app (cliente confidencial, "Web App") de console.x.com. La
+    // dirección de retorno se registra igual en la app; en el Mac, X pide `127.0.0.1` y no
+    // `localhost` (`docs/integraciones/x.md` §3.1). Sin valor: `<PUBLIC_URL>/api/oauth/x/callback`,
+    // o `http://127.0.0.1:<API_PORT>/api/oauth/x/callback` en desarrollo.
+    X_CLIENT_ID: z.string().optional(),
+    X_CLIENT_SECRET: z.string().optional(),
+    X_REDIRECT_URI: httpUrl.optional(),
+    // LinkedIn (F9-T15, spec F9 §4.7): el par de la app de linkedin.com/developers (productos Share on
+    // LinkedIn y Sign In with LinkedIn using OpenID Connect). La dirección de retorno es la misma
+    // registrada en la pestaña Auth (comparación exacta). Si `http://localhost` se acepta: NO
+    // VERIFICADO (`linkedin.md` §3.3); en el servidor es la de `PUBLIC_URL`.
+    LINKEDIN_CLIENT_ID: z.string().optional(),
+    LINKEDIN_CLIENT_SECRET: z.string().optional(),
+    // Sin valor: `<PUBLIC_URL>/api/oauth/linkedin/callback`, o la API local (ver abajo).
+    LINKEDIN_REDIRECT_URI: httpUrl.optional(),
+
+    // TikTok (F9-T26): la app de developers.tiktok.com con Login Kit y Content Posting API (modo
+    // Upload, `video.upload`). Sin el par, conectar responde TIKTOK_NOT_CONFIGURED y el token no
+    // se renueva. La dirección de retorno es la registrada en la app (https; si acepta
+    // `https://localhost` es parte de la prueba S6). Sin valor: `<PUBLIC_URL>/api/oauth/tiktok/callback`,
+    // o la API local.
+    TIKTOK_CLIENT_KEY: z.string().optional(),
+    TIKTOK_CLIENT_SECRET: z.string().optional(),
+    TIKTOK_REDIRECT_URI: httpUrl.optional(),
+
     // Facebook Marketplace (F5): avisos por día y cuenta (D8), la carpeta de los perfiles del
     // navegador (fuera del proyecto: guardan la sesión de Facebook, ADR-0017; la resuelve
     // `resolveBrowserProfilesDir`) y cuánto espera la ventana el clic del operador (spec F5 §4.5).
@@ -340,6 +365,21 @@ const envSchema = z
       (env.PUBLIC_URL === undefined
         ? DEV_ML_REDIRECT_URI
         : `${env.PUBLIC_URL}${API_PREFIX}/oauth/mercadolibre/callback`),
+    X_REDIRECT_URI:
+      env.X_REDIRECT_URI ??
+      (env.PUBLIC_URL === undefined
+        ? `http://127.0.0.1:${env.API_PORT}${API_PREFIX}/oauth/x/callback`
+        : `${env.PUBLIC_URL}${API_PREFIX}/oauth/x/callback`),
+    LINKEDIN_REDIRECT_URI:
+      env.LINKEDIN_REDIRECT_URI ??
+      (env.PUBLIC_URL === undefined
+        ? `http://localhost:${env.API_PORT}${API_PREFIX}/oauth/linkedin/callback`
+        : `${env.PUBLIC_URL}${API_PREFIX}/oauth/linkedin/callback`),
+    TIKTOK_REDIRECT_URI:
+      env.TIKTOK_REDIRECT_URI ??
+      (env.PUBLIC_URL === undefined
+        ? `http://localhost:${env.API_PORT}${API_PREFIX}/oauth/tiktok/callback`
+        : `${env.PUBLIC_URL}${API_PREFIX}/oauth/tiktok/callback`),
   }));
 
 /** Lo que mira `backupIssues`: el respaldo a R2 necesita su bucket y su token, distintos de los de los medios. */
@@ -397,6 +437,9 @@ type ParsedEnv = {
   PUBLIC_URL?: string | undefined;
   INSTAGRAM_REDIRECT_URI?: string | undefined;
   ML_REDIRECT_URI?: string | undefined;
+  X_REDIRECT_URI?: string | undefined;
+  LINKEDIN_REDIRECT_URI?: string | undefined;
+  TIKTOK_REDIRECT_URI?: string | undefined;
 };
 
 /**
@@ -422,7 +465,13 @@ function productionIssues(env: ParsedEnv, ctx: z.RefinementCtx): void {
       message: "debe ser https:// con NODE_ENV=production",
     });
   } else {
-    for (const variable of ["INSTAGRAM_REDIRECT_URI", "ML_REDIRECT_URI"] as const) {
+    for (const variable of [
+      "INSTAGRAM_REDIRECT_URI",
+      "ML_REDIRECT_URI",
+      "X_REDIRECT_URI",
+      "LINKEDIN_REDIRECT_URI",
+      "TIKTOK_REDIRECT_URI",
+    ] as const) {
       const value = env[variable];
       if (value !== undefined && !value.startsWith(`${env.PUBLIC_URL}/`)) {
         ctx.addIssue({

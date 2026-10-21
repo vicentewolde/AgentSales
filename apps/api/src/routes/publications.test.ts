@@ -202,8 +202,8 @@ describe("GET /listings/:id/publications", () => {
             listings: t.listings,
             media: {
               ...t.media,
-              listByListing: async (id) =>
-                (await t.media.listByListing(id)).filter((media) => media.id !== gone),
+              listBySubject: async (subject) =>
+                (await t.media.listBySubject(subject)).filter((media) => media.id !== gone),
             },
             publications: t.publications,
             lock: t.deps.lock,
@@ -537,6 +537,41 @@ describe("/publications/:id", () => {
     const missing = await app.request(`/publications/${randomUUID()}`);
     expect(missing.status).toBe(404);
     expect(await errorOf(missing)).toBe("PUBLICATION_NOT_FOUND");
+  });
+
+  it("GET /publications/:id de un post (F9-T06): 200 con postId y sin listingId", async () => {
+    const { t, app } = await setup();
+    const postId = randomUUID();
+    const created = await t.publications.create(
+      {
+        postId,
+        platformAccountId: t.account?.id ?? "",
+        platform: "discord",
+        format: "post",
+        language: "en",
+        contentId: await t.instagramId(),
+        mediaIds: [],
+      },
+      { actor: "operator" },
+    );
+
+    const response = await app.request(`/publications/${created.id}`);
+
+    expect(response.status).toBe(200);
+    expect(publicationResponseSchema.parse(await response.json()).publication).toMatchObject({
+      id: created.id,
+      listingId: null,
+      postId,
+      platform: "discord",
+      status: "approved",
+    });
+    // Las de un aviso llevan su aviso y ningún post.
+    const reel = t.byFormat("reel");
+    if (reel === undefined) throw new Error("falta el reel");
+    expect(publicationView(reel)).toMatchObject({
+      listingId: t.listingId,
+      postId: null,
+    });
   });
 
   it("la bitácora de una que no existe es 404", async () => {
