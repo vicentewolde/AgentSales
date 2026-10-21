@@ -139,7 +139,7 @@ Todas respetan `PUBLISH_MODE` y el `dry-run` de la publicación (ADR-0016): en `
 | S3 | **LinkedIn:** respuesta de LinkedIn Developer Support sobre el §3.1(26) de sus términos (¿un calendario propio cuenta como "automatizar publicaciones"?) | LinkedIn queda siempre en modo `manual` |
 | S4 | **X:** crear un post, ver el saldo descontado, un reply a uno mismo, el rechazo de texto repetido y si un 4xx cobra | Sin hilos; el costo real se ajusta en `x.md` |
 | S5 | **Discord:** un webhook de prueba con texto, imagen y un video, en un servidor privado | Se ajusta la variante de video (D8) |
-| S6 | **TikTok:** crear la app con tu cuenta de Chile, autorizar una cuenta personal con `video.upload`, subir un video de R2 y ver el borrador en la bandeja; ver si acepta un redirect `https://localhost` y si el refresh rota | Si una cuenta personal no puede autorizar, se prueba una Creator o Business; si el borrador no llega sin auditoría, TikTok pasa al piloto |
+| S6 | **TikTok:** crear la app con tu cuenta de Chile, autorizar una cuenta personal con `video.upload`, subir un video de R2 y ver el borrador en la bandeja; ver si el refresh rota (TikTok exige `https`: la app quedó en un Sandbox y S6 se hace desde el servidor, `docs/integraciones/tiktok.md` §0) | Si una cuenta personal no puede autorizar, se prueba una Creator o Business; si el borrador no llega sin auditoría, TikTok pasa al piloto |
 
 ### 4.9 La IA propone (ADR-0030)
 ```
