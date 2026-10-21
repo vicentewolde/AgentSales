@@ -197,7 +197,7 @@ export function BrokerPage() {
         {broker.brandName} <span className="text-base text-slate-500">({broker.slug})</span>
       </h1>
       <SpendLine usage={usage.data} brokerId={broker.id} />
-      <OnboardingList steps={onboarding} />
+      <OnboardingList steps={onboarding} kind={broker.kind} />
       <section aria-label="Marca" className="mt-6">
         <h2 className="text-lg font-semibold">Marca y ajustes</h2>
         <BrandForm

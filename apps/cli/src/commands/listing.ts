@@ -205,8 +205,17 @@ export function register(program: Command, ctx: CliContext): void {
       .argument("<propiedad>", "id_propiedad del Excel, o el id del aviso")
       .option("--broker <slug>", "corredor, si el id_propiedad está en más de uno")
       .option("--yes", "no pide confirmación")
-      .action((ref: string, options: ListingActionOptions) =>
-        exitWith(() => runListingAction({ ...ctx, client: ctx.api() }, action, ref, options)),
+      // `listing` también tiene `--broker` y commander se lo entrega al padre: `optsWithGlobals`
+      // lo trae desde ahí (como en `plan list`, ensayo de la demo de F9).
+      .action((ref: string, _options: ListingActionOptions, command: Command) =>
+        exitWith(() =>
+          runListingAction(
+            { ...ctx, client: ctx.api() },
+            action,
+            ref,
+            command.optsWithGlobals<ListingActionOptions>(),
+          ),
+        ),
       );
   }
   listing
@@ -219,7 +228,14 @@ export function register(program: Command, ctx: CliContext): void {
     .option("--reason <motivo>", "vendida, arrendada o retirada")
     .option("--broker <slug>", "corredor, si el id_propiedad está en más de uno")
     .option("--yes", "no pide confirmación")
-    .action((ref: string, options: ListingActionOptions) =>
-      exitWith(() => runListingAction({ ...ctx, client: ctx.api() }, "close", ref, options)),
+    .action((ref: string, _options: ListingActionOptions, command: Command) =>
+      exitWith(() =>
+        runListingAction(
+          { ...ctx, client: ctx.api() },
+          "close",
+          ref,
+          command.optsWithGlobals<ListingActionOptions>(),
+        ),
+      ),
     );
 }

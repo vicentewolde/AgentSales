@@ -449,17 +449,32 @@ export const ONBOARDING_STEP_TEXT: Readonly<Record<OnboardingStepKey, string>> =
   brand: "Marca y colores",
   logo: "Logo",
   whatsapp: "WhatsApp",
+  editorial: "Perfil editorial",
   user: "Usuario con contraseña",
   instagram: "Instagram",
   mercadolibre: "Mercado Libre",
   marketplace: "Marketplace",
+  networks: "Una red para los posts",
 };
 
-/** Quién hace un paso que falta. */
+/**
+ * El nombre de un paso de la lista de alta; un paso que esta versión no conoce (una CLI o un panel
+ * más viejo que la API) sale con su clave, sin romper.
+ */
+export function onboardingStepText(key: string): string {
+  return (ONBOARDING_STEP_TEXT as Readonly<Partial<Record<string, string>>>)[key] ?? key;
+}
+
+/** Quién hace un paso que falta, en un corredor. En una marca, `onboardingOwnerText`. */
 export const ONBOARDING_OWNER_TEXT: Readonly<Record<OnboardingOwner, string>> = {
   broker: "lo hace el corredor",
   admin: "lo hace el administrador",
 };
+
+/** Quién hace un paso que falta, según qué es: en una marca, "lo hace la marca". */
+export function onboardingOwnerText(owner: OnboardingOwner, kind: BrokerKind): string {
+  return owner === "broker" && kind === "brand" ? "lo hace la marca" : ONBOARDING_OWNER_TEXT[owner];
+}
 
 /** El estado de un usuario, en pocas palabras (CLI y panel). */
 export function userStateText(user: {

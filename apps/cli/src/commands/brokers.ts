@@ -13,8 +13,8 @@ import {
   type BrokerKind,
   formatUsd,
   MAX_LOGO_BYTES,
-  ONBOARDING_OWNER_TEXT,
-  ONBOARDING_STEP_TEXT,
+  onboardingOwnerText,
+  onboardingStepText,
   parseUsdAmount,
 } from "@agentsales/core";
 import type { Command } from "commander";
@@ -109,8 +109,8 @@ function printBrokerDetail(deps: Io, { broker, onboarding }: BrokerDetailRespons
   for (const step of onboarding) {
     deps.print(
       step.done
-        ? `  ${c.green("✓")} ${ONBOARDING_STEP_TEXT[step.key]}`
-        : `  ${c.yellow("·")} ${ONBOARDING_STEP_TEXT[step.key]}${step.pending === null ? "" : `: falta ${step.pending}`}${step.owner === null ? "" : ` (${ONBOARDING_OWNER_TEXT[step.owner]})`}`,
+        ? `  ${c.green("✓")} ${onboardingStepText(step.key)}`
+        : `  ${c.yellow("·")} ${onboardingStepText(step.key)}${step.pending === null ? "" : `: falta ${step.pending}`}${step.owner === null ? "" : ` (${onboardingOwnerText(step.owner, broker.kind)})`}`,
     );
   }
 }

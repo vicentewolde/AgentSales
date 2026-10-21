@@ -9,7 +9,7 @@ import {
 } from "@agentsales/core";
 import { createInMemoryJobQueue } from "@agentsales/core/testing";
 import { Command } from "commander";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { brokerData, fakeClock, harness } from "../../test/harness.js";
 import { register, runPlanList, runPlanRequest, runPlanShow } from "./plan.js";
 import { runPostAccept, runPostDiscard, runPostEdit } from "./post.js";
@@ -47,8 +47,33 @@ async function setup() {
   });
   /** El fallo con que termina el próximo plan (por defecto, ninguno: corre el de ejemplo). */
   let failWith: { code: string; message: string } | null = null;
+  /** Con `draftOnWait`, el worker también redacta: cada corrida de textos activa termina bien. */
+  let draftOnWait = false;
   // El worker: en cada espera, el plan en cola corre (o falla con lo pedido).
   const clock = fakeClock(async () => {
+    if (draftOnWait) {
+      for (const post of await h.posts.list({ brokerId: brand.id }, ALL_SCOPE)) {
+        const run = await h.contentRuns.findActive({ kind: "post", id: post.id });
+        if (run === null) continue;
+        await h.contentRuns.markRunning(run.id);
+        await h.contentRuns.markSucceeded(run.id, {
+          report: { warnings: [] },
+          contents: [
+            {
+              platform: "linkedin",
+              language: "es",
+              title: null,
+              body: "Texto para LinkedIn",
+              hashtags: [],
+              llmProvider: "fake",
+              llmModel: "fake",
+              promptVersion: "social-v1",
+              rawOutput: null,
+            },
+          ],
+        });
+      }
+    }
     for (const run of await h.planRuns.listQueued()) {
       if (failWith !== null) {
         await h.planRuns.markRunning(run.id);
@@ -91,6 +116,9 @@ async function setup() {
     failQueue: () => {
       queueDown = true;
     },
+    draftOnWait: () => {
+      draftOnWait = true;
+    },
   };
 }
 
@@ -130,7 +158,10 @@ describe("agentsales plan", () => {
     s.h.out.length = 0;
     expect(await runPostAccept(s.postDeps(), accepted.id)).toBe(0);
     expect(s.h.text()).toContain(`Idea aceptada: "${accepted.topic}" (borrador)`);
-    expect(s.h.text()).toContain(`agentsales post draft ${accepted.id}`);
+    // Para esperar los textos sugiere `post show` o `accept --wait`, nunca `post draft` (pide otros).
+    expect(s.h.text()).toContain(`agentsales post show ${accepted.id}`);
+    expect(s.h.text()).toContain("agentsales post accept <id> --wait");
+    expect(s.h.text()).not.toContain("post draft");
     expect((await s.h.posts.get(accepted.id))?.status).toBe("draft");
     const job = s.h.queue.jobs.at(-1);
     expect(job?.name).toBe("post.draft");
@@ -146,7 +177,7 @@ describe("agentsales plan", () => {
     expect(s.h.errors()).toContain("POST_NOT_IDEA");
     expect(s.h.errors()).toContain(`agentsales post show ${accepted.id}`);
     expect(s.h.errors()).toContain(
-      `Si quedó aceptada sin textos, pídelos con agentsales post draft ${accepted.id}`,
+      `Si quedó aceptada sin textos y sin redacción en curso, pídelos con agentsales post draft ${accepted.id}`,
     );
     expect(await runPostDiscard(s.postDeps(), accepted.id)).toBe(1);
     expect((await s.h.posts.get(accepted.id))?.status).toBe("draft");
@@ -156,9 +187,29 @@ describe("agentsales plan", () => {
     s.h.out.length = 0;
     expect(await runPlanShow(s.deps(), plan?.id ?? "")).toBe(0);
     expect(s.h.text()).toContain(
-      `La IA está redactando sus textos: espera con agentsales post draft ${accepted.id}`,
+      `La IA está redactando sus textos: míralos cuando terminen con agentsales post show ${accepted.id}`,
     );
     expect(s.h.text()).toContain("(archivado)");
+  });
+
+  it("accept --wait espera la corrida que acaba de crear, sin pedir otra, y muestra la revisión", async () => {
+    const s = await setup();
+    expect(await runPlanRequest(s.deps(), { broker: "agentpey", count: "1" })).toBe(0);
+    const [idea] = await s.ideasOf();
+    if (idea === undefined) throw new Error("sin idea");
+    s.draftOnWait();
+    s.h.out.length = 0;
+    s.h.requests.length = 0;
+    expect(await runPostAccept(s.postDeps(), idea.id, { wait: true })).toBe(0);
+    const text = s.h.text();
+    expect(text).toContain(`Idea aceptada: "${idea.topic}" (borrador)`);
+    expect(text).toContain("Revisión");
+    expect(text).toContain(`agentsales post approve ${idea.id}`);
+    expect(text).not.toContain("post draft");
+    // Una sola corrida y un solo post.draft: esperar no redacta de nuevo.
+    expect(s.h.requests.filter((request) => request.endsWith("/draft"))).toEqual([]);
+    expect(s.h.queue.jobs.filter((job) => job.name === "post.draft")).toHaveLength(1);
+    expect(await s.h.contentRuns.findActive({ kind: "post", id: idea.id })).toBeNull();
   });
 
   it("aceptar con la cola caída: la idea queda aceptada y el consejo dice arrancar el worker y pedir los textos", async () => {
@@ -252,5 +303,30 @@ describe("agentsales plan", () => {
       "--start",
       "--no-wait",
     ]);
+  });
+
+  describe("--broker de plan list por commander (ensayo de la demo de F9)", () => {
+    afterEach(() => {
+      process.exitCode = undefined;
+    });
+
+    it.each([
+      [["plan", "list", "--broker", "agentpey"]],
+      [["plan", "--broker", "agentpey", "list"]],
+    ])("%j llega a la lista, antes o después de list", async (argv) => {
+      const s = await setup();
+      expect(await runPlanRequest(s.deps(), { broker: "agentpey", wait: false })).toBe(0);
+      const [plan] = await s.h.planRuns.listByBroker(s.brand.id);
+      const program = new Command().exitOverride();
+      register(program, {
+        ...s.h.io,
+        api: () => s.h.client,
+      } as unknown as Parameters<typeof register>[1]);
+      s.h.out.length = 0;
+      await program.parseAsync(argv, { from: "user" });
+      expect(s.h.errors()).not.toContain("BROKER_REQUIRED");
+      expect(process.exitCode).toBe(0);
+      expect(s.h.text()).toContain(plan?.id ?? "?");
+    });
   });
 });

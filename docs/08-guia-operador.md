@@ -140,7 +140,7 @@ De punta a punta, con `pnpm dev` corriendo. Todo se puede hacer en el panel (**C
    - **Instagram:** como evaluador de tu app de Meta. En el servidor, con el botón **Conectar Instagram** de **Cuentas**: tú, o el propio corredor desde su usuario (ADR-0028; inicia sesión él mismo, desde donde esté, y solo puede conectar la suya); en tu Mac, con el token de *Generate token* (pasos en `docs/07-checklist-cuentas.md`, "Antes de F7").
    - **Mercado Libre:** en el servidor, con el botón **Conectar Mercado Libre** de **Cuentas** (la vuelta es automática); en tu Mac, con su cuenta y pegando la dirección de vuelta.
    - **Marketplace:** **Activar Marketplace a mano** (el formulario automático es solo para tus corredores). Al publicar, el sistema deja el texto, las fotos y el precio listos; el corredor lo publica en Facebook y confirma con el enlace o "No lo publiqué".
-5. **La lista de alta** del corredor (en su detalle, en Mi marca y en `pnpm -s cli brokers show <slug>`) dice qué falta y quién lo hace.
+5. **La lista de alta** del corredor (en su detalle, en Mi marca y en `pnpm -s cli brokers show <slug>`) dice qué falta y quién lo hace (su Instagram lo conecta el propio corredor en **Cuentas**). Una **marca** (`--kind brand`) tiene la suya, porque solo publica posts: la marca, el **perfil editorial** (al menos una línea de contenido y un hecho), el usuario y **al menos una red de los posts** conectada (Instagram, X, LinkedIn o TikTok las conecta la marca en **Cuentas**; Discord, tú con la CLI). No pide WhatsApp, logo, Mercado Libre ni Marketplace, que son de los avisos.
 6. **El gasto:** en **Corredores** y con `pnpm -s cli usage`, lo gastado en IA en el mes (estimado: la cifra oficial está en la consola de Anthropic). Con el tope alcanzado, preparar los textos se frena hasta que subas el tope o empiece el mes siguiente.
 
 Para desactivar a alguien: **Desactivar** en su usuario (o `pnpm -s cli users disable <correo>`) cierra sus sesiones al tiro.
@@ -153,7 +153,7 @@ El recorrido completo de un post de marca, en orden. Cada paso tiene su sección
 2. **Sus redes:** conecta cada cuenta (Instagram, Discord, LinkedIn, X, TikTok) y haz su prueba de entrada antes de publicar de verdad ("Conectar las redes de los posts").
 3. **El perfil editorial:** idiomas, líneas, hechos, cosas que evitar y cadencia ("Llenar el perfil editorial").
 4. **El plan:** la IA propone ideas con fecha; tú aceptas, editas o descartas cada una ("Pedir a la IA un plan de ideas"). O creas un post a mano ("Publicar un post de una marca").
-5. **Los textos:** al aceptar una idea (o con `post draft`) la IA redacta un texto por red e idioma; los revisas y corriges.
+5. **Los textos:** al aceptar una idea (`post accept <id> --wait` los espera) o con `post draft` (pide textos nuevos: gasta IA otra vez) la IA redacta un texto por red e idioma; los revisas y corriges.
 6. **Aprobar:** cada texto por separado; aprobar abre una publicación por cuenta, formato e idioma.
 7. **Programar o publicar:** a una hora de Chile (el reloj del worker publica a la hora) o ya.
 8. **Lo que queda pendiente**, siempre con su comando en la `agenda` y en el detalle del post:
@@ -223,7 +223,7 @@ pnpm -s cli post publish <id_post>                            # --platform para 
 - **Un enlace en X** necesita dos cosas tuyas: que esté en tu brief y que lo permitas en el post (`post edit <id> --x-link`, o la casilla «Permitir un enlace en X» en el panel), porque ese post cuesta US$0,20 en vez de US$0,015. Sin el permiso, la revisión no deja aprobar el texto de X con un enlace.
 - **El brief tuyo cuenta como fuente de hechos; el de la IA no.** La revisión marca cifras, nombres o enlaces que no están en el perfil ni en tu brief: corrígelos o súmalos al perfil antes de aprobar.
 - **Los medios** se suben una vez: si repites `post upload` con el mismo archivo, no se vuelve a subir. Si se corta, vuelve a correr el comando: retoma lo que falta.
-- **Aprobar** abre una publicación por cada red con la cuenta conectada; sin cuenta, el texto queda aprobado y la publicación nace cuando la conectes. `post approve --undo` quita la aprobación y descarta lo que no salió.
+- **Aprobar** abre una publicación por cada red con la cuenta conectada; sin cuenta, el texto queda aprobado y la publicación nace cuando la conectes. Si ninguna red aprobada tiene cuenta, `post approve` te dice que la conectes primero (`pnpm -s cli accounts`) en vez de ofrecerte publicar; después `post publish` o `post schedule` abren sus publicaciones. `post approve --undo` quita la aprobación y descarta lo que no salió.
 - **En vivo** (`PUBLISH_MODE=live`), `post publish`, `post schedule` y `publications retry` preguntan antes (`--yes` no pregunta). A la hora programada el reloj del worker publica sin volver a preguntar.
 - **Una red a mano** (por ejemplo LinkedIn): a la hora queda lista para que la publiques tú; después `pbpaste | pnpm -s cli publications confirm <id> --url-stdin` con el enlace, o `publications not-published <id>` si no la publicaste.
 - **"No se sabe si salió"** (`outcome_unknown`): el envío se cortó y AgentSales no sabe si la red la publicó. **Mira la red** y dilo: `pnpm -s cli publications resolve <id> --published` (con el enlace, si lo tienes: `pbpaste | … --published --url-stdin`) o `--not-published` (queda fallida). AgentSales nunca la reintenta solo, para no publicarla dos veces.
@@ -237,7 +237,7 @@ pnpm -s cli post publish <id_post>                            # --platform para 
 Todo lo anterior se puede hacer en el panel, en **Contenido** (el menú de la izquierda; el administrador elige la marca en "Ver corredor"):
 
 - **La lista** muestra los posts de la marca por estado (los archivados, con su filtro). Abajo, **Nuevo post**: tema, brief, tipo y fecha planeada (hora de Chile). Con "Todos" eliges la marca.
-- **El detalle de un post** tiene, en orden: **Pedir los textos a la IA** (con "Reemplazar también los textos editados o aprobados" si ya los tocaste); **una pestaña por red e idioma** con el texto, el conteo de esa red (en X cuenta como X: un enlace vale 23 y un emoji 2, y avisa que un enlace encarece el post; un enlace en X se permite con la casilla «Permitir un enlace en X» del post, que cuesta US$0,20 en vez de US$0,015), la vista previa, la revisión con lo que hay que corregir, **Editar** y **Aprobar** (o quitar la aprobación); **Fotos y videos** para subir con avance (puedes cancelar, y si falla, **Reintentar**; cada medio dice "procesando…" hasta que el worker arma sus versiones); **Publicar en …** una red a la vez y **Programar…** las redes que elijas a una hora de Chile; y la lista de **Publicaciones**.
+- **El detalle de un post** tiene, en orden: **Pedir los textos a la IA** (con "Reemplazar también los textos editados o aprobados" si ya los tocaste); **una pestaña por red e idioma** con el texto, el conteo de esa red (en X cuenta como X: un enlace vale 23 y un emoji 2, y avisa que un enlace encarece el post; un enlace en X se permite con la casilla «Permitir un enlace en X» del post, que cuesta US$0,20 en vez de US$0,015), la vista previa, la revisión con lo que hay que corregir, **Editar** y **Aprobar** (o quitar la aprobación); **Fotos y videos** para subir con avance (puedes cancelar, y si falla, **Reintentar**; cada medio dice "procesando…" hasta que el worker arma sus versiones); **Publicar en …** una red a la vez y **Programar…** las redes que elijas a una hora de Chile (una red sin cuenta conectada aparece desactivada, con el aviso y el enlace a **Cuentas**; si ninguna tiene, tampoco se puede programar); y la lista de **Publicaciones**.
 - **"No se sabe si salió"**: la publicación lo dice en ámbar. Mira la red y aprieta **Sí, salió** (pega el enlace si lo tienes) o **No salió** (queda fallida y puedes **Reintentar**).
 - **Una red a mano** (LinkedIn): la publicación te pide publicarla tú; después pega el enlace y aprieta **Lo publiqué**, o **No lo publiqué**.
 - **En vivo**, publicar y reintentar piden un segundo clic ("Sí, publicar en vivo"), y programar lo avisa en rojo.
@@ -255,7 +255,7 @@ Si no sabes qué publicar, la IA te propone **ideas con fecha** para las próxim
 pnpm -s cli plan --broker agentpey --days 14 --platform linkedin,x --count 8
 
 # 2. Decidir cada idea
-pnpm -s cli post accept <id_idea>      # pasa a borrador y la IA redacta sus textos
+pnpm -s cli post accept <id_idea>      # pasa a borrador y la IA redacta sus textos (--wait los espera)
 pnpm -s cli post discard <id_idea>     # no se vuelve a proponer en 60 días
 pnpm -s cli post edit <id_idea> --date "2026-10-23 10:00" --platforms x,linkedin --brief "Lo que yo sé: …"
 
@@ -265,7 +265,8 @@ pnpm -s cli post approve <id_idea>
 pnpm -s cli post schedule <id_idea> --at "2026-10-23 10:00"
 ```
 
-- **`plan show <id>`** vuelve a mostrar un plan con el estado de cada idea; **`plan list`** muestra los planes de la marca. `--no-wait` pide el plan y sale con su id.
+- **`plan show <id>`** vuelve a mostrar un plan con el estado de cada idea; **`plan list`** muestra los planes de la marca (`--broker` va antes o después de `list`: `plan list --broker agentpey` o `plan --broker agentpey list`). `--no-wait` pide el plan y sale con su id.
+- **Esperar los textos de una idea:** `post accept <id> --wait` acepta y espera esa redacción, con su revisión al final. Sin `--wait` no espera (puedes aceptar varias seguidas) y los textos aparecen en `post show <id>` al terminar. **No uses `post draft` para esperar:** pide textos nuevos y vuelve a gastar IA; sirve solo si la idea quedó aceptada sin textos (por ejemplo, con el worker apagado).
 - **Un plan a la vez por marca:** si ya hay uno en curso, pedir otro te muestra ese.
 - **Lo que mira la IA:** no repite los temas de los últimos 60 días ni las ideas que descartaste, respeta la cadencia de cada red (días, horas y posts por semana, contando lo que ya está planificado esas semanas) y no inventa cifras ni nombres que no estén en el perfil. Las ideas que no pasan esas revisiones salen al final como "descartadas por las revisiones", con el motivo.
 - **Antes de aceptar** puedes mover la fecha, cambiar las redes o escribir tu brief. **El brief tuyo cuenta como fuente de hechos**: si sabes algo concreto del tema, escríbelo antes de aceptar para que la IA lo use.

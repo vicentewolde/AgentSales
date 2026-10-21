@@ -30,7 +30,7 @@ export function MyBrandPage() {
     <div>
       <h1 className="text-2xl font-semibold tracking-tight">Mi marca</h1>
       <SpendLine usage={usage.data} brokerId={broker.id} />
-      <OnboardingList steps={onboarding} />
+      <OnboardingList steps={onboarding} kind={broker.kind} />
       <section aria-label="Marca" className="mt-6">
         <h2 className="text-lg font-semibold">Marca</h2>
         <BrandForm

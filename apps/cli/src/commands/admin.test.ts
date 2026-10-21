@@ -164,6 +164,26 @@ describe("brokers", () => {
     await expect(runBrokerShow(s.deps, "nueva")).resolves.toBe(0);
   });
 
+  it("show de una marca: su lista de alta, sin pasos de avisos y con «lo hace la marca» (ensayo de la demo de F9)", async () => {
+    const s = await setup();
+    await expect(
+      runBrokerCreate(s.deps, {
+        slug: "agentpey",
+        name: "AgentPey",
+        brand: "AgentPey",
+        color: "#aabbcc",
+        kind: "brand",
+      }),
+    ).resolves.toBe(0);
+    const text = s.h.text();
+    expect(text).toContain("· Perfil editorial: falta el perfil editorial");
+    expect(text).toContain("(lo hace la marca)");
+    expect(text).toContain("Discord lo conecta el administrador");
+    for (const listingStep of ["WhatsApp", "Logo", "Mercado Libre", "Marketplace"]) {
+      expect(text).not.toContain(`· ${listingStep}`);
+    }
+  });
+
   it("errores de la API con su motivo: slug repetido y color inválido", async () => {
     const s = await setup();
     const fields = { name: "X", brand: "X", color: "#000000" };
