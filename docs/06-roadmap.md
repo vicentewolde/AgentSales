@@ -13,7 +13,7 @@ Cada fase entrega algo **usable y demostrable**. Una fase empieza con su spec en
 | F6 | Calendario + seguimiento | Programación, reintentos, sincronización, "vendida" cierra Portal y deja tareas a mano en Instagram y Marketplace | v0.6.0 |
 | F7 | Varios corredores | Login, cada corredor ve solo lo suyo, alta de corredores, IA por API con gasto por corredor (en el Mac del operador) | v0.7.0 |
 | F8 | En internet | Despliegue con HTTPS (en modo demo), subidas a R2, respaldos fuera del Mac, OAuth de Instagram y términos (el App Review de Meta queda como trámite pendiente del operador) | v1.0.0 |
-| F9 | Contenido de marca | Posts de las marcas del operador en Instagram, X, LinkedIn, Discord y TikTok, con perfil editorial, textos por red e idioma, calendario y un plan de ideas de la IA, en tres entregas | v1.1.0, v1.2.0 y v1.3.0 |
+| F9 | Contenido de marca | **Cerrada (2026-10-20), desplegada (2026-10-21).** Posts de las marcas del operador en Instagram, X, LinkedIn, Discord y TikTok, con perfil editorial, textos por red e idioma, calendario y un plan de ideas de la IA, en tres entregas | v1.1.0, v1.2.0 y v1.3.0 |
 | F10 | Piloto con una oficina | Anuncios de Meta, leads y ManyChat para una oficina de una corredora grande (hoja de ruta) | — |
 | F11 | Organizaciones | Organización → oficina → agente, roles y aprobación por niveles (hoja de ruta) | — |
 
@@ -134,20 +134,59 @@ Spec detallado: `docs/specs/fase-7-varios-corredores.md` (2026-10-16: el operado
 **Spec:** `docs/specs/fase-8-en-internet.md` (ADR-0024, ADR-0025 y ADR-0026), aprobado el 2026-10-18. Respuestas del operador: por ahora un servidor **en modo demo** en Fly.io (encendido los días de demo, con Neon gratis) y después un plan pagado (D1); `agentsales.agentpey.com` (D2); Marketplace a mano para todos en producción (D4); F8 se cierra con la app enviada a App Review (D5). La IA de todos los corredores va por la API en producción (los términos del plan Max). RLS se evaluó y no se adopta (ADR-0026). **Cerrada el 2026-10-19 (`v1.0.0`)**; el operador cambió D5: se cierra con el App Review pendiente (verificación del negocio, de proveedor técnico y envío).
 
 ## F9 · Contenido de marca
+**Estado (2026-10-21): cerrada con `v1.3.0` y desplegada en `https://agentsales.agentpey.com` (en `dry-run`, worker apagado). Las cinco redes se probaron de punta a punta con la marca AgentPey; quedan S2 y S3 de LinkedIn y varios pasos del operador (abajo).**
+
 - Gestor de contenido de redes sociales para el operador (su marca personal y AgentPey), con el mismo calendario, aprobación y seguimiento que los avisos: Instagram, X, LinkedIn, Discord y TikTok (video como borrador en la bandeja del creador).
 - El post como otro sujeto de publicación junto al aviso (ADR-0029); el perfil editorial de cada marca; la IA propone ideas y fechas y el operador acepta, aprueba y programa (ADR-0030); dos idiomas por marca; el resultado dudoso `outcome_unknown`.
-- Pruebas de entrada con las cuentas reales (S1 a S6: visibilidad de Instagram en modo desarrollo, LinkedIn, X, Discord y TikTok). Desde el 2026-10-20 (decisión del operador) cada red se construye contra simulaciones y su prueba es obligatoria **antes de publicar de verdad** en ella, no antes de construirla.
+- Pruebas de entrada con las cuentas reales (S1 a S6). Desde el 2026-10-20 (decisión del operador) cada red se construye contra simulaciones y su prueba es obligatoria **antes de publicar de verdad** en ella, no antes de construirla.
 - Sin código de anuncios, pero sin cerrar puertas para ellos ni para las organizaciones.
 
-**Spec:** `docs/specs/fase-9-contenido-de-marca.md`, **aprobado** el 2026-10-19 (ADR-0029 y ADR-0030). Ejecución en paralelo con agentes en worktrees y la CI como juez. Una instancia ahora y dos del mismo código al llegar el primer cliente (D19; el despliegue ya acepta una segunda instancia, T27).
+**Spec:** `docs/specs/fase-9-contenido-de-marca.md`, **cerrado** el 2026-10-20 (ADR-0029 y ADR-0030). Ejecución en paralelo con agentes en worktrees y la CI como juez (PR #169 a #215). Una instancia ahora y dos del mismo código al llegar el primer cliente (D19; el despliegue ya acepta una segunda instancia, T27).
 
 | Entrega | Tareas | Etiqueta | Queda funcionando |
 |---|---|---|---|
 | 1 · Publicar lo mío | T01 a T14 y T27 | `v1.1.0` (cerrada) | Posts con perfil editorial, texto con IA por red e idioma, aprobación, calendario y CLI; Instagram y Discord |
 | 2 · Más redes y panel | T15, T16, T26, T17, T18 y T19 | `v1.2.0` (cerrada) | LinkedIn (a mano), X, TikTok (borrador), la pantalla Contenido, el calendario y la guía |
-| 3 · La IA propone | T20 a T22, y T23 a T25 | `v1.3.0` (cierre de la fase) | El plan de ideas, `pnpm eval:social`, la documentación, la prueba con todas las cuentas y el cierre |
+| 3 · La IA propone | T20 a T25 | `v1.3.0` (cerrada) | El plan de ideas (panel y CLI), `pnpm eval:social`, la documentación completa y el cierre |
 
-**Aceptación:** los criterios de la fase están en el spec, §6. La prueba en vivo de cada red (T24) va solo con la instrucción del operador en el chat.
+**Qué se hizo después del cierre (2026-10-20 y 21)**
+- **El ensayo de la demo** en simulación con la IA real y AgentPey sacó seis fallos que las pruebas no vieron, ya corregidos: la lista de alta de una marca, `post accept --wait`, `--broker` en subcomandos, publicar sin cuenta conectada, y los meses y días tomados por nombres propios.
+- **La marca del enlace en X** desde la CLI y el panel.
+- **Desplegada** (migraciones `0014` a `0018`), marcas del operador sembradas y el perfil editorial de AgentPey cargado con sus datos; cuentas de AgentPey conectadas en X, Instagram, TikTok, LinkedIn (a mano) y Discord.
+- **Pruebas de entrada con las cuentas reales** (todas con instrucción explícita del operador; `live` solo durante la prueba y de vuelta a `dry-run`):
+
+| Prueba | Resultado |
+|---|---|
+| S1 · Instagram | ✅ Un post de imagen publicado de verdad; **una cuenta sin rol en la app lo vio** (la app en modo desarrollo no oculta lo publicado) |
+| S4 · X | ✅ Conexión OAuth, un post real (US$0,02), el 402 sin créditos queda fallido sin reintento y un texto repetido queda `outcome_unknown` |
+| S5 · Discord | ✅ Servidor privado con un webhook; texto, imagen y video publicados; la URL del webhook no aparece en los logs |
+| S6 · TikTok | ✅ En el servidor (TikTok exige `https`): el video llegó como borrador, avisó en la app del teléfono y el operador lo publicó |
+| LinkedIn a mano | ✅ Un post real y público: AgentSales dejó el texto aprobado, Claude lo escribió en el editor y el operador pulsó Publicar y confirmó con el enlace |
+| S2 y S3 · LinkedIn | ⏳ **Pendientes**: publicar por la API (los términos de LinkedIn parecen prohibir automatizar en un perfil personal) y consultar a LinkedIn Developer Support |
+
+**Lo aprendido**
+- Los borradores de TikTok por la API **no aparecen en tiktok.com**: se abren desde la notificación en la app del teléfono.
+- **X:** autorizar la misma cuenta en el Mac y en el servidor con la misma app invalida el token del otro; no conectes una cuenta en dos entornos con la misma app.
+- **LinkedIn:** «Copiar enlace a la publicación» da el enlace corto `lnkd.in`; AgentSales pide el de la barra de direcciones (el error lo explica).
+- Una marca solo publica posts: su lista de alta pide el perfil editorial y una red, no WhatsApp ni Mercado Libre.
+
+**Pendientes**
+- **Del operador, cortos:**
+  - borrar las publicaciones de prueba: el post de Instagram, el video de TikTok y los mensajes del canal de Discord (el post de LinkedIn es real);
+  - llenar el perfil editorial de `vinny` (hoy vacío; la IA solo afirma lo que esté en sus hechos);
+  - decidir si AgentPey publica en X desde `@agentpeyai` (hoy está conectada `@vicentewolde`) y renombrar la app de X en la consola (la pantalla de autorización muestra un nombre numérico).
+- **Para publicar en serio desde el servidor:**
+  - hacer la **prueba programada** de F9 (criterio 3 del spec): programar un post, con el worker del servidor encendido y el Mac apagado, y ver que sale a su hora en Instagram, Discord y X (`docs/10-despliegue.md`, paso 11, el worker siempre encendido es decisión del operador);
+  - **S2 y S3** de LinkedIn, antes de pasar esa cuenta a la API;
+  - la **revisión de Production de TikTok** (video demo; hoy solo Sandbox);
+  - el **App Review de Meta**, para que otros (corredores que no son evaluadores) conecten su Instagram (`docs/11-app-review-meta.md`).
+- **Deuda técnica** (detalle en `docs/ESTADO.md`):
+  - el resultado dudoso de Instagram y de Portal queda `failed` en vez de `outcome_unknown`;
+  - retirar borrando en X y TikTok no existe, el tope de gasto de X no es atómico y el video de X se baja entero a memoria;
+  - un video de más de 20 MiB no se publica en Discord (falta un dominio de medios);
+  - la revisión de nombres propios crece a fuerza de excepciones: con marcas de clientes, evaluar hechos estructurados;
+  - para F10 y F11: enums de las respuestas de la API cerrados (CLI y servidor de versiones distintas), quién es dueño de una cuenta decidido en dos lugares, y quién hace cada paso de la lista de alta.
+- **Para el piloto (F10), sin código y de plazo largo:** la segunda app de Meta, la Página y la cuenta publicitaria de la oficina, ManyChat y el abogado (spec F9 §4.17).
 
 ## F10 · Piloto con una oficina (hoja de ruta)
 - Una oficina (3 a 10 agentes) de una corredora grande, con servicio operado por el operador.
