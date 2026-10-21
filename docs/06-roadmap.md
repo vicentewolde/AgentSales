@@ -141,7 +141,7 @@ Spec detallado: `docs/specs/fase-7-varios-corredores.md` (2026-10-16: el operado
 - Pruebas de entrada con las cuentas reales (S1 a S6). Desde el 2026-10-20 (decisión del operador) cada red se construye contra simulaciones y su prueba es obligatoria **antes de publicar de verdad** en ella, no antes de construirla.
 - Sin código de anuncios, pero sin cerrar puertas para ellos ni para las organizaciones.
 
-**Spec:** `docs/specs/fase-9-contenido-de-marca.md`, **cerrado** el 2026-10-20 (ADR-0029 y ADR-0030). Ejecución en paralelo con agentes en worktrees y la CI como juez (PR #169 a #215). Una instancia ahora y dos del mismo código al llegar el primer cliente (D19; el despliegue ya acepta una segunda instancia, T27).
+**Spec:** `docs/specs/fase-9-contenido-de-marca.md`, **cerrado** el 2026-10-20 (ADR-0029 y ADR-0030). Ejecución en paralelo con agentes en worktrees y la CI como juez (las tareas, #169 a #201; el cierre, #202; el despliegue, las pruebas y los arreglos posteriores, hasta #215). Una instancia ahora y dos del mismo código al llegar el primer cliente (D19; el despliegue ya acepta una segunda instancia, T27).
 
 | Entrega | Tareas | Etiqueta | Queda funcionando |
 |---|---|---|---|
@@ -149,10 +149,10 @@ Spec detallado: `docs/specs/fase-7-varios-corredores.md` (2026-10-16: el operado
 | 2 · Más redes y panel | T15, T16, T26, T17, T18 y T19 | `v1.2.0` (cerrada) | LinkedIn (a mano), X, TikTok (borrador), la pantalla Contenido, el calendario y la guía |
 | 3 · La IA propone | T20 a T25 | `v1.3.0` (cerrada) | El plan de ideas (panel y CLI), `pnpm eval:social`, la documentación completa y el cierre |
 
-**Qué se hizo después del cierre (2026-10-20 y 21)**
-- **El ensayo de la demo** en simulación con la IA real y AgentPey sacó seis fallos que las pruebas no vieron, ya corregidos: la lista de alta de una marca, `post accept --wait`, `--broker` en subcomandos, publicar sin cuenta conectada, y los meses y días tomados por nombres propios.
+**Cierre y después (2026-10-20 y 21)**
+- **El ensayo de la demo** en simulación con la IA real y AgentPey sacó varios fallos que las pruebas no vieron, ya corregidos: la lista de alta de una marca, `post accept --wait`, `--broker` en subcomandos, publicar sin cuenta conectada, y los meses y días tomados por nombres propios.
 - **La marca del enlace en X** desde la CLI y el panel.
-- **Desplegada** (migraciones `0014` a `0018`), marcas del operador sembradas y el perfil editorial de AgentPey cargado con sus datos; cuentas de AgentPey conectadas en X, Instagram, TikTok, LinkedIn (a mano) y Discord.
+- **Desplegada** (migraciones `0014` a `0018`), marcas del operador sembradas y el perfil editorial de AgentPey cargado con sus datos; cuentas de AgentPey conectadas en producción: Instagram (`@vicentewoldec`), X (`@vicentewolde`), TikTok (Sandbox), LinkedIn (a mano) y Discord.
 - **Pruebas de entrada con las cuentas reales** (todas con instrucción explícita del operador; `live` solo durante la prueba y de vuelta a `dry-run`):
 
 | Prueba | Resultado |
@@ -172,6 +172,7 @@ Spec detallado: `docs/specs/fase-7-varios-corredores.md` (2026-10-16: el operado
 
 **Pendientes**
 - **Del operador, cortos:**
+  - la **medición real del costo** del plan de ideas (`pnpm eval:social --provider anthropic-api`, unos centavos; `docs/integraciones/anthropic-api.md` §13);
   - borrar las publicaciones de prueba: el post de Instagram, el video de TikTok y los mensajes del canal de Discord (el post de LinkedIn es real);
   - llenar el perfil editorial de `vinny` (hoy vacío; la IA solo afirma lo que esté en sus hechos);
   - decidir si AgentPey publica en X desde `@agentpeyai` (hoy está conectada `@vicentewolde`) y renombrar la app de X en la consola (la pantalla de autorización muestra un nombre numérico).
@@ -180,6 +181,7 @@ Spec detallado: `docs/specs/fase-7-varios-corredores.md` (2026-10-16: el operado
   - **S2 y S3** de LinkedIn, antes de pasar esa cuenta a la API;
   - la **revisión de Production de TikTok** (video demo; hoy solo Sandbox);
   - el **App Review de Meta**, para que otros (corredores que no son evaluadores) conecten su Instagram (`docs/11-app-review-meta.md`).
+- La lista completa y vigente de los pendientes del operador está en `docs/ESTADO.md`, «Pendiente tuyo de F9».
 - **Deuda técnica** (detalle en `docs/ESTADO.md`):
   - el resultado dudoso de Instagram y de Portal queda `failed` en vez de `outcome_unknown`;
   - retirar borrando en X y TikTok no existe, el tope de gasto de X no es atómico y el video de X se baja entero a memoria;

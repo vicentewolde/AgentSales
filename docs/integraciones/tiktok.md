@@ -6,7 +6,7 @@ Convención: **DOC** = página oficial leída; **SNIPPET** = visto solo en un re
 
 ## 0. Qué hace hoy AgentSales (F9-T26, 2026-10-20)
 
-> **S6 sigue pendiente y es obligatoria antes de cualquier publicación real en TikTok** (decisión del operador del 2026-10-20, spec F9 §4.8). El código se construyó y se probó **solo contra simulaciones (`msw`)**: ninguna llamada real a TikTok. Mientras S6 no esté hecha y anotada aquí, ninguna cuenta de TikTok se usa en `live`.
+> **S6 pasó el 2026-10-21** (resultado en la sección 10: el video llegó como borrador y se publicó desde la app). Hasta entonces fue **obligatoria antes de cualquier publicación real en TikTok** (decisión del operador del 2026-10-20, spec F9 §4.8). El código se construyó y se probó **solo contra simulaciones (`msw`)**: ninguna llamada real a TikTok. Mientras S6 no esté hecha y anotada aquí, ninguna cuenta de TikTok se usa en `live`.
 
 - **Consola, ya configurada (2026-10-20 y 21, el operador):**
   - App "AgentSales", propietario Individual, tipo Other.
