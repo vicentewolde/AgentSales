@@ -20,7 +20,7 @@ Probado contra simulaciones y en un ensayo de la demo en tu Mac (simulación, co
 ### Cambiado
 - El panel ya no ofrece publicar ni programar en una red sin cuenta conectada: el botón queda desactivado con el motivo y un enlace a Cuentas. `post approve` te dice que conectes la cuenta primero.
 - La revisión editorial ya no toma un mes o un día de la semana por un nombre propio cuando va con una fecha («Oct 9», «Mon, Oct 9»).
-- En la lista de alta, el Instagram de un corredor lo conecta el propio corredor (ADR-0028).
+- En la lista de alta, el Instagram de un corredor lo conecta el propio corredor con el botón del servidor (ADR-0028); en tu Mac sigue siendo del administrador.
 
 ### Corregido
 - `plan list --broker` y `listing ready|pause|resume|reopen|archive|close --broker` ya reciben la marca o el corredor.
@@ -34,9 +34,10 @@ Probado contra simulaciones y en un ensayo de la demo en tu Mac (simulación, co
 - Migración `0018`: las redes de un post (`posts.platforms`) y un solo plan activo por marca. Solo agrega.
 
 ### Límites conocidos
-- En **Instagram**, un resultado dudoso (la red no confirmó si publicó) queda como fallido y no como `outcome_unknown`: no se reintenta solo (no publica dos veces), pero tampoco se resuelve con «salió / no salió». Antes de reintentar, mira tu Instagram. En Discord, LinkedIn, X y TikTok sí se resuelve en un paso.
+- En **Instagram y en Portal (Mercado Libre)**, un resultado dudoso (la red no confirmó si publicó) queda como fallido y no como `outcome_unknown`: no se reintenta solo (no publica dos veces), pero tampoco se resuelve con «salió / no salió». Antes de reintentar, mira la red. En Discord, LinkedIn, X y TikTok sí se resuelve en un paso.
 
 ### Pendiente fuera del código
+- **Variables nuevas en tu `.env` y en `.env.example`** (desde la entrega 2): `LINKEDIN_*`, `X_*` y `TIKTOK_*`, sin ellas no se conectan esas redes (`docs/07-checklist-cuentas.md`).
 - **T24 en vivo:** por cada red, su prueba de entrada (S1 Instagram, S2 y S3 LinkedIn, S4 X, S5 Discord, S6 TikTok), después conectar la cuenta y publicar un post con tu instrucción en el chat (`docs/ESTADO.md`).
 - **El perfil editorial real de tus marcas** en el servidor (`brand edit`): la IA solo afirma lo que escribas en sus hechos.
 - **El costo real del plan:** `pnpm eval:social --provider anthropic-api --profile dos-idiomas --ideas 10 --out`, y anotarlo en `docs/integraciones/anthropic-api.md` §13.
@@ -65,6 +66,7 @@ Todo está probado contra simulaciones. **Nada se publicó de verdad:** antes de
 - Migraciones `0016` (la marca de enlace permitido en X por post) y `0017` (el estado `uploaded` de una subida grande). Solo agregan.
 
 ### Pendiente fuera del código
+- **Variables nuevas en tu `.env` y en `.env.example`** (desde la entrega 2): `LINKEDIN_*`, `X_*` y `TIKTOK_*`, sin ellas no se conectan esas redes (`docs/07-checklist-cuentas.md`).
 - **Variables nuevas en tu `.env`** (vacías hasta que crees cada app): `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET`, `LINKEDIN_REDIRECT_URI`, `X_CLIENT_ID`, `X_CLIENT_SECRET`, `X_REDIRECT_URI`, `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI` (súmalas también a `.env.example`; detalle en `docs/08-guia-operador.md`).
 - **S1 a S6:** obligatorias antes de cualquier publicación real en cada red (`docs/ESTADO.md`).
 - **Desplegar** esta versión lo haces tú (`docs/10-despliegue.md`): primero el servidor y después usar la CLI nueva contra él.
@@ -96,6 +98,7 @@ Todo está probado contra simulaciones. **Nada se publicó de verdad:** publicar
 - Migraciones `0014` (plataformas nuevas, estado `outcome_unknown` y el tipo de corredor) y `0015` (posts, planes, subidas, perfil editorial y el sujeto aviso o post en textos, corridas, publicaciones y medios). Solo agregan: no cambian ninguna fila. Volver a una versión anterior después de crear posts exige revertirlas a mano (`docs/10-despliegue.md`).
 
 ### Pendiente fuera del código
+- **Variables nuevas en tu `.env` y en `.env.example`** (desde la entrega 2): `LINKEDIN_*`, `X_*` y `TIKTOK_*`, sin ellas no se conectan esas redes (`docs/07-checklist-cuentas.md`).
 - **S1 (Instagram) y S5 (Discord):** obligatorias antes de cualquier publicación real (`docs/ESTADO.md`).
 - **Desplegar** esta versión en el servidor lo haces tú (`docs/10-despliegue.md`), y después `pnpm db:seed --operator-brands` con `ENV_FILE=.env.production` si quieres tus marcas ahí. Para que el calendario publique con el Mac apagado, el worker del servidor tiene que estar encendido.
 - **Meta:** el App Review sigue sin enviar.
@@ -135,6 +138,7 @@ Demo (2026-10-19, en el servidor, en simulación; todo con el Mac dormido o sin 
 - Si Meta rechaza el canje de Instagram, el log dice el motivo (en la primera puesta en marcha era la clave secreta equivocada).
 
 ### Pendiente fuera del código
+- **Variables nuevas en tu `.env` y en `.env.example`** (desde la entrega 2): `LINKEDIN_*`, `X_*` y `TIKTOK_*`, sin ellas no se conectan esas redes (`docs/07-checklist-cuentas.md`).
 - **Meta:** verificación del negocio, verificación como proveedor técnico y el envío del App Review de `instagram_business_basic` e `instagram_business_content_publish` (los textos, el ícono, la categoría y el correo ya están puestos). Mientras tanto, los corredores del piloto que publican en Instagram son evaluadores de la app.
 - **Pruebas en vivo** de Portal (F4 y F6) y todo lo que publique de verdad: solo con tu instrucción en el chat. El servidor sigue en `dry-run`.
 

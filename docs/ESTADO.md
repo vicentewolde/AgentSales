@@ -8,7 +8,8 @@
 **Siguiente paso:** crear la etiqueta `v1.3.0` (con tu permiso) y después `/fase-plan 10` (el piloto). En paralelo, cuando quieras: tus pruebas S1 a S6 y la prueba en vivo de F9 red por red, solo con tu instrucción en el chat
 
 ## Pendiente tuyo de F9 (cerrada con `v1.3.0`)
-- [ ] **Tu CLI apunta a tu Mac** desde el ensayo: para volver al servidor, `pnpm -s cli login --api https://agentsales.agentpey.com --email vicentewolde@gmail.com`
+- [ ] **Tu CLI apunta a tu Mac** desde el ensayo: para volver al servidor, `pnpm -s cli login --api https://agentsales.agentpey.com --email <tu correo>`
+- [ ] **Variables de LinkedIn, X y TikTok** en tu `.env` (y en `.env.example`): `LINKEDIN_CLIENT_ID/SECRET/REDIRECT_URI`, `X_CLIENT_ID/SECRET/REDIRECT_URI` y `TIKTOK_CLIENT_KEY/SECRET/REDIRECT_URI` (`docs/07-checklist-cuentas.md`); sin ellas no se conectan esas redes
 - [ ] **Desplegar F9** (`docs/10-despliegue.md`, lo haces tú): aplica las migraciones `0014` a `0018`; después `ENV_FILE=.env.production pnpm db:seed --operator-brands` y el perfil editorial real de tus marcas con `brand edit` (en la base de desarrollo, AgentPey ya tiene el que me diste el 2026-10-20; `vinny` está vacío)
 - [ ] **T24 en vivo, red por red:** tras la prueba de entrada de cada red (abajo), conectar la cuenta de la marca y publicar un post en `live` con tu instrucción en el chat; en Discord y X, programado y con el worker del servidor encendido (criterio 3 de la fase)
 
@@ -181,7 +182,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - **F9, de T15, T16 y T26:** faltan en `.env.example` `LINKEDIN_CLIENT_ID/SECRET/REDIRECT_URI`, `X_CLIENT_ID/SECRET/REDIRECT_URI` y `TIKTOK_CLIENT_KEY/SECRET/REDIRECT_URI` (los agentes no tocan `.env*`; los agregas tú). Ninguna de las tres redes publica de verdad hasta S2, S3, S4 y S6.
 - **F9, de T14:** un video de más de 20 MiB no se publica en Discord (sale solo el texto): no hay enlace seguro porque R2 no tiene un dominio público (spec D8 cambiada). Se resuelve con un dominio de medios (`media.agentpey.com`), el mismo que pedirá TikTok para fotos. `social:smoke --platform discord` no existe: S5 se hace a mano.
 - **F9, de T23 (revisión de docs contra el código):**
-  - `IG_PUBLISH_OUTCOME_UNKNOWN` de Instagram sigue en `failed`, no en `outcome_unknown`: el panel resuelve un resultado dudoso solo en los posts, no en la sección Contenido de una propiedad. Cuando la tenga, sumarlo a `OUTCOME_UNKNOWN_CODES`.
+  - `IG_PUBLISH_OUTCOME_UNKNOWN` de Instagram (y `ML_PUBLISH_OUTCOME_UNKNOWN` de Portal) siguen en `failed`, no en `outcome_unknown` (criterio 5 de F9, parcial): el panel resuelve un resultado dudoso solo en los posts, no en la sección Contenido de una propiedad. Cuando la tenga, sumarlo a `OUTCOME_UNKNOWN_CODES`.
   - Retirar borrando en la red: X y TikTok dan `RETIRE_DELETE_UNSUPPORTED` hasta que retirar use `ensureRotatingAccessToken` (seguimiento de ADR-0029).
   - El tope de gasto de X (`spendLimitUsd`) no es atómico: dos publicaciones simultáneas de la misma cuenta podrían pasarse un poco. El tope duro sigue en la consola de X.
   - El video de X se baja entero a memoria (tope de 512 MB).
