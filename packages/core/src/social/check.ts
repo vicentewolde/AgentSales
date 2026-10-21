@@ -152,33 +152,10 @@ const SENTENCE_BREAK = /(?<=[.!?…:;])\s+/u;
 const OPENERS = new Set(["¿", "¡", '"', "«", "“", "'", "‘"]);
 
 /**
- * Palabras que se escriben con mayúscula y no son un hecho de la marca: las redes donde se
- * publica, los días y meses completos y abreviados, en inglés y en español (en inglés van con
- * mayúscula), los idiomas en inglés, el pronombre `I` y siglas comunes. Plegadas (sin tildes, en
- * minúsculas): `Mié` y `Sáb` quedan como `mie` y `sab`.
+ * Los días y los meses con su nombre completo, en inglés y en español (plegados). Nunca son un
+ * nombre propio de la marca: se ignoran siempre (en inglés van con mayúscula).
  */
-const COMMON_CAPITALIZED: ReadonlySet<string> = new Set([
-  "instagram",
-  "linkedin",
-  "discord",
-  "tiktok",
-  "x",
-  "i",
-  "ia",
-  "ai",
-  "ok",
-  "api",
-  "apis",
-  "ceo",
-  "cto",
-  "crm",
-  "faq",
-  "pdf",
-  "url",
-  "uf",
-  "b2b",
-  "b2c",
-  "saas",
+const DATE_NAMES: ReadonlySet<string> = new Set([
   "monday",
   "tuesday",
   "wednesday",
@@ -217,10 +194,16 @@ const COMMON_CAPITALIZED: ReadonlySet<string> = new Set([
   "octubre",
   "noviembre",
   "diciembre",
-  "english",
-  "spanish",
-  // Las abreviaturas de los días y los meses, en inglés y en español (con o sin punto: el punto no
-  // es parte de la palabra). Ensayo de la demo de F9: "Up to Oct 9" marcaba «Oct» como nombre.
+]);
+
+/**
+ * Las abreviaturas de los días y los meses, en inglés y en español (plegadas: `Mié` y `Sáb` quedan
+ * `mie` y `sab`). Muchas son también nombres reales (`Mon` Laferte, Viña del `Mar`, `Sun`, `Dom`),
+ * así que solo se ignoran **junto a una fecha** (`dateAbbreviationsAsWords`): pegadas a una cifra
+ * (`Oct 9`, `9 oct.`, `Oct 9-12`, `26 de ene.`), a un día o mes completo, o a otra abreviatura que lo está
+ * (`Mon, Oct 9`). Ensayo de la demo de F9: "Up to Oct 9" marcaba «Oct» como nombre.
+ */
+const DATE_ABBREVIATIONS: ReadonlySet<string> = new Set([
   "mon",
   "tue",
   "tues",
@@ -256,6 +239,103 @@ const COMMON_CAPITALIZED: ReadonlySet<string> = new Set([
   "dic",
 ]);
 
+/**
+ * Palabras que se escriben con mayúscula y no son un hecho de la marca: las redes donde se
+ * publica, los días y meses completos (`DATE_NAMES`), los idiomas en inglés, el pronombre `I` y
+ * siglas comunes. Plegadas (sin tildes, en minúsculas). Las abreviaturas de fechas van aparte
+ * (`DATE_ABBREVIATIONS`): solo valen junto a una fecha.
+ */
+const COMMON_CAPITALIZED: ReadonlySet<string> = new Set([
+  "instagram",
+  "linkedin",
+  "discord",
+  "tiktok",
+  "x",
+  "i",
+  "ia",
+  "ai",
+  "ok",
+  "api",
+  "apis",
+  "ceo",
+  "cto",
+  "crm",
+  "faq",
+  "pdf",
+  "url",
+  "uf",
+  "b2b",
+  "b2c",
+  "saas",
+  ...DATE_NAMES,
+  "english",
+  "spanish",
+]);
+
+/** Lo que puede separar las partes de una fecha: espacios, punto, coma, guiones y barra. */
+const DATE_GLUE = /^[\s.,\-–—/]+$/u;
+
+/**
+ * La línea con las abreviaturas de fecha que van **junto a una fecha** en minúsculas (el mismo
+ * largo), para que `unknownNames` no las tome por nombres: `Oct 9`, `9 oct.`, `Mon, Oct 9`,
+ * `Oct 9-12`, `Mié 9`, `26 de ene.`. Una abreviatura suelta o junto a otra palabra (`Mon Laferte`, `Viña del Mar`)
+ * queda como está y se revisa como cualquier nombre.
+ */
+function dateAbbreviationsAsWords(line: string): string {
+  const tokens = [...line.matchAll(/[\p{L}\p{N}]+/gu)].map((match) => ({
+    text: match[0],
+    start: match.index,
+    end: match.index + match[0].length,
+    folded: foldText(match[0]),
+  }));
+  const isAbbreviation = (i: number) => DATE_ABBREVIATIONS.has(tokens[i]?.folded ?? "");
+  /** Los vecinos de una palabra, si entre ellos solo hay separadores de fecha. */
+  const neighbors = (i: number): number[] => {
+    const token = tokens[i];
+    if (token === undefined) return [];
+    const result: number[] = [];
+    const before = tokens[i - 1];
+    if (before !== undefined && DATE_GLUE.test(line.slice(before.end, token.start))) {
+      result.push(i - 1);
+    }
+    const after = tokens[i + 1];
+    if (after !== undefined && DATE_GLUE.test(line.slice(token.end, after.start))) {
+      result.push(i + 1);
+    }
+    return result;
+  };
+  /** Una cifra o un día o mes completo: lo que ancla una fecha. */
+  const isAnchor = (i: number) => {
+    const token = tokens[i];
+    return token !== undefined && (/^\p{N}+$/u.test(token.text) || DATE_NAMES.has(token.folded));
+  };
+  /** "26 de ene.": una cifra y `de` antes de la abreviatura, como se escribe en español. */
+  const afterDayOf = (i: number) => {
+    const of = tokens[i - 1];
+    const day = tokens[i - 2];
+    const token = tokens[i];
+    return (
+      token !== undefined &&
+      of?.folded === "de" &&
+      day !== undefined &&
+      /^\p{N}+$/u.test(day.text) &&
+      DATE_GLUE.test(line.slice(day.end, of.start)) &&
+      DATE_GLUE.test(line.slice(of.end, token.start))
+    );
+  };
+  const anchored = (i: number) =>
+    isAbbreviation(i) && (neighbors(i).some(isAnchor) || afterDayOf(i));
+  let out = line;
+  tokens.forEach((token, i) => {
+    if (!isAbbreviation(i)) return;
+    if (!anchored(i) && !neighbors(i).some(anchored)) return;
+    const lower = token.text.toLowerCase();
+    if (lower.length !== token.text.length) return;
+    out = out.slice(0, token.start) + lower + out.slice(token.end);
+  });
+  return out;
+}
+
 /** `true` si la palabra lleva alguna mayúscula (`Banco`, `AgentPey`, `iPhone`, `CEO`). */
 const hasUppercase = (word: string) => /\p{Lu}/u.test(word);
 
@@ -290,14 +370,16 @@ const foldedWords = (text: string) => new Set(foldText(text).match(/[\p{L}\p{N}]
  * Los posibles nombres propios de un texto que no están en las fuentes (heurística, spec F9 §4.4):
  * una palabra con mayúscula que **no** abre una frase (ni una línea, ni va tras `¿`, `¡` o una
  * comilla), que no es una sigla o un énfasis en mayúsculas (`isShoutOrAcronym`), que no está entre
- * las palabras de las fuentes ni en `COMMON_CAPITALIZED`, y que no va en una línea con forma de
- * título (`isTitleLine`). Las que van seguidas se juntan (`Banco Central`). No ve un nombre escrito en minúsculas ni los que abren una
+ * las palabras de las fuentes ni en `COMMON_CAPITALIZED` (ni es una abreviatura de fecha junto a
+ * una fecha, `dateAbbreviationsAsWords`), y que no va en una línea con forma de título
+ * (`isTitleLine`). Las que van seguidas se juntan (`Banco Central`). No ve un nombre escrito en minúsculas ni los que abren una
  * frase: la regla de hechos del prompt es la primera barrera y el operador revisa cada texto.
  */
 function unknownNames(text: string, sourceWords: ReadonlySet<string>): string[] {
   const names: string[] = [];
-  for (const line of text.split("\n")) {
-    if (isTitleLine(line)) continue;
+  for (const raw of text.split("\n")) {
+    if (isTitleLine(raw)) continue;
+    const line = dateAbbreviationsAsWords(raw);
     for (const sentence of line.split(SENTENCE_BREAK)) {
       let run: { text: string; end: number } | null = null;
       let first = true;

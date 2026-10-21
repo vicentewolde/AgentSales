@@ -207,7 +207,7 @@ describe("checkPostContent: hechos fuera del perfil", () => {
     ).toEqual([]);
   });
 
-  it("los días y los meses, completos o abreviados, en inglés y en español, no son nombres (ensayo de la demo de F9)", () => {
+  it("los días y los meses completos no son nombres; los abreviados, solo junto a una fecha (ensayo de la demo de F9)", () => {
     // El hecho del perfil está en español; el texto de X, en inglés (la marca publica en los dos).
     const ctx = buildPostCheckContext({
       post: OPERATOR_POST,
@@ -220,16 +220,26 @@ describe("checkPostContent: hechos fuera del perfil", () => {
     });
     expect(codes("x", "Up to Oct 9: 26 purchases in 3 test stores.", ctx)).toEqual([]);
     expect(codes("x", "Up to Oct. 9, we had 26 purchases in 3 test stores.", ctx)).toEqual([]);
+    expect(codes("x", "See you Mon, Oct 9.", ctx)).toEqual([]);
+    expect(codes("x", "Open Oct 9-26 and on Sun 9.", ctx)).toEqual([]);
+    expect(codes("x", "We ship on Monday, October 9.", ctx)).toEqual([]);
     expect(codes("x", "On Monday we ship.", ctx)).toEqual([]);
     expect(
-      codes(
-        "linkedin",
-        "We ship on Mon and Fri, from Jan to Sept. Lo contamos el Lun. y el Mié, de Ene a Dic.",
-        ctx,
-      ),
+      codes("linkedin", "Lo contamos el Mié 9 y el 26 de Ene., de Lunes a Sáb. 3.", ctx),
     ).toEqual([]);
-    expect(codes("linkedin", "Nos vemos el Sáb, en Septiembre o en Ago.", ctx)).toEqual([]);
-    // Un nombre real que no está en el perfil se sigue marcando.
+    // Una abreviatura que no va junto a una fecha puede ser un nombre real: se revisa.
+    const singer = check("x", "We met Mon Laferte.", ctx);
+    expect(singer.map((item) => item.code)).toEqual(["FACT_NOT_IN_PROFILE"]);
+    expect(singer[0]?.message).toContain("«Mon Laferte»");
+    expect(check("linkedin", "Visit Viña del Mar.", ctx).map((item) => item.message)).toEqual([
+      "«Viña» parece un nombre propio que no está en el perfil ni en el brief del operador",
+      "«Mar» parece un nombre propio que no está en el perfil ni en el brief del operador",
+    ]);
+    expect(codes("x", "We ship on Mon and Fri.", ctx)).toEqual([
+      "FACT_NOT_IN_PROFILE",
+      "FACT_NOT_IN_PROFILE",
+    ]);
+    // Un nombre real que no está en el perfil se sigue marcando, también junto a una fecha.
     const checks = check("x", "Up to Oct 9 we work with Banco Estado.", ctx);
     expect(checks.map((item) => item.code)).toEqual(["FACT_NOT_IN_PROFILE"]);
     expect(checks[0]?.message).toContain("«Banco Estado»");
