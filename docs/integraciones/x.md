@@ -345,6 +345,13 @@ Igual que `IG_RATE_LIMITED` en Instagram: el 429 reprograma la publicación para
 12. **Cabeceras de tasa:** registrar `x-rate-limit-*` (solo nombres y valores, sin tokens) en una llamada real.
 13. **Saldo cero:** con el *spending limit* mínimo, ver el HTTP y el cuerpo al agotarse (402 o 429).
 
+### Resultado de S4 (2026-10-21, en el Mac con `PUBLISH_MODE=live`, la base de desarrollo y la cuenta `@vicentewolde` en la marca AgentPey; la hizo Claude con la autorización explícita del operador en el chat)
+- **Conexión (pruebas 1 y 2):** el OAuth 2.0 con PKCE funcionó con la vuelta `http://127.0.0.1:8787/api/oauth/x/callback`. X muestra «Se solicitaron permisos para acceder a contenido delicado» y pide marcar «Confío en esta app» antes de autorizar, porque la vuelta es local. La pantalla muestra el nombre de la app de la consola (hoy `2112730151071203346vicentewolde`: conviene renombrarla).
+- **Sin créditos:** el primer intento respondió **402** (`X_PAYMENT_REQUIRED`): queda `failed` con su consejo y no se reintenta solo. No cobró (el saldo era cero).
+- **Un post de texto sin enlace (prueba 4):** publicado (`published`, con su enlace `https://x.com/<usuario>/status/<id>`). Costo observado en la consola: **US$0,02** (US$0,015 redondeado), descontado de los créditos gratis que X dio al comprar (US$5 comprados → US$5 gratis adicionales).
+- **Texto repetido (prueba 7):** dentro del mismo post, AgentSales no vuelve a publicar un texto ya publicado (`NOTHING_TO_PUBLISH`, sin llamar a X). Con un **segundo post** con el mismo texto, X rechazó el duplicado (403) y la publicación quedó **`outcome_unknown`** («no se sabe si salió», sin reintento), tal como dice el diseño (ADR-0029, punto 8). El perfil mostraba una sola copia; se resolvió «No salió» y quedó `failed`. La consola contó 1 llamada facturable: el 403 no parece cobrar (por confirmar en la página de uso).
+- **Pendiente:** el hilo (prueba 6, `reply` al post propio) no lo hace AgentSales (sin hilos): se prueba a mano en el Playground de la consola. Borrar el post de prueba lo hace el operador, y ahí se ve si el borrado cobra.
+
 ## 9. Riesgos y términos de uso relevantes
 
 - **Developer Agreement (DOC, "Last Updated: April 27, 2026").** Puntos útiles: X puede suspender el acceso "immediately without notice" por incumplir el acuerdo o por falta de pago; no responde por los daños de la suspensión; los precios pueden cambiar y los cambios rigen desde el período siguiente; los pagos no se reembolsan; prohíbe usar la API o el contenido de X para entrenar o ajustar un modelo de base (excepto Grok); remite a las Automation Rules para las acciones automatizadas.
