@@ -82,6 +82,17 @@ describe("parseLinkedInPostUrl", () => {
     }
   });
 
+  it("el enlace corto lnkd.in tiene su propio mensaje: manda a copiar el de la barra de direcciones", () => {
+    const short = errorOf(() => parseLinkedInPostUrl("https://lnkd.in/p/diQmSaGV"));
+    expect(isAppError(short) && short.code).toBe("PUBLISHED_URL_INVALID");
+    expect((short as Error).message).toContain("enlace corto");
+    expect((short as Error).message).toContain("barra de direcciones");
+    expect((short as Error).message).not.toContain("diQmSaGV");
+    const other = errorOf(() => parseLinkedInPostUrl("https://evil.com/x"));
+    expect((other as Error).message).not.toContain("enlace corto");
+    expect((other as Error).message).toContain("barra de direcciones");
+  });
+
   it("parsePublishedUrl de LinkedIn usa el lector: el external_id es el URN", () => {
     expect(
       parsePublishedUrl("linkedin", "https://www.linkedin.com/feed/update/urn:li:share:9/?x=1"),
