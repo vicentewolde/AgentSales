@@ -458,8 +458,9 @@ export const ONBOARDING_STEP_TEXT: Readonly<Record<OnboardingStepKey, string>> =
 };
 
 /**
- * El nombre de un paso de la lista de alta; un paso que esta versión no conoce (una CLI o un panel
- * más viejo que la API) sale con su clave, sin romper.
+ * El nombre de un paso de la lista de alta; un paso sin texto sale con su clave. No protege de una
+ * CLI o un panel más viejo que la API: el contrato valida la clave con un enum cerrado y rechaza un
+ * paso nuevo antes de llegar aquí (la CLI y el panel van con la misma versión que la API).
  */
 export function onboardingStepText(key: string): string {
   return (ONBOARDING_STEP_TEXT as Readonly<Partial<Record<string, string>>>)[key] ?? key;
