@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">AgentSales icon</title>
+  <desc id="desc">Interlocked geometric A and S monogram with an electric-blue accent.</desc>
+  <g fill="none" stroke="#171A1F" stroke-width="60" stroke-linecap="butt" stroke-linejoin="miter">
+    <path d="M72 416 196 96h86v105"/>
+    <path d="M136 282h146"/>
+    <path d="M432 190v-24l-54-54H282v89l48 48h54l48 48v89h-96l-54-54v-24"/>
+  </g>
+  <path d="M378 112l54 54" fill="none" stroke="#176BFF" stroke-width="60" stroke-linecap="butt"/>
+</svg>
