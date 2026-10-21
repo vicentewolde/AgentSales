@@ -9,7 +9,13 @@ import {
   parseUsdAmount,
 } from "../broker.js";
 import { AppError } from "../errors.js";
-import { llmSpendText, ONBOARDING_STEP_TEXT, userStateText } from "../labels.js";
+import {
+  llmSpendText,
+  ONBOARDING_STEP_TEXT,
+  onboardingOwnerText,
+  onboardingStepText,
+  userStateText,
+} from "../labels.js";
 import { ONBOARDING_STEPS, onboardingSteps } from "../onboarding.js";
 import type { LogoNormalizer } from "../ports/logo-normalizer.js";
 import {
@@ -226,7 +232,8 @@ describe("onboardingSteps", () => {
       logo: "broker",
       whatsapp: "broker",
       user: "admin",
-      instagram: "admin",
+      // ADR-0028: el corredor conecta su propio Instagram.
+      instagram: "broker",
       mercadolibre: "admin",
       marketplace: "admin",
     });
@@ -256,7 +263,7 @@ describe("onboardingSteps", () => {
     });
     expect(state(others)).toMatchObject({
       user: "admin",
-      instagram: "admin",
+      instagram: "broker",
       mercadolibre: "admin",
     });
   });
@@ -493,9 +500,36 @@ describe("marcas (F9, ADR-0029)", () => {
       brand: "✓",
       editorial: "broker",
       user: "admin",
-      networks: "admin",
+      networks: "broker",
     });
-    expect(fresh.find((step) => step.key === "networks")?.pending).toContain("Discord");
+    // La marca conecta sus redes (ADR-0022 y ADR-0028), salvo Discord, que es del administrador.
+    expect(fresh.find((step) => step.key === "networks")?.pending).toContain(
+      "Discord lo conecta el administrador",
+    );
+    expect(onboardingOwnerText("broker", "brand")).toBe("lo hace la marca");
+    expect(onboardingOwnerText("broker", "broker")).toBe("lo hace el corredor");
+    expect(onboardingOwnerText("admin", "brand")).toBe("lo hace el administrador");
+    expect(onboardingStepText("networks")).toBe("Una red para los posts");
+    expect(onboardingStepText("paso-nuevo")).toBe("paso-nuevo");
+    // Un corredor con perfil editorial sigue con sus pasos de avisos: el perfil solo cuenta en una marca.
+    const withProfile = onboardingSteps({
+      broker: contentBrokerFixture(),
+      users: [],
+      accounts: [],
+      editorialProfile: {
+        pillars: [{ key: "a", name: "A", description: "", weight: 1 }],
+        facts: ["x"],
+      },
+    });
+    expect(withProfile.map((step) => step.key)).toEqual([
+      "brand",
+      "logo",
+      "whatsapp",
+      "user",
+      "instagram",
+      "mercadolibre",
+      "marketplace",
+    ]);
     // Un perfil sin hechos (o sin líneas) todavía no sirve; Portal y Marketplace no cuentan como red.
     const half = onboardingSteps({
       broker: brand,
@@ -511,7 +545,7 @@ describe("marcas (F9, ADR-0029)", () => {
         facts: [],
       },
     });
-    expect(state(half)).toMatchObject({ editorial: "broker", networks: "admin" });
+    expect(state(half)).toMatchObject({ editorial: "broker", networks: "broker" });
     const done = onboardingSteps({
       broker: { ...brand, operatorOwned: true },
       users: [],

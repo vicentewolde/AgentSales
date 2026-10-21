@@ -1,6 +1,6 @@
 import type { Broker } from "./broker.js";
 import type { EditorialProfile } from "./editorial-profile.js";
-import { isPostPlatform, POST_PLATFORMS } from "./enums.js";
+import { type BrokerKind, isPostPlatform, POST_PLATFORMS } from "./enums.js";
 import { PLATFORM_TEXT } from "./labels.js";
 import type { PlatformAccount } from "./platform-account.js";
 import type { User } from "./user.js";
@@ -43,14 +43,17 @@ const step = (
 
 /**
  * Los pasos del alta de un corredor, en orden: marca y colores, logo, WhatsApp (Portal lo exige),
- * un usuario activo con su contraseña (no hace falta en uno propio del operador), Instagram, Mercado Libre y Marketplace (a mano o
- * automático) conectados. Pura: recibe los usuarios y las cuentas **de ese corredor**.
+ * un usuario activo con su contraseña (no hace falta en uno propio del operador), Instagram (lo
+ * conecta el propio corredor, ADR-0028), Mercado Libre y Marketplace (a mano o automático)
+ * conectados. Pura: recibe los usuarios, las cuentas y el perfil editorial **de ese corredor**.
  *
  * Una marca (`kind = brand`) solo publica posts (spec F9 §4.3, ADR-0029): no tiene WhatsApp,
  * Mercado Libre ni Marketplace (son de los avisos) ni logo (lo usan solo la portada y la ficha de
  * un aviso). Sus pasos son marca, perfil editorial (al menos una línea de contenido y un hecho:
  * sin hechos la IA no puede afirmar nada), usuario y al menos una red de los posts conectada
- * (`POST_PLATFORMS`). `editorialProfile` solo se mira en una marca (`null` o ausente: no tiene).
+ * (`POST_PLATFORMS`; la conecta la marca, salvo Discord, que es del administrador: ADR-0022).
+ * `editorialProfile` solo cuenta en una marca (`null` o ausente: no tiene). Los pasos salen de un
+ * `switch` exhaustivo sobre `kind`: un `kind` nuevo no compila hasta decidir los suyos.
  */
 export function onboardingSteps(input: {
   broker: Broker;
@@ -85,37 +88,51 @@ export function onboardingSteps(input: {
           "aceptar la invitación y elegir la contraseña",
         )
       : step("user", false, "admin", "invitar a su usuario");
-  if (broker.kind === "brand") {
-    const profile = input.editorialProfile ?? null;
-    return [
-      brandStep,
-      step(
-        "editorial",
-        profile !== null && profile.pillars.length > 0 && profile.facts.length > 0,
-        "broker",
-        "el perfil editorial (al menos una línea de contenido y un hecho)",
-      ),
-      userStep,
-      step(
-        "networks",
-        input.accounts.some((account) => isConnected(account) && isPostPlatform(account.platform)),
-        "admin",
-        `conectar al menos una red de los posts (${POST_PLATFORMS.map((platform) => PLATFORM_TEXT[platform]).join(", ")})`,
-      ),
-    ];
+  const kind: BrokerKind = broker.kind;
+  switch (kind) {
+    case "broker":
+      return [
+        brandStep,
+        step("logo", broker.logoMediaId !== null, "broker", "subir el logo"),
+        step("whatsapp", broker.whatsapp !== null, "broker", "el WhatsApp (Portal lo exige)"),
+        userStep,
+        step("instagram", connected("instagram"), "broker", "conectar su Instagram (en Cuentas)"),
+        step(
+          "mercadolibre",
+          connected("portal_inmobiliario"),
+          "admin",
+          "conectar su Mercado Libre",
+        ),
+        step(
+          "marketplace",
+          connected("fb_marketplace"),
+          "admin",
+          "activar Marketplace (a mano o automático)",
+        ),
+      ];
+    case "brand": {
+      const profile = input.editorialProfile ?? null;
+      const selfConnected = POST_PLATFORMS.filter((platform) => platform !== "discord");
+      return [
+        brandStep,
+        step(
+          "editorial",
+          profile !== null && profile.pillars.length > 0 && profile.facts.length > 0,
+          "broker",
+          "el perfil editorial (al menos una línea de contenido y un hecho)",
+        ),
+        userStep,
+        step(
+          "networks",
+          input.accounts.some(
+            (account) => isConnected(account) && isPostPlatform(account.platform),
+          ),
+          "broker",
+          `conectar al menos una red de los posts en Cuentas (${selfConnected.map((platform) => PLATFORM_TEXT[platform]).join(", ")}; Discord lo conecta el administrador)`,
+        ),
+      ];
+    }
+    default:
+      return kind satisfies never;
   }
-  return [
-    brandStep,
-    step("logo", broker.logoMediaId !== null, "broker", "subir el logo"),
-    step("whatsapp", broker.whatsapp !== null, "broker", "el WhatsApp (Portal lo exige)"),
-    userStep,
-    step("instagram", connected("instagram"), "admin", "conectar su Instagram"),
-    step("mercadolibre", connected("portal_inmobiliario"), "admin", "conectar su Mercado Libre"),
-    step(
-      "marketplace",
-      connected("fb_marketplace"),
-      "admin",
-      "activar Marketplace (a mano o automático)",
-    ),
-  ];
 }
