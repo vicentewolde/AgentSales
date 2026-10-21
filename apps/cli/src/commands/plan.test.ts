@@ -9,7 +9,7 @@ import {
 } from "@agentsales/core";
 import { createInMemoryJobQueue } from "@agentsales/core/testing";
 import { Command } from "commander";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { brokerData, fakeClock, harness } from "../../test/harness.js";
 import { register, runPlanList, runPlanRequest, runPlanShow } from "./plan.js";
 import { runPostAccept, runPostDiscard, runPostEdit } from "./post.js";
@@ -303,5 +303,30 @@ describe("agentsales plan", () => {
       "--start",
       "--no-wait",
     ]);
+  });
+
+  describe("--broker de plan list por commander (ensayo de la demo de F9)", () => {
+    afterEach(() => {
+      process.exitCode = undefined;
+    });
+
+    it.each([
+      [["plan", "list", "--broker", "agentpey"]],
+      [["plan", "--broker", "agentpey", "list"]],
+    ])("%j llega a la lista, antes o después de list", async (argv) => {
+      const s = await setup();
+      expect(await runPlanRequest(s.deps(), { broker: "agentpey", wait: false })).toBe(0);
+      const [plan] = await s.h.planRuns.listByBroker(s.brand.id);
+      const program = new Command().exitOverride();
+      register(program, {
+        ...s.h.io,
+        api: () => s.h.client,
+      } as unknown as Parameters<typeof register>[1]);
+      s.h.out.length = 0;
+      await program.parseAsync(argv, { from: "user" });
+      expect(s.h.errors()).not.toContain("BROKER_REQUIRED");
+      expect(process.exitCode).toBe(0);
+      expect(s.h.text()).toContain(plan?.id ?? "?");
+    });
   });
 });

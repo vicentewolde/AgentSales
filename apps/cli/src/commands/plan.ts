@@ -339,7 +339,11 @@ export function register(program: Command, ctx: CliContext): void {
     .description("Los planes de la marca, los más recientes primero")
     .option("--broker <slug>", "la marca (si ves más de una)")
     .option("--json", "salida en JSON")
-    .action((options: { broker?: string; json?: boolean }) =>
-      exitWith(() => runPlanList(deps(), options)),
+    // `plan` también tiene `--broker` y commander se lo entrega al padre, esté antes o después de
+    // `list` (ensayo de la demo de F9): `optsWithGlobals` lo trae desde ahí.
+    .action((_options: { broker?: string; json?: boolean }, command: Command) =>
+      exitWith(() =>
+        runPlanList(deps(), command.optsWithGlobals<{ broker?: string; json?: boolean }>()),
+      ),
     );
 }
