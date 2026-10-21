@@ -144,6 +144,33 @@ describe("panel: detalle de un post", () => {
     expect(screen.getByText(/Discord: 1 publicación\(es\) en curso/)).toBeTruthy();
   });
 
+  it("sin cuenta en la red aprobada no ofrece publicar ni programar: dice el motivo y enlaza a Cuentas", async () => {
+    const s = await setup();
+    await s.draft([{ platform: "linkedin", language: "es" }]);
+    await s.client.posts[":id"].contents[":platform"][":language"].approve.$post({
+      param: { id: s.post.id, platform: "linkedin", language: "es" },
+    });
+    await s.open();
+    const section = screen.getByRole("region", { name: "Publicar" });
+    const publish = await within(section).findByRole("button", {
+      name: "Publicar en LinkedIn (simulación)",
+    });
+    await waitFor(() => expect(publish).toHaveProperty("disabled", true));
+    expect(publish.getAttribute("title")).toBe("Sin cuenta conectada en LinkedIn");
+    expect(within(section).getByRole("button", { name: "Programar…" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    expect(
+      within(section).getByText(/Sin cuenta conectada en LinkedIn: conéctala en/),
+    ).toBeTruthy();
+    expect(within(section).getByRole("link", { name: "Cuentas" }).getAttribute("href")).toBe(
+      "/cuentas",
+    );
+    fireEvent.click(publish);
+    expect(s.requests).not.toContain(`POST /posts/${s.post.id}/publish`);
+  });
+
   it("programar pide la hora de Chile y deja la publicación programada", async () => {
     const s = await setup();
     await s.draft();

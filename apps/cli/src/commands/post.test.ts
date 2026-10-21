@@ -309,6 +309,35 @@ describe("post de punta a punta", () => {
     expect(s.h.text()).toContain("Nada nuevo que subir");
   });
 
+  it("approve sin cuenta en ninguna red aprobada: lo que sigue es conectarla, no publicar (ensayo de la demo de F9)", async () => {
+    const s = await setup();
+    s.setDraft({ texts: [{ platform: "linkedin", language: "es" }] });
+    await runPostCreate(s.deps(), "Bastidores", { broker: "agentpey" });
+    const post = await s.created();
+    expect(await runPostDraft(s.deps(), post.id)).toBe(0);
+    s.h.out.length = 0;
+    expect(await runPostApprove(s.deps(), post.id, {})).toBe(0);
+    const text = s.h.text();
+    expect(text).toContain("LinkedIn · español: aprobado");
+    expect(text).toContain("sin cuenta conectada en esa red");
+    expect(text).toContain("→ Conecta la cuenta de LinkedIn (agentsales accounts)");
+    expect(text).not.toContain("→ Publica con");
+    expect(s.publicationsOf(post.id)).toEqual([]);
+
+    // Con una red con cuenta (Discord) entre las aprobadas, sí se sugiere publicar.
+    s.setDraft({
+      texts: [
+        { platform: "linkedin", language: "es" },
+        { platform: "discord", language: "es" },
+      ],
+    });
+    expect(await runPostDraft(s.deps(), post.id, { replaceEdits: true })).toBe(0);
+    s.h.out.length = 0;
+    expect(await runPostApprove(s.deps(), post.id, {})).toBe(0);
+    expect(s.h.text()).toContain(`→ Publica con agentsales post publish ${post.id}`);
+    expect(s.h.text()).not.toContain("→ Conecta la cuenta");
+  });
+
   it("edit toma el texto de la entrada estándar y lo deja editado; publish lo envía en simulación", async () => {
     const s = await setup();
     await runPostCreate(s.deps(), "Bastidores", { broker: "agentpey" });

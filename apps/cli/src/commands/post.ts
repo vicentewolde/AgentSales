@@ -1012,6 +1012,9 @@ export function runPostApprove(deps: PostDeps, id: string, options: PostApproveO
       );
     }
     let failed = 0;
+    /** Las redes aprobadas con publicación abierta (con cuenta) y las que no tienen cuenta. */
+    const withAccount = new Set<PostPlatform>();
+    const withoutAccount = new Set<PostPlatform>();
     for (const content of chosen) {
       const param = {
         param: {
@@ -1040,6 +1043,15 @@ export function runPostApprove(deps: PostDeps, id: string, options: PostApproveO
               : result.publications.length === 0
                 ? c.dim(" · sin cuenta conectada en esa red: conéctala (agentsales accounts)")
                 : "";
+          if (
+            result.created.length > 0 ||
+            result.publications.length > 0 ||
+            result.skipped.length > 0
+          ) {
+            withAccount.add(param.param.platform);
+          } else {
+            withoutAccount.add(param.param.platform);
+          }
           deps.print(`${c.green("✓")} ${textName(content)}: aprobado${opened}`);
           for (const skipped of result.skipped) {
             deps.printError(
@@ -1058,9 +1070,15 @@ export function runPostApprove(deps: PostDeps, id: string, options: PostApproveO
       }
     }
     if (!options.undo && failed < chosen.length) {
+      // Sin ninguna red con cuenta, publicar daría ACCOUNT_NOT_CONNECTED: lo que sigue es conectar
+      // (ensayo de la demo de F9). Los textos quedan aprobados y `post publish` abre después sus
+      // publicaciones.
+      const missing = [...withoutAccount].filter((platform) => !withAccount.has(platform));
       deps.print(
         c.dim(
-          `→ Publica con agentsales post publish ${postId}, o prográmalo con agentsales post schedule ${postId} --at "AAAA-MM-DD HH:MM"`,
+          withAccount.size === 0 && missing.length > 0
+            ? `→ Conecta la cuenta de ${missing.map((platform) => PLATFORM_TEXT[platform]).join(", ")} (agentsales accounts); después publícalo con agentsales post publish ${postId} o prográmalo con agentsales post schedule ${postId}`
+            : `→ Publica con agentsales post publish ${postId}, o prográmalo con agentsales post schedule ${postId} --at "AAAA-MM-DD HH:MM"`,
         ),
       );
     }
