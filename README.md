@@ -121,7 +121,7 @@ pnpm -s cli accounts connect linkedin|x|tiktok --broker <slug>   # OAuth en el n
 pbpaste | pnpm -s cli accounts connect discord --broker <slug> --webhook-stdin
 pnpm -s cli accounts mode <id> manual|api                    # LinkedIn nace a mano; spend-limit <id> <usd> para X
 pnpm -s cli plan --broker <slug> [--days 14]                 # la IA propone ideas con fecha; plan show|list
-pnpm -s cli post accept|discard <id>                         # aceptar una idea redacta sus textos
+pnpm -s cli post accept|discard <id>                         # aceptar una idea redacta sus textos (accept --wait los espera)
 pnpm -s cli post create|list|show|upload|draft|edit|approve|publish|schedule|archive
 pnpm -s cli publications resolve <id> --published|--not-published   # "no se sabe si salió"
 pbpaste | pnpm -s cli publications confirm <id> --url-stdin  # LinkedIn a mano o TikTok: lo publicaste
