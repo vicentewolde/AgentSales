@@ -48,7 +48,7 @@ describe("parseLinkedInPostUrl", () => {
     ).toBe("urn:li:activity:456");
   });
 
-  it("«Copiar enlace a la publicación»: /posts/…-activity-<número>-<sufijo>", () => {
+  it("el enlace largo de la publicación: /posts/…-activity-<número>-<sufijo>", () => {
     expect(
       parseLinkedInPostUrl(
         "https://www.linkedin.com/posts/vicente-wolde_arriendo-activity-post-activity-7381234567890123456-AbCd?utm_source=share&utm_medium=member_ios",

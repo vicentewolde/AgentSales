@@ -74,8 +74,9 @@ const FEED_UPDATE = new RegExp(
   "i",
 );
 /**
- * «Copiar enlace a la publicación»: `/posts/<usuario>_<texto>-activity-<número>-<sufijo>/`. El
- * número va al final, antes de un sufijo corto (sin él, también).
+ * El enlace largo de la publicación: `/posts/<usuario>_<texto>-activity-<número>-<sufijo>/` (a donde
+ * redirige el `lnkd.in` corto que hoy da «Copiar enlace a la publicación»). El número va al final,
+ * antes de un sufijo corto (sin él, también).
  */
 const POSTS_LINK = new RegExp(
   `^${HOST}\\/posts\\/[^/?#\\s]*?-(share|ugcPost|activity)-(\\d{10,30})(?:-[A-Za-z0-9_-]{1,12})?${TAIL}`,
@@ -94,7 +95,7 @@ const INVALID_LINK_MESSAGE =
  * puntos 8 y 9), sin red: devuelve el URN (`urn:li:share|ugcPost|activity:<número>`), que es el
  * mismo **formato** de `external_id` que guarda el publisher (el URN de `x-restli-id`), y el enlace
  * limpio `https://www.linkedin.com/feed/update/<urn>/`. Acepta `/feed/update/<urn>` (la barra del
- * navegador al abrir el post) y `/posts/…-activity-<número>-…` («Copiar enlace a la publicación»).
+ * navegador al abrir el post) y `/posts/…-activity-<número>-…` (el enlace largo).
  * Ojo: el número de `activity` no es el del `share` que creó la API (`linkedin.md` §4.6): borrar por
  * la API con un URN `activity` no está verificado (S2). Cualquier otra cosa es
  * `PUBLISHED_URL_INVALID` (no reintentable), sin repetir lo recibido. Un `lnkd.in` (el enlace corto que
