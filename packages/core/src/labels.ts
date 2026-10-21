@@ -449,10 +449,12 @@ export const ONBOARDING_STEP_TEXT: Readonly<Record<OnboardingStepKey, string>> =
   brand: "Marca y colores",
   logo: "Logo",
   whatsapp: "WhatsApp",
+  editorial: "Perfil editorial",
   user: "Usuario con contraseña",
   instagram: "Instagram",
   mercadolibre: "Mercado Libre",
   marketplace: "Marketplace",
+  networks: "Una red para los posts",
 };
 
 /** Quién hace un paso que falta. */

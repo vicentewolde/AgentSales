@@ -4,6 +4,7 @@ import {
   type Broker,
   type BrokerRepository,
   createBroker,
+  type EditorialProfileRepository,
   type LogoNormalizer,
   MAX_LOGO_BYTES,
   type MediaRepository,
@@ -35,6 +36,8 @@ export type BrokerRoutesDeps = {
   media: Pick<MediaRepository, "findByStoragePath" | "create">;
   storage: Pick<MediaStorage, "put">;
   platformAccounts: Pick<PlatformAccountRepository, "listByBroker">;
+  /** El perfil editorial: la lista de alta de una marca lo mira (spec F9 §4.3). */
+  editorialProfiles: Pick<EditorialProfileRepository, "get">;
   auth: { users: Pick<UserRepository, "list"> };
   /** El logo con sharp (`@agentsales/media/logo`, lo compone `server.ts`). */
   logos: LogoNormalizer;
@@ -52,13 +55,14 @@ const MULTIPART_OVERHEAD_BYTES = 64 * 1024;
  * spec F6 §4.10), el logo y la planilla. Lo de otro corredor no existe: `ownedBy` en `app.ts`.
  */
 export function brokerRoutes(deps: BrokerRoutesDeps) {
-  /** El corredor con su lista de alta (sus usuarios y sus cuentas). */
+  /** El corredor con su lista de alta (sus usuarios, sus cuentas y, si es marca, su perfil). */
   const detail = async (broker: Broker): Promise<BrokerDetailResponse> => {
-    const [users, accounts] = await Promise.all([
+    const [users, accounts, editorialProfile] = await Promise.all([
       deps.auth.users.list({ brokerId: broker.id }),
       deps.platformAccounts.listByBroker(broker.id),
+      broker.kind === "brand" ? deps.editorialProfiles.get(broker.id) : Promise.resolve(null),
     ]);
-    return { broker, onboarding: onboardingSteps({ broker, users, accounts }) };
+    return { broker, onboarding: onboardingSteps({ broker, users, accounts, editorialProfile }) };
   };
   const brokerOf = async (id: string): Promise<Broker> => {
     const broker = await deps.brokers.findById(id);

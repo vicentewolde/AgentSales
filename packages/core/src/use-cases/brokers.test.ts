@@ -10,7 +10,7 @@ import {
 } from "../broker.js";
 import { AppError } from "../errors.js";
 import { llmSpendText, ONBOARDING_STEP_TEXT, userStateText } from "../labels.js";
-import { onboardingSteps } from "../onboarding.js";
+import { ONBOARDING_STEPS, onboardingSteps } from "../onboarding.js";
 import type { LogoNormalizer } from "../ports/logo-normalizer.js";
 import {
   contentBrokerFixture,
@@ -447,7 +447,7 @@ describe("revisión del lote H", () => {
     expect(userStateText({ ...user, disabled: true, locked: true })).toBe("desactivado");
     expect(llmSpendText({ spentUsd: 0.7, capUsd: 0.5 })).toBe("US$ 0,70 de US$ 0,50");
     expect(llmSpendText({ spentUsd: 0, capUsd: null })).toBe("US$ 0,00 (sin tope)");
-    expect(Object.keys(ONBOARDING_STEP_TEXT)).toHaveLength(7);
+    expect(Object.keys(ONBOARDING_STEP_TEXT)).toHaveLength(ONBOARDING_STEPS.length);
   });
 });
 
@@ -482,6 +482,48 @@ describe("marcas (F9, ADR-0029)", () => {
     await expect(
       updateBroker({ brokers }, ADMIN, brand.id, { autoPublish: false }),
     ).resolves.toMatchObject({ autoPublish: false });
+  });
+
+  it("la lista de alta de una marca: sin WhatsApp, logo, Mercado Libre ni Marketplace; con el perfil y una red de los posts", () => {
+    const brand = contentBrokerFixture({ kind: "brand", logoMediaId: null, whatsapp: null });
+    const state = (steps: ReturnType<typeof onboardingSteps>) =>
+      Object.fromEntries(steps.map((step) => [step.key, step.done ? "✓" : step.owner]));
+    const fresh = onboardingSteps({ broker: brand, users: [], accounts: [] });
+    expect(state(fresh)).toEqual({
+      brand: "✓",
+      editorial: "broker",
+      user: "admin",
+      networks: "admin",
+    });
+    expect(fresh.find((step) => step.key === "networks")?.pending).toContain("Discord");
+    // Un perfil sin hechos (o sin líneas) todavía no sirve; Portal y Marketplace no cuentan como red.
+    const half = onboardingSteps({
+      broker: brand,
+      users: [],
+      accounts: [
+        { brokerId: brand.id, platform: "portal_inmobiliario", status: "connected" },
+        { brokerId: brand.id, platform: "fb_marketplace", status: "connected" },
+        { brokerId: brand.id, platform: "x", status: "expired" },
+        { brokerId: "otra", platform: "discord", status: "connected" },
+      ],
+      editorialProfile: {
+        pillars: [{ key: "a", name: "A", description: "", weight: 1 }],
+        facts: [],
+      },
+    });
+    expect(state(half)).toMatchObject({ editorial: "broker", networks: "admin" });
+    const done = onboardingSteps({
+      broker: { ...brand, operatorOwned: true },
+      users: [],
+      accounts: [{ brokerId: brand.id, platform: "discord", status: "connected" }],
+      editorialProfile: {
+        pillars: [{ key: "a", name: "A", description: "", weight: 1 }],
+        facts: ["AgentSales publica en Instagram"],
+      },
+    });
+    expect(done.every((step) => step.done && step.owner === null && step.pending === null)).toBe(
+      true,
+    );
   });
 
   it("los predicados: un aviso y la publicación automática, solo en un corredor", () => {
