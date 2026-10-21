@@ -145,9 +145,8 @@ function postHint(error: ApiCallError, postId: string, xLinkMissing = false): st
   if (error.code === "CONTENT_HAS_ERRORS" && xLinkMissing) return xLinkHint(postId);
   const hints: Record<string, string> = {
     POST_NOT_FOUND: "Mira tus posts con agentsales post list",
-    POST_NOT_IDEA: `Ya no es una idea: míralo con ${show(postId)}. Si quedó aceptada sin textos, pídelos con agentsales post draft ${postId}; un post aceptado se archiva con agentsales post archive ${postId}`,
-    QUEUE_UNAVAILABLE:
-      "El worker o la cola no responden: arranca el worker (pnpm dev, o el del servidor) y vuelve a intentarlo; si la idea quedó aceptada, pide sus textos con agentsales post draft",
+    POST_NOT_IDEA: `Ya no es una idea: míralo con ${show(postId)} (si la IA está redactando, sus textos aparecen ahí al terminar). Si quedó aceptada sin textos y sin redacción en curso, pídelos con agentsales post draft ${postId}; un post aceptado se archiva con agentsales post archive ${postId}`,
+    QUEUE_UNAVAILABLE: `El worker o la cola no responden: arranca el worker (pnpm dev, o el del servidor) y vuelve a intentarlo; si fue al aceptar una idea, esa ya quedó aceptada sin textos: pídelos con agentsales post draft ${postId}`,
     POST_PLATFORM_EXCLUDED: `Esa red no está entre las del post: agrégala con agentsales post edit ${postId} --platforms <redes>`,
     POST_NOT_READY: `Mira su estado con ${show(postId)}: una idea se acepta primero y un post archivado ya no cambia`,
     POST_ARCHIVED: "Un post archivado no cambia: crea otro con agentsales post create",
@@ -702,40 +701,54 @@ export function runPostDraft(deps: PostDeps, id: string, options: PostDraftOptio
       deps.printError(c.dim(`→ Revisa el resultado con: ${show(postId)}`));
       return 0;
     }
-    deps.print(`Textos ${contentRun.id}: ${contentRunProgressText(contentRun)}…`);
-    const done = await waitForRun<ContentRunView>(deps, {
-      run: contentRun,
-      fetch: async () =>
-        (
-          await unwrap(
-            deps.client["content-runs"][":id"].$get({ param: { id: contentRun.id } }),
-            contentRunResponseSchema,
-          )
-        ).contentRun,
-      isTerminal: (run) => isTerminalContentRun(run.status),
-      progress: contentRunProgressText,
-      laterCommand: show(postId),
-      noun: "los textos",
-    });
-    if (done === null) return 1;
-    deps.print("");
-    deps.print(renderDraftRun(done, c, postId));
-    if (done.status !== "succeeded") return 1;
-    try {
-      const { contents } = await fetchPost(deps.client, postId);
-      deps.print("");
-      deps.print(c.bold("Revisión"));
-      for (const content of contents) {
-        deps.print(`  ${textName(content)}: ${CONTENT_STATUS_TEXT[content.status]}`);
-        deps.print(renderChecks(content, c, "    ").join("\n"));
-      }
-    } catch {
-      deps.printError(c.yellow(`No se pudo leer la revisión: mírala con ${show(postId)}`));
-    }
-    deps.print("");
-    deps.print(c.dim(`→ Revisa y aprueba: ${show(postId)} y agentsales post approve ${postId}`));
-    return 0;
+    return waitForDraft(deps, contentRun, postId);
   });
+}
+
+/**
+ * Espera la corrida de textos de un post (`RUN_WAIT`, como `prepare`) e imprime su resumen y la
+ * revisión de cada texto. La usan `post draft` y `post accept --wait`, cada uno con **su** corrida:
+ * esperar nunca pide textos nuevos. Devuelve 1 si la corrida falló o no terminó en el tope.
+ */
+async function waitForDraft(
+  deps: PostDeps,
+  contentRun: ContentRunView,
+  postId: string,
+): Promise<number> {
+  const c = deps.colors;
+  deps.print(`Textos ${contentRun.id}: ${contentRunProgressText(contentRun)}…`);
+  const done = await waitForRun<ContentRunView>(deps, {
+    run: contentRun,
+    fetch: async () =>
+      (
+        await unwrap(
+          deps.client["content-runs"][":id"].$get({ param: { id: contentRun.id } }),
+          contentRunResponseSchema,
+        )
+      ).contentRun,
+    isTerminal: (run) => isTerminalContentRun(run.status),
+    progress: contentRunProgressText,
+    laterCommand: show(postId),
+    noun: "los textos",
+  });
+  if (done === null) return 1;
+  deps.print("");
+  deps.print(renderDraftRun(done, c, postId));
+  if (done.status !== "succeeded") return 1;
+  try {
+    const { contents } = await fetchPost(deps.client, postId);
+    deps.print("");
+    deps.print(c.bold("Revisión"));
+    for (const content of contents) {
+      deps.print(`  ${textName(content)}: ${CONTENT_STATUS_TEXT[content.status]}`);
+      deps.print(renderChecks(content, c, "    ").join("\n"));
+    }
+  } catch {
+    deps.printError(c.yellow(`No se pudo leer la revisión: mírala con ${show(postId)}`));
+  }
+  deps.print("");
+  deps.print(c.dim(`→ Revisa y aprueba: ${show(postId)} y agentsales post approve ${postId}`));
+  return 0;
 }
 
 // ── edit y approve ───────────────────────────────────────────────────────
@@ -1252,13 +1265,17 @@ export function runPostSchedule(deps: PostDeps, id: string, options: PostSchedul
 
 // ── accept y discard (las ideas del plan, F9-T21) ─────────────────────────
 
+export type PostAcceptOptions = { wait?: boolean };
+
 /**
- * `agentsales post accept <id>` (spec F9 §4.9, ADR-0030 punto 3): la idea pasa a borrador y la IA
- * redacta sus textos (`post.draft`, solo para sus redes). No espera: se aceptan varias seguidas y
- * los textos se miran con `post show` (o se esperan con `post draft`, que sigue la misma corrida).
- * Aprobar y programar siguen siendo pasos aparte.
+ * `agentsales post accept <id> [--wait]` (spec F9 §4.9, ADR-0030 punto 3): la idea pasa a borrador
+ * y la IA redacta sus textos (`post.draft`, solo para sus redes). Sin `--wait` no espera (se
+ * aceptan varias seguidas y los textos se miran con `post show`); con `--wait` espera **esa**
+ * corrida, como `post draft` la suya, sin pedir otra. Nunca sugiere `post draft` para esperar: eso
+ * pide textos nuevos y vuelve a gastar IA (ensayo de la demo de F9). Aprobar y programar siguen
+ * siendo pasos aparte.
  */
-export function runPostAccept(deps: PostDeps, id: string) {
+export function runPostAccept(deps: PostDeps, id: string, options: PostAcceptOptions = {}) {
   const c = deps.colors;
   return guarded(deps, async () => {
     const postId = postIdOf(id);
@@ -1269,12 +1286,17 @@ export function runPostAccept(deps: PostDeps, id: string) {
       throw explained(error, postId);
     });
     deps.print(`${c.green("✓")} Idea aceptada: "${post.topic}" (${POST_STATUS_TEXT[post.status]})`);
+    if (options.wait === true) {
+      if (reused)
+        deps.printError(c.yellow("Ya había textos en preparación para este post: sigo esos"));
+      return waitForDraft(deps, contentRun, post.id);
+    }
     deps.print(
       `  La IA redacta sus textos (${contentRun.id}${reused ? ", ya estaba en curso" : ""}): ${contentRunProgressText(contentRun)}`,
     );
     deps.print(
       c.dim(
-        `→ Espera los textos con agentsales post draft ${post.id}, o míralos después con ${show(post.id)}; luego los apruebas y programas (no se publica sola)`,
+        `→ Míralos cuando terminen con ${show(post.id)} (para esperarlos al aceptar, usa agentsales post accept <id> --wait); luego los apruebas y programas (no se publica sola)`,
       ),
     );
     return 0;
@@ -1434,7 +1456,10 @@ export function register(program: Command, ctx: CliContext): void {
     .command("accept")
     .description("Acepta una idea del plan: pasa a borrador y la IA redacta sus textos")
     .argument("<id>", "id de la idea (agentsales plan show <plan>)")
-    .action((id: string) => exitWith(() => runPostAccept(deps(), id)));
+    .option("--wait", "espera los textos de esta aceptación y muestra su revisión")
+    .action((id: string, options: PostAcceptOptions) =>
+      exitWith(() => runPostAccept(deps(), id, options)),
+    );
   post
     .command("discard")
     .description("Descarta una idea del plan (no se vuelve a proponer en 60 días)")

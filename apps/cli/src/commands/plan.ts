@@ -115,7 +115,9 @@ function ideaNextSteps(idea: PlanIdeaView): string[] {
     return [`Aceptada sin textos: pídelos con agentsales post draft ${idea.id}`];
   }
   if (idea.status === "draft" && idea.texts === 0) {
-    return [`La IA está redactando sus textos: espera con agentsales post draft ${idea.id}`];
+    return [
+      `La IA está redactando sus textos: míralos cuando terminen con agentsales post show ${idea.id}`,
+    ];
   }
   if (idea.status === "draft" || idea.status === "ready") {
     return [`Revisa, aprueba y programa: agentsales post show ${idea.id}`];
