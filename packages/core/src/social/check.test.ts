@@ -207,6 +207,35 @@ describe("checkPostContent: hechos fuera del perfil", () => {
     ).toEqual([]);
   });
 
+  it("los días y los meses, completos o abreviados, en inglés y en español, no son nombres (ensayo de la demo de F9)", () => {
+    // El hecho del perfil está en español; el texto de X, en inglés (la marca publica en los dos).
+    const ctx = buildPostCheckContext({
+      post: OPERATOR_POST,
+      profile: {
+        ...PROFILE,
+        facts: ["Hasta el 9 de octubre de 2026: 26 compras en 3 tiendas de prueba"],
+      },
+      broker: BRAND,
+      media: [{ role: "original", kind: "image" }],
+    });
+    expect(codes("x", "Up to Oct 9: 26 purchases in 3 test stores.", ctx)).toEqual([]);
+    expect(codes("x", "Up to Oct. 9, we had 26 purchases in 3 test stores.", ctx)).toEqual([]);
+    expect(codes("x", "On Monday we ship.", ctx)).toEqual([]);
+    expect(
+      codes(
+        "linkedin",
+        "We ship on Mon and Fri, from Jan to Sept. Lo contamos el Lun. y el Mié, de Ene a Dic.",
+        ctx,
+      ),
+    ).toEqual([]);
+    expect(codes("linkedin", "Nos vemos el Sáb, en Septiembre o en Ago.", ctx)).toEqual([]);
+    // Un nombre real que no está en el perfil se sigue marcando.
+    const checks = check("x", "Up to Oct 9 we work with Banco Estado.", ctx);
+    expect(checks.map((item) => item.code)).toEqual(["FACT_NOT_IN_PROFILE"]);
+    expect(checks[0]?.message).toContain("«Banco Estado»");
+    expect(codes("x", "We work with Banco Estado.", ctx)).toEqual(["FACT_NOT_IN_PROFILE"]);
+  });
+
   it("una sigla o un énfasis en mayúsculas de 2 a 6 letras no es un nombre", () => {
     expect(codes("linkedin", "Esto es GRATIS para siempre, con IA y B2B.")).toEqual(["AVOID_TERM"]);
     expect(codes("linkedin", "Les presento a ACMECORP hoy.")).toEqual(["FACT_NOT_IN_PROFILE"]);

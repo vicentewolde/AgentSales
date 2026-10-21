@@ -153,8 +153,9 @@ const OPENERS = new Set(["¿", "¡", '"', "«", "“", "'", "‘"]);
 
 /**
  * Palabras que se escriben con mayúscula y no son un hecho de la marca: las redes donde se
- * publica, los días y meses (en inglés van con mayúscula), los idiomas en inglés, el pronombre
- * `I` y siglas comunes. Plegadas (sin tildes, en minúsculas).
+ * publica, los días y meses completos y abreviados, en inglés y en español (en inglés van con
+ * mayúscula), los idiomas en inglés, el pronombre `I` y siglas comunes. Plegadas (sin tildes, en
+ * minúsculas): `Mié` y `Sáb` quedan como `mie` y `sab`.
  */
 const COMMON_CAPITALIZED: ReadonlySet<string> = new Set([
   "instagram",
@@ -218,6 +219,41 @@ const COMMON_CAPITALIZED: ReadonlySet<string> = new Set([
   "diciembre",
   "english",
   "spanish",
+  // Las abreviaturas de los días y los meses, en inglés y en español (con o sin punto: el punto no
+  // es parte de la palabra). Ensayo de la demo de F9: "Up to Oct 9" marcaba «Oct» como nombre.
+  "mon",
+  "tue",
+  "tues",
+  "wed",
+  "thu",
+  "thur",
+  "thurs",
+  "fri",
+  "sat",
+  "sun",
+  "lun",
+  "mar",
+  "mie",
+  "jue",
+  "vie",
+  "sab",
+  "dom",
+  "jan",
+  "feb",
+  "apr",
+  "jun",
+  "jul",
+  "aug",
+  "sep",
+  "sept",
+  "oct",
+  "nov",
+  "dec",
+  "ene",
+  "abr",
+  "ago",
+  "set",
+  "dic",
 ]);
 
 /** `true` si la palabra lleva alguna mayúscula (`Banco`, `AgentPey`, `iPhone`, `CEO`). */
