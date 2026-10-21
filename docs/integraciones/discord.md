@@ -285,6 +285,12 @@ El código `40062` ("Service resource is being rate limited") también es reinte
   8. Cabeceras `X-RateLimit-*` que devuelve un webhook; ráfaga de 10 mensajes para ver el 429 (en el servidor de pruebas).
   9. Qué hace el cliente ante un enlace a un video MP4 y a un archivo adjunto (reproducción).
 
+### Resultado de S5 (2026-10-21, en el Mac con `PUBLISH_MODE=live` y la base de desarrollo; la hizo Claude con la autorización explícita del operador en el chat)
+- **Servidor y webhook:** un servidor privado nuevo «AgentPey pruebas» (solo el operador) y un webhook «AgentPey» en `#general`. La URL pasó del portapapeles a `accounts connect discord --broker agentpey --webhook-stdin` sin mostrarse; Discord respondió a la lectura del webhook y la cuenta quedó conectada.
+- **Tres mensajes publicados de verdad** con `post publish --platform discord`, cada uno con su enlace `https://discord.com/channels/<servidor>/<canal>/<mensaje>`: solo texto, una imagen PNG de 1080×1350 y un video vertical de 6 s (unos 5 MB, con sus variantes `x_video` e `ig_reel`; cabe en 20 MiB). Los tres se ven en el canal con el nombre del webhook, sin menciones.
+- **Secretos:** la URL del webhook no aparece en ningún log de la API ni del worker (redactor de F9-T02).
+- **Pendiente:** un video de más de 20 MiB (sale solo el texto con una nota, D8), y ver si un 429 corto se respeta con mensajes seguidos. Borrar el servidor de prueba lo hace el operador.
+
 ## 9. Riesgos y términos de uso relevantes
 
 Fuentes: Política de Desarrolladores de Discord (versión leída: vigente desde 2024-07-08, actualizada 2024-06-06, a través de un lector público de la página oficial; puede haber una versión posterior), resúmenes de búsqueda de los Términos de desarrollador, y las guías de Discord. **Leer las versiones vigentes en el Developer Portal antes de ofrecer el sistema a terceros.**
