@@ -232,6 +232,71 @@ Dependencias por archivos: T02 y T04b (`PublicationItem.tsx`, `PublicationsPanel
   - [ ] los criterios de §6 verificados
   - [ ] el operador tiene la guía paso a paso de la demo
 
+### Lote 2 · Lo que vio el operador en la primera prueba (2026-10-22)
+El operador probó la demo en el servidor (propiedad de ejemplo, programar y salir solo, portada) y anotó lo que confunde o falta. Sus decisiones del mismo día: borrar **de verdad** los corredores de prueba (`corredor-demo`, `agentsales-pruebas`, `demo-meta` y `demo`), música de una **biblioteca libre de derechos** incluida, y la invitación por correo **abriendo su programa de correo** (sin servicio nuevo). Ejecución igual que el lote 1 (D10); este lote cierra con `v1.5.0`.
+
+| Cupo | Tareas |
+|---|---|
+| Tanda A | T14 (borrar un corredor) · T15 (invitación, sesión y textos) · T18 (reel desde fotos) |
+| Tanda B | T16 (crear un corredor fácil, tras T14) · T17 (perfil editorial claro, tras T15) · T19 (música, tras T18 y la nota `docs/integraciones/musica-reels.md`) |
+
+### F9.5-T14 · Borrar un corredor de verdad
+- **Depende de:** —
+- **Descripción:** `purgeBroker` en core: borra un corredor y todo lo suyo (usuarios y sesiones, cuentas y sus credenciales, propiedades, medios y sus archivos en R2, textos, corridas, publicaciones y su bitácora, cargas, posts, perfil editorial, planes, valores de campos), en una transacción para la base y después los objetos de R2 por sus claves (lo que no se pueda borrar en R2 queda anotado y se reintenta, sin dejar filas huérfanas). Se niega si hay algo publicándose o programado (pide cancelarlo antes) y si el corredor es el único administrador de algo. Ruta de administrador `DELETE /brokers/:id` que exige repetir el slug; CLI `brokers delete <slug>` que muestra el resumen de lo que se borra (cuántas propiedades, medios, publicaciones, usuarios y cuentas) y pide escribir el slug (`--yes` no basta: exige `--confirm <slug>`). No borra nada en las redes (lo publicado sigue allá). Decisión en **ADR-0035** (extiende ADR-0027).
+- **Archivos principales:** `packages/core/src/use-cases/purge-broker.ts` (nuevo), los repositorios de `packages/db` (un método de borrado por agregado o una consulta en transacción), `packages/storage` (borrar por lista de claves), `apps/api/src/routes/brokers.ts`, `apps/cli/src/commands/brokers.ts`, `docs/02-modelo-datos.md`, `docs/10-despliegue.md` (respaldo antes de borrar)
+- **Hecho cuando:**
+  - [ ] con PGlite, un corredor con propiedades, medios, publicaciones, posts, cuentas y usuarios queda sin una sola fila suya, y los demás corredores intactos (test de repositorio)
+  - [ ] se niega con algo publicándose o programado (test)
+  - [ ] la ruta es solo del administrador y exige el slug; la CLI muestra el resumen y exige `--confirm` (tests)
+  - [ ] los archivos de R2 se borran por sus claves y un fallo de R2 no deja la base a medias (tests con el almacenamiento falso)
+  - [ ] `pnpm check` pasa (CI)
+
+### F9.5-T15 · La invitación, la sesión y textos que confunden
+- **Depende de:** —
+- **Descripción:** (1) la página de la invitación explica qué hace («Estás creando tu usuario en AgentSales: elige una contraseña») y, si en ese navegador ya hay una sesión abierta, lo avisa antes de cambiarla («Tienes abierta la sesión de X; si sigues, se cierra. Para seguir viendo como administrador, abre este enlace en una ventana privada»); (2) junto al enlace de invitación o de restablecer, el botón **Enviar por correo** abre el programa de correo con el asunto y el mensaje listos (`mailto:` con el correo del invitado; el enlace va en el cuerpo y nunca en la URL de la página ni en los logs); (3) el aviso rojo «Este texto tiene publicaciones activas…» pasa a lenguaje claro («Ya se publicó o está por publicarse con este texto. Para cambiarlo, primero retira o descarta esas publicaciones») y en un tono de aviso, no de error; (4) la guía dice que la sesión es una por navegador.
+- **Archivos principales:** `apps/web/src/pages/InvitationPage.tsx`, el bloque de usuarios de `apps/web/src/pages/BrokerPage.tsx`, `apps/web/src/components/content/ApprovableText.tsx` (o donde viva el aviso), `packages/core/src/labels.ts` si el texto es compartido, `docs/08-guia-operador.md`
+- **Hecho cuando:**
+  - [ ] la invitación con una sesión abierta muestra el aviso y no la cierra sin confirmar (test)
+  - [ ] el botón arma un `mailto:` correcto con el correo, asunto y cuerpo (test)
+  - [ ] el aviso nuevo aparece donde estaba el rojo (test)
+  - [ ] `pnpm check` pasa (CI)
+
+### F9.5-T16 · Crear un corredor fácil
+- **Depende de:** T14 (comparten `routes/brokers.ts` y `commands/brokers.ts`)
+- **Descripción:** el formulario de **Crear un corredor** pide solo lo esencial (nombre y nombre de la marca; el slug se arma solo y se puede cambiar) y deja el resto en **Opciones avanzadas**, plegado (colores con un valor por defecto, WhatsApp, correo, Instagram, sitio, tono, hashtags, propio o no, tope de IA). **Crear desde una planilla:** subir la planilla de Excel con la hoja Corredor llena llena el formulario (se revisa antes de guardar), con la lectura que ya existe en `packages/importers` (`xlsx-reader.ts`, hoja Corredor). La CLI `brokers create` queda igual.
+- **Archivos principales:** `apps/web/src/pages/BrokersPage.tsx` (formulario), `apps/api/src/routes/brokers.ts` (una ruta que lee la hoja Corredor sin guardar), `packages/importers/src/xlsx-reader.ts`, `docs/08-guia-operador.md`
+- **Hecho cuando:**
+  - [ ] se crea un corredor con solo nombre y marca (test)
+  - [ ] una planilla con la hoja Corredor llena llena el formulario sin guardar nada (tests de la ruta y del panel)
+  - [ ] `pnpm check` pasa (CI)
+
+### F9.5-T17 · Un perfil editorial que se entienda
+- **Depende de:** T15 (zona del panel)
+- **Descripción:** en Mi marca y en la página del corredor, el perfil editorial explica cada campo con un ejemplo de corredor de propiedades: **Público** («Familias jóvenes que buscan arriendo en Providencia y Ñuñoa»), **Temas de la marca** (hoy «Líneas de contenido»: qué temas publica y cuánto de cada uno, con el peso como «poco / normal / mucho» en vez de un número suelto), **Hechos que la IA puede afirmar** («12 años vendiendo en Ñuñoa», «Más de 200 propiedades arrendadas») y **Cosas que evitar** («Prometer plusvalía», «Hablar mal de otros corredores»), con ejemplos que se pueden insertar. **La cadencia** con días como botones (L M M J V S D) y horas como chips de hora (agregar «10:00», quitar con una x), en vez del texto `red/posts/días/horas/espacio`.
+- **Archivos principales:** `apps/web/src/components/EditorialProfileForm.tsx` (o donde viva), `apps/web/src/pages/MyBrandPage.tsx`, `BrokerPage.tsx`, `docs/08-guia-operador.md`
+- **Hecho cuando:**
+  - [ ] cada campo tiene su ayuda y su ejemplo, y los ejemplos se pueden insertar (test)
+  - [ ] la cadencia se edita con días y horas por botones y se guarda igual que hoy (test, sin cambiar el contrato)
+  - [ ] `pnpm check` pasa (CI)
+
+### F9.5-T18 · Reel desde las fotos
+- **Depende de:** —
+- **Descripción:** si una propiedad no tiene video, la preparación arma el reel con sus fotos (la portada primero): video vertical 1080×1920, cada foto unos 3 s con un fundido, fondo difuminado para las fotos horizontales, y el texto del reel encima como hoy; con video, todo sigue igual. La clave del reel incluye que salió de fotos (no se rehace si nada cambió). El panel dice «Reel armado con tus fotos».
+- **Archivos principales:** `packages/media/src/video.ts` (`encodeReelFromPhotos`), `packages/media/src/pipeline.ts`, `packages/core/src/use-cases/prepare-content.ts` (etapa `reel`), `packages/core/src/media-checks.ts`, `apps/web/src/components/content/Preview.tsx` (el aviso), `docs/04-formato-publicaciones.md`
+- **Hecho cuando:**
+  - [ ] una propiedad sin video y con 3 o más fotos queda con reel (tests con ffmpeg y del caso de uso)
+  - [ ] con video, el reel sigue saliendo del video (test)
+  - [ ] `pnpm check` pasa (CI)
+
+### F9.5-T19 · Música en los reels
+- **Depende de:** T18 y la nota `docs/integraciones/musica-reels.md`
+- **Descripción:** una biblioteca de unas 5 pistas libres de derechos (las de la nota, con su licencia y su atribución si la exige) guardadas en R2; cada propiedad y cada post con video puede elegir una o «sin música» (por defecto, sin música). El reel mezcla la pista (con fundido al final y al volumen justo, bajo la voz si el video trae audio); cambiar la pista rehace el reel. Si la licencia pide atribución, va al final del texto de la red. Contrato y migración si hacen falta (solo agregan).
+- **Archivos principales:** se definen con la nota de integraciones (ADR si la biblioteca cambia el modelo de datos)
+- **Hecho cuando:**
+  - [ ] elegir una pista rehace el reel con esa música; «sin música» lo deja como hoy (tests)
+  - [ ] la atribución aparece cuando la licencia la exige (test)
+  - [ ] `pnpm check` pasa (CI)
+
 ## 6. Criterios de aceptación de la fase
 1. Todas las pantallas del panel usan el mismo sistema visual y la portada resume el día.
 2. Ningún estado, botón o mensaje del recorrido de la demo usa palabras técnicas; «simulación» aparece solo en `dry-run`.
@@ -276,5 +341,6 @@ Antes (jueves 29, el operador): desplegar; crear su corredor para propiedades y 
 | 2026-10-22 | Borrador tras la entrevista con el operador; alcance y nombre aprobados por él |
 | 2026-10-22 | Revisión del `arquitecto` (5 bloqueantes, aplicados): Portal al resolver un resultado dudoso (id `MLC…`, enlace obligatorio en `live`, sync, «many») y T04 partida en T04a y T04b; la reserva de gasto de X con candado sobre la cuenta; D7 definida y ADR-0034; dependencias por archivos y tandas rearmadas; T11 sin tocar `contracts`. No bloqueantes también aplicados: D4 por estado, `publicationFormatText` con el número de medios, el renovador de X en la API, `discord_video` sin migración, `useAccounts()` en T12, `publishedAt` en la portada, criterios verificables y riesgos de la demo |
 | 2026-10-22 | **Aprobado por el operador** (el alcance, el nombre y el trabajo en paralelo) |
+| 2026-10-22 | **Lote 2** (T14 a T19) con las observaciones del operador en su primera prueba en el servidor; ADR-0035 (borrar un corredor) |
 | 2026-10-22 | **Cierre de la fase** (T13, `v1.4.0`): 12 tareas en 14 PR (#217 a #230); la guía de la demo en `docs/12-demo-oficina.md` y el paso «En vivo solo durante una demo» en `docs/10-despliegue.md` |
 | 2026-10-22 | T06 (PR #224, revisión del `revisor`): D7 precisada con lo implementado: una red con 0 posts por semana no es candidata (`OUT_OF_CADENCE`); con días u horas vacíos solo se completa lo que falta y se conservan sus posts por semana; el espacio mínimo es como máximo `ceil(posts por semana / días)` posts por día; las semanas con menos ideas cuentan también lo ya planificado. Nota de implementación en T06 (`PLAN_FALLBACK_PER_WEEK` de 3 a 1) |
