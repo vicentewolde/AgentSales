@@ -225,6 +225,14 @@ const xVideo = (media: readonly Media[]): Media | null => {
 const postMediaMissing = (platform: Platform, message: string) =>
   new AppError("CONTENT_NOT_READY", message, { details: { platform } });
 
+// F9.5-T21: lo que falta, dicho en simple. Publicar y programar un post esperan a que existan.
+const WAIT_PROCESSING = " (si ya las subiste, espera a que terminen de procesarse)";
+const MISSING_IMAGE =
+  "Falta la imagen del post: súbela o consíguela (si ya la subiste, espera a que termine de procesarse)";
+const MISSING_VIDEO =
+  "Falta el video del post: súbelo o consíguelo (si ya lo subiste, espera a que termine de procesarse)";
+const MISSING_CAROUSEL = `Faltan las imágenes del carrusel: súbelas o consíguelas${WAIT_PROCESSING}`;
+
 /**
  * Instagram (spec F9 §4.4 y §4.6, F9-T13): lo que publica según lo que lleva el post. Una imagen
  * va como imagen suelta (el `ig_4x5` de su primera foto, aunque el post tenga más); un carrusel,
@@ -244,10 +252,7 @@ function instagramPostPlan(kind: Post["kind"], media: readonly Media[]): Publica
   if (kind === "video") {
     const video = postVideo(media);
     if (video === null) {
-      throw postMediaMissing(
-        "instagram",
-        "Falta el video procesado del post: espera a que termine",
-      );
+      throw postMediaMissing("instagram", MISSING_VIDEO);
     }
     return { format: "reel", mediaIds: [video.id] };
   }
@@ -255,17 +260,14 @@ function instagramPostPlan(kind: Post["kind"], media: readonly Media[]): Publica
   if (kind === "image") {
     const [first] = images;
     if (first === undefined) {
-      throw postMediaMissing(
-        "instagram",
-        "Falta la imagen procesada del post: espera a que termine",
-      );
+      throw postMediaMissing("instagram", MISSING_IMAGE);
     }
     return { format: "post", mediaIds: [first.id] };
   }
   if (images.length < CAROUSEL_MIN_ITEMS) {
     throw postMediaMissing(
       "instagram",
-      `Un carrusel de Instagram lleva de ${CAROUSEL_MIN_ITEMS} a ${CAROUSEL_MAX_ITEMS} imágenes procesadas y este post tiene ${images.length}: espera a que terminen o súbelas`,
+      `Faltan las imágenes del carrusel: Instagram lleva de ${CAROUSEL_MIN_ITEMS} a ${CAROUSEL_MAX_ITEMS} y este post tiene ${images.length} lista${images.length === 1 ? "" : "s"}. Súbelas o consíguelas${WAIT_PROCESSING}`,
     );
   }
   return {
@@ -310,7 +312,7 @@ export function postPublicationPlan(
           ? xVideo(media)
           : postVideo(media);
     if (video === null) {
-      throw postMediaMissing(platform, "Falta el video procesado del post: espera a que termine");
+      throw postMediaMissing(platform, MISSING_VIDEO);
     }
     return { format: "post", mediaIds: [video.id] };
   }
@@ -319,10 +321,7 @@ export function postPublicationPlan(
   }
   const images = postImages(media);
   if (images.length === 0) {
-    throw postMediaMissing(
-      platform,
-      "Faltan las imágenes procesadas del post: espera a que terminen",
-    );
+    throw postMediaMissing(platform, kind === "carousel" ? MISSING_CAROUSEL : MISSING_IMAGE);
   }
   // X lleva hasta 4 imágenes (la revisión del texto ya frena un post con más, F9-T11).
   const kept = platform === "x" ? images.slice(0, X_MAX_IMAGES) : images;

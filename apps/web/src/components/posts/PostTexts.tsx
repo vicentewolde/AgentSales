@@ -24,6 +24,7 @@ import { PostPreview } from "../preview/PostPreview.js";
 import { draftDiffers, type PreviewText } from "../preview/preview.js";
 import { editBlockedReason, unapproveBlockedReason } from "../publications/publications.js";
 import { Alert } from "../ui/Alert.js";
+import { Badge } from "../ui/Badge.js";
 import { Button } from "../ui/Button.js";
 import { Field, Input, Textarea } from "../ui/Field.js";
 import { type PostContentView, postContents } from "./labels.js";
@@ -35,6 +36,30 @@ type PostTextsPost = Pick<PostJson, "platforms" | "xLinkAllowed" | "kind" | "bro
 /** El nombre de una pestaña: la red y el idioma. */
 export const tabName = (content: Pick<ContentView, "platform" | "language">) =>
   `${PLATFORM_TEXT[content.platform]} · ${LANGUAGE_TEXT[content.language]}`;
+
+/**
+ * Lo que la revisión de un texto dice del estado de su pestaña (F9.5-T21): `error` si tiene un
+ * error de verdad (la «!» roja), `pending` si lo único que hay es que faltan los medios del post
+ * (`MEDIA_REQUIREMENT`: el texto se aprueba igual, publicar espera las imágenes) y `null` si no hay
+ * nada que decir.
+ */
+export function textTabState(content: Pick<ContentView, "checks">): "error" | "pending" | null {
+  if (hasContentErrors(content.checks)) return "error";
+  return content.checks.some((check) => check.code === "MEDIA_REQUIREMENT") ? "pending" : null;
+}
+
+/**
+ * Los motivos de una pestaña, uno por línea y con su nombre («Instagram · español: …»): los errores
+ * y lo que falta. Con `all`, también el resto de las advertencias (para el título de la pestaña).
+ */
+export function textTabReasons(
+  content: Pick<ContentView, "platform" | "language" | "checks">,
+  { all = false }: { all?: boolean } = {},
+): string[] {
+  return content.checks
+    .filter((check) => all || check.severity === "error" || check.code === "MEDIA_REQUIREMENT")
+    .map((check) => `${tabName(content)}: ${check.message}`);
+}
 
 /**
  * El largo como lo cuenta la red (`postTextLength`, la misma función de la revisión): X ponderado
@@ -279,6 +304,32 @@ function TextTab({
 }
 
 /**
+ * Por qué una pestaña tiene «!» o está pendiente, a la vista y no solo al pasar el cursor
+ * (F9.5-T21): una línea por motivo, con el nombre de la pestaña.
+ */
+function TextProblems({ contents }: { contents: readonly ContentView[] }) {
+  const rows = contents.flatMap((content) =>
+    content.checks
+      .filter((check) => check.severity === "error" || check.code === "MEDIA_REQUIREMENT")
+      .map((check) => ({
+        key: `${content.platform}:${content.language}:${check.code}:${check.message}`,
+        error: check.severity === "error",
+        text: `${tabName(content)}: ${check.message}`,
+      })),
+  );
+  if (rows.length === 0) return null;
+  return (
+    <ul aria-label="Qué falta o qué corregir" className="mt-2 space-y-1 text-sm">
+      {rows.map((row) => (
+        <li key={row.key} className={row.error ? "text-danger-700" : "text-warning-800"}>
+          {row.error ? "Error" : "Pendiente"} · {row.text}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
  * Los textos del post: una pestaña por red e idioma (en el orden de la API), con el texto editable,
  * el conteo de la red, la vista previa con la forma de la red, la revisión con su consejo y aprobar o quitar la
  * aprobación. `lockReason` bloquea todo mientras la IA redacta o si el post está archivado.
@@ -326,6 +377,9 @@ export function PostTexts({
               aria-selected={active}
               aria-controls={`${ids}-panel`}
               onClick={() => setSelected(keyOf(content))}
+              {...(textTabReasons(content, { all: true }).length > 0
+                ? { title: textTabReasons(content, { all: true }).join("\n") }
+                : {})}
               className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
                 active
                   ? "bg-surface font-semibold text-fg shadow-xs ring-1 ring-line"
@@ -339,16 +393,18 @@ export function PostTexts({
                   ✓
                 </span>
               )}
-              {hasContentErrors(content.checks) && (
+              {textTabState(content) === "error" && (
                 <span aria-hidden="true" className="font-bold text-danger-600">
                   {" "}
                   !
                 </span>
               )}
+              {textTabState(content) === "pending" && <Badge tone="warning">pendiente</Badge>}
             </button>
           );
         })}
       </div>
+      <TextProblems contents={texts} />
       <div
         role="tabpanel"
         id={`${ids}-panel`}

@@ -439,33 +439,65 @@ function tooLongMessage(platform: PostPlatform, length: number, max: number): st
   return `El texto tiene ${length} caracteres con los hashtags (máximo ${max})`;
 }
 
-/** Los requisitos de medios de cada red (spec F9 §4.4 y §4.6): el mensaje, o `null` si cumple. */
-function mediaProblem(platform: PostPlatform, ctx: PostCheckContext): string | null {
+/** Un problema de medios del post: lo que falta (advertencia) o lo que no sirve (error). */
+type MediaProblem = { code: "MEDIA_REQUIREMENT" | "MEDIA_NOT_SUPPORTED"; message: string };
+
+const missing = (message: string): MediaProblem => ({ code: "MEDIA_REQUIREMENT", message });
+const unsupported = (message: string): MediaProblem => ({
+  code: "MEDIA_NOT_SUPPORTED",
+  message,
+});
+
+/**
+ * Los requisitos de medios de cada red (spec F9 §4.4 y §4.6; F9.5-T21): `null` si cumple. Lo que
+ * **falta** es `MEDIA_REQUIREMENT` (advertencia: el texto se puede redactar y aprobar sin las
+ * imágenes, que llegan después; publicar y programar esperan a que existan). Lo que **no sirve**
+ * (un formato que la red no publica o más archivos de los que admite) es `MEDIA_NOT_SUPPORTED`
+ * (error: el operador cambia el tipo del post o quita archivos).
+ */
+function mediaProblem(platform: PostPlatform, ctx: PostCheckContext): MediaProblem | null {
   const { kind, media } = ctx;
   if (kind === "video") {
     return media.videos === 0
-      ? "El post es de video y no tiene video: súbelo o cambia el tipo del post"
+      ? missing("Falta el video: el post es de video y aún no tiene ninguno. Súbelo o consíguelo")
       : null;
   }
-  if (platform === "tiktok") return "TikTok publica solo video: cambia el post a video y súbelo";
+  if (platform === "tiktok") {
+    return unsupported("TikTok publica solo video: cambia el post a video y súbelo");
+  }
   if (kind === "text") {
     return platform === "instagram"
-      ? "Instagram necesita una imagen o un video: súbelos y cambia el tipo del post"
+      ? unsupported("Instagram necesita una imagen o un video: cambia el tipo del post y súbelos")
       : null;
   }
-  if (media.images === 0) return "El post es de imágenes y no tiene ninguna: súbelas";
-  if (
-    platform === "instagram" &&
-    kind === "carousel" &&
-    (media.images < CAROUSEL_MIN_ITEMS || media.images > CAROUSEL_MAX_ITEMS)
-  ) {
-    return `Un carrusel de Instagram lleva de ${CAROUSEL_MIN_ITEMS} a ${CAROUSEL_MAX_ITEMS} imágenes, y este tiene ${media.images}`;
+  if (media.images === 0) {
+    return missing(
+      kind === "carousel"
+        ? "Faltan las imágenes del carrusel: el post aún no tiene ninguna. Súbelas o consíguelas"
+        : "Falta la imagen: el post es de imagen y aún no tiene ninguna. Súbela o consíguela",
+    );
+  }
+  if (platform === "instagram" && kind === "carousel") {
+    if (media.images < CAROUSEL_MIN_ITEMS) {
+      return missing(
+        `Faltan las imágenes del carrusel: Instagram pide de ${CAROUSEL_MIN_ITEMS} a ${CAROUSEL_MAX_ITEMS} y este tiene ${media.images}. Sube o consigue las que faltan`,
+      );
+    }
+    if (media.images > CAROUSEL_MAX_ITEMS) {
+      return unsupported(
+        `Un carrusel de Instagram lleva de ${CAROUSEL_MIN_ITEMS} a ${CAROUSEL_MAX_ITEMS} imágenes, y este tiene ${media.images}`,
+      );
+    }
   }
   if (platform === "x" && media.images > X_MAX_IMAGES) {
-    return `X admite hasta ${X_MAX_IMAGES} imágenes o 1 video por post, y este tiene ${media.images} imágenes`;
+    return unsupported(
+      `X admite hasta ${X_MAX_IMAGES} imágenes o 1 video por post, y este tiene ${media.images} imágenes`,
+    );
   }
   if (platform === "discord" && media.images > DISCORD_MAX_FILES) {
-    return `Discord admite hasta ${DISCORD_MAX_FILES} archivos por mensaje, y este tiene ${media.images} imágenes`;
+    return unsupported(
+      `Discord admite hasta ${DISCORD_MAX_FILES} archivos por mensaje, y este tiene ${media.images} imágenes`,
+    );
   }
   return null;
 }
@@ -543,10 +575,11 @@ export function unsupportedFacts(text: string, sources: string): string[] {
  *   están en las fuentes de hechos (`buildPostCheckContext`; un brief de la IA no cuenta);
  * - `LINK_NOT_ALLOWED`: en X, un enlace que el operador no puso en el brief del post, o cualquier
  *   enlace si el post no tiene la marca explícita del operador (`xLinkAllowed`, F9-T16);
- * - `MEDIA_REQUIREMENT`: un video sin video, Instagram sin imagen ni video, un carrusel de
- *   Instagram fuera de 2 a 10 imágenes, TikTok sin video, X con más de 4 imágenes, Discord con
- *   más de 10.
- * Advertencias: `LINK_COST` (X con un enlace: US$0,20 en vez de US$0,015), `AVOID_TERM` (algo de
+ * - `MEDIA_NOT_SUPPORTED`: Instagram con un post de solo texto, TikTok con un post que no es de
+ *   video, un carrusel de Instagram con más de 10 imágenes, X con más de 4, Discord con más de 10.
+ * Advertencias: `MEDIA_REQUIREMENT` (F9.5-T21: faltan los medios del post, o a un carrusel de
+ * Instagram le faltan imágenes para llegar a 2; el texto se aprueba igual, pero publicar y
+ * programar esperan los medios), `LINK_COST` (X con un enlace: US$0,20 en vez de US$0,015), `AVOID_TERM` (algo de
  * lo que el perfil pide evitar), `AI_TELL` (muletillas de texto escrito por IA, `findAiTells`),
  * `MARKDOWN` (salvo en Discord, que lo muestra) y `MEDIA_UNUSED` (un post `image` con varias fotos
  * en Instagram: sale solo la primera).
@@ -631,7 +664,7 @@ export function checkPostContent(
   }
 
   const problem = mediaProblem(platform, ctx);
-  if (problem !== null) add("MEDIA_REQUIREMENT", problem);
+  if (problem !== null) add(problem.code, problem.message);
   // Instagram publica una imagen suelta con la primera foto (F9-T13): las demás no salen.
   if (platform === "instagram" && ctx.kind === "image" && ctx.media.images > 1) {
     add(

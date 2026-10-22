@@ -1052,11 +1052,20 @@ export function runPostApprove(deps: PostDeps, id: string, options: PostApproveO
             deps.client.posts[":id"].contents[":platform"][":language"].approve.$post(param),
             contentApproveResponseSchema,
           );
+          // F9.5-T21: sin los medios del post el texto se aprueba igual, pero todavía no abre
+          // publicaciones: no es que falte la cuenta.
+          const mediaPending = result.content.checks.some(
+            (check) => check.code === "MEDIA_REQUIREMENT",
+          );
           const opened =
             result.created.length > 0
               ? ` · listas para publicar o programar: ${result.created.length}`
               : result.publications.length === 0
-                ? c.dim(" · sin cuenta conectada en esa red: conéctala (agentsales accounts)")
+                ? mediaPending
+                  ? c.yellow(
+                      ` · faltan los medios del post: súbelos con agentsales post upload ${postId} <archivos…> para poder publicarlo`,
+                    )
+                  : c.dim(" · sin cuenta conectada en esa red: conéctala (agentsales accounts)")
                 : "";
           if (
             result.created.length > 0 ||
@@ -1064,7 +1073,7 @@ export function runPostApprove(deps: PostDeps, id: string, options: PostApproveO
             result.skipped.length > 0
           ) {
             withAccount.add(param.param.platform);
-          } else {
+          } else if (!mediaPending) {
             withoutAccount.add(param.param.platform);
           }
           deps.print(`${c.green("✓")} ${textName(content)}: aprobado${opened}`);

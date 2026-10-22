@@ -386,6 +386,91 @@ describe("programar un post", () => {
   });
 });
 
+describe("un post sin medios (F9.5-T21)", () => {
+  /** El post pierde sus imágenes procesadas: como si el operador las hubiera borrado. */
+  const withoutMedia = async (options?: Parameters<typeof createPostPublicationScenario>[0]) => {
+    const t = await createPostPublicationScenario(options);
+    for (const image of t.images) await t.media.deleteDerivative(image.id);
+    return t;
+  };
+
+  it("publicar una red es CONTENT_NOT_READY, con el motivo en simple, sin encolar nada", async () => {
+    const t = await withoutMedia();
+
+    const error = await caught(
+      publishPost(t.deps, {
+        postId: t.post.id,
+        platform: "discord",
+        dryRun: true,
+        actor: "operator",
+      }),
+    );
+
+    expect(isAppError(error) && error.code).toBe("CONTENT_NOT_READY");
+    expect(isAppError(error) && error.retriable).toBe(false);
+    expect(error instanceof Error && error.message).toContain("Falta la imagen del post");
+    expect(t.queue.jobs).toEqual([]);
+    expect(t.current(t.publicationOf("discord").id)?.status).toBe("approved");
+  });
+
+  it("programar el post lo informa por red y programar o empezar una publicación es CONTENT_NOT_READY", async () => {
+    const t = await withoutMedia();
+    const publication = t.publicationOf("discord");
+
+    const { results } = await schedulePost(
+      { ...t.deps, now: () => NOW },
+      { postId: t.post.id, at: AT, dryRun: true, actor: "operator" },
+    );
+    expect(results).toMatchObject([
+      { platform: "discord", outcome: "skipped", code: "CONTENT_NOT_READY" },
+    ]);
+    expect(await codeOf(schedule(t, publication))).toBe("CONTENT_NOT_READY");
+    expect(
+      await codeOf(
+        startPublication(t.deps, {
+          publicationId: publication.id,
+          dryRun: true,
+          actor: "operator",
+        }),
+      ),
+    ).toBe("CONTENT_NOT_READY");
+    expect(t.current(publication.id)?.status).toBe("approved");
+    expect(t.queue.jobs).toEqual([]);
+  });
+
+  it("el reloj nunca intenta publicarla: una programada que perdió sus medios queda failed, no reintentable", async () => {
+    const t = await createPostPublicationScenario();
+    const publication = await schedule(t, t.publicationOf("discord"));
+    for (const image of t.images) await t.media.deleteDerivative(image.id);
+
+    const result = await due(t, AFTER);
+
+    expect(result.started).toEqual([]);
+    expect(result.failed).toEqual([{ publicationId: publication.id, code: "CONTENT_NOT_READY" }]);
+    expect(t.current(publication.id)).toMatchObject({
+      status: "failed",
+      lastError: { code: "CONTENT_NOT_READY", retriable: false },
+    });
+    expect(t.queue.jobs).toEqual([]);
+  });
+
+  it("un post de solo texto en LinkedIn no necesita medios", async () => {
+    const t = await createPostPublicationScenario({
+      kind: "text",
+      images: 0,
+      texts: [{ platform: "linkedin", language: "es" }],
+    });
+    await expect(
+      publishPost(t.deps, {
+        postId: t.post.id,
+        platform: "linkedin",
+        dryRun: true,
+        actor: "operator",
+      }),
+    ).resolves.toMatchObject({ started: [{ status: "publishing" }] });
+  });
+});
+
 describe("desprogramar, descartar y retirar un post", () => {
   it("desprogramar vuelve a approved y descartar una programada la deja cancelled", async () => {
     const t = await twoLanguages();

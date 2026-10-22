@@ -9,6 +9,7 @@ import { ErrorAlert } from "../ErrorAlert.js";
 import { Button } from "../ui/Button.js";
 import { Card } from "../ui/Card.js";
 import { FILE_INPUT } from "../ui/styles.js";
+import { POST_MEDIA_ANCHOR } from "./media-anchor.js";
 
 /** Lo que acepta el selector: las extensiones de core (la API vuelve a revisar). */
 const ACCEPT = Object.keys(POST_MEDIA_TYPES)
@@ -89,7 +90,12 @@ export function PostMedia({
 
   const uploading = progress !== null;
   return (
-    <Card as="section" aria-label="Medios" title={`Fotos y videos (${media.length})`}>
+    <Card
+      as="section"
+      id={POST_MEDIA_ANCHOR}
+      aria-label="Medios"
+      title={`Fotos y videos (${media.length})`}
+    >
       {media.length === 0 ? (
         <p className="text-sm text-fg-muted">Sin medios: un post de solo texto no los necesita.</p>
       ) : (

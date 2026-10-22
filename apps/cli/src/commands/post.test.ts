@@ -338,6 +338,28 @@ describe("post de punta a punta", () => {
     expect(s.h.text()).not.toContain("→ Conecta la cuenta");
   });
 
+  it("approve de un post de imágenes sin imágenes: aprueba y dice que faltan los medios, no la cuenta (F9.5-T21)", async () => {
+    const s = await setup();
+    s.setDraft({ texts: [{ platform: "discord", language: "es" }] });
+    await runPostCreate(s.deps(), "Bastidores", { broker: "agentpey", kind: "image" });
+    const post = await s.created();
+    expect(await runPostDraft(s.deps(), post.id)).toBe(0);
+    s.h.out.length = 0;
+    expect(await runPostApprove(s.deps(), post.id, {})).toBe(0);
+    const text = s.h.text();
+    expect(text).toContain("Discord · español: aprobado");
+    expect(text).toContain("faltan los medios del post");
+    expect(text).toContain(`agentsales post upload ${post.id}`);
+    expect(text).not.toContain("sin cuenta conectada");
+    expect(text).not.toContain("→ Conecta la cuenta");
+    expect(s.publicationsOf(post.id)).toEqual([]);
+
+    // Publicar todavía no se puede: faltan los medios.
+    expect(await runPostPublish(s.deps(), post.id, { platform: "discord" })).toBe(1);
+    expect(s.h.errors()).toContain("Falta la imagen del post");
+    expect(s.publicationsOf(post.id)).toEqual([]);
+  });
+
   it("edit toma el texto de la entrada estándar y lo deja editado; publish lo envía en simulación", async () => {
     const s = await setup();
     await runPostCreate(s.deps(), "Bastidores", { broker: "agentpey" });
