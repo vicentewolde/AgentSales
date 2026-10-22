@@ -1030,6 +1030,8 @@ export function runPostApprove(deps: PostDeps, id: string, options: PostApproveO
     /** Las redes aprobadas con publicación abierta (con cuenta) y las que no tienen cuenta. */
     const withAccount = new Set<PostPlatform>();
     const withoutAccount = new Set<PostPlatform>();
+    /** Las aprobadas con cuenta que esperan sus medios (F9.5-T21). */
+    const withPendingMedia = new Set<PostPlatform>();
     for (const content of chosen) {
       const param = {
         param: {
@@ -1052,13 +1054,23 @@ export function runPostApprove(deps: PostDeps, id: string, options: PostApproveO
             deps.client.posts[":id"].contents[":platform"][":language"].approve.$post(param),
             contentApproveResponseSchema,
           );
+          // F9.5-T21: sin los medios del post (o mientras se procesan) el texto se aprueba igual,
+          // pero todavía no abre publicaciones: la API lo dice (`mediaPending`); no es que falte
+          // la cuenta.
+          const mediaPending = result.mediaPending === true;
           const opened =
             result.created.length > 0
               ? ` · listas para publicar o programar: ${result.created.length}`
-              : result.publications.length === 0
-                ? c.dim(" · sin cuenta conectada en esa red: conéctala (agentsales accounts)")
-                : "";
-          if (
+              : mediaPending
+                ? c.yellow(
+                    ` · los medios faltan o se están procesando: súbelos con agentsales post upload ${postId} <archivos…> o espera a que terminen`,
+                  )
+                : result.publications.length === 0
+                  ? c.dim(" · sin cuenta conectada en esa red: conéctala (agentsales accounts)")
+                  : "";
+          if (mediaPending) {
+            withPendingMedia.add(param.param.platform);
+          } else if (
             result.created.length > 0 ||
             result.publications.length > 0 ||
             result.skipped.length > 0
@@ -1091,9 +1103,11 @@ export function runPostApprove(deps: PostDeps, id: string, options: PostApproveO
       const missing = [...withoutAccount].filter((platform) => !withAccount.has(platform));
       deps.print(
         c.dim(
-          withAccount.size === 0 && missing.length > 0
-            ? `→ Conecta la cuenta de ${missing.map((platform) => PLATFORM_TEXT[platform] ?? platform).join(", ")} (agentsales accounts); después publícalo con agentsales post publish ${postId} o prográmalo con agentsales post schedule ${postId}`
-            : `→ Publica con agentsales post publish ${postId}, o prográmalo con agentsales post schedule ${postId} --at "AAAA-MM-DD HH:MM"`,
+          withAccount.size === 0 && withPendingMedia.size > 0
+            ? `→ Sube los medios con agentsales post upload ${postId} <archivos…> (o espera a que se procesen); después publícalo con agentsales post publish ${postId} o prográmalo con agentsales post schedule ${postId}`
+            : withAccount.size === 0 && missing.length > 0
+              ? `→ Conecta la cuenta de ${missing.map((platform) => PLATFORM_TEXT[platform] ?? platform).join(", ")} (agentsales accounts); después publícalo con agentsales post publish ${postId} o prográmalo con agentsales post schedule ${postId}`
+              : `→ Publica con agentsales post publish ${postId}, o prográmalo con agentsales post schedule ${postId} --at "AAAA-MM-DD HH:MM"`,
         ),
       );
     }

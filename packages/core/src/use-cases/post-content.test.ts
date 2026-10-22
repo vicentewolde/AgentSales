@@ -44,6 +44,8 @@ type Setup = {
   texts?: { platform: Platform; language: Language }[];
   /** Las redes con una cuenta conectada de la marca. */
   accounts?: Platform[];
+  /** F9.5-T21: el post aún no tiene medios procesados (subidos o por conseguir). */
+  noProcessedMedia?: boolean;
 };
 
 async function setup(options: Setup = {}) {
@@ -84,6 +86,7 @@ async function setup(options: Setup = {}) {
     height: 1350,
     durationS: null,
   });
+  if (options.noProcessedMedia === true) await media.deleteDerivative(image.id);
   const { contents, contentRuns } = createInMemoryContentRepositories();
   const publications = createInMemoryPublicationRepository();
   const platformAccounts = createInMemoryPlatformAccountRepository();
@@ -299,6 +302,8 @@ describe("approveContent con un post", () => {
       contentId: await t.contentId("linkedin"),
       actor: "operator",
     });
+    // Sin cuenta no hay plan que abrir: no es que falten los medios.
+    expect(result.mediaPending).toBe(false);
     expect(result.created).toEqual([]);
     expect(await t.postStatus()).toBe("ready");
   });
@@ -326,7 +331,7 @@ describe("approveContent con un post", () => {
     expect(await t.postStatus()).toBe("draft");
   });
 
-  it("Instagram en un post de solo texto: la revisión lo frena con MEDIA_REQUIREMENT (F9-T11)", async () => {
+  it("Instagram en un post de solo texto: la revisión lo frena con MEDIA_NOT_SUPPORTED (F9-T11)", async () => {
     const t = await setup({
       kind: "text",
       texts: [{ platform: "instagram", language: "es" }],
@@ -336,11 +341,49 @@ describe("approveContent con un post", () => {
       approveContent(t.deps, { contentId: await t.contentId("instagram"), actor: "operator" }),
     );
     expect(codeOf(error)).toBe("CONTENT_HAS_ERRORS");
-    expect(isAppError(error) && error.details?.codes).toEqual(["MEDIA_REQUIREMENT"]);
+    expect(isAppError(error) && error.details?.codes).toEqual(["MEDIA_NOT_SUPPORTED"]);
     expect(await t.postStatus()).toBe("draft");
   });
 
-  it("un video subido que aún no se procesa es CONTENT_NOT_READY", async () => {
+  it("un post sin imágenes aprueba su texto (la falta es solo una advertencia) y no abre publicaciones todavía (F9.5-T21)", async () => {
+    const t = await setup({
+      kind: "carousel",
+      texts: [{ platform: "instagram", language: "es" }],
+      accounts: ["instagram"],
+      noProcessedMedia: true,
+    });
+    const contentId = await t.contentId("instagram");
+
+    const result = await approveContent(t.deps, { contentId, actor: "operator" });
+
+    expect(result.content.status).toBe("approved");
+    expect(result.checks.map((check) => [check.code, check.severity])).toEqual([
+      ["MEDIA_REQUIREMENT", "warning"],
+    ]);
+    expect(result.created).toEqual([]);
+    expect(result.publications).toEqual([]);
+    expect(result.mediaPending).toBe(true);
+    expect(await t.postStatus()).toBe("ready");
+  });
+
+  it("un error real sigue impidiendo aprobar aunque también falten las imágenes", async () => {
+    const t = await setup({
+      kind: "carousel",
+      texts: [{ platform: "instagram", language: "es" }],
+      accounts: ["instagram"],
+      noProcessedMedia: true,
+    });
+    const contentId = await t.contentId("instagram");
+    await t.repos.contents.update(contentId, { body: "@everyone mira esto", status: "edited" });
+
+    const error = await caught(approveContent(t.deps, { contentId, actor: "operator" }));
+
+    expect(codeOf(error)).toBe("CONTENT_HAS_ERRORS");
+    expect(isAppError(error) && error.details?.codes).toEqual(["MASS_MENTION"]);
+    expect(await t.postStatus()).toBe("draft");
+  });
+
+  it("un video subido que aún no se procesa aprueba el texto sin abrir publicaciones", async () => {
     const t = await setup({
       kind: "video",
       texts: [{ platform: "instagram", language: "es" }],
@@ -358,11 +401,15 @@ describe("approveContent con un post", () => {
       sortOrder: 1,
       isCover: false,
     });
-    const error = await caught(
-      approveContent(t.deps, { contentId: await t.contentId("instagram"), actor: "operator" }),
-    );
-    expect(codeOf(error)).toBe("CONTENT_NOT_READY");
-    expect(await t.postStatus()).toBe("draft");
+    const result = await approveContent(t.deps, {
+      contentId: await t.contentId("instagram"),
+      actor: "operator",
+    });
+    expect(result.content.status).toBe("approved");
+    expect(result.created).toEqual([]);
+    // Subido pero sin procesar: la revisión no avisa nada, y `mediaPending` lo dice igual.
+    expect(result.checks).toEqual([]);
+    expect(result.mediaPending).toBe(true);
   });
 
   it("sin el candado de posts (auto_publish, solo avisos), un post es SUBJECT_NOT_LISTING", async () => {

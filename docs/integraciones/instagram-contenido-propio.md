@@ -264,9 +264,9 @@ Lo que el código publica de un post (`postPublicationPlan` en `packages/core/sr
 | Tipo del post (`post.kind`) | Formato | Medios | Llamadas |
 |---|---|---|---|
 | `image` | `post` (imagen suelta) | El `ig_4x5` (1080×1350, JPEG) de la **primera** foto, aunque el post tenga más (la revisión lo advierte con `MEDIA_UNUSED`, sin impedir aprobar) | Un contenedor con `image_url` y `caption`, sin `media_type` |
-| `carousel` | `post` (carrusel) | Los `ig_4x5` de **2 a 10** fotos, en su orden. Con menos de 2 procesadas no se abre (`CONTENT_NOT_READY`); fuera de 2 a 10 originales, la revisión del texto no lo aprueba (`MEDIA_REQUIREMENT`) | Un hijo por foto (`is_carousel_item`), sin caption; el carrusel con `children` y `caption` |
+| `carousel` | `post` (carrusel) | Los `ig_4x5` de **2 a 10** fotos, en su orden. Con menos de 2 procesadas no se abre ni se publica (`CONTENT_NOT_READY`). En la revisión del texto, menos de 2 originales es la advertencia `MEDIA_REQUIREMENT` (el texto se aprueba y publicar espera las fotos, F9.5-T21) y más de 10 es el error `MEDIA_NOT_SUPPORTED` (no se aprueba) | Un hijo por foto (`is_carousel_item`), sin caption; el carrusel con `children` y `caption` |
 | `video` | `reel` | El `ig_reel` (9:16, de 3 a 90 s, **sin texto encima** en un post) del primer video | `media_type=REELS`, `video_url`, `thumb_offset=1000` (la portada es el cuadro del segundo 1, el mismo del `thumb` del panel) y `share_to_feed=true` |
-| `text` | — | — | **No se publica en Instagram**: Instagram no publica solo texto (sección 8). La revisión del texto lo frena (`MEDIA_REQUIREMENT`), el plan no abre la publicación y el publisher rechaza un input sin medios (`NO_MEDIA`) |
+| `text` | — | — | **No se publica en Instagram**: Instagram no publica solo texto (sección 8). La revisión del texto lo frena (`MEDIA_NOT_SUPPORTED`), el plan no abre la publicación y el publisher rechaza un input sin medios (`NO_MEDIA`) |
 
 - **Caption:** `instagramCaption`, el cuerpo y, tras una línea en blanco, los hashtags (hasta 2.200 caracteres y 30 hashtags, revisados al aprobar y otra vez en el publisher). Sin título.
 - **Idiomas:** una marca con dos idiomas tiene un texto por idioma y, con eso, **dos publicaciones** de la misma cuenta, cada una con el caption de su idioma, que se programan por separado (la cadencia las espacia).

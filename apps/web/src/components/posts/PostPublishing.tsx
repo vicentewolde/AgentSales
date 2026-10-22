@@ -34,6 +34,7 @@ import { PublicationStatusBadge } from "../StatusBadge.js";
 import { Button } from "../ui/Button.js";
 import { LiveConfirmButton } from "./LiveConfirm.js";
 import { postContents } from "./labels.js";
+import { POST_MEDIA_ANCHOR } from "./media-anchor.js";
 
 /**
  * Las redes con al menos un texto aprobado, en el orden de los textos (el de la API). Con el post,
@@ -76,6 +77,26 @@ export function platformsWithoutAccount(
   );
 }
 
+/**
+ * Lo que falta de medios en cada red con texto aprobado (F9.5-T21): la advertencia
+ * `MEDIA_REQUIREMENT` de su revisión («Falta la imagen: …»). Publicar y programar esperan a que
+ * existan, así que esas redes no se ofrecen todavía. Devuelve el motivo por red.
+ */
+export function platformsMissingMedia(
+  platforms: readonly PostPlatform[],
+  contents: readonly ContentView[],
+): Map<PostPlatform, string> {
+  const missing = new Map<PostPlatform, string>();
+  for (const content of postContents(contents)) {
+    if (content.status !== "approved" || !platforms.includes(content.platform)) continue;
+    const check = content.checks.find((item) => item.code === "MEDIA_REQUIREMENT");
+    if (check !== undefined && !missing.has(content.platform)) {
+      missing.set(content.platform, check.message);
+    }
+  }
+  return missing;
+}
+
 /** El resultado de programar, red por red: la hora o el motivo de lo que se saltó. */
 function ScheduleResults({ result }: { result: PostScheduleResponse }) {
   return (
@@ -112,8 +133,11 @@ export function PostPublishBar({
   lockReason,
 }: {
   postId: string;
-  /** Sus redes (`platforms`): las quitadas no se ofrecen (F9-T21); y su marca, por las cuentas. */
-  post: Pick<PostJson, "platforms" | "brokerId">;
+  /**
+   * Sus redes (`platforms`): las quitadas no se ofrecen (F9-T21); su marca, por las cuentas; y su
+   * tipo, para el enlace a subir lo que falta (F9.5-T21).
+   */
+  post: Pick<PostJson, "platforms" | "brokerId" | "kind">;
   contents: readonly ContentView[];
   /** Las publicaciones del post: una red con todo publicado no tiene botón (`undefined`: cargando). */
   publications?: readonly PublicationView[] | undefined;
@@ -129,7 +153,11 @@ export function PostPublishBar({
   const platforms = approvedPlatforms(contents, post);
   const excludedOnly = platforms.length === 0 && approvedPlatforms(contents).length > 0;
   const unconnected = platformsWithoutAccount(platforms, accounts.data?.accounts, post.brokerId);
-  const ready = platforms.filter((platform) => !unconnected.includes(platform));
+  // F9.5-T21: sin los medios del post no se publica ni se programa; el texto ya quedó aprobado.
+  const noMedia = platformsMissingMedia(platforms, contents);
+  const ready = platforms.filter(
+    (platform) => !unconnected.includes(platform) && !noMedia.has(platform),
+  );
   const [scheduling, setScheduling] = useState(false);
   const [chosen, setChosen] = useState<PostPlatform[] | null>(null);
   const [published, setPublished] = useState<string | null>(null);
@@ -163,12 +191,16 @@ export function PostPublishBar({
             label={publishButtonText(platform, publishMode)}
             publishMode={publishMode}
             pending={publish.isPending}
-            disabled={lockReason !== null || unconnected.includes(platform)}
+            disabled={
+              lockReason !== null || unconnected.includes(platform) || noMedia.has(platform)
+            }
             {...(lockReason !== null
               ? { title: lockReason }
               : unconnected.includes(platform)
                 ? { title: `Sin cuenta conectada en ${PLATFORM_TEXT[platform]}` }
-                : {})}
+                : noMedia.has(platform)
+                  ? { title: noMedia.get(platform) ?? "" }
+                  : {})}
             onConfirm={() =>
               publish.mutate(platform, {
                 onSuccess: (result) =>
@@ -189,7 +221,12 @@ export function PostPublishBar({
             size="sm"
             disabled={lockReason !== null || schedulable.length === 0}
             {...(lockReason === null && schedulable.length === 0
-              ? { title: "Ninguna red aprobada tiene cuenta conectada" }
+              ? {
+                  title:
+                    noMedia.size > 0
+                      ? "Faltan los medios del post: súbelos o consíguelos"
+                      : "Ninguna red aprobada tiene cuenta conectada",
+                }
               : {})}
             onClick={() => setScheduling(true)}
           >
@@ -197,6 +234,15 @@ export function PostPublishBar({
           </Button>
         )}
       </div>
+      {noMedia.size > 0 && (
+        <p className="text-sm text-warning-800">
+          {[...new Set(noMedia.values())].join(" ")}{" "}
+          <a href={`#${POST_MEDIA_ANCHOR}`} className="font-medium underline underline-offset-2">
+            {post.kind === "video" ? "Subir el video" : "Subir imágenes"}
+          </a>
+          . El texto aprobado no se pierde: publicar y programar se activan cuando estén.
+        </p>
+      )}
       {unconnected.length > 0 && (
         <p className="text-sm text-warning-800">
           Sin cuenta conectada en {unconnectedText}: conéctala en{" "}
