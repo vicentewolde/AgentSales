@@ -1153,9 +1153,12 @@ export function runPostPublish(deps: PostDeps, id: string, options: PostPublishO
           `Publicando en ${PLATFORM_TEXT[platform]}: ${started.length} publicación(es)${result.requeued.length > 0 ? ` (${result.requeued.length} ya estaban en curso)` : ""}`,
         );
         for (const skipped of result.skipped) {
+          // La activa del texto anterior viene en `publications`: con sus medios, «imagen» o «carrusel».
+          const active = result.publications.find((p) => p.id === skipped.publicationId);
+          const media = active === undefined ? null : active.mediaIds.length;
           deps.printError(
             c.yellow(
-              `  ${publicationFormatText(platform, skipped.format, null)}: ya hay una publicación activa de un texto anterior (${skipped.publicationId}): descártala o retírala para publicar este`,
+              `  ${publicationFormatText(platform, skipped.format, media)}: ya hay una publicación activa de un texto anterior (${skipped.publicationId}): descártala o retírala para publicar este`,
             ),
           );
         }

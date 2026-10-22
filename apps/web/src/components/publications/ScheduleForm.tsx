@@ -25,8 +25,8 @@ const modeLine = (mode: PublishMode | undefined) =>
   mode === undefined
     ? "Todavía no se sabe si el sistema está en simulación o en vivo: se pedirá confirmar."
     : mode === "live"
-      ? "Se programa en vivo: a la hora se publica de verdad."
-      : "Se programa en simulación: a la hora se simula, sin publicar nada en las redes.";
+      ? "Se programa en vivo: sale de verdad a su hora si el sistema está encendido."
+      : "Se programa en simulación: a su hora, si el sistema está encendido, se simula sin publicar nada en las redes.";
 
 /**
  * El selector de fecha y hora (Chile) de programar (`<input type="datetime-local">`, leído con
