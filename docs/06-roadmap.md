@@ -14,6 +14,7 @@ Cada fase entrega algo **usable y demostrable**. Una fase empieza con su spec en
 | F7 | Varios corredores | Login, cada corredor ve solo lo suyo, alta de corredores, IA por API con gasto por corredor (en el Mac del operador) | v0.7.0 |
 | F8 | En internet | Despliegue con HTTPS (en modo demo), subidas a R2, respaldos fuera del Mac, OAuth de Instagram y términos (el App Review de Meta queda como trámite pendiente del operador) | v1.0.0 |
 | F9 | Contenido de marca | **Cerrada (2026-10-20), desplegada (2026-10-21).** Posts de las marcas del operador en Instagram, X, LinkedIn, Discord y TikTok, con perfil editorial, textos por red e idioma, calendario y un plan de ideas de la IA, en tres entregas | v1.1.0, v1.2.0 y v1.3.0 |
+| F9.5 | Lista para mostrar | **En curso (spec del 2026-10-22).** El panel con un sistema visual, portada, lenguaje claro y vista previa; «salió / no salió» en Instagram y Portal; textos e ideas de la IA más humanos; y la deuda interna de F9, antes de la demo con la oficina del 2026-10-30 | v1.4.0 |
 | F10 | Piloto con una oficina | Anuncios de Meta, leads y ManyChat para una oficina de una corredora grande (hoja de ruta) | — |
 | F11 | Organizaciones | Organización → oficina → agente, roles y aprobación por niveles (hoja de ruta) | — |
 
@@ -189,6 +190,16 @@ Spec detallado: `docs/specs/fase-7-varios-corredores.md` (2026-10-16: el operado
   - la revisión de nombres propios crece a fuerza de excepciones: con marcas de clientes, evaluar hechos estructurados;
   - para F10 y F11: enums de las respuestas de la API cerrados (CLI y servidor de versiones distintas), quién es dueño de una cuenta decidido en dos lugares, y quién hace cada paso de la lista de alta.
 - **Para el piloto (F10), sin código y de plazo largo:** la segunda app de Meta, la Página y la cuenta publicitaria de la oficina, ManyChat y el abogado (spec F9 §4.17).
+
+## F9.5 · Lista para mostrar
+**Estado (2026-10-22): spec aprobado por el operador; en curso.** Fase corta entre F9 y F10 para la demo con la oficina del piloto del viernes 2026-10-30, que el operador hace desde el servidor y con publicaciones reales en sus cuentas.
+
+- **Lo que se ve:** sistema visual del panel, portada «Hoy», lenguaje claro y los detalles del cierre de F9, vista previa por red y «salió / no salió» en Instagram y Portal.
+- **La IA:** textos que no suenan a IA e ideas variadas con fechas y redes puestas por la cadencia.
+- **Lo interno:** X (tope atómico, video en streaming, borrar), Discord con video liviano, CLI y servidor de versiones distintas, y el dueño de una cuenta en una sola función.
+- Corte el miércoles 2026-10-28: lo interno que no esté integrado pasa a F10 (D1).
+
+**Spec:** `docs/specs/fase-9.5-lista-para-mostrar.md`.
 
 ## F10 · Piloto con una oficina (hoja de ruta)
 - Una oficina (3 a 10 agentes) de una corredora grande, con servicio operado por el operador.

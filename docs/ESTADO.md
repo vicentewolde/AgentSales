@@ -2,10 +2,15 @@
 
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
-**Actualizado:** 2026-10-20
-**Fase actual:** F9 · Contenido de marca **cerrada** el 2026-10-20 (`v1.3.0`, la etiqueta con tu permiso). Siguiente: F10 · piloto con una oficina (spec §4.17 de F9; ADR-0031 a ADR-0033 propuestos)
-**Última tarea:** **cierre de F9** (`/fase-cerrar 9`). La entrega 3 quedó completa: el plan de ideas (T20, #194), el plan en el panel y la CLI (T21, #196), `pnpm eval:social` (T22, #195), la documentación (T23, #198), la marca del enlace en X (#199) y los arreglos del ensayo (#201). **T24:** el ensayo de la demo en simulación con la IA real y la marca AgentPey (con tu perfil real) salió bien; la prueba en vivo de cada red queda pendiente tuya (abajo). Tus decisiones del 2026-10-20: al aceptar una idea se redacta solo para sus redes sugeridas, una idea descartada bloquea su tema 60 días, y una red quitada del post se rechaza aunque se pida a mano
-**Siguiente paso:** crear la etiqueta `v1.3.0` (con tu permiso) y después `/fase-plan 10` (el piloto). En paralelo, cuando quieras: tus pruebas S1 a S6 y la prueba en vivo de F9 red por red, solo con tu instrucción en el chat
+**Actualizado:** 2026-10-22
+**Fase actual:** F9.5 · Lista para mostrar **en curso** (spec aprobado el 2026-10-22, ADR-0034). Fase corta para la demo con la oficina del piloto del **viernes 2026-10-30**; corte de código el miércoles 28 (D1). F9 cerrada con `v1.3.0`; después, F10
+**Última tarea:** spec de F9.5 (`/fase-plan 9.5`): entrevista con el operador, revisión del `arquitecto` (5 bloqueantes aplicados) y ADR-0034 (el código agenda las ideas del plan). Limpieza: las 28 worktrees de F9 ya integradas, borradas
+**Siguiente paso:** tanda 1 en paralelo (T01 sistema visual, T05 textos humanos, T08 X); después las tandas 2 a 5 según §5 del spec
+
+## Pendiente tuyo para la demo del 30 (F9.5)
+- [ ] **Las fotos de la propiedad de ejemplo** (la publicas en `@vicentewoldec` en la demo y la borras después)
+- [ ] **Jueves 29:** desplegar `v1.4.0`; crear tu corredor para propiedades y conectarle `@vicentewoldec` (te dejo los comandos); recomendado, una prueba corta de una publicación programada en simulación con el worker encendido
+- [ ] **Viernes 30:** encender el worker, pasar a `live` durante la demo (tu instrucción en el chat) y volver a `dry-run`; revisar en la agenda que no quede nada programado en vivo
 
 ## Pendiente tuyo de F9 (cerrada con `v1.3.0`)
 - [ ] **Tu CLI apunta a tu Mac** desde el ensayo: para volver al servidor, `pnpm -s cli login --api https://agentsales.agentpey.com --email <tu correo>`
@@ -103,11 +108,25 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
   - [ ] Confirmar si la portada del reel de P002 fue el cuadro del segundo 1 (nota de Instagram §8, punto 8)
 
 ## Progreso de la fase
-F10 · piloto con una oficina: todavía sin spec.
+F9.5 · Lista para mostrar (`docs/specs/fase-9.5-lista-para-mostrar.md`), con agentes en paralelo (máximo 3 con código a la vez) y la CI como juez.
 
 | Tarea | Estado | PR |
 |---|---|---|
-| Spec F10 (`/fase-plan 10`) | ⏳ pendiente | |
+| Spec F9.5 y ADR-0034 | 🔨 en curso | |
+| T01 · Sistema visual del panel | 🔨 en curso (tanda 1) | |
+| T05 · Textos que no suenan a IA | 🔨 en curso (tanda 1) | |
+| T08 · X: tope atómico y video en streaming | 🔨 en curso (tanda 1) | |
+| T02 · Lenguaje claro y detalles de F9 | ⏳ pendiente (tras T01) | |
+| T04a · Resultado dudoso IG y Portal (core) | ⏳ pendiente | |
+| T06 · Ideas variadas y fechas con sentido | ⏳ pendiente (tras T05) | |
+| T07 · Vista previa por red | ⏳ pendiente (tras T02) | |
+| T04b · Salió / no salió en una propiedad (panel) | ⏳ pendiente (tras T02 y T04a) | |
+| T09 · Retirar borrando en X | ⏳ pendiente (tras T08) | |
+| T03 · Portada «Hoy» | ⏳ pendiente (tras T02) | |
+| T10 · Video para Discord | ⏳ pendiente | |
+| T12 · De quién es una cuenta | ⏳ pendiente | |
+| T11 · CLI y servidor de versiones distintas | ⏳ pendiente (tras T03) | |
+| T13 · Cierre (`v1.4.0`) | ⏳ jueves 29 | |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
