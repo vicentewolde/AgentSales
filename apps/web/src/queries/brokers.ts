@@ -3,6 +3,7 @@ import {
   brokerDetailResponseSchema,
   brokerListResponseSchema,
   brokerResponseSchema,
+  brokerTemplateDraftResponseSchema,
 } from "@agentsales/api/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { unwrap } from "../api/client.js";
@@ -90,9 +91,28 @@ export function useCreateBroker() {
         name: string;
         brandName: string;
         primaryColor: string;
+        /** `brand`: una marca que solo publica posts (F9); no se cambia después. */
+        kind?: "broker" | "brand";
       },
     ) => unwrap(client.brokers.$post({ json: fields }), brokerDetailResponseSchema),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: brokerKeys.all }),
+  });
+}
+
+/**
+ * `POST /brokers/parse-template` (administrador, F9.5-T16): lee la hoja Corredor de una planilla y
+ * devuelve sus datos para llenar el formulario de crear un corredor. No guarda nada.
+ */
+export function useParseBrokerTemplate() {
+  const client = useApiClient();
+  return useMutation({
+    mutationFn: async (file: File) =>
+      (
+        await unwrap(
+          client.brokers["parse-template"].$post({ form: { file } }),
+          brokerTemplateDraftResponseSchema,
+        )
+      ).draft,
   });
 }
 
