@@ -10,7 +10,7 @@ import {
   withDryRun,
 } from "@agentsales/core";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { errorText, usePlatformServer } from "../../test/msw-server.js";
 import { createXApi } from "./api.js";
 import { createXPublisher, validateXInput, type XPublishNote, xCostNote } from "./publisher.js";
@@ -117,7 +117,81 @@ function context(progress: unknown = null, overrides: Partial<PublishContext> = 
 /** R2 simulado: devuelve unos bytes por cada medio. */
 function fakeR2(size = 1024) {
   server.use(
-    http.get(`${R2}/*`, () => new HttpResponse(new Uint8Array(size).fill(7), { status: 200 })),
+    http.get(
+      `${R2}/*`,
+      () =>
+        new HttpResponse(new Uint8Array(size).fill(7), {
+          status: 200,
+          headers: { "content-length": String(size) },
+        }),
+    ),
+  );
+}
+
+/**
+ * R2 simulado que entrega el video como flujo, en trozos de 1 MB, anotando cada trozo en `log`.
+ * Pasados los primeros 5 MB, no entrega más hasta que X recibió la primera parte (`firstAppend`):
+ * si el publisher juntara el archivo entero antes de subirlo, el flujo se corta con un error a los
+ * 3 s. Sin `declared`, no manda `content-length`.
+ */
+function streamingR2(
+  size: number,
+  log: string[],
+  { declared = size, firstAppend }: { declared?: number | null; firstAppend?: Promise<void> } = {},
+) {
+  server.use(
+    http.get(`${R2}/*`, () => {
+      let sent = 0;
+      const body = new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          if (sent >= size) {
+            controller.close();
+            return;
+          }
+          if (firstAppend !== undefined && sent >= 5 * 1024 * 1024) {
+            const waited = await Promise.race([
+              firstAppend.then(() => true),
+              new Promise<false>((resolve) => setTimeout(() => resolve(false), 3_000)),
+            ]);
+            if (!waited) {
+              controller.error(new Error("el video no se subió a medida que llegaba"));
+              return;
+            }
+          }
+          const chunk = new Uint8Array(Math.min(1024 * 1024, size - sent)).fill(7);
+          sent += chunk.byteLength;
+          log.push(`r2:${sent}`);
+          controller.enqueue(chunk);
+        },
+      });
+      return new HttpResponse(body, {
+        status: 200,
+        headers: declared === null ? {} : { "content-length": String(declared) },
+      });
+    }),
+  );
+}
+
+/** X simulado para subir un video por partes (id 777), anotando cada APPEND en `log`. */
+function fakeVideoUpload(log: string[], totalBytes?: number, onAppend?: () => void) {
+  server.use(
+    http.post(`${API}/2/media/upload/initialize`, async ({ request }) => {
+      const body = (await request.json()) as { total_bytes: number };
+      if (totalBytes !== undefined) expect(body.total_bytes).toBe(totalBytes);
+      log.push("x:init");
+      return HttpResponse.json({ data: { id: "777", expires_after_secs: 86400 } });
+    }),
+    http.post(`${API}/2/media/upload/777/append`, async ({ request }) => {
+      const form = await request.formData();
+      const media = form.get("media") as Blob;
+      log.push(`x:append:${String(form.get("segment_index"))}:${media.size}`);
+      onAppend?.();
+      return new HttpResponse(null, { status: 204 });
+    }),
+    http.post(`${API}/2/media/upload/777/finalize`, () => {
+      log.push("x:finalize");
+      return HttpResponse.json({ data: { id: "777" } });
+    }),
   );
 }
 
@@ -284,6 +358,51 @@ describe("createXPublisher: publicar", () => {
     expect(statusCalls).toBe(2);
     const create = (await recorded()).find((request) => request.url.pathname === "/2/tweets");
     expect(create?.json).toMatchObject({ media: { media_ids: ["777"] } });
+  });
+
+  it("lee el video de R2 como flujo y sube cada parte de 4 MB a medida que llega, sin arrayBuffer (F9.5-T08)", async () => {
+    const MB = 1024 * 1024;
+    const size = 9 * MB + 123;
+    const log: string[] = [];
+    let appended: () => void = () => undefined;
+    const firstAppend = new Promise<void>((resolve) => {
+      appended = resolve;
+    });
+    streamingR2(size, log, { firstAppend });
+    fakeVideoUpload(log, size, () => appended());
+    fakeCreate();
+    const arrayBuffer = vi.spyOn(Response.prototype, "arrayBuffer");
+    try {
+      await createXPublisher({ api: api() }).publish(input({ media: [video(size)] }), context());
+      expect(arrayBuffer).not.toHaveBeenCalled();
+    } finally {
+      arrayBuffer.mockRestore();
+    }
+    const appends = log.filter((entry) => entry.startsWith("x:append"));
+    expect(appends).toEqual([
+      `x:append:0:${4 * MB}`,
+      `x:append:1:${4 * MB}`,
+      `x:append:2:${MB + 123}`,
+    ]);
+    // La primera parte sube antes de terminar de leer el video de R2.
+    expect(log.indexOf(`x:append:0:${4 * MB}`)).toBeLessThan(log.indexOf(`r2:${size}`));
+    expect(log.at(-1)).toBe("x:finalize");
+  });
+
+  it("un video sin content-length falla antes del INIT (X necesita el total)", async () => {
+    const log: string[] = [];
+    streamingR2(2 * 1024 * 1024, log, { declared: null });
+    fakeVideoUpload(log);
+    const error = await createXPublisher({ api: api() })
+      .publish(input({ media: [video(2 * 1024 * 1024)] }), context())
+      .catch((caught: unknown) => caught);
+    expect(error).toMatchObject({
+      code: "X_MEDIA_UNAVAILABLE",
+      details: { reason: "no_length" },
+    });
+    expect(log.filter((entry) => entry.startsWith("x:"))).toEqual([]);
+    // Ningún error lleva la URL firmada.
+    expect(JSON.stringify(error)).not.toContain("Signature");
   });
 
   it("un reintento reutiliza los medios ya subidos si no vencen", async () => {
@@ -525,5 +644,76 @@ describe("createXPublisher: errores", () => {
       .catch((caught: unknown) => caught);
     expect(codeOf(error)).toBe("X_MEDIA_REJECTED");
     expect(ctx.saved).toEqual([]);
+  });
+});
+
+describe("createXApi: uploadVideo con un flujo (F9.5-T08)", () => {
+  /** Un flujo de `sizes` trozos que anota si se cerró antes de terminar. */
+  function chunked(sizes: number[]) {
+    const state = { closed: false };
+    async function* generate() {
+      try {
+        for (const size of sizes) yield new Uint8Array(size).fill(1);
+      } finally {
+        state.closed = true;
+      }
+    }
+    return { chunks: generate(), state };
+  }
+
+  it.each([
+    ["llegan menos bytes que el total anunciado", [3 * 1024 * 1024], 5 * 1024 * 1024],
+    [
+      "llegan más bytes que el total anunciado",
+      [3 * 1024 * 1024, 3 * 1024 * 1024],
+      5 * 1024 * 1024,
+    ],
+  ])("un tamaño que no coincide falla sin FINALIZE: %s", async (_, sizes, totalBytes) => {
+    const log: string[] = [];
+    fakeVideoUpload(log, totalBytes);
+    const { chunks, state } = chunked(sizes);
+    const error = await api()
+      .uploadVideo(TOKEN, { mediaId: "vid-1", mime: "video/mp4", totalBytes, chunks })
+      .catch((caught: unknown) => caught);
+    expect(error).toMatchObject({
+      code: "X_MEDIA_UNAVAILABLE",
+      retriable: true,
+      details: { mediaId: "vid-1", reason: "size" },
+    });
+    expect(log).not.toContain("x:finalize");
+    expect(state.closed).toBe(true);
+  });
+
+  it("si X falla a medio subir, cierra el flujo de R2", async () => {
+    server.use(
+      http.post(`${API}/2/media/upload/initialize`, () =>
+        HttpResponse.json({ data: { id: "777" } }),
+      ),
+      http.post(`${API}/2/media/upload/777/append`, () => problem(400, { title: "Bad" })),
+    );
+    let pulled = 0;
+    const state = { closed: false };
+    async function* generate() {
+      try {
+        for (let index = 0; index < 4; index += 1) {
+          pulled += 1;
+          yield new Uint8Array(4 * 1024 * 1024);
+        }
+      } finally {
+        state.closed = true;
+      }
+    }
+    const error = await api()
+      .uploadVideo(TOKEN, {
+        mediaId: "vid-1",
+        mime: "video/mp4",
+        totalBytes: 16 * 1024 * 1024,
+        chunks: generate(),
+      })
+      .catch((caught: unknown) => caught);
+    expect(isAppError(error)).toBe(true);
+    expect(state.closed).toBe(true);
+    // Se dejó de leer en la primera parte rechazada.
+    expect(pulled).toBe(1);
   });
 });
