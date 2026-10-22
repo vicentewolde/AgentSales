@@ -3,6 +3,7 @@ import {
   type ImageVariant,
   REEL_MAX_DURATION_S,
   REEL_MIN_DURATION_S,
+  REEL_PHOTOS,
 } from "@agentsales/core";
 
 /**
@@ -12,7 +13,7 @@ import {
  * segundo del `thumb`) **sube la versión**, y la siguiente corrida regenera todo (fotos incluidas)
  * y borra lo anterior. Si no se sube, lo ya procesado queda como estaba. Agregar una variante nueva
  * sin tocar las existentes (el reel sin texto y `x_video` de F9-T10, `discord_video` de
- * F9.5-T10) no la sube.
+ * F9.5-T10, el reel con fotos de F9.5-T18) no la sube; cambiar `PHOTO_REEL_SPEC` después, sí.
  */
 export const MEDIA_PIPELINE_VERSION = "1";
 
@@ -52,6 +53,24 @@ export const REEL_SPEC = {
   audio: { bitrate: "128k", sampleRate: 48000 },
   /** Segundo del video del que sale su `thumb` (o la mitad, si dura menos de 2 s). */
   thumbAtS: 1,
+} as const;
+
+/**
+ * El reel armado con las fotos de una propiedad sin video (F9.5-T18): el mismo formato que
+ * `REEL_SPEC` (1080×1920, 30 fps, x264, AAC con una pista silenciosa). Cada foto dura `slideS`
+ * segundos y pasa a la siguiente con un fundido de `fadeS` (el fundido va dentro de esos segundos:
+ * el reel dura `slideS` por foto). Cada cuadro se arma antes con sharp, de a una foto: la foto
+ * entera al centro sobre ella misma recortada a 9:16, en chico (`blur`), desenfocada y ampliada
+ * (como el fondo del reel de un video). ffmpeg solo une cuadros fijos: poca memoria.
+ */
+export const PHOTO_REEL_SPEC = {
+  slideS: 3,
+  fadeS: 0.7,
+  blur: { width: 270, height: 480, sigma: 6 },
+  /** JPEG de cada cuadro intermedio (se vuelve a comprimir al codificar el video). */
+  frameQuality: 92,
+  minPhotos: REEL_PHOTOS.min,
+  maxPhotos: REEL_PHOTOS.max,
 } as const;
 
 /**

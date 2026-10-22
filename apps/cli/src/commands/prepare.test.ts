@@ -54,7 +54,7 @@ describe("runPrepare", () => {
     expect(text).toContain(`Preparación ${created?.id}  lista`);
     expect(text).toContain("Medios: procesados 1 · ya estaban 0 · ilegibles 0");
     expect(text).toContain("Portada y ficha: armadas 2 · sin cambios 0");
-    expect(text).toContain("Reel: sin video");
+    expect(text).toContain("Reel: sin video y con menos de 3 fotos");
     expect(text).toContain("Textos: listing-content-v1 · 1 intento · 12 s");
     expect(text).toContain("Advertencias (1)");
     expect(text).toContain("Revisión editorial");

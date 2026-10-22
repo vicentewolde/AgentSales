@@ -148,6 +148,8 @@ describe("panel: sección Contenido", () => {
     const carousel = within(section).getByRole("list", { name: "Carrusel de Instagram" });
     expect(within(carousel).getAllByRole("img")).toHaveLength(4);
     expect(within(section).getByLabelText("Reel de Instagram")).toBeTruthy();
+    // El reel sale del video: no dice que se armó con las fotos.
+    expect(within(section).queryByText(/Reel armado con tus fotos/)).toBeNull();
 
     const caption = () => within(section).getByRole("region", { name: "Caption de Instagram" });
     // Como Instagram (F9.5-T07): el comienzo del caption y «… más».
@@ -161,6 +163,21 @@ describe("panel: sección Contenido", () => {
         within(section).getByRole("region", { name: "Revisión editorial de Instagram" }),
       ).getByText("✓ Revisión editorial sin problemas"),
     ).toBeTruthy();
+  });
+
+  it("sin video, el reel armado con las fotos se ve con su nota (F9.5-T18)", async () => {
+    const t = await setup();
+    await t.prepared();
+    const section = await t.open();
+    await within(section).findByRole("tablist", { name: "Canales" });
+
+    expect(
+      within(section).getByText("Reel armado con tus fotos (la propiedad no tiene video)."),
+    ).toBeTruthy();
+    const reel = within(section).getByRole("figure", {
+      name: "Vista previa del reel de Instagram",
+    });
+    expect(within(reel).getByLabelText("Reel de Instagram")).toBeTruthy();
   });
 
   it("la vista previa por canal: la cuenta de Instagram, las páginas del carrusel, el precio y la galería (F9.5-T07)", async () => {

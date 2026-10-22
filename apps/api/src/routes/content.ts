@@ -110,6 +110,7 @@ export function listingContentRoutes(deps: ContentRoutesDeps) {
         carousel: await Promise.all(content.carousel.map(signed)),
         photos: await Promise.all(content.photos.map(signed)),
         reel: content.reel === null ? null : await signed(content.reel),
+        reelFromPhotos: content.reelFromPhotos,
         latestRun: content.latestRun === null ? null : contentRunView(content.latestRun),
         portalReadiness: readinessView(content.portalReadiness),
         marketplaceReadiness: readinessView(content.marketplaceReadiness),

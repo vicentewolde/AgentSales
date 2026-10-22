@@ -29,7 +29,7 @@ export const contentRunReportSchema = z.object({
   media: z.object({ processed: count, existing: count, failed: count }).optional(),
   /** Etapa `renders`: portada y ficha renderizadas ahora o que no cambiaron. */
   renders: z.object({ rendered: count, existing: count }).optional(),
-  /** Etapa `reel`: `none` si el aviso no tiene video; `skipped` si el video no sirve (muy corto). */
+  /** Etapa `reel`: `none` sin video y con menos de 3 fotos; `skipped` si el video (o las fotos) no sirve. */
   reel: z.enum(CONTENT_REEL_OUTCOMES).optional(),
   /** Etapa `texts`: la llamada a la IA (sin el prompt ni la respuesta, que traen datos). */
   llm: z

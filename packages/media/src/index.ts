@@ -3,13 +3,14 @@ import { processImage } from "./image.js";
 import { MEDIA_PIPELINE_VERSION } from "./pipeline.js";
 import { runTool, throwIfAborted } from "./run.js";
 import { FFMPEG_INSTALL_HINT, isSupportedFfmpeg, parseFfmpegVersion } from "./tools.js";
-import { processVideo } from "./video.js";
+import { encodeReelFromPhotos, processVideo } from "./video.js";
 
 export {
   DISCORD_VIDEO_SPEC,
   IMAGE_VARIANT_SPECS,
   type ImageVariantSpec,
   MEDIA_PIPELINE_VERSION,
+  PHOTO_REEL_SPEC,
   REEL_SPEC,
   X_VIDEO_SPEC,
 } from "./pipeline.js";
@@ -91,6 +92,19 @@ export function createMediaProcessor(options: MediaProcessorOptions): MediaProce
     processVideo: (input, opts, signal) =>
       processVideo(
         input,
+        opts,
+        {
+          ffmpegPath: options.ffmpegPath,
+          ffprobePath: options.ffprobePath,
+          workDir: options.workDir,
+          ...(options.threads === undefined ? {} : { threads: options.threads }),
+          ensureTools,
+        },
+        signal,
+      ),
+    processPhotoReel: (photos, opts, signal) =>
+      encodeReelFromPhotos(
+        photos,
         opts,
         {
           ffmpegPath: options.ffmpegPath,

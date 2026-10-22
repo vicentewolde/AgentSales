@@ -4,7 +4,7 @@ import {
   checked,
   loadCheckContext,
 } from "../content/check-context.js";
-import { composeCarousel, composePhotoSet, composeReel } from "../content/compose.js";
+import { composeCarousel, composePhotoSet, composeReel, isPhotoReel } from "../content/compose.js";
 import type { ContentRun } from "../content.js";
 import { type MarketplaceReadiness, marketplaceReadiness } from "../marketplace/readiness.js";
 import type { Media } from "../media.js";
@@ -29,6 +29,8 @@ export type ListingContent = {
   /** Las fotos de Portal Inmobiliario y Marketplace (`pi_4x3`, la portada primero). */
   photos: Media[];
   reel: Media | null;
+  /** Si el reel salió de las fotos (F9.5-T18: la propiedad no tiene video); `false` sin reel. */
+  reelFromPhotos: boolean;
   /** La corrida más reciente, en cualquier estado. */
   latestRun: ContentRun | null;
   /**
@@ -60,11 +62,13 @@ export async function getListingContent(
     deps.contentRuns.latest(listingSubject(listing.id)),
   ]);
   const photos = composePhotoSet(media);
+  const reel = composeReel(media);
   return {
     contents: contents.map((content) => checked(content, ctx)),
     carousel: composeCarousel(media),
     photos,
-    reel: composeReel(media),
+    reel,
+    reelFromPhotos: reel !== null && isPhotoReel(media, reel),
     latestRun,
     portalReadiness: portalReadiness(listing, {
       name: broker.name,

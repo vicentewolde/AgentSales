@@ -111,6 +111,7 @@ export async function contentJobSetup(options: { llm?: LLMProvider } = {}) {
         return inner.processImage(input, opts, signal);
       },
       processVideo: (input, opts, signal) => inner.processVideo(input, opts, signal),
+      processPhotoReel: (photos, opts, signal) => inner.processPhotoReel(photos, opts, signal),
     };
   };
 

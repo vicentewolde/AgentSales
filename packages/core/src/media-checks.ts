@@ -40,6 +40,13 @@ export function photoSizeWarnings(
 export const REEL_MIN_DURATION_S = 3;
 export const REEL_MAX_DURATION_S = 90;
 
+/**
+ * El reel armado con las fotos (F9.5-T18), para una propiedad sin video: desde `min` fotos
+ * procesadas (con menos, no hay reel, como antes) y hasta `max` (las primeras, con la portada
+ * primero). Lo decide core; el procesador arma lo que recibe y rechaza otra cantidad.
+ */
+export const REEL_PHOTOS = { min: 3, max: 10 } as const;
+
 export const REEL_WARNING_CODES = ["VIDEO_TOO_SHORT", "VIDEO_TRIMMED"] as const;
 export type ReelWarningCode = (typeof REEL_WARNING_CODES)[number];
 

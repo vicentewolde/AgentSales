@@ -2,9 +2,11 @@ import type { AbortSignalLike } from "../abort.js";
 import type { Broker } from "../broker.js";
 import type { ContentCheckContext } from "../content/check.js";
 import { loadCheckContext } from "../content/check-context.js";
-import { coverPhoto, variantOf, videosOf } from "../content/compose.js";
+import { coverPhoto, reelPhotos, variantOf, videosOf } from "../content/compose.js";
 import { draftListingTexts } from "../content/draft-texts.js";
 import {
+  photoReelInput,
+  photoReelPath,
   reelPath,
   reelTextInput,
   renderInput,
@@ -27,11 +29,12 @@ import type { ContentRunRepository, NewContent } from "../ports/content-reposito
 import type { FieldDefinitionRepository } from "../ports/field-definition-repository.js";
 import type { ListingRepository } from "../ports/listing-repository.js";
 import type { LLMProvider } from "../ports/llm-provider.js";
-import type { ImageVariant, MediaProcessor } from "../ports/media-processor.js";
+import type { ImageVariant, MediaProcessor, VideoOutput } from "../ports/media-processor.js";
 import type { MediaRepository } from "../ports/media-repository.js";
 import type { MediaStorage } from "../ports/media-storage.js";
 import {
   type HtmlRenderer,
+  type ReelOverlayData,
   SLIDE_IMAGE_MIMES,
   SLIDE_SIZES,
   type SlideImage,
@@ -459,18 +462,24 @@ async function rendersStage(state: Run): Promise<void> {
 }
 
 /**
- * Etapa `reel`: con el primer video, si su clave cambió (el video, el texto o las versiones). Borra
- * el reel de otro video si quedó uno. Los avisos salen de la duración guardada (`reelWarnings`), y
- * un video de menos de 3 s no se vuelve a descargar.
+ * Etapa `reel`: el reel de Instagram, solo si su clave cambió. Con video, el del primer video (la
+ * clave: el video, el texto y las versiones); sin video y con `REEL_PHOTOS.min` fotos procesadas o
+ * más, el armado con las fotos (F9.5-T18; la clave: que sale de fotos, sus fotos en orden, el texto
+ * y las versiones). Borra el reel que cuelgue de otro original (otro video, otra portada). Los
+ * avisos del video salen de su duración guardada (`reelWarnings`), y un video de menos de 3 s no se
+ * vuelve a descargar.
  */
 async function reelStage(state: Run): Promise<void> {
-  const { deps, ids, ctx, signal } = state;
+  const { deps, ids } = state;
   const media = await deps.media.listBySubject(listingSubject(ids.listingId));
-  const first = videosOf(media)[0] ?? null;
+  const firstVideo = videosOf(media)[0] ?? null;
+  // Con video, todo como antes: las fotos no arman reel aunque el video no sirva.
+  const photos = firstVideo === null ? reelPhotos(media) : [];
+  const parentId = firstVideo?.id ?? photos[0]?.id ?? null;
 
   for (const stale of media.filter(
     (item) =>
-      item.role === "processed" && item.variant === "ig_reel" && item.parentMediaId !== first?.id,
+      item.role === "processed" && item.variant === "ig_reel" && item.parentMediaId !== parentId,
   )) {
     const path = await deps.media.deleteDerivative(stale.id);
     if (path !== null) {
@@ -480,10 +489,76 @@ async function reelStage(state: Run): Promise<void> {
     }
   }
 
-  if (first === null) {
-    state.report.reel = "none";
-    return;
-  }
+  if (firstVideo !== null) return videoReel(state, media, firstVideo);
+  if (photos.length > 0) return photoReel(state, media, photos);
+  state.report.reel = "none";
+}
+
+/**
+ * El texto del reel y su hash (con las versiones de las plantillas y del procesador). Es la parte
+ * de la clave que comparten el reel de un video y el de fotos: la música (F9.5-T19) sumará aquí el
+ * id de la pista, omitido sin música para no cambiar las claves de los reels ya armados.
+ */
+function reelText(state: Run) {
+  const { deps, ctx } = state;
+  const overlay = reelOverlayData(ctx.brief);
+  const textKey = deps.sha256(
+    reelTextInput(overlay, {
+      templates: deps.templates.version,
+      processor: deps.processor.version,
+    }),
+  );
+  return { overlay, textKey };
+}
+
+/** El PNG transparente del texto que va encima del reel. */
+async function reelOverlayPng(state: Run, overlay: ReelOverlayData): Promise<Uint8Array> {
+  const { deps, signal } = state;
+  const png = await deps.renderer.render(
+    deps.templates.reelOverlay(overlay),
+    { ...SLIDE_SIZES.reelOverlay, format: "png" },
+    signal,
+  );
+  return png.bytes;
+}
+
+/** Sube el reel armado y lo registra como el `ig_reel` de `parentId` (un video o una foto). */
+async function saveReel(
+  state: Run,
+  storagePath: string,
+  parentId: string,
+  reel: VideoOutput,
+): Promise<void> {
+  const { deps, ids } = state;
+  await saveDerivative(
+    state,
+    () =>
+      deps.storage.putStream(storagePath, reel.open(), {
+        contentType: "video/mp4",
+        contentLength: reel.size,
+        sha256: reel.sha256,
+      }),
+    {
+      role: "processed",
+      variant: "ig_reel",
+      parentMediaId: parentId,
+      listingId: ids.listingId,
+      brokerId: ids.brokerId,
+      kind: "video",
+      storagePath,
+      mime: "video/mp4",
+      bytes: reel.size,
+      checksum: reel.sha256,
+      width: reel.width,
+      height: reel.height,
+      durationS: reel.durationS,
+    },
+  );
+}
+
+/** El reel del primer video (como desde F2). */
+async function videoReel(state: Run, media: readonly Media[], first: Media): Promise<void> {
+  const { deps, ids, signal } = state;
   for (const warning of reelWarnings(first.durationS))
     state.report.warnings.push(`Video 1: ${warning.message}`);
   const currentReel = variantOf(media, first.id, "ig_reel");
@@ -493,13 +568,7 @@ async function reelStage(state: Run): Promise<void> {
     return;
   }
 
-  const overlay = reelOverlayData(ctx.brief);
-  const textKey = deps.sha256(
-    reelTextInput(overlay, {
-      templates: deps.templates.version,
-      processor: deps.processor.version,
-    }),
-  );
+  const { overlay, textKey } = reelText(state);
   const storagePath = reelPath(ids, first.checksum, textKey);
   if (currentReel?.storagePath === storagePath) {
     state.report.reel = "existing";
@@ -507,50 +576,19 @@ async function reelStage(state: Run): Promise<void> {
   }
 
   try {
-    const png = await deps.renderer.render(
-      deps.templates.reelOverlay(overlay),
-      { ...SLIDE_SIZES.reelOverlay, format: "png" },
-      signal,
-    );
+    const overlayPng = await reelOverlayPng(state, overlay);
     const stream = await deps.storage.getStream(
       first.storagePath,
       signal === undefined ? {} : { signal },
     );
-    const result = await deps.processor.processVideo(
-      stream,
-      { reel: { overlayPng: png.bytes } },
-      signal,
-    );
+    const result = await deps.processor.processVideo(stream, { reel: { overlayPng } }, signal);
     const reel = result.reel;
     if (reel === null) {
       state.report.reel = "skipped";
       await dropDerivative(state, currentReel);
       return;
     }
-    await saveDerivative(
-      state,
-      () =>
-        deps.storage.putStream(storagePath, reel.open(), {
-          contentType: "video/mp4",
-          contentLength: reel.size,
-          sha256: reel.sha256,
-        }),
-      {
-        role: "processed",
-        variant: "ig_reel",
-        parentMediaId: first.id,
-        listingId: ids.listingId,
-        brokerId: ids.brokerId,
-        kind: "video",
-        storagePath,
-        mime: "video/mp4",
-        bytes: reel.size,
-        checksum: reel.sha256,
-        width: reel.width,
-        height: reel.height,
-        durationS: reel.durationS,
-      },
-    );
+    await saveReel(state, storagePath, first.id, reel);
     state.report.reel = "created";
   } catch (error) {
     // El video no se pudo armar como reel: aviso de ese video; la siguiente corrida lo reintenta.
@@ -560,6 +598,50 @@ async function reelStage(state: Run): Promise<void> {
     state.report.reel = "skipped";
     state.report.warnings.push(
       "Video 1: no se pudo armar el reel (formato no válido o archivo dañado)",
+    );
+  }
+}
+
+/**
+ * El reel armado con las fotos (F9.5-T18), en el orden de `reelPhotos` (la portada primero). Cuelga
+ * de la primera foto. El procesador lee los originales de a uno, cuando los necesita.
+ */
+async function photoReel(
+  state: Run,
+  media: readonly Media[],
+  photos: readonly Media[],
+): Promise<void> {
+  const { deps, ids, signal } = state;
+  const first = photos[0];
+  if (first === undefined) return;
+  const currentReel = variantOf(media, first.id, "ig_reel");
+  const { overlay, textKey } = reelText(state);
+  const photosKey = deps.sha256(photoReelInput(photos.map((photo) => photo.checksum)));
+  const storagePath = photoReelPath(ids, photosKey, textKey);
+  if (currentReel?.storagePath === storagePath) {
+    state.report.reel = "existing";
+    return;
+  }
+
+  try {
+    const overlayPng = await reelOverlayPng(state, overlay);
+    const reel = await deps.processor.processPhotoReel(
+      photos.map((photo) => ({
+        mime: photo.mime,
+        read: () => deps.storage.get(photo.storagePath),
+      })),
+      { overlayPng },
+      signal,
+    );
+    await saveReel(state, storagePath, first.id, reel);
+    state.report.reel = "created";
+  } catch (error) {
+    // Las fotos no se pudieron armar como reel: un aviso; la siguiente corrida lo reintenta.
+    if (!isDecodeFailed(error)) throw error;
+    await dropDerivative(state, currentReel);
+    state.report.reel = "skipped";
+    state.report.warnings.push(
+      "No se pudo armar el reel con las fotos (formato no válido o archivo dañado)",
     );
   }
 }

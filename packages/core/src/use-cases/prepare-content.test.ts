@@ -340,9 +340,185 @@ describe("prepareContent · corrida completa", () => {
   });
 });
 
+describe("prepareContent · reel con fotos (F9.5-T18)", () => {
+  const ascii = (bytes: Uint8Array | undefined) =>
+    bytes === undefined ? "" : Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
+  /** Lo que recibió el procesador falso, en el orden del reel (lo deja en el contenido del MP4). */
+  const reelSources = (t: Awaited<ReturnType<typeof setup>>, path: string | undefined) =>
+    ascii(t.storage.objects.get(path ?? "")?.body)
+      .split(":")[2]
+      ?.split("|");
+  const photoReelCalls = (t: Awaited<ReturnType<typeof setup>>) =>
+    t.processor.calls.filter((call) => call.kind === "photoReel");
+
+  it("sin video y con 3 fotos, arma el reel con las fotos (la portada primero) y con el texto", async () => {
+    const t = await setup({ originals: PHOTOS });
+    const runId = await t.newRun();
+
+    await t.prepare(runId);
+
+    const reels = variantsOf(await t.derivatives(), "ig_reel");
+    expect(reels).toHaveLength(1);
+    const reel = reels[0];
+    // Cuelga de la portada (foto-2) y su clave dice que sale de fotos.
+    expect(reel).toMatchObject({
+      parentMediaId: t.ids["foto-2"],
+      kind: "video",
+      mime: "video/mp4",
+      width: 1080,
+      height: 1920,
+      durationS: 9,
+    });
+    expect(reel?.storagePath).toMatch(/\/processed\/ig_reel\/photos-[^/]+\.mp4$/);
+    expect(reelSources(t, reel?.storagePath)).toEqual(["foto-2", "foto-1", "foto-3"]);
+    expect(photoReelCalls(t)).toEqual([
+      {
+        kind: "photoReel",
+        photos: 3,
+        mimes: ["image/jpeg", "image/jpeg", "image/jpeg"],
+        overlay: true,
+      },
+    ]);
+    expect((await t.contentRepos.contentRuns.get(runId))?.report?.reel).toBe("created");
+  });
+
+  it("con video, el reel sale del video y no de las fotos", async () => {
+    const t = await setup();
+
+    await t.prepare(await t.newRun());
+
+    const reels = variantsOf(await t.derivatives(), "ig_reel");
+    expect(reels.map((reel) => reel.parentMediaId)).toEqual([t.ids["video-1"]]);
+    expect(reels[0]?.storagePath).not.toContain("/photos-");
+    expect(photoReelCalls(t)).toEqual([]);
+  });
+
+  it("si nada cambió, no lo rehace; otra portada o un precio nuevo sí (y borra el anterior)", async () => {
+    const t = await setup({ originals: PHOTOS });
+    await t.prepare(await t.newRun());
+    const first = variantsOf(await t.derivatives(), "ig_reel")[0];
+
+    const again = await t.newRun();
+    await t.prepare(again);
+    expect((await t.contentRepos.contentRuns.get(again))?.report?.reel).toBe("existing");
+    expect(photoReelCalls(t)).toHaveLength(1);
+
+    // Otra portada: otro orden, otra clave y otro padre.
+    await t.media.arrange(listingSubject(t.listingId), [
+      { id: t.ids["foto-3"] ?? "", sortOrder: 2, isCover: true },
+    ]);
+    await t.prepare(await t.newRun());
+    const afterCover = variantsOf(await t.derivatives(), "ig_reel");
+    expect(afterCover.map((reel) => reel.parentMediaId)).toEqual([t.ids["foto-3"]]);
+    expect(reelSources(t, afterCover[0]?.storagePath)).toEqual(["foto-3", "foto-1", "foto-2"]);
+    expect(t.storage.objects.has(first?.storagePath ?? "")).toBe(false);
+
+    // Un precio nuevo cambia el texto: se rehace con la misma portada.
+    await t.listings.update(t.listingId, {
+      ...t.listingData,
+      priceAmount: 5900,
+      sourceHash: "hash-2",
+    });
+    await t.prepare(await t.newRun());
+    const afterPrice = variantsOf(await t.derivatives(), "ig_reel");
+    expect(afterPrice).toHaveLength(1);
+    expect(afterPrice[0]?.storagePath).not.toBe(afterCover[0]?.storagePath);
+    expect(t.storage.objects.has(afterCover[0]?.storagePath ?? "")).toBe(false);
+    expect(photoReelCalls(t)).toHaveLength(3);
+  });
+
+  it("usa hasta 10 fotos y no cuenta las que no se pudieron procesar", async () => {
+    const many: Original[] = Array.from({ length: 12 }, (_, index) => ({
+      name: `foto-${index + 1}`,
+      kind: "image",
+    }));
+    const t = await setup({ originals: [{ name: "CORRUPTO-1", kind: "image" }, ...many] });
+
+    await t.prepare(await t.newRun());
+
+    expect(photoReelCalls(t)).toMatchObject([{ photos: 10 }]);
+    const reel = variantsOf(await t.derivatives(), "ig_reel")[0];
+    expect(reelSources(t, reel?.storagePath)).toEqual(many.slice(0, 10).map((p) => p.name));
+
+    // Con 2 fotos buenas y una ilegible, no alcanza: sin reel.
+    const few = await setup({
+      originals: [{ name: "CORRUPTO-1", kind: "image" }, ...PHOTOS.slice(0, 2)],
+    });
+    const runId = await few.newRun();
+    await few.prepare(runId);
+    expect((await few.contentRepos.contentRuns.get(runId))?.report?.reel).toBe("none");
+    expect(photoReelCalls(few)).toEqual([]);
+  });
+
+  it("si después llega un video, el reel con fotos se borra y sale el del video", async () => {
+    const t = await setup({ originals: PHOTOS });
+    await t.prepare(await t.newRun());
+    const photoReel = variantsOf(await t.derivatives(), "ig_reel")[0];
+
+    const brokerId = photoReel?.brokerId ?? "";
+    const path = `brokers/${brokerId}/listings/${t.listingId}/original/video-nuevo`;
+    await t.storage.put(
+      path,
+      Uint8Array.from("video-nuevo", (c) => c.charCodeAt(0)),
+      "video/mp4",
+    );
+    const video = await t.media.create({
+      listingId: t.listingId,
+      brokerId,
+      kind: "video",
+      storagePath: path,
+      mime: "video/mp4",
+      bytes: 11,
+      checksum: "sha-video-nuevo",
+      sortOrder: 5,
+      isCover: false,
+    });
+    await t.prepare(await t.newRun());
+
+    const reels = variantsOf(await t.derivatives(), "ig_reel");
+    expect(reels.map((reel) => reel.parentMediaId)).toEqual([video.id]);
+    expect(t.storage.objects.has(photoReel?.storagePath ?? "")).toBe(false);
+  });
+
+  it("si las fotos no se pueden armar como reel, avisa y el anterior no queda vigente", async () => {
+    const t = await setup({ originals: PHOTOS });
+    await t.prepare(await t.newRun());
+    const oldReel = variantsOf(await t.derivatives(), "ig_reel")[0];
+
+    await t.listings.update(t.listingId, {
+      ...t.listingData,
+      priceAmount: 5900,
+      sourceHash: "hash-2",
+    });
+    const broken = {
+      ...t.deps,
+      processor: {
+        ...t.deps.processor,
+        version: t.deps.processor.version,
+        processImage: t.deps.processor.processImage,
+        processVideo: t.deps.processor.processVideo,
+        async processPhotoReel(): Promise<never> {
+          throw new AppError("MEDIA_DECODE_FAILED", "No se pudo leer el medio");
+        },
+      },
+    };
+    const runId = await t.newRun();
+    await prepareContent(broken, { contentRunId: runId, isLastAttempt: true });
+
+    const run = await t.contentRepos.contentRuns.get(runId);
+    expect(run?.status).toBe("succeeded");
+    expect(run?.report?.reel).toBe("skipped");
+    expect(run?.report?.warnings).toContain(
+      "No se pudo armar el reel con las fotos (formato no válido o archivo dañado)",
+    );
+    expect(variantsOf(await t.derivatives(), "ig_reel")).toEqual([]);
+    expect(t.storage.objects.has(oldReel?.storagePath ?? "")).toBe(false);
+  });
+});
+
 describe("prepareContent · avisos y datos", () => {
-  it("sin video, el reel es none; un video de menos de 3 s no da reel y avisa, sin volver a bajarlo", async () => {
-    const none = await setup({ originals: PHOTOS });
+  it("sin video y con menos de 3 fotos, el reel es none; un video de menos de 3 s no da reel y avisa, sin volver a bajarlo", async () => {
+    const none = await setup({ originals: PHOTOS.slice(0, 2) });
     await none.prepare(await none.newRun());
     expect(
       (
@@ -351,6 +527,8 @@ describe("prepareContent · avisos y datos", () => {
         )
       )?.report?.reel,
     ).toBe("none");
+    expect(none.processor.calls.filter((call) => call.kind === "photoReel")).toEqual([]);
+    expect(variantsOf(await none.derivatives(), "ig_reel")).toEqual([]);
 
     const short = await setup({ videoDurationS: 2 });
     const runId = await short.newRun();
@@ -362,6 +540,8 @@ describe("prepareContent · avisos y datos", () => {
     );
     // Solo la pasada de medidas y thumb: el video no se volvió a procesar para el reel.
     expect(short.processor.calls.filter((call) => call.kind === "video")).toHaveLength(1);
+    // Con video, las fotos no arman reel aunque el video no sirva (todo como antes de F9.5-T18).
+    expect(short.processor.calls.filter((call) => call.kind === "photoReel")).toEqual([]);
   });
 
   it("las fotos chicas avisan en cada corrida, también si ya estaban procesadas", async () => {
@@ -604,6 +784,7 @@ describe("prepareContent · revisión de F2-T10", () => {
       processor: {
         version: processor.version,
         processVideo: processor.processVideo,
+        processPhotoReel: processor.processPhotoReel,
         async processImage() {
           controller.aborted = true;
           throw new AppError("MEDIA_TOOL_NOT_INSTALLED", "falta ffmpeg");

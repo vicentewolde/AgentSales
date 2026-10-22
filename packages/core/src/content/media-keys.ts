@@ -35,6 +35,26 @@ export function reelPath(
   return `${listingRoot(ids.brokerId, ids.listingId)}/processed/ig_reel/${videoSha256}-${textSha256}.mp4`;
 }
 
+/**
+ * El reel armado con las fotos (F9.5-T18): el hash de sus fotos en orden (`photoReelInput`) y el
+ * de su texto. `photos-` lo distingue del reel de un video.
+ */
+export function photoReelPath(
+  ids: { brokerId: string; listingId: string },
+  photosSha256: string,
+  textSha256: string,
+): string {
+  return `${listingRoot(ids.brokerId, ids.listingId)}/processed/ig_reel/photos-${photosSha256}-${textSha256}.mp4`;
+}
+
+/**
+ * Las fotos de un reel con fotos como texto: que sale de fotos y el sha256 de cada original en el
+ * orden del reel. Su sha256 va en la clave: otra foto, otro orden u otra portada lo rehacen.
+ */
+export function photoReelInput(photoSha256s: readonly string[]): string {
+  return canonicalJson({ source: "photos", photos: photoSha256s });
+}
+
 /** Un render (portada o ficha), por el hash de su entrada. */
 export function renderPath(
   ids: { brokerId: string; listingId: string },
