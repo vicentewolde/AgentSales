@@ -60,7 +60,7 @@ export function OutcomeBox({
   return (
     <fieldset
       aria-label={unknown ? "Decir si salió" : "Confirmar la publicación a mano"}
-      className="mt-3 rounded-lg border border-warning-200 bg-warning-50 p-3 text-sm"
+      className="mt-3 min-w-0 rounded-lg border border-warning-200 bg-warning-50 p-3 text-sm"
     >
       <p className="text-warning-800">
         {unknown

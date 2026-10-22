@@ -338,7 +338,7 @@ export function PublicationItem({
           portal &&
           !publication.dryRun
         ) {
-          setNotice("Quedó publicada: en unos segundos se lee su estado en Mercado Libre.");
+          setNotice("Quedó publicada: se leerá su estado en Mercado Libre.");
           setSyncRequestedAt(Date.now());
         }
         if (next.kind === "sync") {
@@ -785,14 +785,15 @@ export function PublicationItem({
           {notice}
         </p>
       )}
-      {action.error && action.variables?.kind !== "resolve" && (
-        <ErrorAlert
-          error={action.error}
-          {...(cutHint(action.error, action.variables?.kind) === undefined
-            ? {}
-            : { hint: cutHint(action.error, action.variables?.kind) })}
-        />
-      )}
+      {action.error &&
+        (action.variables?.kind !== "resolve" || publication.status !== "outcome_unknown") && (
+          <ErrorAlert
+            error={action.error}
+            {...(cutHint(action.error, action.variables?.kind) === undefined
+              ? {}
+              : { hint: cutHint(action.error, action.variables?.kind) })}
+          />
+        )}
       {action.error instanceof ApiError &&
         (action.error.code === "ML_AUTH_INVALID" ||
           action.error.code === "ACCOUNT_NOT_CONNECTED") && (

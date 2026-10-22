@@ -1,12 +1,16 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { act, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { type HarnessOptions, publicationSetup } from "../../../test/harness.js";
+import { SYNC_REFRESH_MS } from "../../queries/publications.js";
 
 // F9.5-T04b: «Salió / No salió» de una publicación de un aviso con resultado dudoso, en la sección
 // Contenido de la propiedad, sobre la API en proceso (nunca Instagram ni Mercado Libre).
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 const PORTAL = "portal_inmobiliario";
 const MANY_MESSAGE =
@@ -148,13 +152,39 @@ describe("panel: salió / no salió en una propiedad", () => {
     await waitFor(() => expect(s.requests).toContain(`POST /publications/${id}/resolve`));
     expect(await within(item).findByText("publicada")).toBeTruthy();
     expect(
-      await within(item).findByText(
-        "Quedó publicada: en unos segundos se lee su estado en Mercado Libre.",
-      ),
+      await within(item).findByText("Quedó publicada: se leerá su estado en Mercado Libre."),
     ).toBeTruthy();
     const resolved = s.t.publications.all().find((p) => p.id === id);
     expect(resolved?.externalId).toBe("MLC1234567890");
     expect(s.t.queue.jobs.map((job) => job.name)).toContain("publication.sync");
+  });
+
+  it("Portal en vivo: resuelto «salió», vuelve a pedir el listado una vez pasado SYNC_REFRESH_MS", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const s = await setup({ platform: PORTAL });
+    await doubtful(s.t, {
+      live: true,
+      code: "ML_PUBLISH_OUTCOME_UNKNOWN",
+      message: "No se sabe si el aviso se creó en Mercado Libre",
+    });
+    const { item, box } = await outcomeBox(s, "aviso");
+    const listed = () =>
+      s.requests.filter((r) => r === `GET /listings/${s.t.listingId}/publications`).length;
+
+    fireEvent.change(within(box).getByLabelText("Enlace del aviso o su número (MLC…)"), {
+      target: { value: "MLC1234567890" },
+    });
+    fireEvent.click(within(box).getByRole("button", { name: "Sí, salió" }));
+    await within(item).findByText("Quedó publicada: se leerá su estado en Mercado Libre.");
+    // Lo que se vuelve a pedir al terminar la acción (no es el temporizador).
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    const before = listed();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(SYNC_REFRESH_MS);
+    });
+    expect(listed()).toBe(before + 1);
   });
 
   it("Portal en simulación: el enlace no hace falta ni se confirma «No salió»", async () => {
