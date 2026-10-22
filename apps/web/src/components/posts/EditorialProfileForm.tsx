@@ -1,4 +1,4 @@
-import type { EditorialProfileBody, EditorialProfileJson } from "@agentsales/api/contracts";
+import type { EditorialProfileJson } from "@agentsales/api/contracts";
 import {
   EDITORIAL_WEEKDAY_TEXT,
   EDITORIAL_WEEKDAYS,
@@ -10,135 +10,52 @@ import {
   POST_PLATFORMS,
   type PostPlatform,
 } from "@agentsales/core";
-import { type FormEvent, useId, useState } from "react";
+import { type FormEvent, type ReactNode, useId, useState } from "react";
 import { ApiError } from "../../api/client.js";
 import { useEditorialProfile, useSaveEditorialProfile } from "../../queries/posts.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 import { Button } from "../ui/Button.js";
 import { Input, Select, Textarea } from "../ui/Field.js";
+import { cx } from "../ui/styles.js";
+import {
+  AUDIENCE_EXAMPLE,
+  AVOID_EXAMPLES,
+  addAudience,
+  addHour,
+  addLine,
+  type CadenceRow,
+  DEFAULT_WEIGHT,
+  type Draft,
+  draftOf,
+  FACT_EXAMPLES,
+  type Issue,
+  levelOf,
+  lines,
+  PILLAR_EXAMPLES,
+  type PillarRow,
+  pillarKeyOf,
+  profileBody,
+  WEIGHT_LEVELS,
+  weightOf,
+} from "./editorial-profile-draft.js";
 
 // El perfil editorial de una marca (spec F9 §4.3, F9-T09): lo único que la IA usa para escribir sus
 // posts. Lo revisa core al guardar (`EDITORIAL_PROFILE_INVALID`) y cada problema llega con su campo
-// (`pillars[1].key`, `cadence.x.hours`): el formulario lo muestra junto a ese campo.
+// (`pillars[1].key`, `cadence.x.hours`): el formulario lo muestra junto a ese campo. Desde F9.5-T17
+// cada campo trae su ayuda y ejemplos de un corredor que se insertan con un clic, los temas se
+// pesan con «Poco / Normal / Mucho» y la cadencia se arma con botones de días y chips de horas; lo
+// que se guarda es lo mismo de siempre (`editorial-profile-draft.ts`).
 
-type PillarRow = { key: string; name: string; description: string; weight: string };
-type CadenceRow = {
-  on: boolean;
-  postsPerWeek: string;
-  days: EditorialWeekday[];
-  hours: string;
-  languageGapHours: string;
+/** La letra de cada día en los botones de la cadencia (el nombre completo va en su etiqueta). */
+const DAY_LETTER: Readonly<Record<EditorialWeekday, string>> = {
+  mon: "L",
+  tue: "M",
+  wed: "M",
+  thu: "J",
+  fri: "V",
+  sat: "S",
+  sun: "D",
 };
-
-/** Lo que se edita: listas como texto (una por línea) y números como texto, hasta guardar. */
-type Draft = {
-  primary: Language;
-  second: Language | "";
-  audience: string;
-  pillars: PillarRow[];
-  facts: string;
-  avoid: string;
-  cadence: Record<PostPlatform, CadenceRow>;
-  hashtags: string;
-};
-
-const lines = (text: string) =>
-  text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line !== "");
-
-function draftOf(profile: EditorialProfileJson): Draft {
-  const [primary = "es", second] = profile.languages;
-  const cadence = Object.fromEntries(
-    POST_PLATFORMS.map((platform) => {
-      const entry = profile.cadence[platform];
-      return [
-        platform,
-        {
-          on: entry !== undefined,
-          postsPerWeek: String(entry?.postsPerWeek ?? 1),
-          days: [...(entry?.days ?? [])],
-          hours: (entry?.hours ?? []).join(", "),
-          languageGapHours: String(entry?.languageGapHours ?? 6),
-        },
-      ];
-    }),
-  ) as Record<PostPlatform, CadenceRow>;
-  return {
-    primary,
-    second: second ?? "",
-    audience: profile.audience ?? "",
-    pillars: profile.pillars.map((pillar) => ({
-      key: pillar.key,
-      name: pillar.name,
-      description: pillar.description,
-      weight: String(pillar.weight),
-    })),
-    facts: profile.facts.join("\n"),
-    avoid: profile.avoid.join("\n"),
-    cadence,
-    hashtags: profile.defaultHashtags.join(" "),
-  };
-}
-
-type Issue = { field: string; message: string };
-
-/**
- * El cuerpo de `PUT /brokers/:id/editorial-profile` (core normaliza y valida) y, aparte, los números
- * mal escritos: esos no se pueden mandar (JSON no tiene `NaN`), así que se marcan aquí, con el mismo
- * campo y la misma forma de mensaje que usa la API.
- */
-export function profileBody(draft: Draft): { body: EditorialProfileBody; issues: Issue[] } {
-  const issues: Issue[] = [];
-  const numberOf = (text: string, field: string, label: string) => {
-    const value = Number(text.trim().replace(",", "."));
-    if (text.trim() === "" || !Number.isFinite(value)) {
-      issues.push({ field, message: `${label}: «${text.trim()}» no es un número` });
-      return 0;
-    }
-    return value;
-  };
-  const body: EditorialProfileBody = {
-    languages: [draft.primary, ...(draft.second === "" ? [] : [draft.second])],
-    audience: draft.audience.trim() === "" ? null : draft.audience,
-    pillars: draft.pillars.map((pillar, index) => ({
-      key: pillar.key,
-      name: pillar.name,
-      description: pillar.description,
-      weight: numberOf(pillar.weight, `pillars[${index}].weight`, "Líneas de contenido: el peso"),
-    })),
-    facts: lines(draft.facts),
-    avoid: lines(draft.avoid),
-    cadence: Object.fromEntries(
-      POST_PLATFORMS.filter((platform) => draft.cadence[platform].on).map((platform) => {
-        const row = draft.cadence[platform];
-        return [
-          platform,
-          {
-            postsPerWeek: numberOf(
-              row.postsPerWeek,
-              `cadence.${platform}.postsPerWeek`,
-              `Cadencia: en ${PLATFORM_TEXT[platform]}, los posts por semana`,
-            ),
-            days: row.days,
-            hours: row.hours
-              .split(/[\s,]+/)
-              .map((hour) => hour.trim())
-              .filter((hour) => hour !== ""),
-            languageGapHours: numberOf(
-              row.languageGapHours,
-              `cadence.${platform}.languageGapHours`,
-              `Cadencia: en ${PLATFORM_TEXT[platform]}, las horas entre idiomas`,
-            ),
-          },
-        ];
-      }),
-    ),
-    defaultHashtags: draft.hashtags.split(/[\s,]+/).filter((tag) => tag.trim() !== ""),
-  };
-  return { body, issues };
-}
 
 /** Los problemas que devolvió la API, por campo (`issues` de `EDITORIAL_PROFILE_INVALID`). */
 function issuesOf(error: Error | null): Issue[] {
@@ -177,6 +94,184 @@ function FieldErrors({
   );
 }
 
+/** La ayuda de un campo, bajo su título. */
+function Help({ id, children }: { id?: string; children: ReactNode }) {
+  return (
+    <p id={id} className="mt-0.5 text-xs text-fg-subtle">
+      {children}
+    </p>
+  );
+}
+
+/**
+ * Ejemplos que se insertan con un clic (F9.5-T17). Uno ya insertado queda desactivado para no
+ * repetirlo.
+ */
+function Examples({
+  label,
+  items,
+}: {
+  label: string;
+  items: readonly { text: string; used: boolean; onPick: () => void }[];
+}) {
+  return (
+    <fieldset aria-label={label} className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5">
+      <span className="text-xs text-fg-subtle">Ejemplos:</span>
+      {items.map((item) => (
+        <button
+          key={item.text}
+          type="button"
+          disabled={item.used}
+          onClick={item.onPick}
+          className="rounded-full border border-dashed border-brand-300 bg-brand-50 px-2.5 py-0.5 text-xs text-brand-800 not-disabled:hover:bg-brand-100 disabled:cursor-default disabled:opacity-50"
+        >
+          <span aria-hidden="true">+ </span>
+          {item.text}
+        </button>
+      ))}
+    </fieldset>
+  );
+}
+
+/** La cadencia de una red: posts por semana, días como botones y horas como chips. */
+function CadenceEditor({
+  platform,
+  row,
+  languages,
+  onChange,
+}: {
+  platform: PostPlatform;
+  row: CadenceRow;
+  languages: { primary: Language; second: Language | "" };
+  onChange: (change: Partial<CadenceRow>) => void;
+}) {
+  const name = PLATFORM_TEXT[platform];
+  const addPending = () => {
+    if (row.newHour.trim() === "") return;
+    onChange({ hours: addHour(row.hours, row.newHour), newHour: "" });
+  };
+  return (
+    <div className="mt-2 space-y-3">
+      <label className="flex items-center gap-2">
+        Posts por semana
+        <Input
+          width="auto"
+          value={row.postsPerWeek}
+          inputMode="numeric"
+          onChange={(event) => onChange({ postsPerWeek: event.target.value })}
+          className="w-16"
+        />
+      </label>
+
+      <fieldset aria-label={`Días de ${name}`} className="min-w-0">
+        <legend className="text-sm">Días que prefieres</legend>
+        <div className="mt-1 flex flex-wrap gap-1">
+          {EDITORIAL_WEEKDAYS.map((day) => {
+            const on = row.days.includes(day);
+            return (
+              <button
+                key={day}
+                type="button"
+                aria-pressed={on}
+                aria-label={`${name}: ${EDITORIAL_WEEKDAY_TEXT[day]}`}
+                title={EDITORIAL_WEEKDAY_TEXT[day]}
+                onClick={() =>
+                  onChange({
+                    days: on
+                      ? row.days.filter((item) => item !== day)
+                      : EDITORIAL_WEEKDAYS.filter(
+                          (item) => item === day || row.days.includes(item),
+                        ),
+                  })
+                }
+                className={cx(
+                  "size-8 rounded-full border text-sm font-medium transition-colors",
+                  on
+                    ? "border-brand-700 bg-brand-700 text-white"
+                    : "border-line-strong bg-surface text-fg-muted hover:bg-slate-50",
+                )}
+              >
+                {DAY_LETTER[day]}
+              </button>
+            );
+          })}
+        </div>
+      </fieldset>
+
+      <div>
+        <span className="text-sm">Horas que prefieres (hora de Chile)</span>
+        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+          {row.hours.length === 0 ? (
+            <span className="text-xs text-fg-subtle">Sin horas: el plan elige.</span>
+          ) : (
+            <ul aria-label={`Horas de ${name}`} className="flex flex-wrap gap-1.5">
+              {row.hours.map((hour) => (
+                <li
+                  key={hour}
+                  className="inline-flex items-center gap-1 rounded-full bg-slate-100 py-0.5 pr-1 pl-2.5 text-sm text-slate-800 ring-1 ring-slate-200 ring-inset"
+                >
+                  {hour}
+                  <button
+                    type="button"
+                    aria-label={`Quitar las ${hour} de ${name}`}
+                    onClick={() => onChange({ hours: row.hours.filter((item) => item !== hour) })}
+                    className="rounded-full px-1 text-slate-500 hover:bg-slate-200 hover:text-slate-800"
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <Input
+            width="auto"
+            type="time"
+            aria-label={`Hora nueva en ${name}`}
+            value={row.newHour}
+            onChange={(event) => onChange({ newHour: event.target.value })}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                addPending();
+              }
+            }}
+            className="w-32"
+          />
+          <Button
+            variant="secondary"
+            size="sm"
+            aria-label={`Agregar la hora en ${name}`}
+            disabled={row.newHour.trim() === ""}
+            onClick={addPending}
+          >
+            Agregar
+          </Button>
+        </div>
+      </div>
+
+      {languages.second !== "" && (
+        <div>
+          <label className="flex items-center gap-2">
+            Horas entre idiomas
+            <Input
+              width="auto"
+              value={row.languageGapHours}
+              inputMode="numeric"
+              onChange={(event) => onChange({ languageGapHours: event.target.value })}
+              className="w-16"
+            />
+          </label>
+          <Help>
+            Cada post sale una vez por idioma. Son las horas que separan el texto en{" "}
+            {LANGUAGE_TEXT[languages.primary]} del texto en {LANGUAGE_TEXT[languages.second]} en{" "}
+            {name} (de 1 a 48).
+          </Help>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** El formulario, ya con el perfil cargado (se monta de nuevo si cambia de marca). */
 function ProfileForm({ brokerId, profile }: { brokerId: string; profile: EditorialProfileJson }) {
   const ids = useId();
@@ -211,9 +306,12 @@ function ProfileForm({ brokerId, profile }: { brokerId: string; profile: Editori
         (field) => issue.field === field || issue.field.startsWith(field),
       ),
   );
+  const pillarNames = draft.pillars.map((pillar) => pillar.name.trim().toLowerCase());
+  const factLines = lines(draft.facts);
+  const avoidLines = lines(draft.avoid);
 
   return (
-    <form aria-label="Perfil editorial" className="mt-2 space-y-5" onSubmit={submit}>
+    <form aria-label="Perfil editorial" className="mt-2 space-y-6" onSubmit={submit}>
       <fieldset>
         <legend className="text-sm font-medium text-fg">Idiomas</legend>
         <div className="mt-1 flex flex-wrap items-center gap-3 text-sm">
@@ -245,132 +343,210 @@ function ProfileForm({ brokerId, profile }: { brokerId: string; profile: Editori
             ))}
           </Select>
         </div>
-        <p className="mt-1 text-xs text-fg-subtle">
+        <Help>
           Con dos idiomas, cada red tiene un texto por idioma, que se publican por separado (y la IA
           cuesta el doble).
-        </p>
+        </Help>
         <FieldErrors issues={issues} prefix="languages" />
       </fieldset>
 
       <div>
-        <label className="block text-sm font-medium text-fg">
+        <label htmlFor={`${ids}-audience`} className="block text-sm font-medium text-fg">
           Público
-          <Textarea
-            value={draft.audience}
-            onChange={(event) => set("audience", event.target.value)}
-            rows={2}
-            placeholder="A quién le habla la marca, en una o dos frases"
-            className="mt-1"
-          />
         </label>
+        <Help id={`${ids}-audience-help`}>
+          A quién le habla tu marca, en una o dos frases: quiénes son, qué buscan y dónde.
+        </Help>
+        <Textarea
+          id={`${ids}-audience`}
+          aria-describedby={`${ids}-audience-help`}
+          value={draft.audience}
+          onChange={(event) => set("audience", event.target.value)}
+          rows={2}
+          className="mt-1.5"
+        />
+        <Examples
+          label="Ejemplos de público"
+          items={[
+            {
+              text: AUDIENCE_EXAMPLE,
+              used: draft.audience.includes(AUDIENCE_EXAMPLE),
+              onPick: () => set("audience", addAudience(draft.audience, AUDIENCE_EXAMPLE)),
+            },
+          ]}
+        />
         <FieldErrors issues={issues} prefix="audience" />
       </div>
 
       <fieldset>
-        <legend className="text-sm font-medium text-fg">Líneas de contenido</legend>
-        <p className="text-xs text-fg-subtle">
-          La clave va en minúsculas y con guiones (la usa cada post); el peso reparte las ideas del
-          plan.
-        </p>
+        <legend className="text-sm font-medium text-fg">Temas de la marca</legend>
+        <Help>
+          De qué publica tu marca y cuánto de cada tema. Al proponer ideas, la IA reparte según
+          «cuánto»: un tema con «Mucho» recibe el triple de ideas que uno con «Poco».
+        </Help>
         <ul className="mt-2 space-y-2">
-          {draft.pillars.map((pillar, index) => (
-            <li
-              // biome-ignore lint/suspicious/noArrayIndexKey: las filas no tienen otro id hasta guardar.
-              key={index}
-              aria-label={`Línea ${index + 1}`}
-              className="grid gap-2 rounded-md border border-line bg-surface p-2 sm:grid-cols-[8rem_1fr_5rem_auto]"
-            >
-              <Input
-                width="auto"
-                aria-label={`Clave de la línea ${index + 1}`}
-                value={pillar.key}
-                onChange={(event) => setPillar(index, { key: event.target.value })}
-                placeholder="bastidores"
-              />
-              <Input
-                width="auto"
-                aria-label={`Nombre de la línea ${index + 1}`}
-                value={pillar.name}
-                onChange={(event) => setPillar(index, { name: event.target.value })}
-                placeholder="Bastidores"
-              />
-              <Input
-                width="auto"
-                aria-label={`Peso de la línea ${index + 1}`}
-                value={pillar.weight}
-                inputMode="numeric"
-                onChange={(event) => setPillar(index, { weight: event.target.value })}
-              />
-              <Button
-                variant="link"
-                className="text-sm"
-                onClick={() =>
-                  set(
-                    "pillars",
-                    draft.pillars.filter((_, at) => at !== index),
-                  )
-                }
+          {draft.pillars.map((pillar, index) => {
+            const n = index + 1;
+            const level = levelOf(pillar.weight);
+            return (
+              <li
+                // biome-ignore lint/suspicious/noArrayIndexKey: las filas no tienen otro id hasta guardar.
+                key={index}
+                aria-label={`Tema ${n}`}
+                className="grid gap-2 rounded-lg border border-line bg-surface p-3 sm:grid-cols-[1fr_9rem_auto]"
               >
-                Quitar
-              </Button>
-              <Textarea
-                aria-label={`Descripción de la línea ${index + 1}`}
-                value={pillar.description}
-                onChange={(event) => setPillar(index, { description: event.target.value })}
-                rows={1}
-                placeholder="De qué trata"
-                className="sm:col-span-4"
-              />
-              <div className="sm:col-span-4">
-                <FieldErrors issues={issues} prefix={`pillars[${index}]`} />
-              </div>
-            </li>
-          ))}
+                <Input
+                  aria-label={`Nombre del tema ${n}`}
+                  value={pillar.name}
+                  onChange={(event) => setPillar(index, { name: event.target.value })}
+                  placeholder="Propiedades disponibles"
+                />
+                <Select
+                  aria-label={`Cuánto del tema ${n}`}
+                  value={String(pillar.weight)}
+                  onChange={(event) => setPillar(index, { weight: Number(event.target.value) })}
+                >
+                  {WEIGHT_LEVELS.map((item) => (
+                    <option key={item.value} value={String(item.value)}>
+                      {item.label}
+                    </option>
+                  ))}
+                  {level === null && (
+                    <option value={String(pillar.weight)}>Como está (peso {pillar.weight})</option>
+                  )}
+                </Select>
+                <Button
+                  variant="link"
+                  className="justify-self-start text-sm"
+                  aria-label={`Quitar el tema ${n}`}
+                  onClick={() =>
+                    set(
+                      "pillars",
+                      draft.pillars.filter((_, at) => at !== index),
+                    )
+                  }
+                >
+                  Quitar
+                </Button>
+                <Textarea
+                  aria-label={`Qué incluye el tema ${n}`}
+                  value={pillar.description}
+                  onChange={(event) => setPillar(index, { description: event.target.value })}
+                  rows={1}
+                  placeholder="Qué incluye (opcional)"
+                  className="sm:col-span-3"
+                />
+                <label className="flex flex-wrap items-center gap-2 text-xs text-fg-subtle sm:col-span-3">
+                  Clave interna
+                  <Input
+                    width="auto"
+                    aria-label={`Clave interna del tema ${n}`}
+                    value={pillar.key}
+                    onChange={(event) => setPillar(index, { key: event.target.value })}
+                    placeholder={pillarKeyOf(pillar.name) || "se arma sola desde el nombre"}
+                    className="w-56 py-1 text-xs"
+                  />
+                  <span>(la usan los posts; si la dejas vacía, se arma sola desde el nombre)</span>
+                </label>
+                <div className="sm:col-span-3">
+                  <FieldErrors issues={issues} prefix={`pillars[${index}]`} />
+                </div>
+              </li>
+            );
+          })}
         </ul>
         <Button
           variant="secondary"
           size="sm"
           className="mt-2"
           onClick={() =>
-            set("pillars", [...draft.pillars, { key: "", name: "", description: "", weight: "1" }])
+            set("pillars", [
+              ...draft.pillars,
+              { key: "", name: "", description: "", weight: DEFAULT_WEIGHT },
+            ])
           }
         >
-          Agregar una línea
+          Agregar un tema
         </Button>
+        <Examples
+          label="Ejemplos de temas"
+          items={PILLAR_EXAMPLES.map((example) => ({
+            text: `${example.name} (${example.level.toLowerCase()})`,
+            used: pillarNames.includes(example.name.toLowerCase()),
+            onPick: () =>
+              set("pillars", [
+                ...draft.pillars,
+                {
+                  key: "",
+                  name: example.name,
+                  description: "",
+                  weight: weightOf(example.level),
+                },
+              ]),
+          }))}
+        />
         <FieldErrors issues={issues} prefix="pillars" exact />
       </fieldset>
 
       <div>
-        <label className="block text-sm font-medium text-fg">
+        <label htmlFor={`${ids}-facts`} className="block text-sm font-medium text-fg">
           Hechos que la IA puede afirmar (uno por línea)
-          <Textarea
-            value={draft.facts}
-            onChange={(event) => set("facts", event.target.value)}
-            rows={5}
-            className="mt-1"
-          />
         </label>
-        <p className="mt-1 text-xs text-fg-subtle">
-          Lo que no esté aquí (ni en el brief que escribas) no se afirma: cifras, nombres y enlaces.
-        </p>
+        <Help id={`${ids}-facts-help`}>
+          La IA solo afirma lo que esté aquí. Escribe solo cosas verdaderas y comprobables. Los
+          ejemplos son de muestra: cámbialos por tus datos reales antes de guardar.
+        </Help>
+        <Textarea
+          id={`${ids}-facts`}
+          aria-describedby={`${ids}-facts-help`}
+          value={draft.facts}
+          onChange={(event) => set("facts", event.target.value)}
+          rows={5}
+          className="mt-1.5"
+        />
+        <Examples
+          label="Ejemplos de hechos"
+          items={FACT_EXAMPLES.map((example) => ({
+            text: example,
+            used: factLines.includes(example),
+            onPick: () => set("facts", addLine(draft.facts, example)),
+          }))}
+        />
         <FieldErrors issues={issues} prefix="facts" />
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-fg">
+        <label htmlFor={`${ids}-avoid`} className="block text-sm font-medium text-fg">
           Cosas que evitar (una por línea)
-          <Textarea
-            value={draft.avoid}
-            onChange={(event) => set("avoid", event.target.value)}
-            rows={3}
-            className="mt-1"
-          />
         </label>
+        <Help id={`${ids}-avoid-help`}>
+          Temas, promesas o palabras que la IA no debe usar nunca en tus posts.
+        </Help>
+        <Textarea
+          id={`${ids}-avoid`}
+          aria-describedby={`${ids}-avoid-help`}
+          value={draft.avoid}
+          onChange={(event) => set("avoid", event.target.value)}
+          rows={3}
+          className="mt-1.5"
+        />
+        <Examples
+          label="Ejemplos de cosas que evitar"
+          items={AVOID_EXAMPLES.map((example) => ({
+            text: example,
+            used: avoidLines.includes(example),
+            onPick: () => set("avoid", addLine(draft.avoid, example)),
+          }))}
+        />
         <FieldErrors issues={issues} prefix="avoid" />
       </div>
 
       <fieldset>
         <legend className="text-sm font-medium text-fg">Cadencia por red (hora de Chile)</legend>
+        <Help>
+          En qué redes publica la marca, cuántos posts por semana y qué días y horas prefieres. El
+          plan de ideas los usa para proponer fechas.
+        </Help>
         <ul className="mt-2 space-y-2">
           {POST_PLATFORMS.map((platform) => {
             const row = draft.cadence[platform];
@@ -379,7 +555,7 @@ function ProfileForm({ brokerId, profile }: { brokerId: string; profile: Editori
               <li
                 key={platform}
                 aria-label={`Cadencia de ${name}`}
-                className="rounded-md border border-line bg-surface p-2 text-sm"
+                className="rounded-lg border border-line bg-surface p-3 text-sm"
               >
                 <label className="flex items-center gap-2 font-medium">
                   <input
@@ -390,64 +566,12 @@ function ProfileForm({ brokerId, profile }: { brokerId: string; profile: Editori
                   {name}
                 </label>
                 {row.on && (
-                  <div className="mt-2 flex flex-wrap items-center gap-3">
-                    <label className="flex items-center gap-1">
-                      Posts por semana
-                      <Input
-                        width="auto"
-                        value={row.postsPerWeek}
-                        inputMode="numeric"
-                        onChange={(event) =>
-                          setCadence(platform, { postsPerWeek: event.target.value })
-                        }
-                        className="w-16"
-                      />
-                    </label>
-                    <span className="flex flex-wrap items-center gap-1">
-                      Días:
-                      {EDITORIAL_WEEKDAYS.map((day) => (
-                        <label key={day} className="flex items-center gap-0.5">
-                          <input
-                            type="checkbox"
-                            aria-label={`${name}: ${EDITORIAL_WEEKDAY_TEXT[day]}`}
-                            checked={row.days.includes(day)}
-                            onChange={(event) =>
-                              setCadence(platform, {
-                                days: event.target.checked
-                                  ? [...row.days, day]
-                                  : row.days.filter((item) => item !== day),
-                              })
-                            }
-                          />
-                          {EDITORIAL_WEEKDAY_TEXT[day]}
-                        </label>
-                      ))}
-                    </span>
-                    <label className="flex items-center gap-1">
-                      Horas
-                      <Input
-                        width="auto"
-                        value={row.hours}
-                        onChange={(event) => setCadence(platform, { hours: event.target.value })}
-                        placeholder="09:00, 18:30"
-                        className="w-32"
-                      />
-                    </label>
-                    {draft.second !== "" && (
-                      <label className="flex items-center gap-1">
-                        Horas entre idiomas
-                        <Input
-                          width="auto"
-                          value={row.languageGapHours}
-                          inputMode="numeric"
-                          onChange={(event) =>
-                            setCadence(platform, { languageGapHours: event.target.value })
-                          }
-                          className="w-16"
-                        />
-                      </label>
-                    )}
-                  </div>
+                  <CadenceEditor
+                    platform={platform}
+                    row={row}
+                    languages={{ primary: draft.primary, second: draft.second }}
+                    onChange={(change) => setCadence(platform, change)}
+                  />
                 )}
                 <FieldErrors issues={issues} prefix={`cadence.${platform}`} />
               </li>
@@ -463,11 +587,11 @@ function ProfileForm({ brokerId, profile }: { brokerId: string; profile: Editori
           <Input
             value={draft.hashtags}
             onChange={(event) => set("hashtags", event.target.value)}
-            placeholder="#agentpey #ventas"
+            placeholder="#propiedades #arriendo #providencia"
             className="mt-1"
           />
         </label>
-        <p className="mt-1 text-xs text-fg-subtle">Se suman a los hashtags fijos de la marca.</p>
+        <Help>Se suman a los hashtags fijos de la marca.</Help>
         <FieldErrors issues={issues} prefix="defaultHashtags" />
       </div>
 
@@ -498,7 +622,7 @@ function ProfileForm({ brokerId, profile }: { brokerId: string; profile: Editori
 }
 
 /**
- * La sección Perfil editorial (Mi marca y la página de cada corredor): idiomas, público, líneas,
+ * La sección Perfil editorial (Mi marca y la página de cada corredor): idiomas, público, temas,
  * hechos, cosas que evitar, cadencia por red y hashtags.
  */
 export function EditorialProfileSection({ brokerId }: { brokerId: string }) {

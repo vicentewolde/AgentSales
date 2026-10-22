@@ -119,7 +119,7 @@ describe("normalizeEditorialProfile", () => {
           ],
         }),
       ).map((issue) => issue.message),
-    ).toEqual(["Líneas de contenido: al menos una línea debe tener peso mayor que 0"]);
+    ).toEqual(["Temas de la marca: al menos un tema debe tener peso mayor que 0"]);
     // Sin líneas está bien (una marca nueva).
     expect(normalizeEditorialProfile(valid({ pillars: [] })).pillars).toEqual([]);
     const many = Array.from({ length: 13 }, (_, i) => ({ ...pillar, key: `l${i}` }));

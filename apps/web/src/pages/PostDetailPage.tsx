@@ -53,7 +53,7 @@ function runText(run: ContentRunView): string {
   }
 }
 
-/** Editar el tema, el brief, el tipo, la línea y la fecha planeada. */
+/** Editar el tema, el brief, el tipo, el tema de la marca y la fecha planeada. */
 function PostEditForm({ post, onClose }: { post: PostJson; onClose: () => void }) {
   const update = useUpdatePost(post.id);
   const profile = useEditorialProfile(post.brokerId);
@@ -112,9 +112,9 @@ function PostEditForm({ post, onClose }: { post: PostJson; onClose: () => void }
           ))}
         </Select>
       </Field>
-      <Field label="Línea de contenido">
+      <Field label="Tema de la marca">
         <Select name="pillar" defaultValue={post.pillar ?? ""}>
-          <option value="">sin línea</option>
+          <option value="">sin tema</option>
           {pillars.map((pillar) => (
             <option key={pillar.key} value={pillar.key}>
               {pillar.name}
@@ -318,7 +318,7 @@ export function PostDetailPage() {
           <>
             <p>
               {POST_KIND_LABEL[item.kind]}
-              {item.pillar !== null && ` · línea ${item.pillar}`}
+              {item.pillar !== null && ` · tema ${item.pillar}`}
               {" · "}
               {item.plannedAt === null
                 ? "sin fecha planeada"

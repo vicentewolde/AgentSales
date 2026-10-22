@@ -340,7 +340,7 @@ function IdeaCard({
       </div>
       <p className="mt-1 text-sm text-fg-muted">
         {POST_KIND_LABEL[idea.kind]} · {networksText(idea.platforms)}
-        {pillarName !== null && ` · línea ${pillarName}`}
+        {pillarName !== null && ` · tema ${pillarName}`}
       </p>
       {idea.rationale !== null && (
         <p className="mt-1 text-sm text-fg">
