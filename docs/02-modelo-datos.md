@@ -119,6 +119,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Únic
 | internal_notes | text null | Nunca se publica |
 | source | enum `listing_source` | `xlsx`, `google_sheets`, `manual`, `chat` |
 | source_hash | text | Hash de la fila para detectar cambios |
+| music_track_id | text null | Desde F9.5-T19 (migración `0019`): la música del reel, un id del catálogo de core (`MUSIC_TRACK_IDS`, `packages/core/src/music/catalog.ts`), validado en core (`MUSIC_TRACK_INVALID`), no con un enum: sacar una pista del catálogo no pide migración y la deja sin música. `null` = sin música (por defecto). La importación no la toca; la fija el operador (`PATCH /listings/:id`, `ListingRepository.setMusicTrack`). Va en la clave del reel solo si hay música |
 
 Único: `(broker_id, external_ref)`. Ese par es la llave de la **importación idempotente**.
 
@@ -131,7 +132,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Únic
 | broker_id | uuid FK | |
 | kind | enum `media_kind` | `image`, `video` |
 | role | enum `media_role` | `original`, `processed`, `rendered` |
-| variant | text null | `MEDIA_VARIANTS` (core): de un `processed`, `thumb`, `ig_4x5`, `pi_4x3`, `ig_reel` o, desde F9-T10 (solo posts, sin migración), `x_video` (el video reducido para X) y, desde F9.5-T10 (solo posts que van a Discord, sin migración), `discord_video` (el video liviano para Discord, bajo 19 MiB); de un `rendered`, `cover` o `spec_sheet`. `null` en un original. `ig_reel`, `x_video` y `discord_video` son `kind = video`. Desde F9.5-T18, el `ig_reel` de un aviso **sin video** (armado con 3 fotos o más) cuelga de su primera foto: el padre de un derivado de video puede ser una imagen |
+| variant | text null | `MEDIA_VARIANTS` (core): de un `processed`, `thumb`, `ig_4x5`, `pi_4x3`, `ig_reel` o, desde F9-T10 (solo posts, sin migración), `x_video` (el video reducido para X) y, desde F9.5-T10 (solo posts que van a Discord, sin migración), `discord_video` (el video liviano para Discord, bajo 19 MiB); de un `rendered`, `cover` o `spec_sheet`. `null` en un original. `ig_reel`, `x_video` y `discord_video` son `kind = video`. Desde F9.5-T19, con música elegida, su clave de R2 suma la pista (la del reel de un aviso en el hash de su texto; la de un post, `-m-<id>`), y sin música es la de siempre. Desde F9.5-T18, el `ig_reel` de un aviso **sin video** (armado con 3 fotos o más) cuelga de su primera foto: el padre de un derivado de video puede ser una imagen |
 | parent_media_id | uuid null | Derivado de qué original. Suele ser del mismo tipo, salvo el `ig_reel` con fotos de un aviso sin video (F9.5-T18): una variante de video cuyo padre es la primera foto del reel (la portada), sin cambios de esquema |
 | storage_path | text | Ruta en el bucket |
 | mime | text | |
@@ -232,6 +233,7 @@ Un tema o idea con un texto por red e idioma (`contents.post_id`), a veces medio
 | rationale | text null | El porqué de una idea de la IA |
 | platforms | text[] null | Desde F9-T20 (migración `0018`): las redes del post, de `POST_PLATFORMS` (core, validado al leer). Las llena el plan con las redes que la IA sugirió y que pasaron las verificaciones de cada idea, y las cambia el operador (`updatePost`). `null` = todas las redes de la marca (un post manual). `post.draft` redacta solo para estas, dentro de las de la marca y que sirvan al `kind` del post. Desde F9-T21 también deciden aprobar, publicar y programar: el texto de una red que no está aquí no se aprueba ni sale (`POST_PLATFORM_EXCLUDED`), y una red con publicaciones pendientes no se quita (`POST_HAS_PENDING_PUBLICATIONS`) |
 | x_link_allowed | boolean default `false` | Desde F9-T16 (migración `0016`): la marca explícita del operador que permite un enlace en el texto de X (cuesta US$0,20 en vez de US$0,015). Sin ella, un enlace en X impide aprobar (`LINK_NOT_ALLOWED`) y publicar (`X_LINK_NOT_ALLOWED`) |
+| music_track_id | text null | Desde F9.5-T19 (migración `0019`): la música de los videos del post, como `listings.music_track_id`; `null` = sin música. Cambiarla (`updatePost`) encola `post.media`, que rehace el reel, el video para X y el de Discord con la pista (su clave de R2 suma `-m-<id>`) |
 
 Índice `(broker_id, status, planned_at)` para el contenido y el calendario de una marca, y `posts_plan_run_idx` sobre `(plan_run_id)` para las ideas de un plan (`GET /plans/:id` las lee con `PostRepository.list` por `planRunId`); los dos, desde la migración `0015`.
 
@@ -441,6 +443,8 @@ Son **aditivas salvo la `0015`**, que además quita el `NOT NULL` de `listing_id
 | `0016_f9_x_enlace` | T16 | `posts.x_link_allowed` (`false` por defecto) |
 | `0017_f9_subida_grande` | T17 | `post_upload_status` suma `uploaded` |
 | `0018_f9_plan_ideas` | T20 | `posts.platforms` (`text[]` nulo) y el único parcial `plan_runs_one_active_per_broker` |
+
+**F9.5 (lista para mostrar):** `0019_f95_musica` (T19) agrega `listings.music_track_id` y `posts.music_track_id` (texto nulo): aditiva; la versión anterior no las lee, y volver atrás no pide deshacerla.
 
 ## Reglas de datos
 
