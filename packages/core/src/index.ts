@@ -1179,6 +1179,7 @@ export {
   resumePublication,
 } from "./use-cases/resume-publication.js";
 export {
+  REMOTE_DELETE_PLATFORMS,
   type RetiredPublication,
   type RetirePublicationDeps,
   retirePublication,

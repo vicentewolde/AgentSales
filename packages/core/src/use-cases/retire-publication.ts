@@ -43,6 +43,13 @@ export type RetireRemovalDeps = {
   onWarning?: (warning: { publicationId: string; step: "account_status"; code: string }) => void;
 };
 
+/**
+ * Las redes que AgentSales sabe borrar por la API al retirar (F9-T19, LinkedIn; F9.5-T09, X), con la
+ * cuenta en modo `api`. La CLI la usa para avisar antes de preguntar; quien decide es el `remove`
+ * de `operationsFor`. TikTok no está: no tiene cómo borrar por la API (D9 de F9.5).
+ */
+export const REMOTE_DELETE_PLATFORMS: ReadonlySet<Platform> = new Set(["linkedin", "x"]);
+
 /** `postLock` hace falta para una publicación de un post (sin él, `SUBJECT_NOT_LISTING`). */
 export type RetirePublicationDeps = SubjectLocks & {
   /** Fuera del candado: solo para saber de qué sujeto es la publicación. */

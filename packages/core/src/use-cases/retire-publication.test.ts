@@ -5,7 +5,11 @@ import {
   createPostPublicationScenario,
   POST_SCENARIO_TOKEN,
 } from "../testing/post-publication-scenario.js";
-import { type RetireRemovalDeps, retirePublication } from "./retire-publication.js";
+import {
+  REMOTE_DELETE_PLATFORMS,
+  type RetireRemovalDeps,
+  retirePublication,
+} from "./retire-publication.js";
 
 // F9-T19: retirar un post de LinkedIn borrándolo por la API (`deleteRemote`), solo con la cuenta en
 // modo `api` y la API en `live`; en simulación nunca se llama. El `remove` es un doble.
@@ -347,5 +351,12 @@ describe("retirar borrando en X y TikTok (F9.5-T09)", () => {
     });
     expect(calls).toEqual([]);
     expect(t.current(published.id)?.status).toBe("published");
+  });
+});
+
+describe("REMOTE_DELETE_PLATFORMS (F9.5-T09)", () => {
+  it("LinkedIn y X se borran por la API; TikTok no (D9)", () => {
+    expect([...REMOTE_DELETE_PLATFORMS].sort()).toEqual(["linkedin", "x"]);
+    expect(REMOTE_DELETE_PLATFORMS.has("tiktok")).toBe(false);
   });
 });

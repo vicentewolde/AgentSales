@@ -19,8 +19,8 @@ import {
   manualConfirmCommands,
   OPERATION_PLATFORMS,
   PLATFORM_TEXT,
-  type Platform,
   publicationModeText,
+  REMOTE_DELETE_PLATFORMS,
 } from "@agentsales/core";
 import type { Command } from "commander";
 import { z } from "zod";
@@ -210,9 +210,6 @@ export function runCancelPublication(deps: PublicationsDeps, id: string) {
 
 export type RetireOptions = { yes?: boolean; delete?: boolean };
 
-/** Las redes en que `--delete` borra por la API (F9-T19, LinkedIn; F9.5-T09, X). */
-const DELETABLE_PLATFORMS: ReadonlySet<Platform> = new Set(["linkedin", "x"]);
-
 /**
  * `agentsales publications retire <id> [--yes]` (spec F3 §4.3 y D8, F5 §4.3): Instagram y
  * Marketplace no dejan borrar desde AgentSales, así que una publicada en vivo se borra a mano y
@@ -251,7 +248,7 @@ export function runRetirePublication(
         `Bórralo a mano en la app de TikTok y corre: agentsales publications retire ${publicationId}`,
       );
     }
-    if (options.delete && !DELETABLE_PLATFORMS.has(current.platform)) {
+    if (options.delete && !REMOTE_DELETE_PLATFORMS.has(current.platform)) {
       throw new CliError(
         "RETIRE_DELETE_UNSUPPORTED",
         `AgentSales no borra en ${platform}: solo un post de LinkedIn o de X con la cuenta en modo api`,
@@ -270,7 +267,7 @@ export function runRetirePublication(
             options.delete
               ? "No se borró nada"
               : `No se marcó como retirada: bórrala primero en ${platform} y confirma (o usa --yes)${
-                  DELETABLE_PLATFORMS.has(current.platform)
+                  REMOTE_DELETE_PLATFORMS.has(current.platform)
                     ? "; con la cuenta en modo api, AgentSales la borra con --delete"
                     : ""
                 }`,

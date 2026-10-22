@@ -1,4 +1,4 @@
-import type { AbortSignalLike } from "@agentsales/core";
+import { type AbortSignalLike, isAppError } from "@agentsales/core";
 import { z } from "zod";
 import {
   X_API_ORIGIN,
@@ -89,7 +89,7 @@ const deletePostSchema = z.looseObject({ data: z.looseObject({ deleted: z.litera
 
 /** Si un error es el 404 de X: lo que se quería borrar ya no existe. */
 const isNotFound = (error: unknown) =>
-  (error as { details?: { httpStatus?: unknown } } | null)?.details?.httpStatus === 404;
+  isAppError(error) && (error.details as { httpStatus?: unknown } | undefined)?.httpStatus === 404;
 
 const processingSchema = z
   .looseObject({
