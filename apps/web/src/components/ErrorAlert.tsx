@@ -6,6 +6,7 @@ import {
   portalIssuesHint,
   ReadinessIssueList,
 } from "./ReadinessIssueList.js";
+import { errorText } from "./error-messages.js";
 import { Alert } from "./ui/Alert.js";
 import { Button } from "./ui/Button.js";
 
@@ -53,7 +54,14 @@ function IssueList({ error }: { error: Error }) {
   // Las `issues` de otros códigos (`BROKER_INVALID`: los campos de la marca) ya van en el mensaje.
   const readiness = code === "PORTAL_NOT_READY" || code === "MARKETPLACE_NOT_READY";
   if (issues.length === 0 || !readiness) {
-    return <p className="font-semibold text-danger-800">{error.message}</p>;
+    // En simple (F9.5-T20): el mensaje del mapa o el general, y el de la API debajo si aporta.
+    const { title, detail } = errorText(error);
+    return (
+      <>
+        <p className="font-semibold text-danger-800">{title}</p>
+        {detail !== null && detail !== "" && <p className="mt-1 text-danger-800">{detail}</p>}
+      </>
+    );
   }
   const channel = code === "MARKETPLACE_NOT_READY" ? "Marketplace" : "Portal";
   return (
@@ -104,11 +112,13 @@ export function ErrorAlert({
   hint?: string;
 }) {
   const hint = ownHint ?? hintFor(error);
+  const { code, title } = errorText(error);
   return (
     <Alert role="alert" tone="danger" className="mt-4">
       <IssueList error={error} />
-      {hint && <p className="mt-1 text-danger-700">{hint}</p>}
+      {hint && hint !== title && <p className="mt-1 text-danger-700">{hint}</p>}
       <WaitingCommands error={error} />
+      {code !== null && <p className="mt-2 text-xs text-danger-700">código: {code}</p>}
       {onRetry && (
         <Button variant="secondary" size="sm" onClick={onRetry} loading={retrying} className="mt-3">
           {retrying ? "Reintentando…" : "Reintentar"}

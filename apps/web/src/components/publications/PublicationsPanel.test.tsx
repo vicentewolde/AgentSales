@@ -320,22 +320,43 @@ describe("panel: publicar", () => {
     expect((publish as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("sin cuenta conectada explica que hay que conectarla en Cuentas", async () => {
+  it("sin cuenta conectada, Publicar y Programar quedan desactivados y dicen por qué (F9.5-T20)", async () => {
     const setup = await publicationSetup({ approve: false });
     await setup.t.platformAccounts.disconnect(setup.t.account?.id ?? "");
     const section = await setup.open();
 
     fireEvent.click(await within(section).findByRole("button", { name: "Aprobar Instagram" }));
-    fireEvent.click(
-      await within(section).findByRole("button", { name: "Publicar en Instagram (simulación)" }),
-    );
+    const publish = await within(section).findByRole("button", {
+      name: "Publicar en Instagram (simulación)",
+    });
+    await within(section).findByText(/Conecta tu cuenta de Instagram en Cuentas para publicar/);
 
-    expect((await within(section).findByRole("alert")).textContent).toContain(
-      "ACCOUNT_NOT_CONNECTED",
-    );
-    expect(within(section).getByRole("link", { name: "Cuentas" }).getAttribute("href")).toBe(
+    expect((publish as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      (within(section).getByRole("button", { name: "Programar Instagram" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(within(section).getByRole("link", { name: "Ir a Cuentas" }).getAttribute("href")).toBe(
       "/cuentas",
     );
+    // No se llegó a pedir nada a la API: no hay error rojo.
+    expect(within(section).queryByRole("alert")).toBeNull();
+    expect(setup.requests.some((request) => request.includes("/publish"))).toBe(false);
+  });
+
+  it("con la cuenta conectada, Publicar y Programar siguen activos", async () => {
+    const setup = await publicationSetup();
+    const section = await setup.open();
+
+    const publish = await within(section).findByRole("button", {
+      name: "Publicar en Instagram (simulación)",
+    });
+    expect((publish as HTMLButtonElement).disabled).toBe(false);
+    expect(
+      (within(section).getByRole("button", { name: "Programar Instagram" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    expect(within(section).queryByText(/Conecta tu cuenta/)).toBeNull();
   });
 
   it("Volver a encolar una en curso la vuelve a poner en la cola", async () => {

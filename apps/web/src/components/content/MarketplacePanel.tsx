@@ -165,11 +165,14 @@ export function MarketplacePanel({
   photos,
   edit,
   readiness,
+  brokerId,
 }: {
   content: ContentView | undefined;
   photos: ContentMedia[];
   edit: EditContext;
   readiness: ReadinessView;
+  /** El corredor del aviso: sin su cuenta conectada, no se publica (F9.5-T20). */
+  brokerId?: string | undefined;
 }) {
   const publications = edit.publications.filter((p) => p.platform === MARKETPLACE);
   // Con la cuenta a mano, el plan B va arriba y abierto: es como se publica (ADR-0023).
@@ -216,6 +219,7 @@ export function MarketplacePanel({
         publishMode={edit.publishMode}
         runActive={edit.runActive}
         readiness={readiness}
+        brokerId={brokerId}
       />
       {!byHand && planB}
     </div>
