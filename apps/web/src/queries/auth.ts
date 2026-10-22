@@ -42,6 +42,8 @@ export function useLogin() {
     mutationFn: async (input: { email: string; password: string }): Promise<LoginStepResponse> =>
       unwrap(client.auth.login.$post({ json: input }), loginStepResponseSchema),
     onSuccess: (result) => {
+      // Entra otro usuario (o el mismo de nuevo): los enlaces guardados de la sesión anterior se van.
+      clearAllOneTimeLinks();
       if (!("totpRequired" in result)) void queryClient.resetQueries();
     },
     gcTime: 0,
@@ -55,7 +57,10 @@ export function useLoginTotp() {
   return useMutation({
     mutationFn: async (input: { challenge: string; code: string }) =>
       (await unwrap(client.auth.login.totp.$post({ json: input }), loginResponseSchema)).user,
-    onSuccess: () => queryClient.resetQueries(),
+    onSuccess: () => {
+      clearAllOneTimeLinks();
+      return queryClient.resetQueries();
+    },
     gcTime: 0,
   });
 }
@@ -129,7 +134,10 @@ export function useAcceptInvitation() {
     mutationFn: async (input: { token: string; password: string }) =>
       (await unwrap(client.auth.invitations.accept.$post({ json: input }), loginResponseSchema))
         .user,
-    onSuccess: () => queryClient.resetQueries(),
+    onSuccess: () => {
+      clearAllOneTimeLinks();
+      return queryClient.resetQueries();
+    },
   });
 }
 

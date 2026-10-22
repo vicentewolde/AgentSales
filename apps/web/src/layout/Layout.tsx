@@ -3,6 +3,7 @@ import { type ReactNode, Suspense, useEffect } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { onSessionExpired } from "../api/session-events.js";
 import { BrokerSelector } from "../components/BrokerSelector.js";
+import { clearAllOneTimeLinks } from "../components/brokers/one-time-link-store.js";
 import {
   CalendarIcon,
   ChartIcon,
@@ -121,6 +122,8 @@ function useSessionGuard() {
     () =>
       onSessionExpired(() => {
         queryClient.clear();
+        // Los enlaces de invitación guardados en la pestaña son secretos de esa sesión (F9.5-T20).
+        clearAllOneTimeLinks();
         const back = `${location.pathname}${location.search}`;
         navigate(`/entrar?volver=${encodeURIComponent(back)}`, { replace: true });
       }),

@@ -63,6 +63,17 @@ function BrokerUsers({ brokerId }: { brokerId: string }) {
     const timer = setTimeout(hide, Math.min(wait, 2 ** 31 - 1));
     return () => clearTimeout(timer);
   }, [brokerId, expiresAt]);
+  // Una invitación que el usuario ya aceptó (eligió su contraseña) ya no está pendiente: se borra.
+  // En un restablecer no se sabe (ya tenía contraseña), así que queda hasta ocultarlo o vencer.
+  const accepted =
+    link !== null &&
+    link.kind === "invitation" &&
+    (users.data ?? []).some((user) => user.id === link.link.user.id && user.hasPassword);
+  useEffect(() => {
+    if (!accepted) return;
+    clearOneTimeLink(brokerId);
+    setLink(null);
+  }, [accepted, brokerId]);
   /** El enlace pasa al estado de la página y sale de la mutación (no queda en la caché). */
   const showLink = (
     created: UserLinkResponse,

@@ -54,15 +54,13 @@ export function accountMissingReason(
   brokerId: string | undefined,
 ): string | null {
   if (accounts === undefined || brokerId === undefined) return null;
-  const connected = accounts.some(
-    (account) =>
-      accountOwnedBy(account, brokerId) &&
-      account.platform === platform &&
-      account.status === "connected",
+  const own = accounts.filter(
+    (account) => accountOwnedBy(account, brokerId) && account.platform === platform,
   );
-  return connected
-    ? null
-    : `Conecta ${ACCOUNT_PLATFORM_TEXT[platform] ?? "tu cuenta"} en Cuentas para publicar.`;
+  if (own.some((account) => account.status === "connected")) return null;
+  // Una que existe pero venció, se revocó o dio error se reconecta; si no hay ninguna, se conecta.
+  const verb = own.length > 0 ? "Reconecta" : "Conecta";
+  return `${verb} ${ACCOUNT_PLATFORM_TEXT[platform] ?? "tu cuenta"} en Cuentas para publicar.`;
 }
 
 /** Cómo se saca de circulación una publicación activa: en Portal se cierra; en Instagram se retira. */

@@ -11,7 +11,7 @@ export const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   // Cuentas y accesos.
   ACCOUNT_NOT_CONNECTED: "Conecta tu cuenta en Cuentas para poder publicar.",
   ACCOUNT_REFRESH_UNSUPPORTED:
-    "Esta cuenta no se renueva sola: desconéctala y vuelve a conectarla en Cuentas.",
+    "Esta red no se renueva desde aquí: reconecta la cuenta en Cuentas cuando venza.",
   IG_AUTH_INVALID: "Instagram no aceptó la conexión: vuelve a conectar la cuenta en Cuentas.",
   IG_PERMISSION_DENIED:
     "Faltan permisos en Instagram: conecta la cuenta de nuevo y acepta todo lo que pide.",
@@ -43,7 +43,8 @@ export const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   CONTENT_LOCKED:
     "El texto aprobado no se puede cambiar mientras tiene publicaciones activas o pendientes.",
   CONTENT_HAS_ERRORS: "El texto tiene errores en la revisión: corrígelos antes de aprobarlo.",
-  CONTENT_NOT_READY: "El texto todavía no está listo.",
+  CONTENT_NOT_READY:
+    "Faltan los medios procesados: prepara el contenido o sube las imágenes y espera a que terminen.",
   CONTENT_NOT_APPROVED: "Primero aprueba el texto.",
   CONTENT_NOT_FOR_LISTING: "Ese texto no es de una propiedad.",
   // Publicar y programar.
@@ -58,9 +59,9 @@ export const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   NOTHING_TO_PUBLISH: "No hay nada nuevo para publicar.",
   PUBLISH_MODE_LOCKED: "Ya empezó en vivo: reintenta en vivo o descártala.",
   PUBLISH_MODE_MISMATCH:
-    "La publicación y el sistema no están en el mismo modo (simulación o en vivo). No se cambió nada.",
+    "Esta publicación se hizo en simulación y el sistema ahora está en vivo (o al revés): no se cambió nada.",
   OUTCOME_UNKNOWN_PENDING:
-    "Hay una publicación con resultado dudoso: mira la red y dinos si salió o no.",
+    "Hay una publicación que no se sabe si salió: mira la red y marca si salió o no.",
   PORTAL_NOT_READY: "Falta información del aviso para publicar en Portal Inmobiliario.",
   MARKETPLACE_NOT_READY: "Falta información del aviso para publicar en Marketplace.",
   PORTAL_CATEGORY_NOT_FOUND:
@@ -110,24 +111,42 @@ export type ErrorText = {
   code: string | null;
 };
 
-/** El mensaje de la API sin su código al principio (`CODE: mensaje` → `mensaje`). */
-export function messageWithoutCode(error: Error, code: string | undefined): string {
-  if (code !== undefined && error.message.startsWith(`${code}: `)) {
-    return error.message.slice(code.length + 2);
-  }
-  return error.message;
+/** Un error con su código, venga de la API (`ApiError`) o guardado (`last_error`, una corrida). */
+export type CodedError = { code?: string | null | undefined; message: string };
+
+/** El mensaje sin su código al principio (`CODE: mensaje` → `mensaje`). */
+export function messageWithoutCode(error: CodedError): string {
+  const { code, message } = error;
+  if (code != null && message.startsWith(`${code}: `)) return message.slice(code.length + 2);
+  return message;
 }
 
 /**
- * El texto de un error del panel (F9.5-T20): el del mapa si el código está, o el mensaje general
- * con el mensaje de la API debajo. Un error sin código (red, respuesta rara) muestra su mensaje.
+ * El texto de un error con código (F9.5-T20), sin depender de `ApiError`: el del mapa si el
+ * código está; si no, un mensaje que no trae el código por delante (uno que armó el panel, o el
+ * `last_error` de una publicación) se muestra tal cual, y uno de la API (`CODE: mensaje`) con el
+ * mensaje general y su texto debajo. El código va aparte, para mostrarlo chico al final.
  */
-export function errorText(error: Error): ErrorText {
-  const code = error instanceof ApiError ? error.code : undefined;
-  if (code === undefined) return { title: error.message, detail: null, code: null };
+export function errorTextOf(error: CodedError): ErrorText {
+  const code = error.code ?? null;
+  if (code === null) return { title: error.message, detail: null, code: null };
   const mapped = ERROR_MESSAGES[code];
   if (mapped !== undefined) return { title: mapped, detail: null, code };
-  // Un mensaje que armó el panel (sin el código por delante) ya está en simple.
   if (!error.message.startsWith(`${code}: `)) return { title: error.message, detail: null, code };
-  return { title: GENERIC_ERROR, detail: messageWithoutCode(error, code), code };
+  return { title: GENERIC_ERROR, detail: messageWithoutCode(error), code };
+}
+
+/** `errorTextOf` en una sola línea de texto: «frase (código: X)», para una lista de notas. */
+export function errorLineText(error: CodedError): string {
+  const { title, detail, code } = errorTextOf(error);
+  const text = detail === null || detail === "" ? title : `${title} ${detail}`;
+  return code === null ? text : `${text} (código: ${code})`;
+}
+
+/** `errorTextOf` de un error del panel: el código solo si es un `ApiError`. */
+export function errorText(error: Error): ErrorText {
+  return errorTextOf({
+    code: error instanceof ApiError ? error.code : undefined,
+    message: error.message,
+  });
 }

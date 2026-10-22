@@ -356,12 +356,18 @@ describe("accountMissingReason (F9.5-T20)", () => {
     expect(accountMissingReason("instagram", [account()], "corredor-1")).toBeNull();
   });
 
-  it("sin cuenta, o desconectada, o de otro corredor, o de otra red: dice qué conectar", () => {
+  it("una que existe pero venció o se revocó: dice que hay que reconectarla", () => {
+    const reconnect = "Reconecta tu cuenta de Instagram en Cuentas para publicar.";
+    for (const status of ["revoked", "expired"] as const) {
+      expect(accountMissingReason("instagram", [account({ status })], "corredor-1")).toBe(
+        reconnect,
+      );
+    }
+  });
+
+  it("sin cuenta, o de otro corredor, o de otra red: dice qué conectar", () => {
     const reason = "Conecta tu cuenta de Instagram en Cuentas para publicar.";
     expect(accountMissingReason("instagram", [], "corredor-1")).toBe(reason);
-    expect(accountMissingReason("instagram", [account({ status: "revoked" })], "corredor-1")).toBe(
-      reason,
-    );
     expect(accountMissingReason("instagram", [account({ brokerId: "otro" })], "corredor-1")).toBe(
       reason,
     );

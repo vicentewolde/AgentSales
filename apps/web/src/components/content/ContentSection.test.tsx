@@ -132,7 +132,8 @@ describe("panel: sección Contenido", () => {
     const alert = await within(section).findByText("La última preparación falló");
     const box = alert.parentElement as HTMLElement;
     expect(within(box).getByText(/La CLI de Claude no tiene sesión/)).toBeTruthy();
-    expect(within(box).getByText("Código: LLM_AUTH_REQUIRED")).toBeTruthy();
+    // El código va chico al final, para reportarlo (F9.5-T20).
+    expect(within(box).getByText("(código: LLM_AUTH_REQUIRED)")).toBeTruthy();
     // Las imágenes alcanzaron a armarse: se ven aunque falten los textos.
     expect(within(section).getByRole("list", { name: "Carrusel de Instagram" })).toBeTruthy();
   });

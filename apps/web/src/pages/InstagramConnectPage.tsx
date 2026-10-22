@@ -88,9 +88,9 @@ export function InstagramConnectPage() {
       </Card>
       <Card as="section" title="Mientras Meta no apruebe la app" className="mb-4">
         <p className="text-sm text-fg">
-          AgentSales está en revisión de Meta. Hasta que la apruebe, la conexión solo funciona con
-          cuentas que el administrador haya agregado como <strong>evaluadoras</strong>. Si la cuenta
-          no lo es, Instagram va a rechazar la conexión: pídele al administrador que la agregue.
+          Mientras Meta no apruebe la app, solo funcionan las cuentas que el administrador haya
+          agregado como <strong>evaluadoras</strong>. Si la cuenta no lo es, Instagram va a rechazar
+          la conexión: pídele al administrador que la agregue.
         </p>
       </Card>
       <Card as="section" title="La pantalla que sigue" className="mb-4">

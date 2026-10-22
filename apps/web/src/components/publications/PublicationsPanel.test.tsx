@@ -329,7 +329,8 @@ describe("panel: publicar", () => {
     const publish = await within(section).findByRole("button", {
       name: "Publicar en Instagram (simulación)",
     });
-    await within(section).findByText(/Conecta tu cuenta de Instagram en Cuentas para publicar/);
+    // La cuenta existe pero se desconectó: se reconecta.
+    await within(section).findByText(/Reconecta tu cuenta de Instagram en Cuentas para publicar/);
 
     expect((publish as HTMLButtonElement).disabled).toBe(true);
     expect(

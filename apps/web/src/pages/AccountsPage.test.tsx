@@ -775,6 +775,31 @@ describe("panel: Cuentas de las redes de posts (F9-T19)", () => {
     }
   });
 
+  it("un corredor de propiedades con una cuenta de marca ya conectada la ve para desconectarla, sin ofrecer conectar (F9.5-T20)", async () => {
+    const h = harness();
+    const broker = await h.brokers.create(brokerData("casas"));
+    await h.platformAccounts.upsertConnected({
+      brokerId: broker.id,
+      platform: "linkedin",
+      externalAccountId: "miembro-9",
+      displayName: "Perfil de antes",
+      tokenExpiresAt: new Date(Date.now() + 50 * DAY),
+      meta: { memberId: "miembro-9", scopes: ["w_member_social"], mode: "manual" },
+      credentials: { accessToken: "token-linkedin-de-prueba" },
+    });
+    h.renderApp("/cuentas");
+
+    const section = await screen.findByRole("region", { name: /casas/ });
+    const linkedin = within(section).getByRole("region", { name: "LinkedIn" });
+    expect(within(linkedin).getByText(/Perfil de antes/)).toBeTruthy();
+    expect(within(linkedin).getByRole("button", { name: "Desconectar" })).toBeTruthy();
+    expect(within(section).queryByRole("link", { name: /Conectar LinkedIn/ })).toBeNull();
+    // Las otras redes de marca, sin cuentas, ni aparecen.
+    for (const name of ["Discord", "X", "TikTok"]) {
+      expect(within(section).queryByRole("region", { name }), name).toBeNull();
+    }
+  });
+
   it("una cuenta de LinkedIn dice que publica a mano; la vuelta de X dice que se conectó", async () => {
     const h = harness();
     const broker = await h.brokers.create(brokerData("marca"));

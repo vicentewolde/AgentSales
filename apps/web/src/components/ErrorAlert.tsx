@@ -1,4 +1,5 @@
 import { manualConfirmCommands } from "@agentsales/core";
+import { Link, useInRouterContext } from "react-router";
 import { ApiError } from "../api/client.js";
 import { CopyCommand } from "./accounts/CopyCommand.js";
 import { errorText } from "./error-messages.js";
@@ -72,6 +73,31 @@ function IssueList({ error }: { error: Error }) {
   );
 }
 
+/** Los códigos que se arreglan en Cuentas: el aviso trae el enlace (F9.5-T20). */
+const ACCOUNT_CODES = new Set(["ACCOUNT_NOT_CONNECTED", "ACCOUNT_REFRESH_UNSUPPORTED"]);
+
+/** «Ir a Cuentas», con el router si lo hay (un aviso suelto en una prueba no lo tiene). */
+function AccountsLink({ error }: { error: Error }) {
+  const routed = useInRouterContext();
+  if (!(error instanceof ApiError) || error.code === undefined || !ACCOUNT_CODES.has(error.code)) {
+    return null;
+  }
+  const className = "font-medium text-brand-700 underline underline-offset-2 hover:text-brand-900";
+  return (
+    <p className="mt-1">
+      {routed ? (
+        <Link to="/cuentas" className={className}>
+          Ir a Cuentas
+        </Link>
+      ) : (
+        <a href="/cuentas" className={className}>
+          Ir a Cuentas
+        </a>
+      )}
+    </p>
+  );
+}
+
 /**
  * `MANUAL_CONFIRM_PENDING` y `MARKETPLACE_FORM_OPEN` nombran la publicación de Marketplace con el
  * formulario abierto (`publicationId`, spec F5 §4.10): los dos comandos para cerrarla, como en la
@@ -118,6 +144,7 @@ export function ErrorAlert({
       <IssueList error={error} />
       {hint && hint !== title && <p className="mt-1 text-danger-700">{hint}</p>}
       <WaitingCommands error={error} />
+      <AccountsLink error={error} />
       {code !== null && <p className="mt-2 text-xs text-danger-700">código: {code}</p>}
       {onRetry && (
         <Button variant="secondary" size="sm" onClick={onRetry} loading={retrying} className="mt-3">
