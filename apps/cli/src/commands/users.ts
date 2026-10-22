@@ -50,7 +50,7 @@ export async function deliverLink(deps: UsersDeps, link: UserLinkResponse): Prom
     return failed("No se pudo copiar el enlace al portapapeles");
   }
   deps.print(
-    `${c.green("✓")} Enlace copiado al portapapeles (vence ${formatDateTime(link.expiresAt)}): envíaselo a ${link.user.email} por un canal privado`,
+    `${c.green("✓")} Enlace copiado al portapapeles (vence ${formatDateTime(link.expiresAt)}): envíaselo a ${link.user.email} por correo o por otro canal privado`,
   );
   return 0;
 }

@@ -72,7 +72,16 @@ describe("bloqueos", () => {
   });
 
   it("editar: con una publicación activa de ese texto (pendiente o publicada), no de otro", () => {
-    expect(editBlockedReason(content(), [publication({ status: "published" })])).not.toBeNull();
+    expect(editBlockedReason(content(), [publication({ status: "published" })])).toBe(
+      "Ya se publicó o está por publicarse con este texto. Para cambiarlo, primero retira o descarta esas publicaciones.",
+    );
+    expect(
+      editBlockedReason(content({ platform: "portal_inmobiliario" }), [
+        publication({ status: "approved" }),
+      ]),
+    ).toBe(
+      "Ya se publicó o está por publicarse con este texto. Para cambiarlo, primero cierra o descarta esas publicaciones.",
+    );
     expect(editBlockedReason(content(), [publication({ status: "cancelled" })])).toBeNull();
     expect(
       editBlockedReason(content(), [publication({ status: "approved", contentId: "otro" })]),
