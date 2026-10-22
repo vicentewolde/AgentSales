@@ -314,6 +314,26 @@ Hazlo siempre primero en una **rama nueva de Neon**, nunca encima de la base de 
 
 Si tienes dudas en este paso, pídele ayuda a Claude antes de cambiar la base del servidor (sin pegar la cadena en el chat).
 
+### Borrar un corredor de verdad (F9.5-T14, ADR-0035)
+
+Para limpiar los corredores de prueba antes de una demo (o cuando un cliente se va y pide borrar sus datos). Se lleva **todo lo suyo**: propiedades, fotos y videos (en la base y en R2), textos, publicaciones con su historial, posts, planes, perfil editorial, cargas, cuentas conectadas con sus credenciales y usuarios con sus sesiones. **No se puede deshacer**: la única vuelta atrás es restaurar un respaldo (arriba). No borra nada en las redes: lo publicado sigue allá (para eso está retirar).
+
+1. **Respaldo antes**, desde tu Mac (deja el volcado en `~/.agentsales/backups`):
+   ```bash
+   ENV_FILE=.env.production pnpm db:backup
+   ```
+   Si no tienes `.env.production` a mano, revisa en R2 (`agentsales-backups` → `db/`) que el respaldo de hoy del worker esté ahí.
+2. **Mira el resumen** (con la sesión del administrador en el servidor: `pnpm -s cli login --api https://<dominio>`): sin `--confirm` no borra nada.
+   ```bash
+   pnpm -s cli brokers delete <slug>
+   ```
+   Dice cuántas propiedades, medios, publicaciones, posts, usuarios, cuentas y cargas se van. Si alguna publicación está publicándose, programada, esperando tu clic o con resultado dudoso, se niega y lista cuáles: desprográmalas o cancélalas, confirma o di «no lo publiqué» en las que esperan y resuelve las dudosas.
+3. **Borra**, repitiendo el identificador (`--yes` no sirve aquí):
+   ```bash
+   pnpm -s cli brokers delete <slug> --confirm <slug>
+   ```
+   Al final dice cuántas filas y cuántos archivos de R2 se borraron. Si R2 no pudo borrar alguno, la base ya quedó borrada igual y la lista sale en la terminal (y completa en los logs: busca «R2 no borró un archivo del corredor borrado» en `fly logs -a agentsales`); bórralos a mano en **dash.cloudflare.com** → **R2** → el bucket de medios, por su clave.
+
 ## Paso 11 · Pasar a siempre encendido (cuando decidas pagar)
 
 Fuera de F8. Cuando quieras que los corredores usen la herramienta cualquier día:
