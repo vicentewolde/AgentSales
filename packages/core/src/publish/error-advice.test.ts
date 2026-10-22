@@ -129,6 +129,22 @@ const GENERIC_ON_PURPOSE = [
 ];
 
 describe("publicationErrorAdvice", () => {
+  it("el resultado dudoso de Instagram y Portal dice Salió / No salió, sin «descártala» (F9.5-T04a)", () => {
+    for (const code of ["IG_PUBLISH_OUTCOME_UNKNOWN", "ML_PUBLISH_OUTCOME_UNKNOWN"]) {
+      const advice = publicationErrorAdvice(code);
+      expect(advice, code).toContain("«Salió»");
+      expect(advice, code).toContain("«No salió»");
+      expect(advice, code).toContain("publications resolve <id> --published --url-stdin");
+      expect(advice, code).toContain("--not-published");
+      expect(advice, code).not.toMatch(/descart/i);
+    }
+    // Portal: con varios avisos, cerrar los sobrantes va antes de decir que no salió.
+    const portal = publicationErrorAdvice("ML_PUBLISH_OUTCOME_UNKNOWN");
+    expect(portal).toContain("cierra a mano los que sobren");
+    expect(portal.indexOf("cierra a mano")).toBeLessThan(portal.indexOf("«No salió»"));
+    expect(portal).toContain("MLC");
+  });
+
   it.each(WITH_ADVICE)("%s tiene un consejo propio, en una frase", (code) => {
     const advice = publicationErrorAdvice(code);
     expect(advice).not.toBe(GENERIC_ERROR_ADVICE);

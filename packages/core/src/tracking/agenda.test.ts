@@ -268,6 +268,41 @@ describe("agendaItems con posts (F9-T08)", () => {
     expect(run([postPublication("p1", { status: "failed" })])).toEqual([]);
   });
 
+  it("un aviso de Instagram o Portal con resultado dudoso (F9.5-T04a) pide resolverlo, con el consejo de su red", () => {
+    const instagram = publication({
+      status: "outcome_unknown",
+      dryRun: false,
+      lastError: { code: "IG_PUBLISH_OUTCOME_UNKNOWN", message: "x", retriable: false },
+    });
+    const portal = publication({
+      platform: "portal_inmobiliario",
+      status: "outcome_unknown",
+      dryRun: false,
+      lastError: { code: "ML_PUBLISH_OUTCOME_UNKNOWN", message: "x", retriable: false },
+    });
+    const items = run([instagram, portal]);
+    expect(items).toMatchObject([
+      {
+        kind: "outcome_unknown",
+        action: "resolve",
+        listingId: "l1",
+        publicationId: instagram.id,
+        code: "IG_PUBLISH_OUTCOME_UNKNOWN",
+      },
+      {
+        kind: "outcome_unknown",
+        action: "resolve",
+        listingId: "l1",
+        publicationId: portal.id,
+        code: "ML_PUBLISH_OUTCOME_UNKNOWN",
+      },
+    ]);
+    for (const item of items) {
+      expect(item.advice).toContain("«Salió»");
+      expect(item.advice).not.toBe(GENERIC_ERROR_ADVICE);
+    }
+  });
+
   it("outcome_unknown pide resolverla, con su código y consejo", () => {
     const unknown = postPublication("p1", {
       platform: "discord",
