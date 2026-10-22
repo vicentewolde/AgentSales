@@ -8,6 +8,7 @@ import {
   type DiscardedPlanIdea,
   draftPostTexts,
   escapeLinkedInText,
+  findAiTells,
   formatChileTime,
   isAppError,
   joinedPostText,
@@ -123,6 +124,8 @@ export type SocialEvalCounts = {
   massMentions: number;
   /** Términos que el perfil pide evitar (advertencia). */
   avoided: number;
+  /** Muletillas de texto escrito por IA en los textos (`findAiTells`, advertencia `AI_TELL`). */
+  aiTells: number;
   texts: number;
   textsWithErrors: number;
   failures: number;
@@ -356,6 +359,7 @@ const emptyCounts = (): SocialEvalCounts => ({
   escapes: 0,
   massMentions: 0,
   avoided: 0,
+  aiTells: 0,
   texts: 0,
   textsWithErrors: 0,
   failures: 0,
@@ -407,6 +411,7 @@ function countProfile(evaluation: Omit<SocialProfileEvaluation, "counts">, reque
     counts.texts += 1;
     if (text.checks.some((check) => check.severity === "error")) counts.textsWithErrors += 1;
     counts.escapes += text.escapes.length;
+    counts.aiTells += findAiTells(text.body).length;
     for (const { code } of text.checks) {
       if (code === "FACT_NOT_IN_PROFILE" || code === "LINK_NOT_ALLOWED") counts.outsideProfile += 1;
       if (code === "TOO_LONG" || code === "HASHTAG_LIMIT") counts.tooLong += 1;
@@ -612,7 +617,8 @@ function countsLine(counts: SocialEvalCounts): string {
   return (
     `repetidas ${counts.repeated} · fuera del perfil ${counts.outsideProfile} · ` +
     `largos ${counts.tooLong} · escapes ${counts.escapes} · menciones masivas ${counts.massMentions}` +
-    ` · fallas ${counts.failures} | ⚠ parecidas ${counts.similar} · términos a evitar ${counts.avoided}`
+    ` · fallas ${counts.failures} | ⚠ parecidas ${counts.similar} · términos a evitar ${counts.avoided}` +
+    ` · muletillas de IA ${counts.aiTells}`
   );
 }
 

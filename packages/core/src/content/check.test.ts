@@ -530,6 +530,41 @@ describe("checkContent · advertencias", () => {
     expect(codesOf("Una vista despejada")).not.toContain("SUPERLATIVE");
   });
 
+  it("muletillas de IA en una advertencia, en cualquier canal y también en el título", () => {
+    const checks = checkContent(
+      "fb_marketplace",
+      text("Sin duda, tu nuevo hogar te espera en el corazón de Ñuñoa."),
+      contextOf(),
+    );
+    expect(checks).toEqual([
+      {
+        code: "AI_TELL",
+        severity: "warning",
+        message:
+          "Suena escrito por IA: «en el corazón de», «sin duda», «te espera». Cámbialo por algo concreto o dilo más simple",
+      },
+    ]);
+    expect(hasContentErrors(checks)).toBe(false);
+    expect(
+      codesOf("Departamento en venta", {
+        platform: "portal_inmobiliario",
+        title: "Descubre este departamento",
+      }),
+    ).toContain("AI_TELL");
+    expect(codesOf("Cocina remodelada con salida a la terraza.")).not.toContain("AI_TELL");
+  });
+
+  it("las muletillas en inglés también, y no las de los hashtags", () => {
+    expect(codesOf("Nestled in the heart of the city.")).toContain("AI_TELL");
+    expect(
+      checkContent(
+        "instagram",
+        text("Cocina remodelada.", { hashtags: ["#descubre", ...HASHTAGS] }),
+        contextOf(),
+      ),
+    ).toEqual([]);
+  });
+
   it.each(["**Oferta** del mes", "## Detalles", "Mira [el tour](https://example.com)"])(
     "markdown en Instagram: «%s»",
     (body) => {

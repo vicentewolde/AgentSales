@@ -635,6 +635,49 @@ describe("postPublicationPlan: el video de Discord (F9-T14, D8)", () => {
     // Instagram sigue con su reel.
     expect(postPublicationPlan("instagram", "video", all).mediaIds).toEqual([reel.id]);
   });
+
+  it("prefiere el video liviano para Discord (discord_video, F9.5 D8) si existe", async () => {
+    const media = createInMemoryMediaRepository();
+    const subject = postSubject("post-2");
+    const original = await media.create({
+      listingId: null,
+      postId: "post-2",
+      brokerId: "marca",
+      kind: "video",
+      storagePath: "posts/post-2/original/video.mov",
+      mime: "video/quicktime",
+      bytes: 300_000_000,
+      checksum: "sha-largo",
+      sortOrder: 0,
+      isCover: false,
+    });
+    const derivative = async (variant: "x_video" | "ig_reel" | "discord_video", bytes: number) =>
+      (
+        await media.upsertDerivative({
+          role: "processed",
+          variant,
+          parentMediaId: original.id,
+          postId: "post-2",
+          brokerId: "marca",
+          kind: "video",
+          storagePath: `posts/post-2/${variant}/video.mp4`,
+          mime: "video/mp4",
+          bytes,
+          checksum: `sha-${variant}`,
+          width: 720,
+          height: 1280,
+          durationS: 120,
+        })
+      ).media;
+    const reel = await derivative("ig_reel", 90_000_000);
+    await derivative("x_video", 60_000_000);
+    const light = await derivative("discord_video", 19_000_000);
+    const all = await media.listBySubject(subject);
+    expect(postPublicationPlan("discord", "video", all).mediaIds).toEqual([light.id]);
+    // Las demás redes no la usan.
+    expect(postPublicationPlan("instagram", "video", all).mediaIds).toEqual([reel.id]);
+    expect(postPublicationPlan("x", "video", all).mediaIds).not.toContain(light.id);
+  });
 });
 
 describe("postPublicationMatchesSubject", () => {

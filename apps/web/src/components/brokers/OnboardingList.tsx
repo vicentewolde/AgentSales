@@ -17,7 +17,7 @@ export function OnboardingList({
     <section aria-label="Lista de alta" className="mt-4">
       <h2 className="text-lg font-semibold">
         Lista de alta{" "}
-        <span className="text-sm font-normal text-slate-500">
+        <span className="text-sm font-normal text-fg-subtle">
           ({done} de {steps.length})
         </span>
       </h2>
@@ -25,9 +25,9 @@ export function OnboardingList({
         {steps.map((step) => (
           <li key={step.key}>
             {step.done ? (
-              <span className="text-green-800">✓ {onboardingStepText(step.key)}</span>
+              <span className="text-success-800">✓ {onboardingStepText(step.key)}</span>
             ) : (
-              <span className="text-amber-900">
+              <span className="text-warning-800">
                 · {onboardingStepText(step.key)}
                 {step.pending && `: falta ${step.pending}`}
                 {step.owner && ` (${onboardingOwnerText(step.owner, kind)})`}

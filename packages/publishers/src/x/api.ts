@@ -14,8 +14,21 @@ import { type XCallOptions, xRequest } from "./http.js";
 // medios con la API v2 (`/2/media/upload`; el video, por partes). Siempre con el token de usuario
 // de OAuth 2.0 (`Bearer`). Ningún error lleva el token, el texto ni los bytes.
 
-/** Un medio ya en memoria (se bajó de R2 antes de subirlo). */
+/** Una imagen ya en memoria (se bajó de R2 antes de subirla; hasta 5 MB). */
 export type XUploadFile = { mediaId: string; mime: string; bytes: Uint8Array };
+
+/**
+ * Un video que se lee mientras se sube (F9.5-T08): los trozos llegan de R2 en el tamaño que sea y
+ * `uploadVideo` los junta en partes de 4 MB, sin tener nunca el archivo entero en memoria.
+ * `totalBytes` es el tamaño anunciado (el `content-length` de R2): X lo pide en el INIT, y lo leído
+ * tiene que coincidir. Si la subida falla antes de terminar, `uploadVideo` cierra el flujo.
+ */
+export type XUploadStream = {
+  mediaId: string;
+  mime: string;
+  totalBytes: number;
+  chunks: AsyncIterable<Uint8Array>;
+};
 
 /** Un medio subido: su id en X y cuándo vence (`expires_after_secs`; sin el dato, 24 h). */
 export type XUploadedMedia = { id: string; expiresAt: Date };
@@ -35,10 +48,14 @@ export interface XApiClient {
     file: XUploadFile,
     options?: XCallOptions,
   ): Promise<XUploadedMedia>;
-  /** INIT, APPEND en trozos de 4 MB, FINALIZE y, si X lo procesa, STATUS hasta `succeeded`. */
+  /**
+   * INIT con el tamaño anunciado, APPEND de cada parte de 4 MB a medida que llega del flujo,
+   * FINALIZE y, si X lo procesa, STATUS hasta `succeeded`. Un flujo que entrega más o menos bytes
+   * que `totalBytes` es `X_MEDIA_UNAVAILABLE` (`size`) antes del FINALIZE.
+   */
   uploadVideo(
     accessToken: string,
-    file: XUploadFile,
+    file: XUploadStream,
     options?: XCallOptions,
   ): Promise<XUploadedMedia>;
 }
@@ -102,6 +119,37 @@ export function abortableSleep(ms: number, signal?: AbortSignalLike): Promise<vo
 const blobOf = (bytes: Uint8Array, mime: string) =>
   new Blob([bytes as Uint8Array<ArrayBuffer>], { type: mime });
 
+/**
+ * Junta los trozos de un flujo en partes de `partBytes` (la última, la que quede) y revisa que
+ * sumen exactamente `totalBytes`: uno de más falla apenas llega, uno de menos al terminar. En
+ * memoria hay a lo más una parte y el trozo que se está copiando.
+ */
+export async function* partsOf(
+  chunks: AsyncIterable<Uint8Array>,
+  { totalBytes, partBytes, mediaId }: { totalBytes: number; partBytes: number; mediaId: string },
+): AsyncGenerator<Uint8Array> {
+  let read = 0;
+  let part = new Uint8Array(Math.min(partBytes, totalBytes));
+  let filled = 0;
+  for await (const chunk of chunks) {
+    read += chunk.byteLength;
+    if (read > totalBytes) throw X_ERRORS.mediaUnavailable(mediaId, "size");
+    let offset = 0;
+    while (offset < chunk.byteLength) {
+      const take = Math.min(part.byteLength - filled, chunk.byteLength - offset);
+      part.set(chunk.subarray(offset, offset + take), filled);
+      filled += take;
+      offset += take;
+      if (filled === part.byteLength) {
+        yield part;
+        part = new Uint8Array(Math.min(partBytes, totalBytes - read + (chunk.byteLength - offset)));
+        filled = 0;
+      }
+    }
+  }
+  if (read !== totalBytes) throw X_ERRORS.mediaUnavailable(mediaId, "size");
+}
+
 export function createXApi(options: XApiOptions = {}): XApiClient {
   const origin = options.origin ?? X_API_ORIGIN;
   const timeoutMs = options.timeoutMs ?? X_REQUEST_TIMEOUT_MS;
@@ -127,7 +175,7 @@ export function createXApi(options: XApiOptions = {}): XApiClient {
   /** Consulta el estado hasta `succeeded`; `failed` es `X_MEDIA_REJECTED`; el tope, reintentable. */
   const waitProcessing = async (
     token: string,
-    file: XUploadFile,
+    file: Pick<XUploadFile, "mediaId">,
     xMediaId: string,
     first: z.infer<typeof processingSchema>,
     signal: AbortSignalLike | undefined,
@@ -196,47 +244,57 @@ export function createXApi(options: XApiOptions = {}): XApiClient {
     },
 
     async uploadVideo(token, file, { signal } = {}) {
-      const init = uploaded(
-        await xRequest(
+      // El flujo se cierra pase lo que pase (un error de X a medio subir deja la descarga abierta).
+      const source = file.chunks[Symbol.asyncIterator]();
+      const chunks: AsyncIterable<Uint8Array> = { [Symbol.asyncIterator]: () => source };
+      let init: z.infer<typeof mediaSchema>["data"];
+      try {
+        if (file.totalBytes <= 0) throw X_ERRORS.mediaUnavailable(file.mediaId, "size");
+        init = uploaded(
+          await xRequest(
+            "mediaInitialize",
+            new URL("/2/media/upload/initialize", origin),
+            {
+              method: "POST",
+              authorization: bearer(token),
+              body: JSON.stringify({
+                media_type: file.mime,
+                total_bytes: file.totalBytes,
+                media_category: "tweet_video",
+              }),
+              contentType: "application/json",
+            },
+            call(signal, timeoutMs),
+          ),
           "mediaInitialize",
-          new URL("/2/media/upload/initialize", origin),
-          {
-            method: "POST",
-            authorization: bearer(token),
-            body: JSON.stringify({
-              media_type: file.mime,
-              total_bytes: file.bytes.byteLength,
-              media_category: "tweet_video",
-            }),
-            contentType: "application/json",
-          },
-          call(signal, timeoutMs),
-        ),
-        "mediaInitialize",
-      );
-      const xMediaId = init.id;
-      for (
-        let offset = 0, index = 0;
-        offset < file.bytes.byteLength;
-        offset += X_LIMITS.chunkBytes, index += 1
-      ) {
-        const chunk = file.bytes.subarray(offset, offset + X_LIMITS.chunkBytes);
-        const form = new FormData();
-        form.append("segment_index", String(index));
-        form.append("media", blobOf(chunk, "application/octet-stream"), `trozo-${index}`);
-        await xRequest(
-          "mediaAppend",
-          new URL(`/2/media/upload/${xMediaId}/append`, origin),
-          {
-            method: "POST",
-            authorization: bearer(token),
-            body: form,
-            contentType: null,
-            allowEmpty: true,
-          },
-          call(signal, uploadTimeoutMs),
         );
+        let index = 0;
+        for await (const part of partsOf(chunks, {
+          totalBytes: file.totalBytes,
+          partBytes: X_LIMITS.chunkBytes,
+          mediaId: file.mediaId,
+        })) {
+          const form = new FormData();
+          form.append("segment_index", String(index));
+          form.append("media", blobOf(part, "application/octet-stream"), `trozo-${index}`);
+          await xRequest(
+            "mediaAppend",
+            new URL(`/2/media/upload/${init.id}/append`, origin),
+            {
+              method: "POST",
+              authorization: bearer(token),
+              body: form,
+              contentType: null,
+              allowEmpty: true,
+            },
+            call(signal, uploadTimeoutMs),
+          );
+          index += 1;
+        }
+      } finally {
+        await source.return?.();
       }
+      const xMediaId = init.id;
       const finalized = uploaded(
         await xRequest(
           "mediaFinalize",

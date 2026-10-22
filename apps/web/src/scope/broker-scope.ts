@@ -55,18 +55,24 @@ export function useBrokerFilter(): string | undefined {
  * panel esconde lo de avisos solo en una marca conocida; `kind` no decide permisos).
  */
 export function useScopedBrokerKind(): BrokerKind | undefined {
+  return useScopedBroker()?.kind;
+}
+
+/**
+ * El corredor o la marca que se está mirando (el elegido por el administrador o el del usuario
+ * corredor), para mostrarlo en el marco (F9.5-T01). `undefined` con "Todos" o mientras no se sabe.
+ */
+export function useScopedBroker() {
   const { selected } = useContext(BrokerScopeContext);
   const me = useMe();
   const brokers = useBrokers();
   const user = me.data;
   if (user === undefined) return undefined;
-  const scoped =
-    user.role === "admin"
-      ? selected === undefined
-        ? undefined
-        : brokers.data?.find((broker) => broker.slug === selected)
-      : brokers.data?.find((broker) => broker.id === user.brokerId);
-  return scoped?.kind;
+  return user.role === "admin"
+    ? selected === undefined
+      ? undefined
+      : brokers.data?.find((broker) => broker.slug === selected)
+    : brokers.data?.find((broker) => broker.id === user.brokerId);
 }
 
 export function useBrokerScope(): BrokerScope {

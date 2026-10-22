@@ -1,4 +1,5 @@
 import {
+  DISCORD_VIDEO_MAX_BYTES,
   isAppError,
   OUTCOME_UNKNOWN,
   type PlatformAccount,
@@ -411,6 +412,26 @@ describe("createDiscordPublisher: video (D8)", () => {
     expect(bodies[0]?.files.map((file) => [file.name, file.type])).toEqual([
       ["video-1.mp4", "video/mp4"],
     ]);
+  });
+
+  it("el video liviano para Discord (discord_video, F9.5 D8) de hasta 19 MiB se baja de su ruta y se adjunta", async () => {
+    const bodies = fakeDiscord();
+    const light: PublishMediaItem = {
+      ...video(DISCORD_VIDEO_MAX_BYTES),
+      mediaId: "vid-discord",
+      storagePath: "posts/p1/processed/discord_video/video.mp4",
+      url: `${R2}/posts/p1/processed/discord_video/video.mp4?X-Amz-Signature=firma-discord`,
+    };
+    const result = await createDiscordPublisher().publish(input({ media: [light] }), context());
+    expect(result.notes).toBeUndefined();
+    expect(bodies[0]?.files.map((file) => [file.name, file.type])).toEqual([
+      ["video-1.mp4", "video/mp4"],
+    ]);
+    expect(
+      (await recorded())
+        .filter((r) => r.url.host === "r2.test")
+        .map((r) => r.url.pathname.split("/").at(-2)),
+    ).toEqual(["discord_video"]);
   });
 
   it("un video que no cabe no se baja ni se adjunta: sale el texto con la nota en la bitácora", async () => {

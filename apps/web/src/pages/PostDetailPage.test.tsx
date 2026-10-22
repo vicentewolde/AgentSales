@@ -48,7 +48,7 @@ async function setup() {
         hashtags: [],
         llmProvider: "fake",
         llmModel: "fake",
-        promptVersion: "social-post-v1",
+        promptVersion: "social-post-v2",
         rawOutput: null,
       })),
     });

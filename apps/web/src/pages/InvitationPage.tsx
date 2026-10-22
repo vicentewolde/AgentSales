@@ -3,11 +3,10 @@ import { type FormEvent, useEffect, useId, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { ApiError } from "../api/client.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
+import { Button } from "../components/ui/Button.js";
+import { Field, Input } from "../components/ui/Field.js";
 import { useAcceptInvitation } from "../queries/auth.js";
 import { AuthShell } from "./LoginPage.js";
-
-const INPUT =
-  "mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none";
 
 /**
  * `/invitacion#<token>` (spec F7 §4.2 y §4.11): elegir la contraseña con el enlace que mandó el
@@ -31,7 +30,7 @@ export function InvitationPage() {
   if (token === "") {
     return (
       <AuthShell title="Elige tu contraseña">
-        <p role="alert" className="text-sm text-red-700">
+        <p role="alert" className="text-sm text-danger-700">
           El enlace está incompleto: ábrelo tal como te llegó, o pide uno nuevo al administrador.
         </p>
       </AuthShell>
@@ -52,57 +51,45 @@ export function InvitationPage() {
   return (
     <AuthShell title="Elige tu contraseña">
       <form onSubmit={submit} className="space-y-4">
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-fg-muted">
           Al menos {PASSWORD_MIN_LENGTH} caracteres. Con ella entras al panel y a la CLI.
         </p>
-        <div>
-          <label htmlFor={passwordId} className="block text-sm font-medium text-slate-700">
-            Contraseña
-          </label>
-          <input
+        <Field label="Contraseña" htmlFor={passwordId}>
+          <Input
             id={passwordId}
             type="password"
             autoComplete="new-password"
             required
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            className={INPUT}
           />
-        </div>
-        <div>
-          <label htmlFor={repeatedId} className="block text-sm font-medium text-slate-700">
-            Repite la contraseña
-          </label>
-          <input
+        </Field>
+        <Field label="Repite la contraseña" htmlFor={repeatedId}>
+          <Input
             id={repeatedId}
             type="password"
             autoComplete="new-password"
             required
             value={repeated}
             onChange={(event) => setRepeated(event.target.value)}
-            className={INPUT}
           />
-        </div>
+        </Field>
         {mismatch !== null && (
-          <p role="alert" className="text-sm text-red-700">
+          <p role="alert" className="text-sm text-danger-700">
             {mismatch}
           </p>
         )}
         {accept.error &&
           (invalid ? (
-            <p role="alert" className="text-sm text-red-700">
+            <p role="alert" className="text-sm text-danger-700">
               El enlace venció, ya se usó o no es válido: pide uno nuevo al administrador.
             </p>
           ) : (
             <ErrorAlert error={accept.error} />
           ))}
-        <button
-          type="submit"
-          disabled={accept.isPending}
-          className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
-        >
+        <Button type="submit" disabled={accept.isPending} className="w-full">
           {accept.isPending ? "Guardando…" : "Guardar y entrar"}
-        </button>
+        </Button>
       </form>
     </AuthShell>
   );

@@ -76,19 +76,19 @@ function EventLine({ event }: { event: PublicationEventView }) {
       {retry > 0 ? ` (reintento ${retry})` : ""} en {mode === "dry-run" ? "simulación" : "vivo"}:{" "}
       {PUBLISH_ATTEMPT_RESULT_TEXT[result]}
       {error && (
-        <span className="block text-red-700">
+        <span className="block text-danger-700">
           {error.code}: {error.message}
         </span>
       )}
       {sent && (
-        <span className="block text-slate-500">
+        <span className="block text-fg-subtle">
           Enviado: {sent.media.length} medios · caption de {sent.caption.length} caracteres ·{" "}
           {sent.account.displayName}
         </span>
       )}
       {/* Las advertencias del intento (Portal: lo que dijo `validate`, como "sin cupo", D14). */}
       {notes?.map((note) => (
-        <span key={note} className="block text-amber-800">
+        <span key={note} className="block text-warning-800">
           Nota: {note}
         </span>
       ))}
@@ -99,7 +99,7 @@ function EventLine({ event }: { event: PublicationEventView }) {
 /** La bitácora de una publicación (se pide al abrirla): quién hizo qué y lo que se envió. */
 export function PublicationEvents({ publicationId }: { publicationId: string }) {
   const events = usePublicationEvents(publicationId, true);
-  if (events.isPending) return <p className="mt-2 text-xs text-slate-500">Cargando la bitácora…</p>;
+  if (events.isPending) return <p className="mt-2 text-xs text-fg-subtle">Cargando la bitácora…</p>;
   if (events.error) {
     return (
       <ErrorAlert
@@ -110,7 +110,7 @@ export function PublicationEvents({ publicationId }: { publicationId: string }) 
     );
   }
   return (
-    <ol aria-label="Bitácora" className="mt-2 space-y-1 text-xs text-slate-700">
+    <ol aria-label="Bitácora" className="mt-2 space-y-1 text-xs text-fg-muted">
       {events.data.map((event) => (
         <EventLine key={event.id} event={event} />
       ))}

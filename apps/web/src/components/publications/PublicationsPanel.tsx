@@ -16,6 +16,7 @@ import { ApiError } from "../../api/client.js";
 import { useFreshPublishMode } from "../../queries/health.js";
 import { usePublishListing, useScheduleListings } from "../../queries/publications.js";
 import { ErrorAlert } from "../ErrorAlert.js";
+import { Button } from "../ui/Button.js";
 import { PublicationItem } from "./PublicationItem.js";
 import {
   needsLiveConfirm,
@@ -26,13 +27,6 @@ import {
   retryBlockedReason,
 } from "./publications.js";
 import { ScheduleForm } from "./ScheduleForm.js";
-
-const PRIMARY =
-  "rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50";
-const SECONDARY =
-  "rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-100 disabled:opacity-50";
-const DANGER =
-  "rounded-md bg-red-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50";
 
 const shown = new Set<string>([...ACTIVE_PUBLICATION_STATUSES, "failed"]);
 
@@ -130,40 +124,41 @@ export function PublicationsPanel({
 
   return (
     <div className="mt-6">
-      <h3 className="text-sm font-semibold text-slate-700">Publicaciones</h3>
+      <h3 className="text-sm font-semibold text-fg">Publicaciones</h3>
       {content?.status !== "approved" && publications.length === 0 && (
-        <p className="mt-1 text-sm text-slate-500">Aprueba el texto para poder publicarlo.</p>
+        <p className="mt-1 text-sm text-fg-subtle">Aprueba el texto para poder publicarlo.</p>
       )}
       {publishable && (
         <div className="mt-2">
           {confirming ? (
-            <div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm">
-              <p className="font-semibold text-red-800">{liveConfirmText(platform, channel)}</p>
+            <div
+              role="alert"
+              className="rounded-lg border border-danger-200 bg-danger-50 p-3 text-sm"
+            >
+              <p className="font-semibold text-danger-800">{liveConfirmText(platform, channel)}</p>
               <div className="mt-2 flex gap-2">
-                <button type="button" className={DANGER} onClick={start}>
+                <Button variant="danger" size="sm" onClick={start}>
                   Sí, publicar en vivo
-                </button>
-                {/* biome-ignore lint/a11y/noAutofocus: el foco va a la opción segura al abrir la confirmación */}
-                <button type="button" autoFocus className="underline" onClick={cancel}>
+                </Button>
+                <Button variant="link" autoFocus onClick={cancel}>
                   Cancelar
-                </button>
+                </Button>
               </div>
             </div>
           ) : (
             <div className="flex flex-wrap gap-2">
-              <button
+              <Button
+                size="sm"
                 ref={publishButton}
-                type="button"
-                className={PRIMARY}
                 disabled={publish.isPending || blocked !== null}
                 onClick={() => void request()}
               >
                 {publishButtonText(platform, publishMode)}
-              </button>
+              </Button>
               {!scheduling && (
-                <button
-                  type="button"
-                  className={SECONDARY}
+                <Button
+                  variant="secondary"
+                  size="sm"
                   disabled={schedule.isPending || blocked !== null}
                   onClick={() => {
                     schedule.reset();
@@ -171,7 +166,7 @@ export function PublicationsPanel({
                   }}
                 >
                   Programar {channel}
-                </button>
+                </Button>
               )}
             </div>
           )}
@@ -193,7 +188,7 @@ export function PublicationsPanel({
             <p
               key={`${row.listingId}-${row.platform ?? "todo"}`}
               role="status"
-              className={`mt-2 text-sm ${row.outcome === "scheduled" ? "text-slate-700" : "text-amber-800"}`}
+              className={`mt-2 text-sm ${row.outcome === "scheduled" ? "text-fg-muted" : "text-warning-800"}`}
             >
               {row.outcome === "scheduled"
                 ? `Programado para el ${row.at === undefined ? "" : formatChileTime(row.at)} (hora de Chile).`
@@ -201,24 +196,27 @@ export function PublicationsPanel({
             </p>
           ))}
           {schedule.data?.notes.map((note) => (
-            <p key={note} className="mt-1 text-sm text-amber-800">
+            <p key={note} className="mt-1 text-sm text-warning-800">
               {note}
             </p>
           ))}
           {schedule.error && <ErrorAlert error={schedule.error} />}
-          {blocked !== null && <p className="mt-1 text-xs text-amber-800">{blocked}</p>}
+          {blocked !== null && <p className="mt-1 text-xs text-warning-800">{blocked}</p>}
         </div>
       )}
       {publish.data?.skipped.map((skipped) => (
-        <p key={skipped.publicationId} className="mt-2 text-sm text-amber-800">
+        <p key={skipped.publicationId} className="mt-2 text-sm text-warning-800">
           El {publicationFormatText(platform, skipped.format)} tiene una publicación activa de un
           texto anterior: {retireVerb(platform)} o descártala para publicar el nuevo.
         </p>
       ))}
       {publish.data !== undefined && publish.data.stranded.length > 0 && (
-        <p className="mt-2 text-sm text-amber-800">
+        <p className="mt-2 text-sm text-warning-800">
           Hay publicaciones de una cuenta desconectada: descártalas o reconéctala en{" "}
-          <Link to="/cuentas" className="underline">
+          <Link
+            to="/cuentas"
+            className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-900"
+          >
             Cuentas
           </Link>
           .
@@ -230,7 +228,10 @@ export function PublicationsPanel({
           {publish.error instanceof ApiError && publish.error.code === "ACCOUNT_NOT_CONNECTED" && (
             <p className="mt-2 text-sm">
               Conecta {ACCOUNT_TEXT[platform] ?? "la cuenta"} del corredor en{" "}
-              <Link to="/cuentas" className="underline">
+              <Link
+                to="/cuentas"
+                className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-900"
+              >
                 Cuentas
               </Link>
               .
@@ -239,7 +240,7 @@ export function PublicationsPanel({
         </>
       )}
       {backToReady && (
-        <p role="status" className="mt-2 text-sm text-slate-700">
+        <p role="status" className="mt-2 text-sm text-fg-muted">
           Era la última publicada en vivo: la propiedad volvió a lista.
         </p>
       )}
@@ -260,7 +261,7 @@ export function PublicationsPanel({
       </div>
       {past.length > 0 && (
         <details className="mt-3 text-sm">
-          <summary className="cursor-pointer text-slate-600">
+          <summary className="cursor-pointer text-fg-muted">
             Descartadas y retiradas ({past.length})
           </summary>
           <div className="mt-2 flex flex-col gap-3">

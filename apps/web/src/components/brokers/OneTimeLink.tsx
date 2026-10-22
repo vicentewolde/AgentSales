@@ -1,6 +1,7 @@
 import type { UserLinkResponse } from "@agentsales/api/contracts";
 import { formatChileTime } from "@agentsales/core";
 import { CopyCommand } from "../accounts/CopyCommand.js";
+import { Button } from "../ui/Button.js";
 
 /**
  * El enlace de invitación o de restablecer (ADR-0021): se muestra **una sola vez**, con su botón de
@@ -8,15 +9,18 @@ import { CopyCommand } from "../accounts/CopyCommand.js";
  */
 export function OneTimeLink({ link, onDone }: { link: UserLinkResponse; onDone: () => void }) {
   return (
-    <div role="status" className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
-      <p className="font-medium text-amber-900">
+    <div
+      role="status"
+      className="mt-3 rounded-lg border border-warning-200 bg-warning-50 p-3 text-sm"
+    >
+      <p className="font-medium text-warning-800">
         Enlace para {link.user.email}: se muestra una sola vez. Cópialo y envíaselo por un canal
         privado (vence el {formatChileTime(link.expiresAt)}).
       </p>
       <CopyCommand command={link.invitationUrl} label="Copiar el enlace" />
-      <button type="button" onClick={onDone} className="mt-2 text-xs underline">
+      <Button variant="link" onClick={onDone} className="mt-2 text-xs">
         Listo, ocultarlo
-      </button>
+      </Button>
     </div>
   );
 }

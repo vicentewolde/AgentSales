@@ -7,11 +7,8 @@ import {
   retireVerb,
   unapproveBlockedReason,
 } from "../publications/publications.js";
-
-const BUTTON =
-  "rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-100 disabled:opacity-50";
-const PRIMARY =
-  "rounded-md bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-50";
+import { Badge } from "../ui/Badge.js";
+import { Button } from "../ui/Button.js";
 
 /**
  * Aprobar o quitar la aprobación del texto de un canal (ADR-0014, spec F3 §4.2): la insignia
@@ -39,25 +36,21 @@ export function ApprovalBar({
   const channel = PLATFORM_TEXT[content.platform];
 
   return (
-    <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+    <div className="mb-3 rounded-lg border border-line bg-slate-50 p-3">
       <div className="flex flex-wrap items-center gap-2">
-        {approved && (
-          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
-            Aprobado
-          </span>
-        )}
-        <button
-          type="button"
-          className={approved ? BUTTON : PRIMARY}
+        {approved && <Badge tone="success">Aprobado</Badge>}
+        <Button
+          variant={approved ? "secondary" : "primary"}
+          size="sm"
           disabled={approval.isPending || blocked !== null}
           onClick={() => approval.mutate({ contentId: content.id, approve: !approved })}
         >
           {approved ? `Quitar aprobación de ${channel}` : `Aprobar ${channel}`}
-        </button>
+        </Button>
       </div>
-      {blocked !== null && <p className="mt-1 text-xs text-amber-800">{blocked}</p>}
+      {blocked !== null && <p className="mt-1 text-xs text-warning-800">{blocked}</p>}
       {approval.data?.skipped.map((skipped) => (
-        <p key={skipped.publicationId} className="mt-1 text-xs text-amber-800">
+        <p key={skipped.publicationId} className="mt-1 text-xs text-warning-800">
           El {publicationFormatText(content.platform, skipped.format)} ya tiene una publicación
           activa de un texto anterior: {retireVerb(content.platform)} o descártala para publicar
           este.
