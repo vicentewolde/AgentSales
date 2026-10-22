@@ -78,6 +78,9 @@ export type BrokerFields = {
   fixedHashtags?: string[];
   operatorOwned?: boolean;
   llmMonthlyCapUsd?: number | null;
+  /** F9.5-T22 (ADR-0036): el modo en vivo de la marca; encender exige `liveConfirm` (el slug). */
+  liveEnabled?: boolean;
+  liveConfirm?: string;
 };
 
 /** `POST /brokers` (administrador). */
@@ -129,6 +132,8 @@ export function useUpdateBroker(id: string) {
     onSuccess: (detail) => {
       queryClient.setQueryData(brokerKeys.detail(id), detail);
       void queryClient.invalidateQueries({ queryKey: brokerKeys.all });
+      // El banner y el estado leen las marcas en vivo de `/health` (F9.5-T22).
+      void queryClient.invalidateQueries({ queryKey: healthKeys.all });
     },
   });
 }

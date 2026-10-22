@@ -168,7 +168,7 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
             ? " Se abre una ventana de Chromium con el formulario lleno; tú haces Siguiente y Publicar."
             : "";
       const confirmed = await deps.confirm(
-        `La API está en vivo (PUBLISH_MODE=live): ¿publicar ${trimmed} de verdad en ${PLATFORM_TEXT[platform] ?? platform}?${extra}`,
+        `La API está en vivo (PUBLISH_MODE=live) y, si la marca está encendida, esto sale de verdad: ¿publicar ${trimmed} en ${PLATFORM_TEXT[platform] ?? platform}?${extra}`,
       );
       if (!confirmed) {
         deps.printError(c.yellow("No se publicó nada: confirma en la terminal o usa --yes"));

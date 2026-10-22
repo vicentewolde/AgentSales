@@ -28,6 +28,11 @@ async function setup(options: { publishMode?: PublishMode } = {}) {
   const h = harness({ deps: { publishMode: options.publishMode ?? "dry-run" } });
 
   const brand = await h.brokers.create(brokerData("vinny"), { kind: "brand" });
+  // Con el servidor en vivo, la marca publica de verdad solo si es propia y está encendida (ADR-0036).
+  if (options.publishMode === "live") {
+    await h.brokers.setSettings(brand.id, { operatorOwned: true });
+    await h.brokers.setLiveEnabled(brand.id, true);
+  }
   const discord = await h.platformAccounts.upsertConnected({
     brokerId: brand.id,
     platform: "discord",

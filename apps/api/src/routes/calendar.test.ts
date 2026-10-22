@@ -168,6 +168,28 @@ describe("POST /schedule", () => {
     expect(body.results[0]?.publications?.map((p) => p.status)).toEqual(["scheduled", "scheduled"]);
   });
 
+  it("con el servidor en live programa en el modo de la marca de cada propiedad (ADR-0036)", async () => {
+    for (const [liveEnabled, dryRun] of [
+      [true, false],
+      [false, true],
+    ] as const) {
+      const { t, post } = await setup({ publishMode: "live" });
+      const listing = await t.listings.get(t.listingId);
+      await t.brokers.setLiveEnabled(listing?.brokerId ?? "", liveEnabled);
+
+      const response = await post("/schedule", {
+        listingIds: [t.listingId],
+        platforms: ["instagram"],
+        at: inMinutes(120),
+      });
+
+      const { results } = scheduleResponseSchema.parse(await response.json());
+      expect(results[0]).toMatchObject({ outcome: "scheduled" });
+      expect(results[0]?.publications).toHaveLength(2);
+      expect(results[0]?.publications?.every((p) => p.dryRun === dryRun)).toBe(true);
+    }
+  });
+
   it("repetidas: 400 SCHEDULE_BATCH_INVALID; vacío o con un espaciado de más: 400 REQUEST_INVALID", async () => {
     const { t, post, codeOf } = await setup();
     const repeated = await post("/schedule", {

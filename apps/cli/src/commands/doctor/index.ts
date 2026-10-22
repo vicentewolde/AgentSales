@@ -20,6 +20,7 @@ import {
   checkEnvironment,
   checkFfmpegTool,
   checkInstagram,
+  checkLiveBrokers,
   checkLlmKey,
   checkMercadoLibre,
   checkNode,
@@ -62,6 +63,7 @@ async function runRemoteDoctor(deps: DoctorDeps, server: ServerResolution): Prom
   const publishMode = checkPublishMode(report?.publishMode, undefined, true);
   const environment = checkEnvironment(report, true);
   const autoPublish = checkAutoPublish(report);
+  const liveBrokers = checkLiveBrokers(report);
   const llmKey = checkLlmKey(report);
   const backup = checkBackup(report, (deps.now ?? (() => new Date()))());
   const worker = checkWorker(report, true);
@@ -72,6 +74,7 @@ async function runRemoteDoctor(deps: DoctorDeps, server: ServerResolution): Prom
     checkServer(server),
     ...(environment ? [environment] : []),
     ...(publishMode ? [publishMode] : []),
+    ...(liveBrokers ? [liveBrokers] : []),
     ...(autoPublish ? [autoPublish] : []),
     ...(llmKey
       ? [{ ...llmKey, hint: "agrega ANTHROPIC_API_KEY a los secretos del servidor" }]
@@ -118,6 +121,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
   const ufSource = checkUfSource(deps.env);
   const backup = checkBackup(services.report, (deps.now ?? (() => new Date()))());
   const autoPublish = checkAutoPublish(services.report);
+  const liveBrokers = checkLiveBrokers(services.report);
   const llmKey = checkLlmKey(services.report);
   const anthropicModel = checkAnthropicModel(deps.env);
   const pgBinDir = deps.env.ok ? deps.env.env.PG_BIN_DIR : undefined;
@@ -133,6 +137,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
     checkEnv(deps.env),
     ...(environment ? [environment] : []),
     ...(publishMode ? [publishMode] : []),
+    ...(liveBrokers ? [liveBrokers] : []),
     ...(autoPublish ? [autoPublish] : []),
     ...(instagram ? [instagram] : []),
     ...(mercadoLibre ? [mercadoLibre] : []),

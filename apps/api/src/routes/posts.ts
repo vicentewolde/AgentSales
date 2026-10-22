@@ -62,6 +62,7 @@ import {
   postUploadRequestSchema,
   updatePostBodySchema,
 } from "../contracts/index.js";
+import { brokerMode, isDryRun } from "../publish-modes.js";
 import { validated } from "../validation.js";
 import { contentRunView, contentView } from "./content.js";
 import { actorOf, publicationView, skippedView } from "./publication-views.js";
@@ -90,7 +91,10 @@ export type PostRoutesDeps = EditContentDeps &
     storage: Pick<MediaStorage, "signedUploadUrl" | "list" | "signedReadUrl">;
     /** `post.media`, al terminar una subida; `post.draft` y `publication.publish` (F9-T12). */
     queue: JobQueue;
-    /** El modo de lo que se publica o programa (D11): el de la API ahora, nunca del cuerpo. */
+    /**
+     * El modo **del servidor** (D11): con el de la marca del post (`live_enabled`, ADR-0036) da el
+     * de lo que se publica o programa; nunca sale del cuerpo.
+     */
     publishMode: PublishMode;
     /** `MAX_IMPORT_UPLOAD_MB` en bytes: el tope de cada archivo (el de la carga). */
     maxUploadBytes: number;
@@ -116,7 +120,6 @@ export function postRoutes(deps: PostRoutesDeps) {
     ...deps,
     postReview: { posts: deps.posts, editorialProfiles: deps.editorialProfiles },
   };
-  const dryRun = deps.publishMode !== "live";
   /** El post, si el usuario lo ve y puede `posts.manage` (lo ajeno ya es 404 en `ownedBy`). */
   const ownPost = async (c: Context<AppEnv>, postId: string) =>
     assertPostAccess(requireAuth(c).user, await deps.posts.get(postId), postId);
@@ -341,7 +344,7 @@ export function postRoutes(deps: PostRoutesDeps) {
           const result = await publishPost(deps, {
             postId: post.id,
             platform: c.req.valid("json").platform,
-            dryRun,
+            dryRun: isDryRun(await brokerMode(deps, post.brokerId)),
             actor: actorOf(c),
           });
           const body: PostPublishResponse = {
@@ -366,7 +369,7 @@ export function postRoutes(deps: PostRoutesDeps) {
           const { results } = await schedulePost(deps, {
             postId: post.id,
             at: new Date(at),
-            dryRun,
+            dryRun: isDryRun(await brokerMode(deps, post.brokerId)),
             actor: actorOf(c),
             ...(platforms === undefined ? {} : { platforms }),
           });

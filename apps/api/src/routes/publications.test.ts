@@ -24,6 +24,8 @@ async function setup(
     approve?: boolean;
     account?: boolean;
     publishMode?: PublishMode;
+    /** La segunda llave de la marca del escenario (ADR-0036); por defecto, encendida. */
+    brokerLive?: "on" | "off" | "not-owned";
     queueFails?: () => AppError | undefined;
   } = {},
 ) {
@@ -33,6 +35,11 @@ async function setup(
     account: options.account ?? true,
     ...(options.queueFails === undefined ? {} : { queueFails: options.queueFails }),
   });
+  const brokerId = (await t.listings.get(t.listingId))?.brokerId ?? "";
+  if (options.brokerLive === "off") await t.brokers.setLiveEnabled(brokerId, false);
+  if (options.brokerLive === "not-owned") {
+    await t.brokers.setSettings(brokerId, { operatorOwned: false });
+  }
   const app = adminApp(
     testDeps({
       listings: t.listings,
@@ -280,6 +287,20 @@ describe("POST /listings/:id/publish", () => {
     expect(body.started.every((p) => p.dryRun === false)).toBe(true);
   });
 
+  it.each(["off", "not-owned"] as const)(
+    "con PUBLISH_MODE=live pero la marca está «%s» (ADR-0036), la API las pide en simulación",
+    async (brokerLive) => {
+      const { t, post } = await setup({ publishMode: "live", brokerLive });
+
+      const body = listingPublishResponseSchema.parse(
+        await (await post(`/listings/${t.listingId}/publish`, { platform: "instagram" })).json(),
+      );
+
+      expect(body.started).toHaveLength(2);
+      expect(body.started.every((p) => p.dryRun)).toBe(true);
+    },
+  );
+
   it("errores: canal inválido 400, sin texto aprobado 409, sin cuenta 409, aviso inexistente 404", async () => {
     const unapproved = await setup({ approve: false });
     const noAccount = await setup({ account: false });
@@ -422,6 +443,33 @@ describe("/publications/:id", () => {
     expect(second.status).toBe(202);
     expect(publicationPublishResponseSchema.parse(await second.json()).requeued).toBe(true);
     expect(t.queue.jobs).toHaveLength(2);
+  });
+
+  it("publicar y programar una por su id usan el modo de su marca, no el del servidor (ADR-0036)", async () => {
+    const off = await setup({ publishMode: "live", brokerLive: "off" });
+    const offId = off.t.byFormat("post")?.id ?? "";
+    const started = publicationPublishResponseSchema.parse(
+      await (await off.post(`/publications/${offId}/publish`)).json(),
+    );
+    expect(started.publication.dryRun).toBe(true);
+    const reelId = off.t.byFormat("reel")?.id ?? "";
+    const at = new Date(Date.now() + 3 * 3_600_000).toISOString();
+    const scheduled = publicationResponseSchema.parse(
+      await (await off.post(`/publications/${reelId}/schedule`, { at })).json(),
+    );
+    expect(scheduled.publication).toMatchObject({ status: "scheduled", dryRun: true });
+
+    const on = await setup({ publishMode: "live" });
+    const onId = on.t.byFormat("post")?.id ?? "";
+    const live = publicationPublishResponseSchema.parse(
+      await (await on.post(`/publications/${onId}/publish`)).json(),
+    );
+    expect(live.publication.dryRun).toBe(false);
+    const onReel = on.t.byFormat("reel")?.id ?? "";
+    const liveScheduled = publicationResponseSchema.parse(
+      await (await on.post(`/publications/${onReel}/schedule`, { at })).json(),
+    );
+    expect(liveScheduled.publication).toMatchObject({ status: "scheduled", dryRun: false });
   });
 
   it("descartar: approved → cancelled; en curso 409; ya descartada 409; inexistente 404", async () => {

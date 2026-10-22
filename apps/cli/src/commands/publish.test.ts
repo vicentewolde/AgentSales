@@ -414,7 +414,7 @@ describe("runPublish · Portal (F4-T20)", () => {
     });
 
     expect(code).toBe(0);
-    expect(questions[0]).toContain("de verdad en Portal Inmobiliario?");
+    expect(questions[0]).toContain("en Portal Inmobiliario?");
     expect(questions[0]).toContain("Usa un cupo de tu paquete de Mercado Libre");
     const text = h.text();
     expect(text).toContain("aviso de Portal Inmobiliario: publicada (en vivo)");

@@ -9,6 +9,7 @@ import {
   listingSubject,
   type MediaRepository,
   type MediaStorage,
+  type PublishMode,
   setListingMusic,
 } from "@agentsales/core";
 import { Hono } from "hono";
@@ -23,6 +24,7 @@ import {
   listingStatusBodySchema,
   listingUpdateBodySchema,
 } from "../contracts/index.js";
+import { listingMode } from "../publish-modes.js";
 import { listScope } from "../scope.js";
 import { validated } from "../validation.js";
 import { actorOf, publicationView } from "./publication-views.js";
@@ -30,15 +32,17 @@ import { OPERATION_TIMEOUT_MS, operationError } from "./publications.js";
 
 export type ListingRoutesDeps = {
   listings: ListingRepository;
-  /** El filtro `?broker=<slug>` (spec F7 §4.4). */
-  brokers: Pick<BrokerRepository, "findBySlug">;
+  /** El filtro `?broker=<slug>` (spec F7 §4.4) y el modo de la marca al cambiar el estado (ADR-0036). */
+  brokers: Pick<BrokerRepository, "findBySlug" | "findById">;
+  /** El modo del servidor (`PUBLISH_MODE`): con el de la marca da el de cada cambio (ADR-0036). */
+  publishMode: PublishMode;
   media: MediaRepository;
   /** Las etiquetas de los atributos del detalle (definiciones efectivas del corredor). */
   fieldDefinitions: FieldDefinitionRepository;
   /** Solo para las URLs de lectura temporales de las fotos (R2 es privado, ADR-0007). */
   storage: Pick<MediaStorage, "signedReadUrl">;
   /** Cambiar el estado orquesta las publicaciones (F6-T08): las mismas piezas que pausar o cerrar. */
-  statusChange: ChangeListingStatusDeps;
+  statusChange: Omit<ChangeListingStatusDeps, "apiMode">;
   /** Por defecto `OPERATION_TIMEOUT_MS`; los tests lo bajan para ver el corte. */
   operationTimeoutMs?: number;
 };
@@ -169,14 +173,20 @@ export function listingRoutes(deps: ListingRoutesDeps) {
           const { action, reason, confirmed } = c.req.valid("json");
           let result: Awaited<ReturnType<typeof changeListingStatus>>;
           try {
-            result = await changeListingStatus(deps.statusChange, {
-              listingId: c.req.valid("param").id,
-              action,
-              actor: actorOf(c),
-              ...(reason === undefined ? {} : { reason }),
-              ...(confirmed === undefined ? {} : { confirmed }),
-              signal: AbortSignal.timeout(deps.operationTimeoutMs ?? OPERATION_TIMEOUT_MS),
-            });
+            result = await changeListingStatus(
+              {
+                ...deps.statusChange,
+                apiMode: await listingMode(deps, c.req.valid("param").id),
+              },
+              {
+                listingId: c.req.valid("param").id,
+                action,
+                actor: actorOf(c),
+                ...(reason === undefined ? {} : { reason }),
+                ...(confirmed === undefined ? {} : { confirmed }),
+                signal: AbortSignal.timeout(deps.operationTimeoutMs ?? OPERATION_TIMEOUT_MS),
+              },
+            );
           } catch (error) {
             throw operationError(error);
           }

@@ -20,7 +20,12 @@ import {
   resolveBackupDir,
   withoutBackupCredentials,
 } from "@agentsales/config";
-import { ALL_SCOPE, brokersNeedingApiKey, WORKER_HEARTBEAT_LOOKBACK } from "@agentsales/core";
+import {
+  ALL_SCOPE,
+  brokersNeedingApiKey,
+  liveEnabledBrokers,
+  WORKER_HEARTBEAT_LOOKBACK,
+} from "@agentsales/core";
 import {
   createBrokerPurgeRepository,
   createBrokerRepository,
@@ -312,6 +317,10 @@ const app = createApp({
       (await brokers.list(ALL_SCOPE))
         .filter((broker) => broker.autoPublish)
         .map((broker) => broker.slug),
+    // Las marcas con el modo en vivo encendido (F9.5-T22, ADR-0036): solo publican de verdad si el
+    // servidor también está en `live`.
+    liveBrokers: async () =>
+      liveEnabledBrokers(await brokers.list(ALL_SCOPE)).map((broker) => broker.slug),
     // Los corredores no propios usan la API de Anthropic (spec F7 §4.7): sin la clave, sus textos
     // fallarán en el worker (que lee el mismo `.env` con `pnpm dev`).
     llmKeyMissingBrokers: async () =>
@@ -352,7 +361,9 @@ const server = serve(
   (info) => {
     logger.info({ url: `http://${env.API_HOST}:${info.port}${API_PREFIX}` }, "API escuchando");
     if (env.PUBLISH_MODE === "live") {
-      logger.warn("PUBLISH_MODE=live: las publicaciones son reales");
+      logger.warn(
+        "PUBLISH_MODE=live: el servidor permite publicar de verdad, pero solo las marcas con el modo en vivo encendido (ADR-0036) lo hacen",
+      );
     } else {
       logger.info("PUBLISH_MODE=dry-run: no se publica nada de verdad");
     }

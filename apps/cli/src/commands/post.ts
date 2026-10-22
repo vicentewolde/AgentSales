@@ -1151,7 +1151,7 @@ export function runPostPublish(deps: PostDeps, id: string, options: PostPublishO
     if (publishMode === "live" && !options.yes) {
       const names = platforms.map((platform) => PLATFORM_TEXT[platform] ?? platform).join(", ");
       const confirmed = await deps.confirm(
-        `La API está en vivo (PUBLISH_MODE=live): ¿publicar el post de verdad en ${names}?`,
+        `La API está en vivo (PUBLISH_MODE=live) y, si la marca está encendida, esto sale de verdad: ¿publicar el post en ${names}?`,
       );
       if (!confirmed) {
         deps.printError(c.yellow("No se publicó nada: confirma en la terminal o usa --yes"));

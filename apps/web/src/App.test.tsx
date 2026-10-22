@@ -114,7 +114,7 @@ describe("panel: Estado del sistema", () => {
   it("en vivo el banner lo anuncia de inmediato", async () => {
     renderWithHealth(() => ({ ...healthy, publishMode: "live" }));
 
-    await screen.findByText("En vivo: lo que publiques sale de verdad en las redes");
+    await screen.findByText("El servidor está en vivo: publican de verdad las marcas encendidas");
     expect(banner().getAttribute("aria-live")).toBe("assertive");
   });
 

@@ -45,6 +45,8 @@ export type HealthDetails = {
   backupStatus?: () => Promise<BackupStatus | null>;
   /** Los corredores (slug) con `auto_publish` (F6-T10, spec §4.10); un error da `null`. */
   autoPublishBrokers?: () => Promise<string[]>;
+  /** Las marcas (slug) con el modo en vivo encendido (F9.5-T22, ADR-0036); un error da `null`. */
+  liveBrokers?: () => Promise<string[]>;
   /** Los corredores (slug) que necesitan `ANTHROPIC_API_KEY` y no la tienen (F7-T12). */
   llmKeyMissingBrokers?: () => Promise<string[]>;
   /** Los latidos más recientes del worker (F8-T12, spec F8 §4.10); un error da `null`. */
@@ -95,6 +97,9 @@ export async function runHealth(options: {
     ...(details.autoPublishBrokers === undefined
       ? {}
       : { autoPublishBrokers: await fromDb(details.autoPublishBrokers) }),
+    ...(details.liveBrokers === undefined
+      ? {}
+      : { liveBrokers: await fromDb(details.liveBrokers) }),
     ...(details.llmKeyMissingBrokers === undefined
       ? {}
       : { llmKeyMissingBrokers: await fromDb(details.llmKeyMissingBrokers) }),

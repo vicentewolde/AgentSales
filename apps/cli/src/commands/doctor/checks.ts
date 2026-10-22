@@ -1,7 +1,9 @@
 import {
+  brokersLiveNow,
   type HealthReport,
   hasLlmPrice,
   type PublishMode,
+  splitAutoPublish,
   workerStatusText,
 } from "@agentsales/core";
 import { canDumpServer, parsePgToolVersion, parseServerVersion } from "@agentsales/db/backup";
@@ -187,7 +189,7 @@ export function checkPublishMode(
     ? {
         name: "PUBLISH_MODE",
         level: "warn",
-        detail: `LIVE: las publicaciones son reales (${source})`,
+        detail: `LIVE: el servidor permite publicar de verdad; salen de verdad solo las marcas en vivo (${source})`,
         hint: remote
           ? "Es una variable del servidor (PUBLISH_MODE): vuelve a dry-run allí si no estás publicando de verdad"
           : "Vuelve a dry-run en .env si no estás publicando de verdad",
@@ -538,20 +540,58 @@ export function checkAutoPublish(report: HealthReport | null): CheckItem | null 
       detail: "no se pudo saber si algún corredor lo tiene (la base no respondió)",
     };
   }
-  const brokers = report?.autoPublishBrokers ?? [];
-  if (report === null || brokers.length === 0) return null;
-  return report.publishMode === "live"
-    ? {
-        name: "auto_publish",
-        level: "warn",
-        detail: `EN VIVO: publica sin tu revisión (${brokers.join(", ")})`,
-        hint: "agentsales brokers auto-publish <slug> off, o arranca en simulación",
-        emphasis: "danger",
-      }
+  if (report === null) return null;
+  // Solo cuenta como «en vivo» la marca encendida con el servidor en `live` (ADR-0036).
+  const { live, simulated } = splitAutoPublish(report);
+  if (live.length > 0) {
+    return {
+      name: "auto_publish",
+      level: "warn",
+      detail: `EN VIVO: publica sin tu revisión (${live.join(", ")})`,
+      hint: "agentsales brokers auto-publish <slug> off, o agentsales brokers live <slug> off",
+      emphasis: "danger",
+    };
+  }
+  return simulated.length === 0
+    ? null
     : {
         name: "auto_publish",
         level: "ok",
-        detail: `activado en simulación (${brokers.join(", ")})`,
+        detail: `activado en simulación (${simulated.join(", ")})`,
+      };
+}
+
+/**
+ * Las marcas con el modo en vivo encendido (F9.5-T22, ADR-0036): una advertencia en rojo si
+ * publican de verdad (servidor en `live`); en simulación, solo informa. `null` si el reporte no
+ * trae la lista (sin sesión de administrador o una API anterior) o no hay marcas encendidas con el
+ * servidor en simulación.
+ */
+export function checkLiveBrokers(report: HealthReport | null): CheckItem | null {
+  if (report === null || report.liveBrokers === undefined) return null;
+  if (report.liveBrokers === null) {
+    return {
+      name: "Marcas en vivo",
+      level: "warn",
+      detail: "no se pudo saber cuáles están en vivo (la base no respondió)",
+    };
+  }
+  const live = brokersLiveNow(report) ?? [];
+  if (live.length > 0) {
+    return {
+      name: "Marcas en vivo",
+      level: "warn",
+      detail: `publican de verdad: ${live.join(", ")}`,
+      hint: "agentsales brokers live <slug> off apaga una marca",
+      emphasis: "danger",
+    };
+  }
+  return report.liveBrokers.length === 0
+    ? { name: "Marcas en vivo", level: "ok", detail: "ninguna: todo sale en simulación" }
+    : {
+        name: "Marcas en vivo",
+        level: "ok",
+        detail: `encendidas pero en simulación mientras el servidor esté en dry-run (${report.liveBrokers.join(", ")})`,
       };
 }
 

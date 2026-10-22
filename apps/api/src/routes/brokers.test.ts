@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import {
   brokerDetailResponseSchema,
+  brokerListResponseSchema,
   brokerPurgeResponseSchema,
   brokerPurgeSummaryResponseSchema,
   errorBodySchema,
@@ -250,6 +251,144 @@ describe("GET y PATCH /brokers/:id", () => {
       json: { slug: "cambiado" },
     });
     expect(unknown.status).toBe(400);
+  });
+});
+
+describe("el modo en vivo de la marca (F9.5-T22, ADR-0036)", () => {
+  async function liveSetup(publishMode: "dry-run" | "live" = "dry-run") {
+    const auth = testAuth();
+    const deps = testDeps({
+      access: { allowedHosts: ["localhost"], allowedOrigins: [ORIGIN] },
+      publishMode,
+    });
+    deps.auth = { ...auth, brokers: deps.brokers };
+    const app = createApp(deps);
+    const mine = await deps.brokers.create(brokerData("mio"));
+    const theirs = await deps.brokers.create(brokerData("ajeno"));
+    const user = auth.repos.seed.user({
+      email: "corredor-vivo@ejemplo.cl",
+      name: "Corredor",
+      role: "broker",
+      brokerId: mine.id,
+    });
+    auth.repos.seed.session({
+      userId: user.id,
+      tokenHash: auth.tokens.hash(MINE),
+      client: "panel",
+    });
+    const as =
+      (token: string) =>
+      (path: string, init: { method?: string; json?: unknown } = {}) =>
+        app.request(path, {
+          method: init.method ?? "GET",
+          headers: {
+            authorization: `Bearer ${token}`,
+            ...(init.method !== undefined && init.method !== "GET" ? { origin: ORIGIN } : {}),
+            ...(init.json === undefined ? {} : { "content-type": "application/json" }),
+          },
+          ...(init.json === undefined ? {} : { body: JSON.stringify(init.json) }),
+        });
+    return { deps, mine, theirs, broker: as(MINE), admin: as(TEST_ADMIN_TOKEN) };
+  }
+
+  it("una marca nueva nace apagada: la lista y el detalle lo dicen, con su modo efectivo", async () => {
+    const s = await liveSetup("live");
+    const list = brokerListResponseSchema.parse(await (await s.admin("/brokers")).json());
+    expect(list.brokers.map((b) => [b.slug, b.liveEnabled, b.effectiveMode])).toEqual([
+      ["ajeno", false, "dry-run"],
+      ["mio", false, "dry-run"],
+    ]);
+    const created = brokerDetailResponseSchema.parse(
+      await (
+        await s.admin("/brokers", {
+          method: "POST",
+          json: { slug: "nueva", name: "N", brandName: "N", primaryColor: "#000000" },
+        })
+      ).json(),
+    );
+    expect(created.broker).toMatchObject({ liveEnabled: false, effectiveMode: "dry-run" });
+  });
+
+  it.each([
+    ["live", "live"],
+    ["dry-run", "dry-run"],
+  ] as const)(
+    "el administrador enciende una marca propia repitiendo su slug; con el servidor en %s el modo efectivo es %s",
+    async (server, effective) => {
+      const s = await liveSetup(server);
+      await s.admin(`/brokers/${s.mine.id}`, { method: "PATCH", json: { operatorOwned: true } });
+      const response = await s.admin(`/brokers/${s.mine.id}`, {
+        method: "PATCH",
+        json: { liveEnabled: true, liveConfirm: "mio" },
+      });
+      expect(response.status).toBe(200);
+      expect(brokerDetailResponseSchema.parse(await response.json()).broker).toMatchObject({
+        liveEnabled: true,
+        effectiveMode: effective,
+      });
+      const off = await s.admin(`/brokers/${s.mine.id}`, {
+        method: "PATCH",
+        json: { liveEnabled: false },
+      });
+      expect(brokerDetailResponseSchema.parse(await off.json()).broker).toMatchObject({
+        liveEnabled: false,
+        effectiveMode: "dry-run",
+      });
+    },
+  );
+
+  it("encender sin repetir el slug es 409 LIVE_NOT_CONFIRMED; en un corredor ajeno al operador, 409 LIVE_NOT_ALLOWED", async () => {
+    const s = await liveSetup("live");
+    await s.admin(`/brokers/${s.mine.id}`, { method: "PATCH", json: { operatorOwned: true } });
+    const unconfirmed = await s.admin(`/brokers/${s.mine.id}`, {
+      method: "PATCH",
+      json: { liveEnabled: true },
+    });
+    expect([unconfirmed.status, (await errorOf(unconfirmed)).code]).toEqual([
+      409,
+      "LIVE_NOT_CONFIRMED",
+    ]);
+    const notOwn = await s.admin(`/brokers/${s.theirs.id}`, {
+      method: "PATCH",
+      json: { liveEnabled: true, liveConfirm: "ajeno" },
+    });
+    expect([notOwn.status, (await errorOf(notOwn)).code]).toEqual([409, "LIVE_NOT_ALLOWED"]);
+    expect((await s.deps.brokers.findById(s.mine.id))?.liveEnabled).toBe(false);
+    expect((await s.deps.brokers.findById(s.theirs.id))?.liveEnabled).toBe(false);
+  });
+
+  it("el corredor no la toca ni en la suya (403), y no ve ni toca la de otro (404)", async () => {
+    const s = await liveSetup("live");
+    await s.admin(`/brokers/${s.mine.id}`, { method: "PATCH", json: { operatorOwned: true } });
+    const own = await s.broker(`/brokers/${s.mine.id}`, {
+      method: "PATCH",
+      json: { liveEnabled: true, liveConfirm: "mio" },
+    });
+    expect([own.status, (await errorOf(own)).code]).toEqual([403, "FORBIDDEN"]);
+    const foreign = await s.broker(`/brokers/${s.theirs.id}`, {
+      method: "PATCH",
+      json: { liveEnabled: true, liveConfirm: "ajeno" },
+    });
+    expect([foreign.status, (await errorOf(foreign)).code]).toEqual([404, "BROKER_NOT_FOUND"]);
+    expect((await s.deps.brokers.findById(s.mine.id))?.liveEnabled).toBe(false);
+  });
+
+  it("al dejar de ser propio, el modo en vivo se apaga", async () => {
+    const s = await liveSetup("live");
+    await s.admin(`/brokers/${s.mine.id}`, { method: "PATCH", json: { operatorOwned: true } });
+    await s.admin(`/brokers/${s.mine.id}`, {
+      method: "PATCH",
+      json: { liveEnabled: true, liveConfirm: "mio" },
+    });
+    const response = await s.admin(`/brokers/${s.mine.id}`, {
+      method: "PATCH",
+      json: { operatorOwned: false },
+    });
+    expect(brokerDetailResponseSchema.parse(await response.json()).broker).toMatchObject({
+      operatorOwned: false,
+      liveEnabled: false,
+      effectiveMode: "dry-run",
+    });
   });
 });
 

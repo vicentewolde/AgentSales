@@ -530,7 +530,7 @@ export function runRetryPublication(
     const { publishMode } = await unwrap(deps.client.health.$get(), healthReportSchema);
     if (publishMode === "live" && !options.yes) {
       const confirmed = await deps.confirm(
-        `La API está en vivo (PUBLISH_MODE=live): ¿publicar de verdad ${theName(current)}?`,
+        `La API está en vivo (PUBLISH_MODE=live) y, si la marca está encendida, esto sale de verdad: ¿publicar ${theName(current)}?`,
       );
       if (!confirmed) {
         deps.printError(c.yellow("No se publicó nada: confirma en la terminal o usa --yes"));

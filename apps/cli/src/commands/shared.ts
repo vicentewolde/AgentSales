@@ -1,4 +1,8 @@
-import { brokerListResponseSchema, listingListResponseSchema } from "@agentsales/api/contracts";
+import {
+  type BrokerView,
+  brokerListResponseSchema,
+  listingListResponseSchema,
+} from "@agentsales/api/contracts";
 import {
   type Broker,
   isListingPlatform,
@@ -101,7 +105,7 @@ export function brokerSlugOf(broker: string): string {
 }
 
 /** Los corredores por id, para mostrar de quién es cada aviso. */
-export async function fetchBrokers(client: ApiClient): Promise<Map<string, Broker>> {
+export async function fetchBrokers(client: ApiClient): Promise<Map<string, BrokerView>> {
   const { brokers } = await unwrap(client.brokers.$get(), brokerListResponseSchema);
   return new Map(brokers.map((broker) => [broker.id, broker]));
 }

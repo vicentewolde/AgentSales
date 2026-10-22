@@ -64,7 +64,7 @@ export async function confirmLive(deps: ScheduleDeps, yes: boolean): Promise<boo
   const { publishMode } = await createHealthFetcher(deps.client)();
   if (publishMode !== "live" || yes) return publishMode === "live";
   const confirmed = await deps.confirm(
-    "La API está EN VIVO: a la hora se publica de verdad, sin volver a preguntar. ¿Programar?",
+    "La API está EN VIVO y, si la marca está encendida, a la hora se publica de verdad, sin volver a preguntar. ¿Programar?",
   );
   if (!confirmed) {
     deps.printError(deps.colors.yellow("No se programó nada: confirma en la terminal o usa --yes"));

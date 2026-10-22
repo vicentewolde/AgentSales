@@ -4,6 +4,7 @@ import {
   type BrokerDetailResponse,
   type BrokerPurgeResponse,
   type BrokerPurgeSummaryResponse,
+  type BrokerView,
   brokerDetailResponseSchema,
   brokerPurgeResponseSchema,
   brokerPurgeSummaryResponseSchema,
@@ -65,8 +66,8 @@ export function runAutoPublish(
         `${slug} es una marca: la publicación automática es de las propiedades y no se activa en una marca`,
       );
     }
-    const { publishMode } = await createHealthFetcher(deps.client)();
-    if (on === "on" && publishMode === "live") {
+    // Solo si la marca publicaría de verdad hoy (servidor en vivo y marca encendida, ADR-0036).
+    if (on === "on" && broker.effectiveMode === "live") {
       deps.printError(c.bold(c.bgRed(c.white(" La API está EN VIVO: publicará sin tu revisión "))));
     }
     if (!options.yes) {
@@ -93,6 +94,101 @@ export function runAutoPublish(
   });
 }
 
+export type LiveOptions = { yes?: boolean; confirm?: string };
+
+/**
+ * `agentsales brokers live <slug> on|off [--yes] [--confirm <slug>]` (F9.5-T22, ADR-0036): enciende
+ * o apaga el modo en vivo de la marca (la segunda llave: publica de verdad solo con el servidor en
+ * `PUBLISH_MODE=live` y la marca encendida). Solo el administrador y solo en un corredor propio.
+ * Encender exige repetir el slug con `--confirm <slug>`: `--yes` no basta. Dice el modo del
+ * servidor en el mensaje.
+ */
+export function runBrokerLive(
+  deps: BrokersDeps,
+  slugOption: string,
+  value: string,
+  options: LiveOptions = {},
+) {
+  const c = deps.colors;
+  return guarded(deps, async () => {
+    const on = value.trim().toLowerCase();
+    if (on !== "on" && on !== "off") {
+      throw new CliError("LIVE_INVALID", `Usa on u off: "${value}"`);
+    }
+    const slug = brokerSlugOf(slugOption);
+    const broker = [...(await fetchBrokers(deps.client)).values()].find((b) => b.slug === slug);
+    if (broker === undefined) {
+      throw new CliError("BROKER_NOT_FOUND", `No existe el corredor ${slug}`);
+    }
+    if (on === "on") {
+      if (!broker.operatorOwned) {
+        throw new CliError(
+          "LIVE_NOT_ALLOWED",
+          `${slug} no es un corredor propio: solo lo propio del operador puede publicar en vivo`,
+          "Márcalo como propio con agentsales brokers edit (administrador) si de verdad lo es",
+        );
+      }
+      if (options.confirm?.trim() !== slug) {
+        throw new CliError(
+          "LIVE_NOT_CONFIRMED",
+          `Para encender el modo en vivo repite el slug: --confirm ${slug}`,
+          "--yes no basta para encender: publicar de verdad es una decisión que se escribe",
+        );
+      }
+    }
+    const { publishMode } = await createHealthFetcher(deps.client)();
+    const server =
+      publishMode === "live"
+        ? "El servidor está en vivo (PUBLISH_MODE=live)"
+        : "El servidor está en simulación (PUBLISH_MODE=dry-run)";
+    if (on === "on") {
+      deps.printError(
+        publishMode === "live"
+          ? c.bold(
+              c.bgRed(
+                c.white(` ${server}: lo que publiques en ${slug} sale de verdad en sus redes `),
+              ),
+            )
+          : c.yellow(
+              `${server}: ${slug} queda encendida, pero nada sale de verdad hasta que el operador ponga PUBLISH_MODE=live en el servidor`,
+            ),
+      );
+    }
+    if (!options.yes) {
+      const question =
+        on === "on"
+          ? `¿Encender el modo en vivo de ${slug}? ${server}`
+          : `¿Apagar el modo en vivo de ${slug}? Vuelve a simulación: lo que ya está programado en vivo no sale`;
+      if (!(await deps.confirm(question))) {
+        deps.printError(c.yellow("No se cambió nada: confirma en la terminal o usa --yes"));
+        return 1;
+      }
+    }
+    const { broker: updated } = await unwrap(
+      deps.client.brokers[":id"].$patch({
+        param: { id: broker.id },
+        json: {
+          liveEnabled: on === "on",
+          ...(on === "on" ? { liveConfirm: options.confirm?.trim() ?? slug } : {}),
+        },
+      }),
+      brokerDetailResponseSchema,
+    );
+    deps.print(
+      `${c.green("✓")} Modo en vivo de ${updated.slug}: ${updated.liveEnabled ? "encendido" : "apagado"}. ${liveLine(updated)}`,
+    );
+    return 0;
+  });
+}
+
+/** Lo que pasa hoy con las publicaciones de la marca (su modo efectivo y por qué). */
+function liveLine(broker: Pick<BrokerView, "effectiveMode" | "liveEnabled">): string {
+  if (broker.effectiveMode === "live") return "Hoy publica de verdad.";
+  return broker.liveEnabled
+    ? "Hoy publica en simulación: el servidor está en dry-run."
+    : "Hoy publica en simulación.";
+}
+
 /** El corredor por su slug (la API usa el id); `BROKER_NOT_FOUND` si no existe o no es suyo. */
 async function brokerBySlug(client: ApiClient, slugOption: string): Promise<Broker> {
   const slug = brokerSlugOf(slugOption);
@@ -106,6 +202,9 @@ function printBrokerDetail(deps: Io, { broker, onboarding }: BrokerDetailRespons
   const c = deps.colors;
   deps.print(
     `${c.bold(broker.brandName)} (${broker.slug})${broker.kind === "brand" ? ` · ${BROKER_KIND_TEXT.brand}` : ""}${broker.operatorOwned ? " · propio" : ""}`,
+  );
+  deps.print(
+    c.dim(`  Modo en vivo: ${broker.liveEnabled ? "encendido" : "apagado"} · ${liveLine(broker)}`),
   );
   deps.print(
     c.dim(
@@ -549,6 +648,18 @@ export function register(program: Command, ctx: CliContext): void {
     .option("--confirm <slug>", "el identificador del corredor otra vez, para borrarlo de verdad")
     .action((slug: string, options: DeleteOptions) =>
       exitWith(() => runBrokerDelete(deps(), slug, options)),
+    );
+  brokers
+    .command("live")
+    .description(
+      "Enciende (on) o apaga (off) el modo en vivo de una marca propia: publica de verdad solo con el servidor en PUBLISH_MODE=live y la marca encendida (administrador)",
+    )
+    .argument("<slug>", "corredor")
+    .argument("<on|off>", "on u off")
+    .option("--yes", "no pide la pregunta de sí o no (para encender hace falta además --confirm)")
+    .option("--confirm <slug>", "el identificador del corredor otra vez, para encender")
+    .action((slug: string, value: string, options: LiveOptions) =>
+      exitWith(() => runBrokerLive({ ...ctx, client: ctx.api() }, slug, value, options)),
     );
   brokers
     .command("auto-publish")

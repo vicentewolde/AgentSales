@@ -738,7 +738,7 @@ describe("errores con su consejo y permisos", () => {
     expect(await runRetryPublication(s.deps({}, false), publication.id)).toBe(1);
     expect(s.asked).toHaveLength(3);
     expect(s.asked[0]).toContain("EN VIVO");
-    expect(s.asked[1]).toContain("¿publicar el post de verdad en Discord?");
+    expect(s.asked[1]).toContain("¿publicar el post en Discord?");
     expect(s.h.errors()).toContain("No se publicó nada");
     expect(s.publicationsOf(post.id)[0]?.status).toBe("approved");
   });
