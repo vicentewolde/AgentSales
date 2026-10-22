@@ -2,6 +2,7 @@ import type { Platform } from "../enums.js";
 import { AppError } from "../errors.js";
 import { parseLinkedInPostUrl } from "../linkedin.js";
 import { parseMarketplaceItemUrl } from "../marketplace/url.js";
+import { parsePortalItemRef } from "../portal/item-url.js";
 import { parseTikTokVideoUrl } from "../tiktok/url.js";
 import { parseXPostUrl } from "../x/post-url.js";
 
@@ -58,8 +59,11 @@ export function parseDiscordMessageUrl(value: string): DiscordMessageRef {
   return { guildId, channelId, messageId, url: discordMessageUrl(guildId, channelId, messageId) };
 }
 
-/** Lo publicado según el enlace que pegó el operador: el id en la red y el enlace limpio. */
-export type PublishedRefFromUrl = { externalId: string; url: string };
+/**
+ * Lo publicado según el enlace que pegó el operador: el id en la red y el enlace limpio (`null`
+ * solo en Portal, cuando pegó solo el id del ítem).
+ */
+export type PublishedRefFromUrl = { externalId: string; url: string | null };
 
 /**
  * El enlace de lo publicado que pega el operador al confirmar o resolver (ADR-0029 puntos 8 y 9):
@@ -72,6 +76,9 @@ export type PublishedRefFromUrl = { externalId: string; url: string };
  *   `PUBLISHED_URL_INVALID`);
  * - TikTok: `parseTikTokVideoUrl` (el id del video; el borrador lo publica el operador en la app,
  *   F9-T26; `PUBLISHED_URL_INVALID`, también con un enlace corto);
+ * - Portal Inmobiliario: `parsePortalItemRef` (el id del ítem, `MLC…`, el mismo que guarda el
+ *   publisher, desde un enlace de Portal o de Mercado Libre, o solo el id, sin enlace; F9.5-T04a;
+ *   `PUBLISHED_URL_INVALID`);
  * - las demás: un enlace `https` (sin usuario, clave ni puerto) de hasta 500 caracteres, sin la
  *   consulta ni el fragmento (traen datos de rastreo); el id es el mismo enlace limpio. Si no,
  *   `PUBLISHED_URL_INVALID` (no reintentable), sin repetir lo recibido en el mensaje.
@@ -98,6 +105,10 @@ export function parsePublishedUrl(platform: Platform, value: string): PublishedR
   if (platform === "tiktok") {
     const video = parseTikTokVideoUrl(value);
     return { externalId: video.videoId, url: video.url };
+  }
+  if (platform === "portal_inmobiliario") {
+    const item = parsePortalItemRef(value);
+    return { externalId: item.itemId, url: item.url };
   }
   const clean = PUBLISHED_URL.exec(value.trim())?.[1];
   if (clean === undefined || clean.length > PUBLISHED_URL_MAX_LENGTH) {

@@ -12,15 +12,19 @@ import type { PublishContext } from "../ports/publisher.js";
 export const OUTCOME_UNKNOWN = "OUTCOME_UNKNOWN";
 
 /**
- * Los códigos que el intento lleva a `outcome_unknown` en vez de a `failed`. Por ahora solo el
- * genérico: `IG_PUBLISH_OUTCOME_UNKNOWN` de Instagram sigue en `failed` (con su consejo de revisar
- * el perfil). La salida del operador ya existe (`POST /publications/:id/resolve` y
- * `publications resolve`, F9-T12; en el panel, F9-T17), pero el panel la ofrece solo en el detalle
- * de un post, no en el de una propiedad: sumarlo aquí dejaría una publicación de un aviso sin forma
- * de cerrarse desde el panel. Cuando el panel la tenga también para las propiedades, es una línea
- * (y su consejo en `error-advice.ts`).
+ * Los códigos que el intento lleva a `outcome_unknown` en vez de a `failed` (sin reintento solo; el
+ * operador dice si salió con `POST /publications/:id/resolve` o `publications resolve`): el
+ * genérico y, desde F9.5-T04a, los de Instagram (`IG_PUBLISH_OUTCOME_UNKNOWN`: el contenedor quedó
+ * publicado y el medio no aparece) y Portal (`ML_PUBLISH_OUTCOME_UNKNOWN`: `POST /items` o el
+ * `relist` sin respuesta y la búsqueda no encuentra exactamente un ítem). Antes quedaban en
+ * `failed` porque el panel resolvía solo en el detalle de un post; la sección Contenido de una
+ * propiedad lo suma en F9.5-T04b, y la API y la CLI ya lo hacían desde F9-T12.
  */
-export const OUTCOME_UNKNOWN_CODES: ReadonlySet<string> = new Set([OUTCOME_UNKNOWN]);
+export const OUTCOME_UNKNOWN_CODES: ReadonlySet<string> = new Set([
+  OUTCOME_UNKNOWN,
+  "IG_PUBLISH_OUTCOME_UNKNOWN",
+  "ML_PUBLISH_OUTCOME_UNKNOWN",
+]);
 
 /** Por qué no se sabe: un intento anterior quedó "enviando", el envío falló sin certeza o el progreso no se lee. */
 export type OutcomeUnknownReason = "interrupted" | "send_failed" | "progress_unreadable";

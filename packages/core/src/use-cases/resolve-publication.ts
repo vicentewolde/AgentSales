@@ -1,4 +1,5 @@
 import { AppError } from "../errors.js";
+import { portalProgressSchema } from "../portal/progress.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
 import type { Publication, PublicationActor } from "../publication.js";
 import { dryRunExternalId } from "../publish/dry-run.js";
@@ -22,6 +23,28 @@ export type ResolvePublicationResult = { publication: Publication; changed: bool
 /** El motivo que queda en `last_error` cuando el operador dice que no salió. */
 export const NOT_PUBLISHED_RESOLUTION_CODE = "OUTCOME_RESOLVED_NOT_PUBLISHED";
 
+/**
+ * En `live`, «salió» en Portal necesita el enlace del aviso o su id (F9.5-T04a): sin el `MLC…`,
+ * sync, pausar, reactivar, cerrar, actualizar y republicar no tendrían qué ítem tocar.
+ */
+const portalItemRequired = (publicationId: string) =>
+  new AppError(
+    "PUBLISHED_URL_REQUIRED",
+    "Pega el enlace del aviso en Portal Inmobiliario o Mercado Libre, o su número de publicación (empieza con MLC)",
+    { details: { publicationId, platform: "portal_inmobiliario" } },
+  );
+
+/**
+ * El progreso de Portal con el ítem que dijo el operador (F9.5-T04a): pausar, reactivar, cerrar y
+ * actualizar exigen que `itemId` sea el `external_id` y reutilizan el contacto y las fotos que el
+ * intento guardó antes de crear. Un progreso que no se lee no se toca (las operaciones lo dicen:
+ * «cámbialo a mano»).
+ */
+function portalProgressWithItem(progress: unknown, itemId: string): { progress?: unknown } {
+  const parsed = portalProgressSchema.safeParse(progress ?? { pictureIds: [] });
+  return parsed.success ? { progress: { ...parsed.data, itemId } } : {};
+}
+
 const notPublishedError = () => ({
   code: NOT_PUBLISHED_RESOLUTION_CODE,
   message: "Dijiste que no salió: reintenta para publicarla de nuevo o descártala",
@@ -36,6 +59,10 @@ const notPublishedError = () => ({
  *   (`parsePublishedUrl`: `MARKETPLACE_URL_INVALID` o `PUBLISHED_URL_INVALID`, revisado antes del
  *   candado); `external_id` = el id del enlace, o `null` si no lo pegó; en simulación el enlace
  *   se ignora (`dry-run:<id>`, sin enlace), como en `confirmManualPublication`. En `live`, un aviso pasa de `ready` a `active`, como al publicar; un post nunca.
+ *   Portal en `live` (F9.5-T04a): el enlace o el id del ítem es obligatorio
+ *   (`PUBLISHED_URL_REQUIRED`), `external_id` es el `MLC…` y el progreso guarda ese `itemId`
+ *   (`portalProgressWithItem`); quien llama pide el sync (`publication.sync`, la ruta de la API)
+ *   para leer su estado y su vencimiento.
  * - `not_published` ("no salió"): → `failed` con `OUTCOME_RESOLVED_NOT_PUBLISHED` y **sin el
  *   progreso**, desde donde se puede volver a intentar (envía desde cero: el "enviando" ya no
  *   está) o descartar.
@@ -99,6 +126,14 @@ export async function resolvePublication(
         },
       );
     }
+    if (
+      outcome === "published" &&
+      item === null &&
+      !publication.dryRun &&
+      publication.platform === "portal_inmobiliario"
+    ) {
+      throw portalItemRequired(publicationId);
+    }
     if (outcome === "not_published") {
       const failed = await locked.repos.publications.transition(
         publicationId,
@@ -124,6 +159,9 @@ export async function resolvePublication(
           externalUrl: item?.url ?? null,
           publishedAt: now(),
           lastError: null,
+          ...(item !== null && publication.platform === "portal_inmobiliario"
+            ? portalProgressWithItem(publication.progress, item.externalId)
+            : {}),
         },
       },
       { actor, payload: { mode, outcome } },
