@@ -2,6 +2,9 @@ import { type FormEvent, useId, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { ApiError } from "../api/client.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
+import { Button } from "../components/ui/Button.js";
+import { Field, Input } from "../components/ui/Field.js";
+import { LogoMark } from "../components/ui/icons.js";
 import { useLogin, useLoginTotp } from "../queries/auth.js";
 
 /** Adónde volver tras entrar: solo una ruta del panel (nunca otro sitio ni la misma página). */
@@ -13,9 +16,6 @@ export function returnPathOf(value: string | null): string {
   if (value.startsWith("/entrar") || value.startsWith("/invitacion")) return "/";
   return value;
 }
-
-const INPUT =
-  "mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none";
 
 /** Los errores que se muestran tal cual, sin el marco de error de la API. */
 const PLAIN_ERRORS = new Set([
@@ -85,7 +85,7 @@ export function LoginPage() {
   const errorView =
     error &&
     (code !== undefined && PLAIN_ERRORS.has(code) ? (
-      <p role="alert" className="text-sm text-red-700">
+      <p role="alert" className="text-sm text-danger-700">
         {error.message.replace(/^[A-Z_]+: /, "")}
       </p>
     ) : (
@@ -96,41 +96,33 @@ export function LoginPage() {
     return (
       <AuthShell title="Entrar">
         <form onSubmit={submitCode} className="space-y-4">
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-fg-muted">
             Tienes el doble factor activo: escribe el código de 6 dígitos de tu app de claves, o uno
             de tus códigos de recuperación.
           </p>
-          <div>
-            <label htmlFor={codeId} className="block text-sm font-medium text-slate-700">
-              Código
-            </label>
-            <input
+          <Field label="Código" htmlFor={codeId}>
+            <Input
               id={codeId}
               autoComplete="one-time-code"
               required
               value={totpCode}
               onChange={(event) => setTotpCode(event.target.value)}
-              className={INPUT}
             />
-          </div>
+          </Field>
           {errorView}
-          <button
-            type="submit"
-            disabled={loginTotp.isPending}
-            className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
-          >
+          <Button type="submit" disabled={loginTotp.isPending} className="w-full">
             {loginTotp.isPending ? "Revisando…" : "Verificar"}
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="link"
             onClick={() => {
               setChallenge(null);
               loginTotp.reset();
             }}
-            className="w-full text-xs text-slate-600 underline hover:text-slate-900"
+            className="w-full text-xs"
           >
             Volver a la contraseña
-          </button>
+          </Button>
         </form>
       </AuthShell>
     );
@@ -139,43 +131,31 @@ export function LoginPage() {
   return (
     <AuthShell title="Entrar">
       <form onSubmit={submit} className="space-y-4">
-        <div>
-          <label htmlFor={emailId} className="block text-sm font-medium text-slate-700">
-            Correo
-          </label>
-          <input
+        <Field label="Correo" htmlFor={emailId}>
+          <Input
             id={emailId}
             type="email"
             autoComplete="username"
             required
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            className={INPUT}
           />
-        </div>
-        <div>
-          <label htmlFor={passwordId} className="block text-sm font-medium text-slate-700">
-            Contraseña
-          </label>
-          <input
+        </Field>
+        <Field label="Contraseña" htmlFor={passwordId}>
+          <Input
             id={passwordId}
             type="password"
             autoComplete="current-password"
             required
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            className={INPUT}
           />
-        </div>
+        </Field>
         {errorView}
-        <button
-          type="submit"
-          disabled={login.isPending}
-          className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
-        >
+        <Button type="submit" disabled={login.isPending} className="w-full">
           {login.isPending ? "Entrando…" : "Entrar"}
-        </button>
-        <p className="text-xs text-slate-500">
+        </Button>
+        <p className="text-xs text-fg-subtle">
           ¿Olvidaste tu contraseña? Pídele al administrador un enlace nuevo.
         </p>
       </form>
@@ -196,15 +176,22 @@ const LEGAL_LINKS = [
 /** El marco de las páginas sin sesión (entrar e invitación): sin menú ni banner. */
 export function AuthShell({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-slate-50 px-4">
-      <section className="w-full max-w-sm rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-lg font-semibold tracking-tight">AgentSales</p>
-        <h1 className="mt-1 mb-4 text-xl font-semibold">{title}</h1>
+    <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-canvas px-4">
+      <section className="w-full max-w-sm rounded-xl border border-line bg-surface p-6 shadow-xs">
+        <p className="flex items-center gap-2.5 text-lg font-semibold tracking-tight">
+          <LogoMark className="size-8" />
+          AgentSales
+        </p>
+        <h1 className="mt-5 mb-4 text-xl font-semibold">{title}</h1>
         {children}
       </section>
       <nav aria-label="Páginas legales" className="flex flex-wrap justify-center gap-4 text-sm">
         {LEGAL_LINKS.map(({ href, label }) => (
-          <a key={href} href={href} className="text-slate-600 underline">
+          <a
+            key={href}
+            href={href}
+            className="text-fg-muted underline-offset-2 hover:text-fg hover:underline"
+          >
             {label}
           </a>
         ))}

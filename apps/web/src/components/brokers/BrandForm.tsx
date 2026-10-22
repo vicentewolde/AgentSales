@@ -3,8 +3,8 @@ import { type FormEvent, useId, useState } from "react";
 import { ApiError } from "../../api/client.js";
 import type { BrokerFields } from "../../queries/brokers.js";
 import { ErrorAlert } from "../ErrorAlert.js";
-
-const fieldClass = "mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm";
+import { Button } from "../ui/Button.js";
+import { Input } from "../ui/Field.js";
 
 /** Lo que manda el formulario: la marca, el `slug` al crear y, del administrador, los ajustes. */
 export type BrandFormValues = BrokerFields & { slug?: string };
@@ -83,14 +83,14 @@ export function BrandForm({
       <label htmlFor={`${id}-${name}`} className="text-sm font-medium">
         {label}
       </label>
-      <input
+      <Input
         id={`${id}-${name}`}
         name={name}
         defaultValue={value ?? ""}
         aria-invalid={invalid.has(name)}
-        className={`${fieldClass} ${invalid.has(name) ? "border-red-600" : ""}`}
+        className="mt-1"
       />
-      {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
+      {hint && <p className="mt-1 text-xs text-fg-subtle">{hint}</p>}
     </div>
   );
   return (
@@ -117,18 +117,18 @@ export function BrandForm({
             <label htmlFor={`${id}-cap`} className="text-sm font-medium">
               Tope de IA del mes (US$)
             </label>
-            <input
+            <Input
               id={`${id}-cap`}
               name="cap"
               inputMode="decimal"
               defaultValue={broker?.llmMonthlyCapUsd ?? ""}
               aria-invalid={capError !== null}
               aria-describedby={`${id}-cap-hint`}
-              className={fieldClass}
+              className="mt-1"
             />
             <p
               id={`${id}-cap-hint`}
-              className={`mt-1 text-xs ${capError ? "text-red-700" : "text-slate-500"}`}
+              className={`mt-1 text-xs ${capError ? "text-danger-700" : "text-fg-subtle"}`}
             >
               {capError ?? "vacío: sin tope"}
             </p>
@@ -144,13 +144,9 @@ export function BrandForm({
         </>
       )}
       <div className="sm:col-span-2">
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
+        <Button type="submit" disabled={pending}>
           {pending ? "Guardando…" : submitLabel}
-        </button>
+        </Button>
         {error && <ErrorAlert error={error} />}
       </div>
     </form>

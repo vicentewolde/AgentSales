@@ -314,6 +314,13 @@ Además son obligatorios en el body: precio, moneda (`currency_id` entre las de 
 
 Los títulos demasiado largos, la moneda no permitida y los `cause_id` específicos de inmuebles no figuran en la tabla de validaciones leída: se completan con `items/validate` en la cuenta de prueba.
 
+**Resultado dudoso (F9.5-T04a):** si un `POST /items` (o un `relist`) se cortó y la búsqueda por `seller_custom_field` no encuentra exactamente un ítem (ninguno, porque el índice tarda o no se creó, o más de uno), o el progreso no se lee, el publisher lanza `ML_PUBLISH_OUTCOME_UNKNOWN` y la publicación queda en `outcome_unknown` (antes `failed`), sin reintento solo: crear de nuevo gastaría otro cupo. El operador busca el aviso en sus publicaciones de Mercado Libre y:
+- si hay **más de uno** («many»), cierra a mano los que sobren **antes** de decir nada;
+- si quedó uno, dice que salió con su enlace (de Portal Inmobiliario, `https://www.portalinmobiliario.com/MLC-…`, o de Mercado Libre, `https://…mercadolibre.cl/MLC-…`) o solo con su número (`MLC123…`): `pbpaste | pnpm -s cli publications resolve <id> --published --url-stdin`. AgentSales guarda `MLC` + dígitos como `external_id` (y como `itemId` en el progreso), así el sync, pausar, reactivar, cerrar, actualizar y republicar lo encuentran; en vivo, «salió» sin enlace ni número es `PUBLISHED_URL_REQUIRED`. Después pide el sync, que lee el estado y el vencimiento;
+- si no quedó ninguno, dice que no salió (`--not-published`) y reintenta: el reintento crea un ítem nuevo (borra lo guardado del intento).
+Si el ítem que pega ya es de otra publicación de la misma propiedad y cuenta (el típico: el enlace del aviso anterior a republicar), AgentSales lo rechaza con `PORTAL_ITEM_IN_USE` (409). Un aviso republicado (`relist`) que se resuelve «salió» queda sin las fotos ni el `seller_contact` en el progreso (el corte fue antes de reponerlo): el sync lo lee, pero pausar, reactivar, cerrar y actualizar responden `PORTAL_PROGRESS_UNUSABLE` sin llamar, porque Mercado Libre exige el contacto y las fotos en cada escritura; se hacen a mano en Mercado Libre.
+Que el ítem del enlace sea de la cuenta conectada no se revisa al resolver (sin red): lo dice el sync, que lo lee con el token de la cuenta. Que el ítem que encontró el operador tenga la descripción cargada tampoco se revisa (el corte pudo ser antes del paso 3): si le falta, se agrega a mano en Mercado Libre. Probado con Mercado Libre simulado (msw) en `packages/publishers/src/mercadolibre/publisher.test.ts`; con la red real, NO VERIFICADO.
+
 ## 8. Cómo probar sin riesgo
 
 - **No hay sandbox** (DOC): lo publicado se ve. La protección es combinar lo siguiente.

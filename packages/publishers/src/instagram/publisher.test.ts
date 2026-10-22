@@ -593,7 +593,7 @@ describe("createInstagramPublisher · retoma desde el progreso", () => {
     await expect(publisher.publish(post(1), context(progress("c-9")))).rejects.toMatchObject({
       code: "IG_PUBLISH_OUTCOME_UNKNOWN",
       retriable: false,
-      message: expect.stringContaining("descártala"),
+      message: expect.stringContaining("di si salió"),
     });
     expect(ig.publishes()).toEqual([]);
   });

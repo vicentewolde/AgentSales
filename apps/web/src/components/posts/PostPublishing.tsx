@@ -10,7 +10,6 @@ import {
   LANGUAGE_TEXT,
   PLATFORM_TEXT,
   type PostPlatform,
-  PUBLICATION_STATUS_TEXT,
   type PublishMode,
   postPublishesOn,
   publicationFormatText,
@@ -18,7 +17,6 @@ import {
 } from "@agentsales/core";
 import { useId, useState } from "react";
 import { Link } from "react-router";
-import { PUBLICATION_STATUS_TONE } from "../../labels.js";
 import { useAccounts } from "../../queries/accounts.js";
 import {
   type PostPublicationAction,
@@ -30,14 +28,11 @@ import { useBrokerFilter } from "../../scope/broker-scope.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 import { publishButtonText, safeExternalUrl } from "../publications/publications.js";
 import { ScheduleForm } from "../publications/ScheduleForm.js";
+import { PublicationStatusBadge } from "../StatusBadge.js";
+import { Button } from "../ui/Button.js";
+import { Input } from "../ui/Field.js";
 import { LiveConfirmButton } from "./LiveConfirm.js";
 import { postContents } from "./labels.js";
-
-const SECONDARY =
-  "rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-100 disabled:opacity-50";
-const PRIMARY =
-  "rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50";
-const FIELD = "w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-sm";
 
 /**
  * Las redes con al menos un texto aprobado, en el orden de los textos (el de la API). Con el post,
@@ -87,7 +82,7 @@ function ScheduleResults({ result }: { result: PostScheduleResponse }) {
         <li
           // biome-ignore lint/suspicious/noArrayIndexKey: el orden de la respuesta no cambia.
           key={index}
-          className={row.outcome === "scheduled" ? "text-emerald-800" : "text-amber-800"}
+          className={row.outcome === "scheduled" ? "text-success-800" : "text-warning-800"}
         >
           {row.platform === null ? "El post" : PLATFORM_TEXT[row.platform]}:{" "}
           {row.outcome === "scheduled"
@@ -134,7 +129,7 @@ export function PostPublishBar({
   const unconnectedText = unconnected.map((platform) => PLATFORM_TEXT[platform]).join(", ");
   if (platforms.length === 0) {
     return (
-      <p className="text-sm text-slate-600">
+      <p className="text-sm text-fg-muted">
         {excludedOnly
           ? "Los textos aprobados son de redes que ya no están en el post: agrégalas con «Editar el post» o aprueba el texto de otra red."
           : "Aprueba al menos un texto para publicarlo o programarlo."}
@@ -171,9 +166,9 @@ export function PostPublishBar({
           />
         ))}
         {!scheduling && (
-          <button
-            type="button"
-            className={SECONDARY}
+          <Button
+            variant="secondary"
+            size="sm"
             disabled={lockReason !== null || ready.length === 0}
             {...(lockReason === null && ready.length === 0
               ? { title: "Ninguna red aprobada tiene cuenta conectada" }
@@ -181,13 +176,13 @@ export function PostPublishBar({
             onClick={() => setScheduling(true)}
           >
             Programar…
-          </button>
+          </Button>
         )}
       </div>
       {unconnected.length > 0 && (
-        <p className="text-sm text-amber-800">
+        <p className="text-sm text-warning-800">
           Sin cuenta conectada en {unconnectedText}: conéctala en{" "}
-          <Link to="/cuentas" className="underline">
+          <Link to="/cuentas" className="font-medium underline underline-offset-2">
             Cuentas
           </Link>{" "}
           para {ready.length === 0 ? "publicar o programar el post" : "publicar ahí"}. El texto
@@ -195,7 +190,7 @@ export function PostPublishBar({
         </p>
       )}
       {published !== null && (
-        <p role="status" className="text-sm text-slate-700">
+        <p role="status" className="text-sm text-fg-muted">
           {published}
         </p>
       )}
@@ -206,13 +201,13 @@ export function PostPublishBar({
           pending={schedule.isPending}
           submitLabel="Programar"
           extra={
-            <fieldset className="flex flex-wrap gap-3">
-              <legend className="font-medium text-slate-700">Redes</legend>
+            <fieldset className="flex flex-wrap gap-x-5 gap-y-2">
+              <legend className="mb-2 font-medium text-fg">Redes</legend>
               {ready.map((platform) => (
                 <label
                   key={platform}
                   htmlFor={`${ids}-${platform}`}
-                  className="flex items-center gap-1"
+                  className="flex items-center gap-2"
                 >
                   <input
                     id={`${ids}-${platform}`}
@@ -264,28 +259,26 @@ function OutcomeBox({
   const unknown = publication.status === "outcome_unknown";
   const network = PLATFORM_TEXT[publication.platform];
   return (
-    <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
-      <p className="text-amber-900">
+    <div className="mt-3 rounded-lg border border-warning-200 bg-warning-50 p-3 text-sm">
+      <p className="text-warning-800">
         {unknown
           ? `No se sabe si salió: se cortó justo al enviar. Revisa ${network} y di si está publicada (no se reintenta sola, para no publicarla dos veces).`
           : `Publícala a mano en ${network} con el texto aprobado y los medios del post, y después confírmala aquí con su enlace.`}
       </p>
-      <label htmlFor={id} className="mt-2 block font-medium text-slate-700">
+      <label htmlFor={id} className="mt-3 mb-1.5 block font-medium text-fg">
         Enlace de la publicación{publication.dryRun ? " (en simulación no hace falta)" : ""}
       </label>
-      <input
+      <Input
         id={id}
         type="url"
         value={url}
         onChange={(event) => setUrl(event.target.value)}
         placeholder="https://"
         autoComplete="off"
-        className={FIELD}
       />
-      <div className="mt-2 flex flex-wrap gap-2">
-        <button
-          type="button"
-          className={PRIMARY}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button
+          size="sm"
           disabled={pending}
           onClick={() =>
             onAction(
@@ -305,10 +298,10 @@ function OutcomeBox({
           }
         >
           {unknown ? "Sí, salió" : "Lo publiqué"}
-        </button>
-        <button
-          type="button"
-          className={SECONDARY}
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
           disabled={pending}
           onClick={() =>
             onAction(
@@ -319,7 +312,7 @@ function OutcomeBox({
           }
         >
           {unknown ? "No salió" : "No lo publiqué"}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -345,34 +338,39 @@ function PublicationRow({
         ? `programada para el ${formatChileTime(publication.scheduledAt)}`
         : null;
   return (
-    <li className="rounded-lg border border-slate-200 bg-white p-3 text-sm">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="font-semibold">
+    <li className="py-3 text-sm first:pt-0 last:pb-0">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="font-semibold text-fg">
           {PLATFORM_TEXT[publication.platform]} · {LANGUAGE_TEXT[publication.language]}
         </span>
-        <span className="text-slate-500">
+        <PublicationStatusBadge status={status} />
+      </div>
+      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+        <span className="text-fg-subtle">
           {publicationFormatText(publication.platform, publication.format)}
         </span>
-        <span
-          className={`rounded-full px-2 py-0.5 text-xs font-semibold ${PUBLICATION_STATUS_TONE[status]}`}
-        >
-          {PUBLICATION_STATUS_TEXT[status]}
-        </span>
-        <span className={publication.dryRun ? "text-slate-500" : "font-semibold text-red-700"}>
+        <span className={publication.dryRun ? "text-fg-subtle" : "font-semibold text-danger-700"}>
           {publicationModeText(publication.dryRun)}
         </span>
-        {when !== null && <span className="text-slate-600">· {when} (hora de Chile)</span>}
+        {when !== null && (
+          <span className="text-fg-muted tabular-nums">· {when} (hora de Chile)</span>
+        )}
         {link !== null && (
-          <a href={link} target="_blank" rel="noreferrer noopener" className="underline">
+          <a
+            href={link}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="font-medium text-brand-700 underline underline-offset-2"
+          >
             Ver en {PLATFORM_TEXT[publication.platform]}
           </a>
         )}
       </div>
       {publication.lastError !== null && status === "failed" && (
-        <p className="mt-1 text-red-700">
+        <p className="mt-2 text-danger-700">
           {publication.lastError.message}
           {publication.errorAdvice !== null && (
-            <span className="block text-slate-700">{publication.errorAdvice}</span>
+            <span className="block text-fg-muted">{publication.errorAdvice}</span>
           )}
         </p>
       )}
@@ -393,24 +391,24 @@ function PublicationRow({
           />
         )}
         {status === "scheduled" && (
-          <button
-            type="button"
-            className={SECONDARY}
+          <Button
+            variant="secondary"
+            size="sm"
             disabled={action.isPending}
             onClick={() => action.mutate({ kind: "unschedule", id: publication.id })}
           >
             Desprogramar
-          </button>
+          </Button>
         )}
         {(status === "approved" || status === "failed" || status === "scheduled") && (
-          <button
-            type="button"
-            className={SECONDARY}
+          <Button
+            variant="ghost"
+            size="sm"
             disabled={action.isPending}
             onClick={() => action.mutate({ kind: "cancel", id: publication.id })}
           >
             Descartar
-          </button>
+          </Button>
         )}
       </div>
       {action.error && <ErrorAlert error={action.error} />}
@@ -429,10 +427,10 @@ export function PostPublications({
   publishMode: PublishMode | undefined;
 }) {
   if (publications.length === 0) {
-    return <p className="text-sm text-slate-600">Todavía no tiene publicaciones.</p>;
+    return <p className="text-sm text-fg-muted">Todavía no tiene publicaciones.</p>;
   }
   return (
-    <ul className="space-y-2">
+    <ul className="divide-y divide-line">
       {publications.map((publication) => (
         <PublicationRow
           key={publication.id}

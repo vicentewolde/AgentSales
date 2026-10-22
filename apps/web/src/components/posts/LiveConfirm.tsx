@@ -2,11 +2,7 @@ import type { PublishMode } from "@agentsales/core";
 import { useState } from "react";
 import { useFreshPublishMode } from "../../queries/health.js";
 import { needsLiveConfirm } from "../publications/publications.js";
-
-const PRIMARY =
-  "rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50";
-const DANGER =
-  "rounded-md bg-red-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50";
+import { Button } from "../ui/Button.js";
 
 /**
  * Un botón que publica (o reintenta): como en los avisos (D11), justo antes vuelve a leer el modo
@@ -42,16 +38,16 @@ export function LiveConfirmButton({
   };
   if (asking !== null) {
     return (
-      <div role="alert" className="rounded-md border border-red-300 bg-red-50 p-2 text-sm">
-        <p className="font-semibold text-red-800">
+      <div role="alert" className="rounded-lg border border-danger-200 bg-danger-50 p-3 text-sm">
+        <p className="font-semibold text-danger-800">
           {asking === "live"
             ? "La API está en vivo: esto publica de verdad en la red."
             : "No se pudo saber si la API está en vivo: si lo está, esto publica de verdad."}
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
-          <button
-            type="button"
-            className={DANGER}
+          <Button
+            variant="danger"
+            size="sm"
             disabled={pending}
             onClick={() => {
               setAsking(null);
@@ -59,24 +55,17 @@ export function LiveConfirmButton({
             }}
           >
             Sí, publicar en vivo
-          </button>
-          {/* biome-ignore lint/a11y/noAutofocus: el foco va a la opción segura al abrir la confirmación */}
-          <button type="button" autoFocus className="underline" onClick={() => setAsking(null)}>
+          </Button>
+          <Button variant="ghost" size="sm" autoFocus onClick={() => setAsking(null)}>
             Cancelar
-          </button>
+          </Button>
         </div>
       </div>
     );
   }
   return (
-    <button
-      type="button"
-      className={PRIMARY}
-      disabled={pending || disabled}
-      title={title}
-      onClick={() => void start()}
-    >
+    <Button size="sm" disabled={pending || disabled} title={title} onClick={() => void start()}>
       {label}
-    </button>
+    </Button>
   );
 }

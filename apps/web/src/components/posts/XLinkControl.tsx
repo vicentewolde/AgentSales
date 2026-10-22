@@ -50,9 +50,9 @@ export function XLinkControl({
   return (
     <fieldset
       aria-label="Enlace en X"
-      className="mt-4 rounded-md border border-slate-200 bg-white p-3 text-sm"
+      className="rounded-xl border border-line bg-surface p-4 text-sm shadow-xs"
     >
-      <label className="flex items-center gap-2 font-medium text-slate-800">
+      <label className="flex items-center gap-2 font-medium text-fg">
         <input
           type="checkbox"
           checked={allowed}
@@ -62,12 +62,12 @@ export function XLinkControl({
         />
         Permitir un enlace en X
       </label>
-      <p className="mt-1 text-xs text-slate-600">
+      <p className="mt-1.5 text-xs text-fg-muted">
         {allowed ? "Permitido" : "No permitido"}. En X, un post con enlace cuesta {X_LINK_COST_TEXT}{" "}
         (estimado). El enlace también tiene que estar en el brief.
       </p>
       {unmarked.length > 0 && (
-        <p className="mt-2 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-amber-900">
+        <p className="mt-3 rounded-lg border border-warning-200 bg-warning-50 px-3 py-2 text-warning-800">
           El texto de X en {unmarked.map((content) => LANGUAGE_TEXT[content.language]).join(" y ")}{" "}
           lleva un enlace y el post no lo permite: no se puede aprobar. Marca «Permitir un enlace en
           X» (cuesta {formatXUsd(X_LINK_POST_COST_USD)}) o quita el enlace del texto.

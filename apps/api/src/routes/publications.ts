@@ -484,6 +484,27 @@ export function publicationRoutes(deps: PublicationRoutesDeps) {
           actor: actorOf(c),
           ...(url === undefined ? {} : { url }),
         });
+        // Portal en vivo (F9.5-T04a): el sync lee el ítem que dijo el operador (`remote_state` y
+        // su vencimiento). Si no se puede encolar, la respuesta no falla: lo hace el arranque del
+        // worker, la vigilancia o Actualizar.
+        if (
+          changed &&
+          publication.status === "published" &&
+          publication.platform === "portal_inmobiliario" &&
+          !publication.dryRun
+        ) {
+          await requestPublicationSync(deps, { publicationId: publication.id }).catch(
+            (error: unknown) =>
+              deps.logger.warn(
+                {
+                  publicationId: publication.id,
+                  step: "enqueue_sync",
+                  code: isAppError(error) ? error.code : "INTERNAL_ERROR",
+                },
+                "no se pudo pedir el sync de la publicación resuelta",
+              ),
+          );
+        }
         const body: PublicationConfirmResponse = {
           publication: publicationView(publication),
           changed,

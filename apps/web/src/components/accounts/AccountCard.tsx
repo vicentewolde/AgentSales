@@ -1,13 +1,10 @@
 import type { PlatformAccountView } from "@agentsales/api/contracts";
-import {
-  accountDisconnectText,
-  currentMarketplaceLoginError,
-  PLATFORM_ACCOUNT_STATUS_TEXT,
-} from "@agentsales/core";
+import { accountDisconnectText, currentMarketplaceLoginError } from "@agentsales/core";
 import { useRef, useState } from "react";
-import { ACCOUNT_STATUS_TONE } from "../../labels.js";
 import { useDisconnectAccount } from "../../queries/accounts.js";
 import { ErrorAlert } from "../ErrorAlert.js";
+import { AccountStatusBadge } from "../StatusBadge.js";
+import { Button } from "../ui/Button.js";
 import { AccountExpiry } from "./AccountExpiry.js";
 import { accountDateText } from "./accounts.js";
 
@@ -20,13 +17,13 @@ function MarketplaceDetails({ account }: { account: PlatformAccountView }) {
   return (
     <>
       <dl className="mt-3 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm">
-        <dt className="text-slate-500">Sesión vista</dt>
+        <dt className="text-fg-subtle">Sesión vista</dt>
         <dd>
           {account.sessionCheckedAt === null ? "—" : accountDateText(account.sessionCheckedAt)}
         </dd>
       </dl>
       {error !== null && (
-        <p className="mt-3 text-sm text-red-700">
+        <p className="mt-3 text-sm text-danger-700">
           El inicio de sesión del {accountDateText(error.at)} falló: {error.message}
         </p>
       )}
@@ -91,29 +88,25 @@ export function AccountCard({
   return (
     <article
       aria-label={`Cuenta ${account.displayName}`}
-      className="rounded-lg border border-slate-200 bg-white p-4"
+      className="rounded-xl border border-line bg-surface p-4 shadow-xs"
     >
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="font-semibold">{account.displayName}</h3>
-        <span
-          className={`rounded-full px-2 py-0.5 text-xs font-semibold ${ACCOUNT_STATUS_TONE[account.status]}`}
-        >
-          {PLATFORM_ACCOUNT_STATUS_TEXT[account.status]}
-        </span>
+        <AccountStatusBadge status={account.status} />
       </div>
       {account.platform === "fb_marketplace" ? (
         <MarketplaceDetails account={account} />
       ) : (
         <dl className="mt-3 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm">
-          <dt className="text-slate-500">Vence</dt>
+          <dt className="text-fg-subtle">Vence</dt>
           <dd>
             <AccountExpiry account={account} now={now} />
           </dd>
-          <dt className="text-slate-500">Última renovación</dt>
+          <dt className="text-fg-subtle">Última renovación</dt>
           <dd>{renewalText(account)}</dd>
           {account.publishingMode !== null && (
             <>
-              <dt className="text-slate-500">Modo</dt>
+              <dt className="text-fg-subtle">Modo</dt>
               <dd>
                 {account.publishingMode === "manual"
                   ? "A mano (deja el texto listo; publicas tú y pegas el enlace)"
@@ -123,13 +116,13 @@ export function AccountCard({
           )}
           {account.spendLimitUsd !== undefined && (
             <>
-              <dt className="text-slate-500">Tope de gasto</dt>
+              <dt className="text-fg-subtle">Tope de gasto</dt>
               <dd>{usdText(account.spendLimitUsd)} al mes</dd>
             </>
           )}
-          <dt className="text-slate-500">Tipo</dt>
+          <dt className="text-fg-subtle">Tipo</dt>
           <dd>{account.accountType ?? "—"}</dd>
-          <dt className="text-slate-500">Permisos</dt>
+          <dt className="text-fg-subtle">Permisos</dt>
           <dd>
             {account.permissions === null
               ? account.platform === "instagram"
@@ -144,20 +137,20 @@ export function AccountCard({
         account.marketplaceMode === "profile" &&
         account.status === "connected" &&
         !marketplaceAutomation && (
-          <p role="note" className="mt-3 text-sm text-amber-800">
+          <p role="note" className="mt-3 text-sm text-warning-800">
             En el servidor Marketplace se publica a mano: esta cuenta de Facebook no se usa. Activa
             Marketplace a mano para este corredor.
           </p>
         )}
       {account.status === "expired" && (
-        <p className="mt-3 text-sm text-red-700">
+        <p className="mt-3 text-sm text-danger-700">
           {account.platform === "fb_marketplace"
             ? "La sesión de Facebook se cerró: vuelve a iniciar sesión para publicar."
             : "El acceso venció: reconecta la cuenta para volver a publicar."}
         </p>
       )}
       {account.status === "error" && (
-        <p className="mt-3 text-sm text-red-700">
+        <p className="mt-3 text-sm text-danger-700">
           La cuenta quedó con un error (sus credenciales no se pudieron leer o no sirven):
           reconéctala.
         </p>
@@ -174,8 +167,9 @@ export function AccountCard({
                 marketplaceAutomation,
               )}
             </span>
-            <button
-              type="button"
+            <Button
+              variant="danger"
+              size="sm"
               disabled={disconnect.isPending}
               onClick={() =>
                 disconnect.mutate(
@@ -184,24 +178,23 @@ export function AccountCard({
                   { onSettled: () => setConfirming(false) },
                 )
               }
-              className="rounded-md bg-red-700 px-3 py-1.5 font-medium text-white disabled:opacity-50"
             >
               {disconnect.isPending ? "Desconectando…" : "Sí, desconectar"}
-            </button>
-            {/* biome-ignore lint/a11y/noAutofocus: el foco va a la opción segura al abrir la confirmación */}
-            <button type="button" autoFocus onClick={cancel} className="underline">
+            </Button>
+            <Button variant="link" autoFocus onClick={cancel}>
               Cancelar
-            </button>
+            </Button>
           </div>
         ) : (
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
             ref={disconnectButton}
-            type="button"
             onClick={ask}
-            className="mt-3 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium"
+            className="mt-3"
           >
             Desconectar
-          </button>
+          </Button>
         ))}
       {disconnect.error && <ErrorAlert error={disconnect.error} />}
     </article>

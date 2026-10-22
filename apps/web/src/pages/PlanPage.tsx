@@ -21,6 +21,9 @@ import { Link, useSearchParams } from "react-router";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { useBrandPlatforms } from "../components/posts/brand-platforms.js";
 import { POST_KIND_LABEL, PostStatusBadge } from "../components/posts/labels.js";
+import { Button } from "../components/ui/Button.js";
+import { Input, Select, Textarea } from "../components/ui/Field.js";
+import { PageHeader } from "../components/ui/PageHeader.js";
 import { useMe } from "../queries/auth.js";
 import {
   useAcceptIdea,
@@ -34,12 +37,6 @@ import {
 import { useEditorialProfile } from "../queries/posts.js";
 import { useRole } from "../scope/broker-scope.js";
 import { useScopedBrokerId } from "./PostsPage.js";
-
-const FIELD = "mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm";
-const SECONDARY =
-  "rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-100 disabled:opacity-50";
-const PRIMARY =
-  "rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50";
 
 /**
  * La marca del plan: la elegida en el selector del administrador (sin ella, ninguna: un plan es
@@ -71,7 +68,7 @@ function NetworkChoices({
   legend: string;
 }) {
   return (
-    <fieldset className="text-sm text-slate-700">
+    <fieldset className="text-sm text-fg-muted">
       <legend className="font-medium">{legend}</legend>
       <div className="mt-1 flex flex-wrap gap-3">
         {options.map((platform) => (
@@ -126,35 +123,35 @@ function RequestPlan({
   return (
     <section
       aria-label="Pedir un plan"
-      className="mt-4 rounded-lg border border-slate-200 bg-white p-4"
+      className="mt-4 rounded-xl border border-line bg-surface p-4 shadow-xs"
     >
       <h2 className="text-lg font-semibold">Pedir un plan</h2>
-      <p className="mt-1 text-sm text-slate-600">
+      <p className="mt-1 text-sm text-fg-muted">
         La IA propone ideas con fecha desde mañana, con el perfil editorial de la marca. Cada plan
         gasta IA de la marca, aunque descartes todo.
       </p>
       <form onSubmit={submit} className="mt-3 grid gap-3 md:grid-cols-2">
-        <label htmlFor={`${ids}-days`} className="block text-sm font-medium text-slate-700">
+        <label htmlFor={`${ids}-days`} className="block text-sm font-medium text-fg">
           Días
-          <input
+          <Input
             id={`${ids}-days`}
             name="days"
             type="number"
             min={1}
             max={PLAN_MAX_DAYS}
             defaultValue={PLAN_DEFAULT_DAYS}
-            className={FIELD}
+            className="mt-1"
           />
         </label>
-        <label htmlFor={`${ids}-count`} className="block text-sm font-medium text-slate-700">
+        <label htmlFor={`${ids}-count`} className="block text-sm font-medium text-fg">
           Cuántas ideas (vacío: según la cadencia)
-          <input
+          <Input
             id={`${ids}-count`}
             name="count"
             type="number"
             min={1}
             max={PLAN_MAX_IDEAS}
-            className={FIELD}
+            className="mt-1"
           />
         </label>
         <div className="md:col-span-2">
@@ -166,9 +163,9 @@ function RequestPlan({
           />
         </div>
         <div className="md:col-span-2">
-          <button type="submit" className={PRIMARY} disabled={request.isPending}>
+          <Button size="sm" type="submit" disabled={request.isPending}>
             {request.isPending ? "Pidiendo…" : "Pedir el plan"}
-          </button>
+          </Button>
         </div>
       </form>
       {request.error && <ErrorAlert error={request.error} />}
@@ -180,19 +177,19 @@ function RequestPlan({
 function PlanStatus({ plan }: { plan: PlanRunView }) {
   if (plan.status === "failed") {
     return (
-      <div role="alert" className="mt-3 rounded-lg border border-red-300 bg-red-50 p-4">
-        <p className="font-semibold text-red-800">
+      <div role="alert" className="mt-3 rounded-lg border border-danger-200 bg-danger-50 p-4">
+        <p className="font-semibold text-danger-800">
           El plan falló{plan.error === null ? "" : `: ${plan.error.message}`}
         </p>
         {plan.errorAdvice !== null && (
-          <p className="mt-1 text-sm text-red-700">{plan.errorAdvice}</p>
+          <p className="mt-1 text-sm text-danger-700">{plan.errorAdvice}</p>
         )}
       </div>
     );
   }
   if (plan.status === "succeeded") return null;
   return (
-    <p role="status" className="mt-3 text-sm text-slate-700">
+    <p role="status" className="mt-3 text-sm text-fg-muted">
       {plan.status === "queued"
         ? "Plan en cola: esperando al worker…"
         : "La IA está proponiendo ideas…"}
@@ -249,24 +246,24 @@ function IdeaEditForm({
   );
   return (
     <form aria-label={`Editar «${idea.topic}»`} onSubmit={submit} className="mt-3 grid gap-3">
-      <label htmlFor={`${ids}-brief`} className="block text-sm font-medium text-slate-700">
+      <label htmlFor={`${ids}-brief`} className="block text-sm font-medium text-fg">
         Brief (lo que tú sabes; la IA puede afirmar lo que escribas aquí)
-        <textarea
+        <Textarea
           id={`${ids}-brief`}
           name="brief"
           rows={3}
           defaultValue={idea.brief ?? ""}
-          className={FIELD}
+          className="mt-1"
         />
       </label>
-      <label htmlFor={`${ids}-planned`} className="block text-sm font-medium text-slate-700">
+      <label htmlFor={`${ids}-planned`} className="block text-sm font-medium text-fg">
         Fecha y hora (Chile)
-        <input
+        <Input
           id={`${ids}-planned`}
           name="plannedAt"
           type="datetime-local"
           defaultValue={idea.plannedAt === null ? "" : chileInputValue(idea.plannedAt)}
-          className={FIELD}
+          className="mt-1"
         />
       </label>
       <NetworkChoices
@@ -276,15 +273,15 @@ function IdeaEditForm({
         legend="Redes (sin marcar ninguna: todas las de la marca)"
       />
       <div className="flex gap-2">
-        <button type="submit" className={PRIMARY} disabled={update.isPending}>
+        <Button size="sm" type="submit" disabled={update.isPending}>
           {update.isPending ? "Guardando…" : "Guardar"}
-        </button>
-        <button type="button" className={SECONDARY} onClick={onClose}>
+        </Button>
+        <Button variant="secondary" size="sm" onClick={onClose}>
           Cancelar
-        </button>
+        </Button>
       </div>
       {problem !== null && (
-        <p role="alert" className="text-sm text-red-700">
+        <p role="alert" className="text-sm text-danger-700">
           {problem}
         </p>
       )}
@@ -325,91 +322,84 @@ function IdeaCard({
   return (
     <li
       aria-label={idea.topic}
-      className={`rounded-lg border border-slate-200 bg-white p-3 ${archived ? "opacity-60" : ""}`}
+      className={`rounded-xl border border-line bg-surface p-3 ${archived ? "opacity-60" : ""}`}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className="text-sm font-medium text-slate-700">
+        <span className="text-sm font-medium text-fg">
           {idea.plannedAt === null ? "sin fecha" : formatChileTime(idea.plannedAt)}
         </span>
         {idea.status === "idea" ? (
           <span className="font-semibold">{idea.topic}</span>
         ) : (
-          <Link to={`/contenido/${idea.id}`} className="font-semibold underline">
+          <Link
+            to={`/contenido/${idea.id}`}
+            className="font-semibold text-fg underline-offset-2 hover:text-brand-700 hover:underline"
+          >
             {idea.topic}
           </Link>
         )}
         <PostStatusBadge status={idea.status} />
       </div>
-      <p className="mt-1 text-sm text-slate-600">
+      <p className="mt-1 text-sm text-fg-muted">
         {POST_KIND_LABEL[idea.kind]} · {networksText(idea.platforms)}
         {pillarName !== null && ` · línea ${pillarName}`}
       </p>
       {idea.rationale !== null && (
-        <p className="mt-1 text-sm text-slate-800">
+        <p className="mt-1 text-sm text-fg">
           <span className="font-medium">Por qué: </span>
           {idea.rationale}
         </p>
       )}
       {idea.brief !== null && (
-        <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
+        <p className="mt-1 whitespace-pre-wrap text-sm text-fg-muted">
           <span className="font-medium">Brief: </span>
           {idea.brief}
         </p>
       )}
       {idea.notes.map((note) => (
-        <p key={note} className="mt-1 text-xs text-slate-500">
+        <p key={note} className="mt-1 text-xs text-fg-subtle">
           Sin esa red: {note}
         </p>
       ))}
       {(idea.status === "draft" || idea.status === "ready") && (
-        <p role="status" className="mt-1 text-sm text-slate-700">
+        <p role="status" className="mt-1 text-sm text-fg-muted">
           {textsState(idea)}
         </p>
       )}
       {idea.status === "idea" && !editing && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className={PRIMARY}
-            disabled={busy}
-            onClick={() => accept.mutate(idea.id)}
-          >
+          <Button size="sm" disabled={busy} onClick={() => accept.mutate(idea.id)}>
             {accept.isPending ? "Aceptando…" : "Aceptar"}
-          </button>
-          <button
-            type="button"
-            className={SECONDARY}
-            disabled={busy}
-            onClick={() => setEditing(true)}
-          >
+          </Button>
+          <Button variant="secondary" size="sm" disabled={busy} onClick={() => setEditing(true)}>
             Editar
-          </button>
+          </Button>
           {confirmDiscard ? (
             <span className="flex flex-wrap items-center gap-2 text-sm">
               ¿Descartarla? No se vuelve a proponer en 60 días.
-              <button
-                type="button"
-                className="rounded-md bg-red-700 px-3 py-1.5 font-medium text-white disabled:opacity-50"
+              <Button
+                variant="danger"
+                size="sm"
                 disabled={busy}
                 onClick={() =>
                   discard.mutate(idea.id, { onSettled: () => setConfirmDiscard(false) })
                 }
               >
                 Sí, descartar
-              </button>
-              <button type="button" className="underline" onClick={() => setConfirmDiscard(false)}>
+              </Button>
+              <Button variant="link" onClick={() => setConfirmDiscard(false)}>
                 Cancelar
-              </button>
+              </Button>
             </span>
           ) : (
-            <button
-              type="button"
-              className={SECONDARY}
+            <Button
+              variant="secondary"
+              size="sm"
               disabled={busy}
               onClick={() => setConfirmDiscard(true)}
             >
               Descartar
-            </button>
+            </Button>
           )}
         </div>
       )}
@@ -437,22 +427,22 @@ function DraftAccepted({ planId, ideas }: { planId: string; ideas: readonly Plan
   const pending = acceptedWithoutTexts(ideas);
   if (pending.length === 0 && (draft.data?.length ?? 0) === 0) return null;
   return (
-    <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
+    <div className="mt-3 rounded-md border border-warning-200 bg-warning-50 p-3 text-sm">
       {pending.length > 0 && (
         <>
-          <p className="text-amber-900">
+          <p className="text-warning-800">
             {pending.length === 1
               ? "Una idea aceptada quedó sin textos."
               : `${pending.length} ideas aceptadas quedaron sin textos.`}
           </p>
-          <button
-            type="button"
-            className={`${PRIMARY} mt-2`}
+          <Button
+            size="sm"
+            className="mt-2"
             disabled={draft.isPending}
             onClick={() => draft.mutate(pending.map((idea) => idea.id))}
           >
             {draft.isPending ? "Pidiendo…" : "Redactar lo aceptado"}
-          </button>
+          </Button>
         </>
       )}
       {draft.data?.map(({ postId, error }) => (
@@ -475,20 +465,20 @@ function PlanView({ detail, brandId }: { detail: PlanDetailResponse; brandId: st
     key === null ? null : (profile.data?.pillars.find((pillar) => pillar.key === key)?.name ?? key);
   return (
     <section aria-label="El plan" className="mt-4">
-      <p className="text-sm text-slate-600">
+      <p className="text-sm text-fg-muted">
         Del {plan.firstDay} al {plan.lastDay} · {networksText(plan.platforms)} ·{" "}
         {PLAN_RUN_STATUS_TEXT[plan.status]}
       </p>
       <PlanStatus plan={plan} />
       {plan.status === "succeeded" && (
         <>
-          <p className="mt-3 rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
+          <p className="mt-3 rounded-md border border-info-200 bg-info-50 p-3 text-sm text-info-800">
             Una idea no se publica sola: al aceptarla, la IA redacta sus textos; después tú los
             revisas, apruebas y programas en Contenido.
           </p>
           <DraftAccepted planId={plan.id} ideas={ideas} />
           {ideas.length === 0 && (
-            <p className="mt-3 text-slate-600">
+            <p className="mt-3 text-fg-muted">
               La IA no dejó ideas válidas: mira lo descartado abajo y pide otro plan.
             </p>
           )}
@@ -514,7 +504,7 @@ function PlanView({ detail, brandId }: { detail: PlanDetailResponse; brandId: st
             </div>
           ))}
           {report !== null && report.discarded.length > 0 && (
-            <details className="mt-4 text-sm text-slate-700">
+            <details className="mt-4 text-sm text-fg-muted">
               <summary>Descartadas por las revisiones ({report.discarded.length})</summary>
               <ul className="mt-2 list-disc pl-5">
                 {report.discarded.map((item, index) => (
@@ -527,7 +517,7 @@ function PlanView({ detail, brandId }: { detail: PlanDetailResponse; brandId: st
             </details>
           )}
           {(report?.warnings ?? []).map((warning) => (
-            <p key={warning} className="mt-2 text-sm text-amber-800">
+            <p key={warning} className="mt-2 text-sm text-warning-800">
               ⚠ {warning}
             </p>
           ))}
@@ -566,13 +556,17 @@ export function PlanPage() {
   };
   return (
     <div>
-      <h1 className="text-2xl font-semibold tracking-tight">Plan</h1>
-      <p className="mt-1 text-sm text-slate-600">
-        La IA propone ideas con fecha; tú decides cuáles aceptar. Nada se publica sin que lo
-        apruebes y lo programes.
-      </p>
+      <PageHeader
+        title="Plan"
+        description={
+          <>
+            La IA propone ideas con fecha; tú decides cuáles aceptar. Nada se publica sin que lo
+            apruebes y lo programes.
+          </>
+        }
+      />
       {role === "admin" && brandId === undefined && (
-        <p className="mt-4 text-slate-700">
+        <p className="mt-4 text-fg-muted">
           Elige una marca en el selector de arriba para pedir o ver su plan.
         </p>
       )}
@@ -586,31 +580,32 @@ export function PlanPage() {
             }}
           />
           {reusedNote && (
-            <p role="status" className="mt-2 text-sm text-amber-800">
+            <p role="status" className="mt-2 text-sm text-warning-800">
               La marca ya tenía un plan en curso: te muestro ese.
             </p>
           )}
           {plans.error && <ErrorAlert error={plans.error} onRetry={() => void plans.refetch()} />}
           {plans.data !== undefined && plans.data.length === 0 && (
-            <p className="mt-4 text-slate-600">Esta marca todavía no tiene planes.</p>
+            <p className="mt-4 text-fg-muted">Esta marca todavía no tiene planes.</p>
           )}
           {plans.data !== undefined && plans.data.length > 1 && (
             <div className="mt-4 flex flex-col gap-1">
-              <label htmlFor={pickerId} className="text-xs font-medium text-slate-600">
+              <label htmlFor={pickerId} className="text-xs font-medium text-fg-muted">
                 Plan
               </label>
-              <select
+              <Select
+                width="auto"
                 id={pickerId}
                 value={selectedId ?? ""}
                 onChange={(event) => select(event.target.value)}
-                className="w-fit rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm"
+                className="w-fit"
               >
                 {plans.data.map((item) => (
                   <option key={item.id} value={item.id}>
                     Del {item.firstDay} al {item.lastDay} ({PLAN_RUN_STATUS_TEXT[item.status]})
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           )}
           {plan.error && <ErrorAlert error={plan.error} onRetry={() => void plan.refetch()} />}

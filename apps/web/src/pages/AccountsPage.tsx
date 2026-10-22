@@ -16,6 +16,7 @@ import { MercadoLibreConnectBox } from "../components/accounts/MercadoLibreConne
 import { OAuthReturn } from "../components/accounts/OAuthReturn.js";
 import { DiscordConnectBox, OAuthConnectBox } from "../components/accounts/SocialConnectBox.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
+import { PageHeader } from "../components/ui/PageHeader.js";
 import { useAccounts } from "../queries/accounts.js";
 import { useBrokers } from "../queries/brokers.js";
 import { useHealth } from "../queries/health.js";
@@ -63,11 +64,11 @@ function Channel({
   const headingId = useId();
   return (
     <section aria-labelledby={headingId} className="mt-3">
-      <h3 id={headingId} className="text-sm font-semibold text-slate-700">
+      <h3 id={headingId} className="text-sm font-semibold text-fg">
         {title}
       </h3>
       {accounts.length === 0 && (
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-1 text-sm text-fg-muted">
           {empty}
           {!connect && " Pídele al administrador que la conecte."}
         </p>
@@ -131,7 +132,7 @@ function BrokerAccounts({
   return (
     <section aria-labelledby={headingId}>
       <h2 id={headingId} className="text-lg font-semibold">
-        {broker.brandName} <span className="text-sm text-slate-500">({broker.slug})</span>
+        {broker.brandName} <span className="text-sm text-fg-subtle">({broker.slug})</span>
       </h2>
       {settings && listings && <AutoPublishToggle broker={broker} publishMode={publishMode} />}
       <Channel
@@ -300,14 +301,18 @@ export function AccountsPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold tracking-tight">Cuentas</h1>
-      <p className="mt-1 text-slate-600">
-        Las cuentas de cada corredor o marca: Instagram, Mercado Libre y Facebook para las
-        propiedades, y Discord, LinkedIn, X y TikTok para los posts. Se renuevan solas mientras el
-        worker está encendido: Instagram dura 60 días; Mercado Libre se da de baja tras 4 meses sin
-        renovarse; X y TikTok se renuevan al publicar. Facebook y Discord no vencen; LinkedIn dura
-        60 días y se reconecta antes de que venza (la agenda avisa).
-      </p>
+      <PageHeader
+        title="Cuentas"
+        description={
+          <>
+            Las cuentas de cada corredor o marca: Instagram, Mercado Libre y Facebook para las
+            propiedades, y Discord, LinkedIn, X y TikTok para los posts. Se renuevan solas mientras
+            el worker está encendido: Instagram dura 60 días; Mercado Libre se da de baja tras 4
+            meses sin renovarse; X y TikTok se renuevan al publicar. Facebook y Discord no vencen;
+            LinkedIn dura 60 días y se reconecta antes de que venza (la agenda avisa).
+          </>
+        }
+      />
       <OAuthReturn />
       {error && (
         <ErrorAlert
@@ -317,10 +322,10 @@ export function AccountsPage() {
         />
       )}
       {!error && (accounts.isPending || brokers.isPending) && (
-        <p className="mt-6 text-slate-600">Cargando…</p>
+        <p className="mt-6 text-fg-muted">Cargando…</p>
       )}
       {accounts.data && brokers.data && brokers.data.length === 0 && (
-        <p className="mt-6 text-slate-600">
+        <p className="mt-6 text-fg-muted">
           No hay corredores todavía: créalos en Corredores o al importar el Excel.
         </p>
       )}

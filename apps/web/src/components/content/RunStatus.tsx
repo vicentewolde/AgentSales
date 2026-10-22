@@ -27,10 +27,10 @@ function Stages({ run }: { run: ContentRunView }) {
             aria-current={state === "current" ? "step" : undefined}
             className={
               state === "done"
-                ? "text-emerald-700"
+                ? "text-success-700"
                 : state === "current"
-                  ? "font-semibold text-slate-900"
-                  : "text-slate-400"
+                  ? "font-semibold text-fg"
+                  : "text-fg-subtle"
             }
           >
             {state === "done" ? "✓ " : state === "current" ? "→ " : "· "}
@@ -60,10 +60,10 @@ export function RunProgress({
   retrying: boolean;
 }) {
   return (
-    <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-4">
+    <div className="mt-2 rounded-lg border border-line bg-slate-50 p-4">
       <Stages run={run} />
       {stuckInQueue(run, checkedAt) && !stopped && (
-        <p role="alert" className="mt-2 text-sm text-amber-800">
+        <p role="alert" className="mt-2 text-sm text-warning-800">
           {RUN_QUEUED_WARNING_TEXT}
         </p>
       )}
@@ -86,18 +86,18 @@ export function RunResult({ run }: { run: ContentRunView }) {
   return (
     <>
       {run.status === "failed" && run.error && (
-        <div role="alert" className="mt-4 rounded-lg border border-red-300 bg-red-50 p-4">
-          <p className="font-semibold text-red-800">La última preparación falló</p>
-          <p className="mt-1 text-sm text-red-800">{run.error.message}</p>
-          <p className="mt-1 text-xs text-red-700">Código: {run.error.code}</p>
+        <div role="alert" className="mt-4 rounded-lg border border-danger-200 bg-danger-50 p-4">
+          <p className="font-semibold text-danger-800">La última preparación falló</p>
+          <p className="mt-1 text-sm text-danger-800">{run.error.message}</p>
+          <p className="mt-1 text-xs text-danger-700">Código: {run.error.code}</p>
         </div>
       )}
       {warnings.length > 0 && (
         <details className="mt-3 text-sm">
-          <summary className="cursor-pointer text-amber-800">
+          <summary className="cursor-pointer text-warning-800">
             Advertencias de la última preparación ({warnings.length})
           </summary>
-          <ul className="mt-1 list-disc pl-5 text-amber-900">
+          <ul className="mt-1 list-disc pl-5 text-warning-800">
             {warnings.map((warning, index) => (
               <li key={keys[index]}>{warning}</li>
             ))}
