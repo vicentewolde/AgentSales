@@ -224,9 +224,9 @@ describe("panel: Importar", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Importar" }));
 
-    expect((await screen.findByRole("alert")).textContent).toContain(
-      "IMPORT_UPLOAD_INCOMPLETE: Faltan 1 archivo(s) por subir: medios.zip",
-    );
+    const incomplete = (await screen.findByRole("alert")).textContent ?? "";
+    expect(incomplete).toContain("Faltan 1 archivo(s) por subir: medios.zip");
+    expect(incomplete).toContain("código: IMPORT_UPLOAD_INCOMPLETE");
     expect((await latestRun(h))?.status).toBe("awaiting_upload");
   });
 
@@ -267,9 +267,9 @@ describe("panel: Importar", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Importar" }));
 
-    expect((await screen.findByRole("alert")).textContent).toContain(
-      "IMPORT_UPLOAD_TOO_LARGE: El zip pasa de 512 MB",
-    );
+    const tooLarge = (await screen.findByRole("alert")).textContent ?? "";
+    expect(tooLarge).toContain("El zip pasa de 512 MB");
+    expect(tooLarge).toContain("código: IMPORT_UPLOAD_TOO_LARGE");
   });
 
   it("muestra el historial de cargas con su estado y enlace", async () => {
@@ -369,9 +369,9 @@ describe("panel: una carga", () => {
     });
     h.renderApp(`/importar/${run.id}`);
 
-    expect((await screen.findByRole("alert")).textContent).toContain(
-      "BROKER_INVALID: La hoja Corredor tiene errores",
-    );
+    const invalid = (await screen.findByRole("alert")).textContent ?? "";
+    expect(invalid).toContain("La hoja Corredor tiene errores");
+    expect(invalid).toContain("código: BROKER_INVALID");
     expect(screen.getByText("falló")).toBeTruthy();
   });
 

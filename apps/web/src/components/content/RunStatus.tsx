@@ -5,6 +5,7 @@ import {
   RUN_QUEUED_WARNING_TEXT,
 } from "@agentsales/core";
 import { type PollStop, stuckInQueue } from "../../queries/run-poll.js";
+import { ErrorLine } from "../ErrorLine.js";
 import { PollStoppedAlert } from "../PollStoppedAlert.js";
 import { uniqueKeys } from "./keys.js";
 
@@ -88,8 +89,10 @@ export function RunResult({ run }: { run: ContentRunView }) {
       {run.status === "failed" && run.error && (
         <div role="alert" className="mt-4 rounded-lg border border-danger-200 bg-danger-50 p-4">
           <p className="font-semibold text-danger-800">La última preparación falló</p>
-          <p className="mt-1 text-sm text-danger-800">{run.error.message}</p>
-          <p className="mt-1 text-xs text-danger-700">Código: {run.error.code}</p>
+          {/* En simple, con el código chico al final (F9.5-T20). */}
+          <p className="mt-1 text-sm text-danger-800">
+            <ErrorLine error={run.error} />
+          </p>
         </div>
       )}
       {warnings.length > 0 && (

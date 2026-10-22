@@ -13,6 +13,7 @@ import {
   agendaItemPath,
   agendaItemWhen,
   needsAction,
+  platformWithFormat,
   RECENT_DAYS,
   RECENT_LIMIT,
   type RecentPublication,
@@ -61,6 +62,12 @@ function Details({ parts }: { parts: readonly (string | null)[] }) {
   return text === "" ? null : <span className="block text-sm text-fg-muted">{text}</span>;
 }
 
+/** La red del ítem con su formato («Instagram · reel»), o nada si no es de una red. */
+const itemChannel = (item: AgendaItem): string | null =>
+  item.platform === null
+    ? null
+    : platformWithFormat(item.platform, item.format, item.mediaCount, PLATFORM_TEXT[item.platform]);
+
 function TodoEntry({ item }: { item: AgendaItem }) {
   const when =
     item.kind === "backup"
@@ -72,7 +79,7 @@ function TodoEntry({ item }: { item: AgendaItem }) {
     <li className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
       <div className="min-w-0">
         <ItemTitle item={item} />
-        <Details parts={[item.platform === null ? null : PLATFORM_TEXT[item.platform], when]} />
+        <Details parts={[itemChannel(item), when]} />
         {/* El consejo dice qué hacer; el código, solo si no hay consejo (como Seguimiento). */}
         {item.advice !== null ? (
           <span className="block text-sm text-fg-muted">{item.advice}</span>
@@ -96,12 +103,7 @@ function UpcomingEntry({ item }: { item: AgendaItem }) {
   return (
     <li className="py-3 first:pt-0 last:pb-0">
       <ItemTitle item={item} />
-      <Details
-        parts={[
-          item.at === null ? null : formatChileTime(item.at),
-          item.platform === null ? null : PLATFORM_TEXT[item.platform],
-        ]}
-      />
+      <Details parts={[item.at === null ? null : formatChileTime(item.at), itemChannel(item)]} />
     </li>
   );
 }
@@ -124,7 +126,13 @@ function RecentEntry({
           )}
         </Link>
         <span className="block text-sm text-fg-muted">
-          {PLATFORM_TEXT[publication.platform]} · {formatChileTime(publication.publishedAt)}
+          {platformWithFormat(
+            publication.platform,
+            publication.format,
+            publication.mediaCount,
+            PLATFORM_TEXT[publication.platform],
+          )}{" "}
+          · {formatChileTime(publication.publishedAt)}
           <PublicationMode publication={publication} publishMode={publishMode} prefix=" · " />
         </span>
       </div>

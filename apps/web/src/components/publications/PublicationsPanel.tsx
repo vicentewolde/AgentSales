@@ -12,13 +12,14 @@ import {
 } from "@agentsales/core";
 import { useRef, useState } from "react";
 import { Link } from "react-router";
-import { ApiError } from "../../api/client.js";
+import { useAccounts } from "../../queries/accounts.js";
 import { useFreshPublishMode } from "../../queries/health.js";
 import { usePublishListing, useScheduleListings } from "../../queries/publications.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 import { Button } from "../ui/Button.js";
 import { PublicationItem } from "./PublicationItem.js";
 import {
+  accountMissingReason,
   hasSomethingToPublish,
   needsLiveConfirm,
   publishBlockedReason,
@@ -30,13 +31,6 @@ import {
 import { ScheduleForm } from "./ScheduleForm.js";
 
 const shown = new Set<string>([...ACTIVE_PUBLICATION_STATUSES, "failed"]);
-
-/** Cómo se conecta la cuenta de cada canal, en Cuentas (`ACCOUNT_NOT_CONNECTED`). */
-const ACCOUNT_TEXT: Partial<Record<Platform, string>> = {
-  instagram: "la cuenta de Instagram",
-  portal_inmobiliario: "la cuenta de Mercado Libre",
-  fb_marketplace: "la cuenta de Facebook",
-};
 
 /** La confirmación de publicar en vivo según el canal (Marketplace: quien publica es el operador, D3). */
 const liveConfirmText = (platform: Platform, channel: string) =>
@@ -59,6 +53,7 @@ export function PublicationsPanel({
   publishMode,
   runActive,
   readiness = null,
+  brokerId,
 }: {
   platform: ListingPlatform;
   listingId: string;
@@ -68,11 +63,20 @@ export function PublicationsPanel({
   publishMode: PublishMode | undefined;
   runActive: boolean;
   readiness?: ReadinessView | null;
+  /**
+   * El corredor del aviso: sin una cuenta suya conectada en este canal, no se publica (F9.5-T20).
+   * `undefined` mientras no se sabe (la API lo vuelve a revisar).
+   */
+  brokerId: string | undefined;
 }) {
   const publish = usePublishListing(listingId);
   const schedule = useScheduleListings();
   const [scheduling, setScheduling] = useState(false);
   const freshMode = useFreshPublishMode();
+  // Todas las cuentas que la sesión ve: un administrador con otro corredor elegido mira igual las
+  // del corredor del aviso (F9.5-T12).
+  const accounts = useAccounts();
+  const missingAccount = accountMissingReason(platform, accounts.data?.accounts, brokerId);
   const [confirming, setConfirming] = useState(false);
   const [requestedAt, setRequestedAt] = useState<Date | null>(null);
   const [backToReady, setBackToReady] = useState(false);
@@ -90,6 +94,7 @@ export function PublicationsPanel({
     .map((p) => retryBlockedReason(p, publishMode))
     .find((reason) => reason !== null);
   const blocked =
+    missingAccount ??
     publishBlockedReason(listingStatus, runActive) ??
     (platform === "portal_inmobiliario"
       ? readinessPublishBlockedReason(content, readiness)
@@ -199,7 +204,22 @@ export function PublicationsPanel({
             </p>
           ))}
           {schedule.error && <ErrorAlert error={schedule.error} />}
-          {blocked !== null && <p className="mt-1 text-xs text-warning-800">{blocked}</p>}
+          {blocked !== null && (
+            <p className="mt-1 text-xs text-warning-800">
+              {blocked}
+              {missingAccount !== null && (
+                <>
+                  {" "}
+                  <Link
+                    to="/cuentas"
+                    className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-900"
+                  >
+                    Ir a Cuentas
+                  </Link>
+                </>
+              )}
+            </p>
+          )}
         </div>
       )}
       {publish.data?.skipped.map((skipped) => (
@@ -220,23 +240,9 @@ export function PublicationsPanel({
           .
         </p>
       )}
-      {publish.error && (
-        <>
-          <ErrorAlert error={publish.error} />
-          {publish.error instanceof ApiError && publish.error.code === "ACCOUNT_NOT_CONNECTED" && (
-            <p className="mt-2 text-sm">
-              Conecta {ACCOUNT_TEXT[platform] ?? "la cuenta"} del corredor en{" "}
-              <Link
-                to="/cuentas"
-                className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-900"
-              >
-                Cuentas
-              </Link>
-              .
-            </p>
-          )}
-        </>
-      )}
+      {/* Si la cuenta se desconectó entre tanto (`ACCOUNT_NOT_CONNECTED`), el aviso trae su
+          enlace a Cuentas. */}
+      {publish.error && <ErrorAlert error={publish.error} />}
       {backToReady && (
         <p role="status" className="mt-2 text-sm text-fg-muted">
           Era la última publicada en vivo: la propiedad volvió a lista.

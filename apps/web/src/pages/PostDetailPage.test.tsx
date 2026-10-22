@@ -445,3 +445,70 @@ describe("panel: detalle de un post", () => {
     expect(screen.getByLabelText("Subir fotos o videos").hasAttribute("disabled")).toBe(true);
   });
 });
+
+describe("panel: un post sin imágenes (F9.5-T21)", () => {
+  it("la pestaña dice «pendiente» y no «!» cuando solo faltan las imágenes, y el texto se aprueba", async () => {
+    const s = await setup();
+    await s.deps.posts.update(s.post.id, { kind: "image" });
+    await s.draft();
+    await s.open();
+    const tab = screen.getByRole("tab", { name: /^Discord · español/ });
+    expect(within(tab).getByText("pendiente")).toBeTruthy();
+    expect(tab.textContent).not.toContain("!");
+    // El motivo, al pasar el cursor y debajo de las pestañas.
+    expect(tab.getAttribute("title")).toMatch(/^Discord · español: Falta la imagen: /);
+    const problems = screen.getByRole("list", { name: "Qué falta o qué corregir" });
+    expect(
+      within(problems).getByText(/^Pendiente · Discord · español: Falta la imagen: /),
+    ).toBeTruthy();
+
+    const approve = screen.getByRole("button", { name: "Aprobar" });
+    expect(approve.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(approve);
+    await waitFor(() =>
+      expect(s.requests).toContain(`POST /posts/${s.post.id}/contents/discord/es/approve`),
+    );
+    expect(await screen.findByRole("button", { name: "Quitar la aprobación" })).toBeTruthy();
+  });
+
+  it("aprobado el texto, publicar y programar esperan las imágenes: el aviso lleva a subirlas", async () => {
+    const s = await setup();
+    await s.deps.posts.update(s.post.id, { kind: "image" });
+    await s.draft();
+    await s.client.posts[":id"].contents[":platform"][":language"].approve.$post({
+      param: { id: s.post.id, platform: "discord", language: "es" },
+    });
+    await s.open();
+    const section = screen.getByRole("region", { name: "Publicar" });
+    const publish = await within(section).findByRole("button", {
+      name: "Publicar en Discord (simulación)",
+    });
+    await waitFor(() => expect(publish).toHaveProperty("disabled", true));
+    expect(publish.getAttribute("title")).toMatch(/^Falta la imagen: /);
+    expect(within(section).getByRole("button", { name: "Programar…" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    expect(within(section).getByText(/Falta la imagen: .*Súbela o consíguela/)).toBeTruthy();
+    const link = within(section).getByRole("link", { name: "Subir imágenes" });
+    expect(link.getAttribute("href")).toBe("#medios-del-post");
+    expect(document.getElementById("medios-del-post")).toBeTruthy();
+    fireEvent.click(publish);
+    expect(s.requests).not.toContain(`POST /posts/${s.post.id}/publish`);
+  });
+
+  it("un error de verdad sigue con «!» y el motivo en la pestaña y debajo del texto", async () => {
+    const s = await setup();
+    await s.draft([{ platform: "discord", language: "es", body: "a".repeat(2100) }]);
+    await s.open();
+    const tab = screen.getByRole("tab", { name: /^Discord · español/ });
+    expect(tab.textContent).toContain("!");
+    expect(within(tab).queryByText("pendiente")).toBeNull();
+    expect(tab.getAttribute("title")).toMatch(/^Discord · español: El texto tiene 2100 caracteres/);
+    const problems = screen.getByRole("list", { name: "Qué falta o qué corregir" });
+    expect(
+      within(problems).getByText(/^Error · Discord · español: El texto tiene 2100/),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Aprobar" }).hasAttribute("disabled")).toBe(true);
+  });
+});
