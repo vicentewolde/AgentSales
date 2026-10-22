@@ -403,6 +403,83 @@ export function subjectRepositoriesContract(
         expect(await repos.publications.sumCostUsdSince(accountId, since)).toBeCloseTo(0.1235, 10);
       });
 
+      it("reserveCostUsd (F9.5-T08): la reserva que pasa el tope falla sin anotar y la propia no cuenta dos veces", async () => {
+        const { post, texts, accountId } = await postWithTexts();
+        const [es, en] = texts;
+        const base = {
+          postId: post.id,
+          platformAccountId: accountId,
+          platform: "instagram" as const,
+          format: "post" as const,
+          mediaIds: [],
+        };
+        const since = new Date(Date.now() - 60_000);
+        const limit = { limitUsd: 0.02, since };
+        const reserve = (id: string, costUsd = 0.015, options = limit) =>
+          repos.publications.reserveCostUsd(id, accountId, costUsd, options);
+        const first = await repos.publications.create(
+          { ...base, contentId: es?.id ?? "" },
+          { actor: "operator" },
+        );
+        const second = await repos.publications.create(
+          { ...base, contentId: en?.id ?? "", language: "en" },
+          { actor: "operator" },
+        );
+        // Fuera de `publishing` no se reserva; una que no existe, tampoco.
+        await expect(reserve(first.id)).rejects.toMatchObject({
+          code: "PUBLICATION_NOT_PUBLISHING",
+        });
+        await expect(reserve(repos.missingId)).rejects.toMatchObject({
+          code: "PUBLICATION_NOT_FOUND",
+        });
+        for (const publication of [first, second]) {
+          await repos.publications.transition(
+            publication.id,
+            { from: "approved", to: "publishing", changes: { dryRun: false } },
+            { actor: "operator" },
+          );
+        }
+
+        // Cabe una de US$0,015 bajo US$0,02, no dos: aun a la vez, la segunda falla sin anotar.
+        // (PGlite tiene una sola conexión y ya serializa las transacciones: el candado por cuenta
+        // se prueba de verdad solo en Postgres, ver docs/01-arquitectura.md.)
+        const results = await Promise.allSettled([reserve(first.id), reserve(second.id)]);
+        expect(results.map((result) => result.status).sort()).toEqual(["fulfilled", "rejected"]);
+        const won = results[0]?.status === "fulfilled" ? first : second;
+        const lost = won === first ? second : first;
+        const rejection = results.find((result) => result.status === "rejected");
+        expect(rejection?.status === "rejected" && rejection.reason).toMatchObject({
+          code: "X_SPEND_LIMIT_REACHED",
+          retriable: false,
+          details: { spentUsd: 0.015, costUsd: 0.015, limitUsd: 0.02 },
+        });
+        expect((await repos.publications.get(won.id))?.costUsd).toBeCloseTo(0.015, 10);
+        expect((await repos.publications.get(lost.id))?.costUsd).toBeNull();
+        expect(await repos.publications.sumCostUsdSince(accountId, since)).toBeCloseTo(0.015, 10);
+
+        // El reintento de la misma publicación no cuenta su propia reserva: cabe justo en el tope.
+        const again = await reserve(won.id, 0.0150001, { limitUsd: 0.015, since });
+        expect(again).toMatchObject({ id: won.id, status: "publishing" });
+        expect(again.costUsd).toBeCloseTo(0.015, 10);
+
+        // Si la ganadora termina sin publicarse, su reserva deja de contar y cabe la otra.
+        await repos.publications.transition(
+          won.id,
+          { from: "publishing", to: "failed" },
+          { actor: "system" },
+        );
+        expect((await reserve(lost.id)).costUsd).toBeCloseTo(0.015, 10);
+        // Un costo que por sí solo pasa el tope no se reserva y no cambia lo anotado.
+        await expect(reserve(lost.id, 0.2)).rejects.toMatchObject({
+          code: "X_SPEND_LIMIT_REACHED",
+        });
+        expect((await repos.publications.get(lost.id))?.costUsd).toBeCloseTo(0.015, 10);
+        // Con la cuenta equivocada es un error de programación, no una reserva.
+        await expect(
+          repos.publications.reserveCostUsd(lost.id, repos.missingId, 0.015, limit),
+        ).rejects.toMatchObject({ code: "INTERNAL_ERROR" });
+      });
+
       it("los barridos ven también las publicaciones de posts (F9-T06), con su sujeto", async () => {
         const { post, texts, accountId } = await postWithTexts();
         const publication = await repos.publications.create(

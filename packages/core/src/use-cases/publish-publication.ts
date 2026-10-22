@@ -77,7 +77,7 @@ import {
 import { scrubMessage } from "../redact.js";
 import { listingIdOf } from "../subject.js";
 import { xSpendLimitOf } from "../x/account.js";
-import { xLinkNotAllowed, xPostCostUsd, xPostHasLink, xSpendLimitReached } from "../x/cost.js";
+import { xLinkNotAllowed, xPostCostUsd, xPostHasLink } from "../x/cost.js";
 import {
   accessTokenProvider,
   ROTATING_TOKEN_PLATFORMS,
@@ -118,7 +118,7 @@ export type PublishPublicationDeps = {
     | "countLiveAttemptsSince"
     | "listEvents"
     | "setCostUsd"
-    | "sumCostUsdSince"
+    | "reserveCostUsd"
   >;
   /**
    * El post de una publicación de X (F9-T16): su marca `xLinkAllowed` decide si un texto con enlace
@@ -798,11 +798,15 @@ async function prepareAttempt(
  * 2. un texto con enlace necesita la marca explícita del operador en el post (`xLinkAllowed`): sin
  *    ella, `X_LINK_NOT_ALLOWED` (no reintentable), aunque el texto se haya aprobado antes de quitar
  *    la marca;
- * 3. en `live`, el gasto estimado del mes de la cuenta (mes de Chile, `sumCostUsdSince`, sin esta
- *    publicación) más el de este post no puede pasar `spendLimitUsd` (por defecto US$10): si no,
- *    `X_SPEND_LIMIT_REACHED` (no reintentable) y la publicación queda `failed` con la causa;
- * 4. anota el costo estimado en `cost_usd` (US$0,015, o US$0,20 con enlace); en `dry-run` también,
- *    como referencia (no cuenta para el tope: solo suman las de `live`).
+ * 3. en `live`, reserva el costo estimado de este post (US$0,015, o US$0,20 con enlace) en
+ *    `cost_usd` con `reserveCostUsd` (F9.5-T08): de forma atómica, con un candado por cuenta, el
+ *    gasto del mes de la cuenta (mes de Chile, sin esta publicación) más este costo no puede pasar
+ *    `spendLimitUsd` (por defecto US$10). Si no cabe, `X_SPEND_LIMIT_REACHED` (no reintentable) y la
+ *    publicación queda `failed` con la causa. Dos publicaciones a la vez de la misma cuenta se
+ *    esperan: nunca pasan las dos por encima del tope. La reserva se libera sola si la publicación
+ *    termina `failed` o `cancelled` (dejan de contar, `COST_COUNTED_STATUSES`);
+ * 4. en `dry-run`, anota el costo estimado igual, como referencia (no cuenta para el tope: solo
+ *    suman las de `live`).
  */
 async function requireXBudget(
   deps: PublishPublicationDeps,
@@ -818,22 +822,15 @@ async function requireXBudget(
     const post = postId === null || deps.posts === undefined ? null : await deps.posts.get(postId);
     if (post?.xLinkAllowed !== true) throw xLinkNotAllowed(postId);
   }
-  if (!publication.dryRun) {
-    const limitUsd = xSpendLimitOf(account);
-    const { from } = chileMonthRange(chileMonthOf(now));
-    const spentUsd = await deps.publications.sumCostUsdSince(account.id, from, {
-      excludePublicationId: publication.id,
-    });
-    // Con margen de redondeo: los montos van con 4 decimales.
-    if (spentUsd + costUsd > limitUsd + 1e-9) {
-      throw xSpendLimitReached({
-        spentUsd: Math.round(spentUsd * 10_000) / 10_000,
-        costUsd,
-        limitUsd,
-      });
-    }
+  if (publication.dryRun) {
+    await deps.publications.setCostUsd(publication.id, costUsd);
+    return;
   }
-  await deps.publications.setCostUsd(publication.id, costUsd);
+  // Atómica (candado por cuenta): si no cabe, `X_SPEND_LIMIT_REACHED` sin anotar nada.
+  await deps.publications.reserveCostUsd(publication.id, account.id, costUsd, {
+    limitUsd: xSpendLimitOf(account),
+    since: chileMonthRange(chileMonthOf(now)).from,
+  });
 }
 
 /**

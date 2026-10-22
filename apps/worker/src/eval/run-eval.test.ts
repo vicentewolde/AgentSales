@@ -19,6 +19,17 @@ const DRAFT_WITH_INVENTED_NUMBER = {
   instagram: { ...SAMPLE_CONTENT_DRAFT.instagram, body: "Tiene 847 m² de jardín privado." },
 };
 
+/** El borrador de ejemplo con muletillas de IA en Instagram y Marketplace. */
+const DRAFT_WITH_AI_TELLS = {
+  ...SAMPLE_CONTENT_DRAFT,
+  instagram: {
+    ...SAMPLE_CONTENT_DRAFT.instagram,
+    hook: "Descubre tu próximo hogar en el corazón de Ñuñoa.",
+    body: "Sin duda, la terraza te espera.",
+  },
+  fb_marketplace: { intro: "Un oasis para vivir con calma." },
+};
+
 const NOTES = "acepta ofertas bajo la tasación";
 const ADDRESS = "Calle Secreta 4321";
 
@@ -87,6 +98,20 @@ describe("pnpm eval:content (runEval)", () => {
     expect(t.out[0]).toBe("✓ P001");
     expect(t.out).toContain("  Instagram: sin problemas");
     expect(t.out).toContain("Evaluadas 1 de 1 · con errores 0");
+    expect(t.out).toContain("Muletillas de IA: 0 (advertencia, no cambia el resultado)");
+  });
+
+  it("cuenta las muletillas de IA como advertencia, sin cambiar el resultado", async () => {
+    const t = await setup([{ data: DRAFT_WITH_AI_TELLS }]);
+
+    expect(await runEval(t.deps, { brokerSlug: DEFAULT_EVAL_BROKER })).toBe(0);
+    expect(t.out[0]).toBe("✓ P001");
+    expect(t.out.join("\n")).toMatch(/Instagram: ⚠ AI_TELL: Suena escrito por IA: «descubre»/);
+    expect(t.out.join("\n")).toMatch(/Facebook Marketplace: ⚠ AI_TELL: .*«un oasis»/);
+    // Instagram: «descubre», «en el corazón de», «sin duda» y «te espera»; Marketplace: «un oasis».
+    expect(t.out).toContain(
+      "Muletillas de IA: 5 en 2 textos (advertencia, no cambia el resultado)",
+    );
   });
 
   it("un número inventado sale con 1 y muestra el error del canal", async () => {
