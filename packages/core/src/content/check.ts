@@ -49,7 +49,9 @@ export const CONTENT_CHECK_SEVERITIES = {
   MASS_MENTION: "error",
   FACT_NOT_IN_PROFILE: "error",
   LINK_NOT_ALLOWED: "error",
-  MEDIA_REQUIREMENT: "error",
+  // F9.5-T21: faltan los medios del post (advertencia); un formato que la red no publica es error.
+  MEDIA_REQUIREMENT: "warning",
+  MEDIA_NOT_SUPPORTED: "error",
   LINK_COST: "warning",
   AVOID_TERM: "warning",
   MEDIA_UNUSED: "warning",
