@@ -103,6 +103,7 @@ function InstagramPanel({
           publications={edit.publications.filter((p) => p.platform === "instagram")}
           publishMode={edit.publishMode}
           runActive={edit.runActive}
+          brokerId={brokerId}
         />
       </div>
     </div>
@@ -139,12 +140,14 @@ function ListingPanel({
   photos,
   edit,
   portalReadiness,
+  brokerId,
 }: {
   platform: ListingPlatform;
   content: ContentView | undefined;
   photos: ContentMedia[];
   edit: EditContext;
   portalReadiness: PortalReadinessView;
+  brokerId: string | undefined;
 }) {
   const portal = platform === "portal_inmobiliario";
   const { text, draft, onDraft } = useShownText(content);
@@ -175,6 +178,7 @@ function ListingPanel({
           publishMode={edit.publishMode}
           runActive={edit.runActive}
           readiness={portalReadiness}
+          brokerId={brokerId}
         />
       )}
     </div>
@@ -285,6 +289,7 @@ export function Preview({
               photos={content.photos}
               edit={edit}
               readiness={content.marketplaceReadiness}
+              brokerId={brokerId}
             />
           ) : (
             <ListingPanel
@@ -293,6 +298,7 @@ export function Preview({
               photos={content.photos}
               edit={edit}
               portalReadiness={content.portalReadiness}
+              brokerId={brokerId}
             />
           )}
         </div>

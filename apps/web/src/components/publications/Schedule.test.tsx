@@ -163,7 +163,10 @@ describe("programar una publicación", () => {
       { actor: "system" },
     );
     const item = await card(s, "reel");
-    expect(item.textContent).toContain("Token rechazado");
+    // En simple (F9.5-T20): la frase del código y el código chico al final, no el texto técnico.
+    expect(item.textContent).toContain("Instagram no aceptó la conexión");
+    expect(item.textContent).toContain("(código: IG_AUTH_INVALID)");
+    expect(item.textContent).not.toContain("Token rechazado");
     expect(item.textContent).toContain("Qué hacer:");
   });
 });

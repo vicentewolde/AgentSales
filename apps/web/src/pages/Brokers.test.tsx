@@ -146,7 +146,7 @@ describe("Corredores (F7-T18)", () => {
     fireEvent.change(within(users).getByLabelText("Nombre"), { target: { value: "Nuevo" } });
     fireEvent.click(within(users).getByRole("button", { name: "Invitar" }));
 
-    const link = await within(users).findByText(/se muestra una sola vez/);
+    const link = await within(users).findByText(/sirve una sola vez/);
     const box = link.closest("[role=status]") as HTMLElement;
     const shown = within(box).getByText(/\/invitacion#/).textContent ?? "";
     fireEvent.click(within(box).getByRole("button", { name: "Copiar el enlace" }));

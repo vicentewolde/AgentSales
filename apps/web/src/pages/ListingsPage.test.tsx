@@ -127,7 +127,9 @@ describe("panel: Propiedades", () => {
     renderApp("/propiedades");
 
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("DB_UNAVAILABLE: La base no responde");
+    expect(alert.textContent).toContain("La base no responde");
+    expect(alert.textContent).toContain("código: DB_UNAVAILABLE");
+    expect(alert.textContent).not.toContain("DB_UNAVAILABLE:");
     expect(alert.textContent).toContain("Neon puede estar despertando");
 
     failing = false;

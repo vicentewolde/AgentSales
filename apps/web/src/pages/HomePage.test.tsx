@@ -300,6 +300,55 @@ describe("la portada Hoy (F9.5-T03)", () => {
     expect(figure("Publicadas en 7 días")).toBe("2");
   });
 
+  it("cada publicación dice su formato: carrusel, reel o imagen (F9.5-T20)", async () => {
+    // El mismo aviso con el carrusel y el reel en cada bloque: no son dos filas idénticas.
+    const when = new Date(Date.now() + 2 * HOUR);
+    const formats = {
+      agenda: {
+        items: [
+          item({ publicationId: "a", format: "post", mediaCount: 5, at: when }),
+          item({ publicationId: "b", format: "reel", mediaCount: 1, at: when }),
+          item({ publicationId: "c", format: "post", mediaCount: 1, at: when }),
+          item({
+            kind: "failed",
+            action: "retry",
+            publicationId: "d",
+            format: "reel",
+            mediaCount: 1,
+            code: "SIN_CONSEJO",
+            at: ago(HOUR),
+          }),
+        ],
+      },
+      tracking: {
+        rows: [
+          listingRow("l1", "P-001", [
+            cell({ id: "r1", format: "post", mediaCount: 4, publishedAt: ago(HOUR) }),
+            cell({ id: "r2", format: "reel", publishedAt: ago(2 * HOUR) }),
+          ]),
+        ],
+        posts: [],
+      },
+    } satisfies { agenda: AgendaResponse; tracking: TrackingResponse };
+    setup(formats).renderApp("/");
+
+    const upcoming = await screen.findByRole("region", { name: "Próximas" });
+    const texts = (await within(upcoming).findAllByRole("listitem")).map((li) => li.textContent);
+    expect(texts.some((text) => text?.includes("Instagram · carrusel"))).toBe(true);
+    expect(texts.some((text) => text?.includes("Instagram · reel"))).toBe(true);
+    expect(texts.some((text) => text?.includes("Instagram · imagen"))).toBe(true);
+
+    const todo = block("Te toca");
+    expect(todo.textContent).toContain("Instagram · reel");
+
+    const recent = block("Publicado hace poco");
+    const recentTexts = within(recent)
+      .getAllByRole("listitem")
+      .map((li) => li.textContent);
+    expect(recentTexts[0]).toContain("Instagram · carrusel");
+    expect(recentTexts[1]).toContain("Instagram · reel");
+  });
+
   it("sin nada, cada bloque lo dice con un vacío amable", async () => {
     setup({ agenda: { items: [] }, tracking: { rows: [], posts: [] } }).renderApp("/");
 
