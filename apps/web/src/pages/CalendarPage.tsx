@@ -4,7 +4,6 @@ import {
   formatChileTime,
   LANGUAGE_TEXT,
   PLATFORM_TEXT,
-  PUBLICATION_STATUS_TEXT,
   type PublishMode,
   publicationFormatText,
 } from "@agentsales/core";
@@ -24,7 +23,7 @@ import {
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { safeExternalUrl } from "../components/publications/publications.js";
 import { ScheduleForm } from "../components/publications/ScheduleForm.js";
-import { PUBLICATION_STATUS_TONE } from "../labels.js";
+import { PublicationStatusBadge } from "../components/StatusBadge.js";
 import { useCalendar, useMovePublication } from "../queries/calendar.js";
 import { useHealth } from "../queries/health.js";
 import { useBrokerFilter, useRole } from "../scope/broker-scope.js";
@@ -84,11 +83,7 @@ export function CalendarItem({
         <p className="text-slate-500">{entry.brokerSlug}</p>
       )}
       <p className="mt-1 flex flex-wrap items-center gap-1">
-        <span
-          className={`rounded-full px-1.5 py-0.5 font-semibold ${PUBLICATION_STATUS_TONE[entry.status]}`}
-        >
-          {PUBLICATION_STATUS_TEXT[entry.status]}
-        </span>
+        <PublicationStatusBadge status={entry.status} />
         {entry.schedule === "overdue" && (
           <span className="font-semibold text-amber-800">atrasada</span>
         )}

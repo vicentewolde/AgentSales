@@ -8,15 +8,13 @@ import {
   LISTING_PLATFORMS,
   PLATFORM_TEXT,
   type Platform,
-  PUBLICATION_STATUS_TEXT,
   publicationFormatText,
 } from "@agentsales/core";
 import { useState } from "react";
 import { Link } from "react-router";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { safeExternalUrl } from "../components/publications/publications.js";
-import { StatusBadge } from "../components/StatusBadge.js";
-import { PUBLICATION_STATUS_TONE } from "../labels.js";
+import { PublicationStatusBadge, StatusBadge } from "../components/StatusBadge.js";
 import { useAgenda, useTracking } from "../queries/tracking.js";
 import { useBrokerFilter } from "../scope/broker-scope.js";
 
@@ -151,11 +149,7 @@ function CellPublication({ platform, publication }: { platform: Platform; public
   return (
     <li>
       {publicationFormatText(platform, publication.format)}{" "}
-      <span
-        className={`rounded-full px-1.5 py-0.5 text-xs font-semibold ${PUBLICATION_STATUS_TONE[publication.status]}`}
-      >
-        {PUBLICATION_STATUS_TEXT[publication.status]}
-      </span>
+      <PublicationStatusBadge status={publication.status} />
       {!publication.dryRun && <span className="ml-1 text-xs font-semibold text-red-700">vivo</span>}
       {notes.length > 0 && (
         <span className="block text-xs text-slate-600">{notes.join(" · ")}</span>

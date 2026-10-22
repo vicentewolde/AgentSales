@@ -11,6 +11,12 @@ import { Link, useSearchParams } from "react-router";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { BatchSchedule } from "../components/publications/BatchSchedule.js";
 import { StatusBadge } from "../components/StatusBadge.js";
+import { Button } from "../components/ui/Button.js";
+import { EmptyState } from "../components/ui/EmptyState.js";
+import { Field, Select } from "../components/ui/Field.js";
+import { HomeIcon, ImageIcon } from "../components/ui/icons.js";
+import { PageHeader } from "../components/ui/PageHeader.js";
+import { Loading } from "../components/ui/Spinner.js";
 import { useHealth } from "../queries/health.js";
 import { useListings } from "../queries/listings.js";
 import { useBrokerFilter } from "../scope/broker-scope.js";
@@ -47,24 +53,16 @@ function FilterSelect({
 }) {
   const id = useId();
   return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-xs font-medium text-slate-600">
-        {label}
-      </label>
-      <select
-        id={id}
-        value={value}
-        onChange={(event) => onChange(name, event.target.value)}
-        className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm"
-      >
+    <Field label={label} htmlFor={id} className="min-w-40 flex-1 sm:flex-none">
+      <Select id={id} value={value} onChange={(event) => onChange(name, event.target.value)}>
         <option value="">Todos</option>
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
           </option>
         ))}
-      </select>
-    </div>
+      </Select>
+    </Field>
   );
 }
 
@@ -81,7 +79,7 @@ function ListingCard({
   return (
     <li className="relative">
       {/* Fuera del enlace: un control dentro de un enlace no se puede usar con el teclado. */}
-      <label className="absolute top-2 left-2 z-10 rounded bg-white/90 px-1.5 py-1 shadow">
+      <label className="absolute top-3 left-3 z-10 flex rounded-md bg-white/95 p-1.5 shadow-sm ring-1 ring-black/5">
         <input
           type="checkbox"
           checked={selected}
@@ -91,32 +89,37 @@ function ListingCard({
       </label>
       <Link
         to={`/propiedades/${listing.id}`}
-        className="block h-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition hover:shadow-md"
+        className="group block h-full overflow-hidden rounded-xl border border-line bg-surface shadow-xs transition hover:border-line-strong hover:shadow-md"
       >
-        <div className="aspect-[4/3] bg-slate-100">
+        <div className="aspect-[4/3] overflow-hidden bg-slate-100">
           {listing.coverUrl ? (
             <img
               src={listing.coverUrl}
               alt={`Portada de ${listing.externalRef}`}
               loading="lazy"
-              className="h-full w-full object-cover"
+              className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
             />
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-slate-400">
+            <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-fg-subtle">
+              <ImageIcon className="size-7 text-slate-300" />
               Sin foto
             </div>
           )}
         </div>
-        <div className="p-3">
+        <div className="p-4">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-medium text-slate-500">{listing.externalRef}</span>
+            <span className="text-xs font-medium tabular-nums text-fg-subtle">
+              {listing.externalRef}
+            </span>
             <StatusBadge status={listing.status} />
           </div>
-          <p className="mt-1 font-semibold">{title}</p>
-          <p className="mt-1 text-sm text-slate-600">
+          <p className="mt-2 font-semibold text-fg">{title}</p>
+          <p className="mt-0.5 text-sm text-fg-muted">
             {listing.operation ? OPERATION_TEXT[listing.operation] : "Sin operación"}
           </p>
-          <p className="mt-2 text-lg font-semibold">{formatListingPrice(listing)}</p>
+          <p className="mt-3 text-lg font-semibold tabular-nums tracking-tight text-fg">
+            {formatListingPrice(listing)}
+          </p>
         </div>
       </Link>
     </li>
@@ -171,12 +174,15 @@ export function ListingsPage() {
   const filtered = Object.keys(filtersFrom(params)).length > 0;
 
   return (
-    <section className="mx-auto max-w-6xl">
-      <h1 className="text-2xl font-semibold tracking-tight">Propiedades</h1>
+    <section>
+      <PageHeader
+        title="Propiedades"
+        description="Tus avisos con su portada, su estado y su precio. Marca varias para programarlas juntas."
+      />
 
       <form
         aria-label="Filtros"
-        className="mt-4 flex flex-wrap items-end gap-3"
+        className="flex flex-wrap items-end gap-3 rounded-xl border border-line bg-surface p-4 shadow-xs"
         onSubmit={(event) => event.preventDefault()}
       >
         <FilterSelect
@@ -207,16 +213,15 @@ export function ListingsPage() {
           onChange={setFilter}
         />
         {filtered && (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
             onClick={() => {
               setSelected(new Map());
               setParams(new URLSearchParams(), { replace: true });
             }}
-            className="rounded-md px-2 py-1.5 text-sm text-slate-700 underline"
           >
             Quitar filtros
-          </button>
+          </Button>
         )}
       </form>
 
@@ -230,18 +235,39 @@ export function ListingsPage() {
 
       {/* Lo que cambia al filtrar se anuncia a los lectores de pantalla. */}
       <div aria-live="polite">
-        {listings.isPending && <p className="mt-6 text-slate-600">Cargando propiedades…</p>}
+        {listings.isPending && (
+          <div className="mt-6">
+            <Loading>Cargando propiedades…</Loading>
+          </div>
+        )}
         {listings.data?.length === 0 && (
-          <p className="mt-6 text-slate-600">
-            {filtered
-              ? "No hay propiedades con esos filtros."
-              : broker !== undefined
-                ? "Este corredor todavía no tiene propiedades."
-                : "Todavía no hay propiedades. Cárgalas con: pnpm -s cli import propiedades.xlsx --media medios"}
-          </p>
+          <div className="mt-6">
+            <EmptyState
+              icon={<HomeIcon className="size-5" />}
+              title={
+                filtered
+                  ? "No hay propiedades con esos filtros."
+                  : broker !== undefined
+                    ? "Este corredor todavía no tiene propiedades."
+                    : "Todavía no hay propiedades."
+              }
+              {...(filtered || broker !== undefined
+                ? {}
+                : {
+                    description: (
+                      <>
+                        Cárgalas con:{" "}
+                        <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-fg">
+                          pnpm -s cli import propiedades.xlsx --media medios
+                        </code>
+                      </>
+                    ),
+                  })}
+            />
+          </div>
         )}
         {listings.data && listings.data.length > 0 && (
-          <p className="mt-4 text-sm text-slate-600">
+          <p className="mt-5 text-sm text-fg-muted tabular-nums">
             {listings.data.length} propiedad(es)
             {listings.isPlaceholderData && " · actualizando…"}
           </p>
@@ -257,7 +283,7 @@ export function ListingsPage() {
       )}
 
       {listings.data && listings.data.length > 0 && (
-        <ul aria-label="Resultados" className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <ul aria-label="Resultados" className="mt-3 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {listings.data.map((listing) => (
             <ListingCard
               key={listing.id}

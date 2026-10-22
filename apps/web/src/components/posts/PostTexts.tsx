@@ -21,15 +21,10 @@ import { Checks } from "../content/Checks.js";
 import { parseHashtags } from "../content/editor.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 import { editBlockedReason, unapproveBlockedReason } from "../publications/publications.js";
+import { Button } from "../ui/Button.js";
+import { Field, Input, Textarea } from "../ui/Field.js";
 import { type PostContentView, postContents } from "./labels.js";
 import { needsXLinkMark, X_LINK_COST_TEXT } from "./XLinkControl.js";
-
-const FIELD =
-  "mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-slate-500 focus:outline-none";
-const SECONDARY =
-  "rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-100 disabled:opacity-50";
-const PRIMARY =
-  "rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50";
 
 /** El nombre de una pestaña: la red y el idioma. */
 export const tabName = (content: Pick<ContentView, "platform" | "language">) =>
@@ -53,7 +48,10 @@ export function PostCounter({
   const { length, max } = postTextLength(platform, { body: body.trim(), hashtags });
   const over = length > max;
   return (
-    <p id={id} className={`text-xs ${over ? "font-semibold text-red-700" : "text-slate-500"}`}>
+    <p
+      id={id}
+      className={`text-xs tabular-nums ${over ? "font-semibold text-danger-700" : "text-fg-subtle"}`}
+    >
       {length} / {max} caracteres
       {platform === "x" && " (conteo de X: un enlace cuenta 23 y un emoji 2)"}
       {over ? ` · se pasa por ${length - max}` : ""}
@@ -65,7 +63,7 @@ export function PostCounter({
 function XLinkNote({ platform, text }: { platform: PostPlatform; text: string }) {
   if (platform !== "x" || linksIn(text).length === 0) return null;
   return (
-    <p className="text-xs text-amber-800">
+    <p className="text-xs text-warning-800">
       Lleva un enlace: en X ese post cuesta {X_LINK_COST_TEXT}.
     </p>
   );
@@ -78,12 +76,12 @@ function Preview({ content, media }: { content: ContentView; media: readonly Pos
   return (
     <figure
       aria-label={`Vista previa de ${tabName(content)}`}
-      className="rounded-lg border border-slate-200 bg-white p-3"
+      className="rounded-lg border border-line bg-surface p-4"
     >
-      <figcaption className="text-xs font-semibold text-slate-500">
+      <figcaption className="text-xs font-medium text-fg-subtle">
         Vista previa · {PLATFORM_TEXT[content.platform]}
       </figcaption>
-      <p className="mt-2 whitespace-pre-wrap text-sm text-slate-900">{text}</p>
+      <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-fg">{text}</p>
       {shown.length > 0 && (
         <ul className="mt-2 flex flex-wrap gap-2">
           {shown.map((item) => (
@@ -92,10 +90,10 @@ function Preview({ content, media }: { content: ContentView; media: readonly Pos
                 <img
                   src={item.thumbUrl}
                   alt=""
-                  className="h-16 w-16 rounded border border-slate-200 object-cover"
+                  className="h-16 w-16 rounded-md border border-line object-cover"
                 />
               ) : (
-                <span className="flex h-16 w-16 items-center justify-center rounded border border-slate-200 bg-slate-100 text-xs text-slate-500">
+                <span className="flex h-16 w-16 items-center justify-center rounded-md border border-line bg-slate-100 text-xs text-fg-subtle">
                   {item.kind === "video" ? "video" : "foto"}
                 </span>
               )}
@@ -141,36 +139,34 @@ function Editor({
         );
       }}
     >
-      <label className="block text-sm font-medium text-slate-700">
-        Texto
-        <textarea
+      <Field label="Texto">
+        <Textarea
           value={body}
           onChange={(event) => setBody(event.target.value)}
           rows={8}
           aria-describedby={`${ids}-counter`}
           aria-invalid={blank}
-          className={FIELD}
         />
-      </label>
-      <label className="block text-sm font-medium text-slate-700">
-        Hashtags
-        <input
+      </Field>
+      <Field label="Hashtags">
+        <Input
           value={hashtags}
           onChange={(event) => setHashtags(event.target.value)}
           placeholder="#bastidores #producto"
-          className={FIELD}
         />
-      </label>
+      </Field>
       <PostCounter platform={platform} body={body} hashtags={tags} id={`${ids}-counter`} />
       <XLinkNote platform={platform} text={body} />
-      {blank && <p className="text-xs text-red-700">El texto no puede quedar vacío.</p>}
+      {blank && (
+        <p className="text-xs font-medium text-danger-700">El texto no puede quedar vacío.</p>
+      )}
       <div className="flex gap-2">
-        <button type="submit" className={PRIMARY} disabled={save.isPending || !changed || blank}>
+        <Button type="submit" size="sm" loading={save.isPending} disabled={!changed || blank}>
           {save.isPending ? "Guardando…" : "Guardar"}
-        </button>
-        <button type="button" className={SECONDARY} disabled={save.isPending} onClick={onClose}>
+        </Button>
+        <Button variant="secondary" size="sm" disabled={save.isPending} onClick={onClose}>
           Cancelar
-        </button>
+        </Button>
       </div>
       {save.error && <ErrorAlert error={save.error} />}
     </form>
@@ -217,25 +213,25 @@ function TextTab({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-fg-subtle">
           Texto: {CONTENT_STATUS_TEXT[content.status]}
           {content.status === "edited" ? "" : ` · ${content.promptVersion}`}
         </p>
         <div className="flex flex-wrap gap-2">
           {!editing && (
-            <button
-              type="button"
-              className={SECONDARY}
+            <Button
+              variant="secondary"
+              size="sm"
               disabled={editBlocked !== null}
               title={editBlocked ?? undefined}
               onClick={() => setEditing(true)}
             >
               Editar
-            </button>
+            </Button>
           )}
-          <button
-            type="button"
-            className={approved ? SECONDARY : PRIMARY}
+          <Button
+            variant={approved ? "secondary" : "primary"}
+            size="sm"
             disabled={approval.isPending || blocked !== null || editing}
             title={blocked ?? undefined}
             onClick={() =>
@@ -243,10 +239,10 @@ function TextTab({
             }
           >
             {approved ? "Quitar la aprobación" : "Aprobar"}
-          </button>
+          </Button>
         </div>
       </div>
-      {blocked !== null && !editing && <p className="text-xs text-amber-800">{blocked}</p>}
+      {blocked !== null && !editing && <p className="text-xs text-warning-800">{blocked}</p>}
       {editing ? (
         <Editor postId={postId} content={content} onClose={() => setEditing(false)} />
       ) : (
@@ -286,7 +282,7 @@ export function PostTexts({
   const [selected, setSelected] = useState<string | null>(null);
   const texts = postContents(contents);
   if (texts.length === 0) {
-    return <p className="text-sm text-slate-600">Todavía no hay textos: pídelos a la IA.</p>;
+    return <p className="text-sm text-fg-muted">Todavía no hay textos: pídelos a la IA.</p>;
   }
   const current =
     texts.find((content) => `${content.platform}:${content.language}` === selected) ?? texts[0];
@@ -294,7 +290,11 @@ export function PostTexts({
   const keyOf = (content: ContentView) => `${content.platform}:${content.language}`;
   return (
     <div>
-      <div role="tablist" aria-label="Textos por red e idioma" className="flex flex-wrap gap-1">
+      <div
+        role="tablist"
+        aria-label="Textos por red e idioma"
+        className="flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1"
+      >
         {texts.map((content) => {
           const active = keyOf(content) === keyOf(current);
           return (
@@ -306,15 +306,25 @@ export function PostTexts({
               aria-selected={active}
               aria-controls={`${ids}-panel`}
               onClick={() => setSelected(keyOf(content))}
-              className={`rounded-t-md border px-3 py-1.5 text-sm ${
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
                 active
-                  ? "border-slate-300 border-b-white bg-white font-semibold"
-                  : "border-transparent text-slate-600 hover:bg-slate-100"
+                  ? "bg-surface font-semibold text-fg shadow-xs ring-1 ring-line"
+                  : "font-medium text-fg-muted hover:text-fg"
               }`}
             >
               {tabName(content)}
-              {content.status === "approved" && <span aria-hidden="true"> ✓</span>}
-              {hasContentErrors(content.checks) && <span aria-hidden="true"> !</span>}
+              {content.status === "approved" && (
+                <span aria-hidden="true" className="text-success-600">
+                  {" "}
+                  ✓
+                </span>
+              )}
+              {hasContentErrors(content.checks) && (
+                <span aria-hidden="true" className="font-bold text-danger-600">
+                  {" "}
+                  !
+                </span>
+              )}
             </button>
           );
         })}
@@ -323,7 +333,7 @@ export function PostTexts({
         role="tabpanel"
         id={`${ids}-panel`}
         aria-labelledby={`${ids}-${keyOf(current)}`}
-        className="rounded-b-lg rounded-tr-lg border border-slate-300 bg-slate-50 p-4"
+        className="mt-3 rounded-lg border border-line bg-slate-50/60 p-4"
       >
         <TextTab
           key={current.id}

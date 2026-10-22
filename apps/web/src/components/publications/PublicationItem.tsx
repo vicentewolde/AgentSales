@@ -5,7 +5,6 @@ import {
   type ListingStatus,
   marketplacePriceText,
   PLATFORM_TEXT,
-  PUBLICATION_STATUS_TEXT,
   type PublishMode,
   publicationFormatText,
   publicationModeText,
@@ -14,7 +13,6 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { ApiError } from "../../api/client.js";
-import { PUBLICATION_STATUS_TONE } from "../../labels.js";
 import { useFreshPublishMode } from "../../queries/health.js";
 import {
   isPublishing,
@@ -26,6 +24,7 @@ import {
 } from "../../queries/publications.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 import { PollStoppedAlert } from "../PollStoppedAlert.js";
+import { PublicationStatusBadge } from "../StatusBadge.js";
 import { MarketplaceConfirm } from "./MarketplaceConfirm.js";
 import { PublicationEvents } from "./PublicationEvents.js";
 import {
@@ -356,11 +355,7 @@ export function PublicationItem({
     >
       <div className="flex flex-wrap items-center gap-2">
         <h4 className="font-semibold capitalize">{format}</h4>
-        <span
-          className={`rounded-full px-2 py-0.5 text-xs font-semibold ${PUBLICATION_STATUS_TONE[publication.status]}`}
-        >
-          {PUBLICATION_STATUS_TEXT[publication.status]}
-        </span>
+        <PublicationStatusBadge status={publication.status} />
         <span className="text-xs text-slate-500">{publicationModeText(publication.dryRun)}</span>
       </div>
       {/* Siempre montada: los lectores de pantalla anuncian los cambios de una región que ya estaba. */}

@@ -1,13 +1,9 @@
 import type { PlatformAccountView } from "@agentsales/api/contracts";
-import {
-  accountDisconnectText,
-  currentMarketplaceLoginError,
-  PLATFORM_ACCOUNT_STATUS_TEXT,
-} from "@agentsales/core";
+import { accountDisconnectText, currentMarketplaceLoginError } from "@agentsales/core";
 import { useRef, useState } from "react";
-import { ACCOUNT_STATUS_TONE } from "../../labels.js";
 import { useDisconnectAccount } from "../../queries/accounts.js";
 import { ErrorAlert } from "../ErrorAlert.js";
+import { AccountStatusBadge } from "../StatusBadge.js";
 import { AccountExpiry } from "./AccountExpiry.js";
 import { accountDateText } from "./accounts.js";
 
@@ -95,11 +91,7 @@ export function AccountCard({
     >
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="font-semibold">{account.displayName}</h3>
-        <span
-          className={`rounded-full px-2 py-0.5 text-xs font-semibold ${ACCOUNT_STATUS_TONE[account.status]}`}
-        >
-          {PLATFORM_ACCOUNT_STATUS_TEXT[account.status]}
-        </span>
+        <AccountStatusBadge status={account.status} />
       </div>
       {account.platform === "fb_marketplace" ? (
         <MarketplaceDetails account={account} />
