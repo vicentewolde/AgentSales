@@ -87,6 +87,9 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "PATCH /brokers/:id": "session",
   "POST /brokers/:id/logo": "session",
   "GET /brokers/:id/template.xlsx": "session",
+  // F9.5-T14 (ADR-0035): borrar un corredor y todo lo suyo, y el resumen de antes.
+  "GET /brokers/:id/purge-summary": "admin",
+  "DELETE /brokers/:id": "admin",
   // F9-T09: el perfil editorial; leer con `broker.view` y editar con `brand.edit` (el corredor, el
   // suyo), revisados en core; el de otro corredor es 404 (`ownedBy`).
   "GET /brokers/:id/editorial-profile": "session",

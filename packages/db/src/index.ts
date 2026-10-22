@@ -17,6 +17,7 @@ export { type Pingable, type PingOptions, pingDatabase, readServerVersion } from
 export { createListingLock } from "./listing-lock.js";
 export { MIGRATIONS_FOLDER } from "./migrations.js";
 export { createPostLock } from "./post-lock.js";
+export { createBrokerPurgeRepository } from "./repositories/broker-purge.js";
 export { createBrokerRepository } from "./repositories/brokers.js";
 export { createContentRunRepository } from "./repositories/content-runs.js";
 export { createContentRepository } from "./repositories/contents.js";

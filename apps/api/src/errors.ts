@@ -100,6 +100,10 @@ const CONFLICTS = new Set([
   "BROKER_MISMATCH",
   // F7-T13: un `slug` que ya existe.
   "BROKER_SLUG_TAKEN",
+  // F9.5-T14 (ADR-0035): borrar un corredor sin repetir su `slug`, o con publicaciones en curso,
+  // programadas, esperando el clic o con resultado dudoso (se cancelan o resuelven antes).
+  "BROKER_DELETE_NOT_CONFIRMED",
+  "BROKER_HAS_ACTIVE_PUBLICATIONS",
   // F9 (ADR-0029): cargar propiedades en una marca o activar su publicación automática.
   "BROKER_IS_BRAND",
   // F9-T05 (spec F9 §4.2): pedir o aprobar los textos de un post que es una idea sin aceptar o
