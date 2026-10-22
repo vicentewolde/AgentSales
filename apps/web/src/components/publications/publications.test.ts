@@ -1,6 +1,7 @@
 import type { ContentView, PublicationView } from "@agentsales/api/contracts";
 import { describe, expect, it } from "vitest";
 import {
+  accountMissingReason,
   approveBlockedReason,
   editBlockedReason,
   hasSomethingToPublish,
@@ -334,5 +335,52 @@ describe("el modo que se muestra (D4 del spec F9.5)", () => {
     expect(publicationModeOf(publication({ status: "failed", startedLive: false })).modeFixed).toBe(
       false,
     );
+  });
+});
+
+describe("accountMissingReason (F9.5-T20)", () => {
+  const account = (
+    overrides: Partial<{
+      brokerId: string;
+      platform: "instagram" | "fb_marketplace";
+      status: "connected" | "revoked" | "expired";
+    }> = {},
+  ) => ({
+    brokerId: "corredor-1",
+    platform: "instagram" as const,
+    status: "connected" as const,
+    ...overrides,
+  });
+
+  it("con la cuenta conectada del corredor en ese canal no bloquea", () => {
+    expect(accountMissingReason("instagram", [account()], "corredor-1")).toBeNull();
+  });
+
+  it("una que existe pero venció o se revocó: dice que hay que reconectarla", () => {
+    const reconnect = "Reconecta tu cuenta de Instagram en Cuentas para publicar.";
+    for (const status of ["revoked", "expired"] as const) {
+      expect(accountMissingReason("instagram", [account({ status })], "corredor-1")).toBe(
+        reconnect,
+      );
+    }
+  });
+
+  it("sin cuenta, o de otro corredor, o de otra red: dice qué conectar", () => {
+    const reason = "Conecta tu cuenta de Instagram en Cuentas para publicar.";
+    expect(accountMissingReason("instagram", [], "corredor-1")).toBe(reason);
+    expect(accountMissingReason("instagram", [account({ brokerId: "otro" })], "corredor-1")).toBe(
+      reason,
+    );
+    expect(
+      accountMissingReason("instagram", [account({ platform: "fb_marketplace" })], "corredor-1"),
+    ).toBe(reason);
+    expect(accountMissingReason("fb_marketplace", [account()], "corredor-1")).toBe(
+      "Conecta tu cuenta de Facebook en Cuentas para publicar.",
+    );
+  });
+
+  it("mientras no se sabe (cuentas sin cargar o corredor sin dato), no bloquea", () => {
+    expect(accountMissingReason("instagram", undefined, "corredor-1")).toBeNull();
+    expect(accountMissingReason("instagram", [], undefined)).toBeNull();
   });
 });

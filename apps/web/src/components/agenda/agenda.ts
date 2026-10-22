@@ -6,6 +6,8 @@ import {
   LISTING_PLATFORMS,
   type Platform,
   POST_PLATFORMS,
+  type PublicationFormat,
+  publicationFormatText,
 } from "@agentsales/core";
 import type { BadgeTone } from "../ui/styles.js";
 
@@ -49,6 +51,21 @@ export const AGENDA_KIND_TONE: Readonly<Record<AgendaKind, BadgeTone>> = {
   backup: "warning",
 };
 
+/**
+ * La red con su formato, «Instagram · carrusel» (F9.5-T20): un aviso o un post de Instagram sale
+ * como carrusel, reel o imagen; sin formato (un ítem que no es de una publicación), solo la red.
+ */
+export function platformWithFormat(
+  platform: Platform,
+  format: PublicationFormat | null,
+  mediaCount: number | null,
+  platformText: string,
+): string {
+  return format === null
+    ? platformText
+    : `${platformText} · ${publicationFormatText(platform, format, mediaCount)}`;
+}
+
 /** La hora del ítem, en Chile: la programada, la del cambio, o cuánto le queda si vence. */
 export function agendaItemWhen(item: AgendaItem): string | null {
   if (item.at === null) return null;
@@ -91,6 +108,9 @@ export type RecentPublication = {
   path: string;
   kind: "listing" | "post";
   platform: Platform;
+  /** El formato y el número de medios: «carrusel», «reel» o «imagen» (F9.5-T20). */
+  format: PublicationFormat;
+  mediaCount: number | null;
   publishedAt: Date;
   externalUrl: string | null;
   /** El modo de la publicación (una publicada lo tiene fijado: D4 del spec F9.5). */
@@ -119,6 +139,8 @@ export function recentPublications(tracking: TrackingResponse, now: Date): Recen
           ...base,
           id: publication.id,
           platform,
+          format: publication.format,
+          mediaCount: publication.mediaCount,
           publishedAt: at,
           externalUrl: publication.externalUrl,
           dryRun: publication.dryRun,

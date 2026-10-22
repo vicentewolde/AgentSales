@@ -1,6 +1,12 @@
-import type { ContentView, PublicationView, ReadinessView } from "@agentsales/api/contracts";
+import type {
+  ContentView,
+  PlatformAccountView,
+  PublicationView,
+  ReadinessView,
+} from "@agentsales/api/contracts";
 import {
   ACTIVE_PUBLICATION_STATUSES,
+  accountOwnedBy,
   availablePublicationOperations,
   canPrepareContent,
   canPublishListing,
@@ -28,6 +34,33 @@ export function prepareBlockedReason(publications: readonly PublicationView[]): 
   return publications.some((publication) => pending.has(publication.status))
     ? "Hay publicaciones aprobadas que no han salido: publícalas o descártalas antes de preparar de nuevo (cambiaría lo aprobado)."
     : null;
+}
+
+/** De qué cuenta se habla en «Conecta tu cuenta de …» al faltar la del canal (F9.5-T20). */
+const ACCOUNT_PLATFORM_TEXT: Partial<Record<Platform, string>> = {
+  instagram: "tu cuenta de Instagram",
+  portal_inmobiliario: "tu cuenta de Mercado Libre",
+  fb_marketplace: "tu cuenta de Facebook",
+};
+
+/**
+ * Por qué no se puede publicar ni programar un canal: el corredor no tiene una cuenta conectada de
+ * esa red (F9.5-T20; `accountOwnedBy`, como las redes de un post). Sin saber aún las cuentas
+ * (`undefined`) o el corredor, no bloquea: la API lo vuelve a revisar con `ACCOUNT_NOT_CONNECTED`.
+ */
+export function accountMissingReason(
+  platform: Platform,
+  accounts: readonly Pick<PlatformAccountView, "brokerId" | "platform" | "status">[] | undefined,
+  brokerId: string | undefined,
+): string | null {
+  if (accounts === undefined || brokerId === undefined) return null;
+  const own = accounts.filter(
+    (account) => accountOwnedBy(account, brokerId) && account.platform === platform,
+  );
+  if (own.some((account) => account.status === "connected")) return null;
+  // Una que existe pero venció, se revocó o dio error se reconecta; si no hay ninguna, se conecta.
+  const verb = own.length > 0 ? "Reconecta" : "Conecta";
+  return `${verb} ${ACCOUNT_PLATFORM_TEXT[platform] ?? "tu cuenta"} en Cuentas para publicar.`;
 }
 
 /** Cómo se saca de circulación una publicación activa: en Portal se cierra; en Instagram se retira. */

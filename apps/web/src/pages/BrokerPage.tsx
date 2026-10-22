@@ -1,12 +1,17 @@
 import type { UserLinkResponse } from "@agentsales/api/contracts";
 import { userStateText } from "@agentsales/core";
-import { type FormEvent, useId, useRef, useState } from "react";
+import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import { BrandForm } from "../components/brokers/BrandForm.js";
 import { LiveSwitch } from "../components/brokers/LiveSwitch.js";
 import { LogoAndTemplate } from "../components/brokers/LogoAndTemplate.js";
 import { OnboardingList } from "../components/brokers/OnboardingList.js";
 import { OneTimeLink, type OneTimeLinkKind } from "../components/brokers/OneTimeLink.js";
+import {
+  clearOneTimeLink,
+  loadOneTimeLink,
+  saveOneTimeLink,
+} from "../components/brokers/one-time-link-store.js";
 import { SpendLine } from "../components/brokers/SpendLine.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { EditorialProfileSection } from "../components/posts/EditorialProfileForm.js";
@@ -18,13 +23,19 @@ import { useUsage } from "../queries/usage.js";
 import { useInviteUser, useResetUser, useSetUserDisabled, useUsers } from "../queries/users.js";
 import { useCan, useRole } from "../scope/broker-scope.js";
 
-/** Los usuarios del corredor: invitar, restablecer, desactivar y reactivar (el enlace, una vez). */
+/**
+ * Los usuarios del corredor: invitar, restablecer, desactivar y reactivar. El enlace que se genera
+ * se queda a la vista, aunque se recargue la página, hasta que se oculta o vence (F9.5-T20): vive
+ * solo en el estado de la página y en `sessionStorage` de esta pestaña.
+ */
 function BrokerUsers({ brokerId }: { brokerId: string }) {
   const users = useUsers();
   const invite = useInviteUser();
   const reset = useResetUser();
   const toggle = useSetUserDisabled();
-  const [link, setLink] = useState<{ link: UserLinkResponse; kind: OneTimeLinkKind } | null>(null);
+  const [link, setLink] = useState<{ link: UserLinkResponse; kind: OneTimeLinkKind } | null>(() =>
+    loadOneTimeLink(brokerId),
+  );
   const [confirmingDisable, setConfirmingDisable] = useState<string | null>(null);
   const stopConfirming = () => setConfirmingDisable(null);
   const emailInput = useRef<HTMLInputElement>(null);
@@ -36,6 +47,34 @@ function BrokerUsers({ brokerId }: { brokerId: string }) {
     reset.reset();
     toggle.reset();
   };
+  // Al vencer, el enlace se oculta y se borra. Un temporizador no puede pasar de ~24 días; el
+  // vencimiento real es de horas.
+  const expiresAt = link?.link.expiresAt.getTime();
+  useEffect(() => {
+    if (expiresAt === undefined) return;
+    const hide = () => {
+      clearOneTimeLink(brokerId);
+      setLink(null);
+    };
+    const wait = expiresAt - Date.now();
+    if (wait <= 0) {
+      hide();
+      return;
+    }
+    const timer = setTimeout(hide, Math.min(wait, 2 ** 31 - 1));
+    return () => clearTimeout(timer);
+  }, [brokerId, expiresAt]);
+  // Una invitación que el usuario ya aceptó (eligió su contraseña) ya no está pendiente: se borra.
+  // En un restablecer no se sabe (ya tenía contraseña), así que queda hasta ocultarlo o vencer.
+  const accepted =
+    link !== null &&
+    link.kind === "invitation" &&
+    (users.data ?? []).some((user) => user.id === link.link.user.id && user.hasPassword);
+  useEffect(() => {
+    if (!accepted) return;
+    clearOneTimeLink(brokerId);
+    setLink(null);
+  }, [accepted, brokerId]);
   /** El enlace pasa al estado de la página y sale de la mutación (no queda en la caché). */
   const showLink = (
     created: UserLinkResponse,
@@ -43,6 +82,7 @@ function BrokerUsers({ brokerId }: { brokerId: string }) {
     mutation: { reset: () => void },
   ) => {
     setLink({ link: created, kind });
+    saveOneTimeLink(brokerId, { link: created, kind });
     mutation.reset();
   };
   const submit = (event: FormEvent<HTMLFormElement>) => {
@@ -74,6 +114,7 @@ function BrokerUsers({ brokerId }: { brokerId: string }) {
           link={link.link}
           kind={link.kind}
           onDone={() => {
+            clearOneTimeLink(brokerId);
             setLink(null);
             emailInput.current?.focus();
           }}

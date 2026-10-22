@@ -238,7 +238,7 @@ describe("la matriz", () => {
     expect(row.textContent).toContain("vence en 3 d");
     // F9.5-T02: el motivo legible y, aparte, el código.
     expect(row.textContent).toContain("Facebook cerró la ventana");
-    expect(row.textContent).toContain("código MARKETPLACE_X");
+    expect(row.textContent).toContain("(código: MARKETPLACE_X)");
     // Un enlace que no es `https` no se vuelve enlace.
     expect(within(row).queryByRole("link", { name: "Ver" })).toBeNull();
   });
