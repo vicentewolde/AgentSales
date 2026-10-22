@@ -28,6 +28,7 @@ import { PublicationStatusBadge } from "../StatusBadge.js";
 import { Badge } from "../ui/Badge.js";
 import { Button } from "../ui/Button.js";
 import { MarketplaceConfirm } from "./MarketplaceConfirm.js";
+import { OutcomeBox } from "./OutcomeBox.js";
 import { PublicationEvents } from "./PublicationEvents.js";
 import { PublicationMode } from "./PublicationMode.js";
 import {
@@ -148,6 +149,14 @@ const liveRetryText = (
     ? "El sistema está en vivo: se abrirá Chromium con un formulario nuevo de Facebook Marketplace; tú haces Siguiente y Publicar."
     : `El sistema está en vivo: ${phrase.el} ${phrase.name} se publicará de verdad en ${channel}${publication.platform === "portal_inmobiliario" ? " y usará un cupo de tu paquete" : ""}.`;
 
+/**
+ * «No salió» en Portal en vivo (F9.5-T04b, spec F9.5 §4.2): si en Mercado Libre quedaron avisos
+ * (uno o varios, el caso «many»), se cierran a mano antes, porque volver a publicar gasta otro cupo.
+ * `lastError` no trae cuántos encontró (solo el mensaje): se pregunta siempre en Portal en vivo.
+ */
+const PORTAL_NOT_PUBLISHED_TEXT =
+  "Antes de decir que no salió, revisa tus publicaciones en Mercado Libre: si quedó uno o más avisos de esta propiedad, ciérralos a mano todos (si quieres dejar uno, cancela y usa «Sí, salió» con su enlace). Volver a publicar usa otro cupo de tu paquete.";
+
 /** Una fecha en hora de Chile (el vencimiento en la plataforma). */
 const dateText = (iso: string) =>
   new Date(iso).toLocaleDateString("es-CL", {
@@ -218,7 +227,9 @@ function Thumbnails({ publication }: { publication: ListingPublicationView }) {
  * Libre y, en vez de retirar, Pausar, Reactivar, Cerrar (con confirmación; en vivo, irreversible) y
  * Actualizar (solo en vivo). Una de Marketplace (spec F5 §4.12, F5-T13) que espera el clic final
  * muestra `MarketplaceConfirm`; publicada, su enlace, el precio que se escribió y Marcar como
- * retirada (en vivo, después de borrarla a mano en Facebook).
+ * retirada (en vivo, después de borrarla a mano en Facebook). Una de Instagram o Portal con
+ * resultado dudoso (`outcome_unknown`, F9.5-T04b) muestra `OutcomeBox`: «Sí, salió» (con el enlace;
+ * en Portal en vivo, obligatorio) o «No salió».
  */
 export function PublicationItem({
   publication: listed,
@@ -320,6 +331,16 @@ export function PublicationItem({
         if (next.kind === "relist") {
           setNotice("Republicación pedida: aparece como una publicación nueva de este canal.");
         }
+        // Portal en vivo: la API pide leer el aviso que se pegó (estado y vencimiento).
+        if (
+          next.kind === "resolve" &&
+          next.outcome === "published" &&
+          portal &&
+          !publication.dryRun
+        ) {
+          setNotice("Quedó publicada: se leerá su estado en Mercado Libre.");
+          setSyncRequestedAt(Date.now());
+        }
         if (next.kind === "sync") {
           setNotice(
             result.queued
@@ -407,6 +428,16 @@ export function PublicationItem({
           listingId={listingId}
           pending={action.isPending}
           run={run}
+        />
+      )}
+      {publication.status === "outcome_unknown" && confirming === null && (
+        <OutcomeBox
+          publication={publication}
+          pending={action.isPending}
+          onAction={run}
+          detail={publication.lastError?.message ?? null}
+          confirmNotPublished={portal && live ? PORTAL_NOT_PUBLISHED_TEXT : null}
+          error={action.variables?.kind === "resolve" ? action.error : null}
         />
       )}
       {publication.lastError !== null && publication.status === "failed" && (
@@ -754,14 +785,15 @@ export function PublicationItem({
           {notice}
         </p>
       )}
-      {action.error && (
-        <ErrorAlert
-          error={action.error}
-          {...(cutHint(action.error, action.variables?.kind) === undefined
-            ? {}
-            : { hint: cutHint(action.error, action.variables?.kind) })}
-        />
-      )}
+      {action.error &&
+        (action.variables?.kind !== "resolve" || publication.status !== "outcome_unknown") && (
+          <ErrorAlert
+            error={action.error}
+            {...(cutHint(action.error, action.variables?.kind) === undefined
+              ? {}
+              : { hint: cutHint(action.error, action.variables?.kind) })}
+          />
+        )}
       {action.error instanceof ApiError &&
         (action.error.code === "ML_AUTH_INVALID" ||
           action.error.code === "ACCOUNT_NOT_CONNECTED") && (
