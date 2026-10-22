@@ -170,6 +170,7 @@ describe("la matriz", () => {
       lastError: null,
       errorAdvice: null,
       manualTask: false,
+      publishedAt: null,
       updatedAt: new Date(),
     };
     render(

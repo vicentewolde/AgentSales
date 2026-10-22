@@ -50,6 +50,8 @@ export type TrackingPublication = {
   errorAdvice: string | null;
   /** Instagram o Marketplace en vivo de una propiedad cerrada: el operador lo borra a mano. */
   manualTask: boolean;
+  /** Cuándo salió (F9.5-T03: «Publicado hace poco» en la portada); `null` si no salió. */
+  publishedAt: Date | null;
   updatedAt: Date;
 };
 
@@ -110,6 +112,7 @@ export function trackingPublication(
     errorAdvice:
       publication.lastError === null ? null : publicationErrorAdvice(publication.lastError.code),
     manualTask: listingStatus !== null && isManualTask(listingStatus, publication),
+    publishedAt: publication.publishedAt,
     updatedAt: publication.updatedAt,
   };
 }

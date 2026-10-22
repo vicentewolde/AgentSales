@@ -132,6 +132,16 @@ Reglas: `main` solo recibe cambios por PR; una rama por tarea o por lote de tare
 | `BACKUP_FAILED` | `pnpm db:backup` muestra la causa: sin conexión o Neon sin CU-horas (reintenta más tarde), la carpeta sin espacio o sin permisos. Los respaldos buenos nunca se borran por un intento fallido |
 | `BACKUP_IN_PROGRESS` | Ya hay un respaldo en curso (el del worker o otro `pnpm db:backup`): espera unos minutos y vuelve a intentarlo |
 
+## La portada del panel: «Hoy» (F9.5)
+
+Al entrar al panel llegas a **Hoy**, la primera entrada del menú. Arriba, tres cifras (lo que te toca, lo próximo y lo publicado en los últimos 7 días) y debajo, tres tarjetas:
+
+- **Te toca:** lo que espera algo de ti: un resultado dudoso (di si salió o no), lo atrasado, lo que falló, lo que hay que publicar a mano, los textos por revisar, lo aprobado sin publicar, las cuentas por reconectar y Portal por vencer. Cada fila dice qué es (la insignia), qué hacer y lleva a su propiedad, a su post o a Cuentas.
+- **Próximas:** lo programado para los próximos 7 días (propiedades y posts), con la fecha y hora de Chile y la red. El botón **Calendario** abre la vista de la semana o del mes.
+- **Publicado hace poco:** lo que salió en los últimos 7 días (hasta 8), con **Ver en <red>** para abrirlo en la red y «simulación» si no fue de verdad. Las propiedades archivadas no aparecen aquí (como en Seguimiento sin «Mostrar archivadas»).
+
+Mira lo mismo que **Seguimiento** (la agenda y lo publicado) y respeta el corredor de "Ver corredor". Se actualiza sola cada minuto mientras la tienes a la vista. La salud del sistema (base, almacenamiento, cola y worker), que antes era la portada, está en **Estado**, al final del menú (solo el administrador; también en `/estado`).
+
 ## Dar de alta un corredor (F7)
 
 De punta a punta, con `pnpm dev` corriendo. Todo se puede hacer en el panel (**Corredores**) o en la CLI.

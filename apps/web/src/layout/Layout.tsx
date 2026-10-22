@@ -14,6 +14,7 @@ import {
   PencilIcon,
   PulseIcon,
   StarIcon,
+  SunIcon,
   UploadIcon,
   UserIcon,
   UsersIcon,
@@ -36,13 +37,16 @@ type MenuItem = {
   needs?: "brokers.create";
   /** Solo para el usuario de un corredor (F7): Mi marca. */
   brokerOnly?: boolean;
+  /** Solo para el administrador (F9.5, D11): Estado. */
+  adminOnly?: boolean;
   /** Lo de avisos (F9, ADR-0029): no se muestra cuando se mira una marca (`kind = brand`). */
   listings?: boolean;
 };
 
 /** Cada sección se habilita en su fase. `end`: solo se marca en esa ruta exacta. */
 export const MENU: readonly MenuItem[] = [
-  { label: "Estado", to: "/", end: true, icon: PulseIcon },
+  // F9.5-T03 (D11): la portada, para todos.
+  { label: "Hoy", to: "/", end: true, icon: SunIcon },
   // Sin `end`: también queda marcada en el detalle (`/propiedades/:id`).
   { label: "Propiedades", to: "/propiedades", listings: true, icon: HomeIcon },
   { label: "Importar", to: "/importar", listings: true, icon: UploadIcon },
@@ -56,6 +60,8 @@ export const MENU: readonly MenuItem[] = [
   { label: "Cuentas", to: "/cuentas", icon: LinkIcon },
   { label: "Corredores", to: "/corredores", needs: "brokers.create", icon: UsersIcon },
   { label: "Mi marca", to: "/mi-marca", brokerOnly: true, icon: StarIcon },
+  // F9.5-T03 (D11): la salud del sistema, que antes era la portada.
+  { label: "Estado", to: "/estado", adminOnly: true, icon: PulseIcon },
 ];
 
 const ENTRY =
@@ -197,6 +203,7 @@ function LayoutBody() {
     (item) =>
       (item.needs === undefined || createsBrokers) &&
       (item.brokerOnly !== true || role === "broker") &&
+      (item.adminOnly !== true || role === "admin") &&
       (item.listings !== true || !brand),
   );
   return (

@@ -118,7 +118,8 @@ describe("la invitación", () => {
 
     fill("Repite la contraseña", "una-clave-larga-1");
     fireEvent.click(screen.getByRole("button", { name: "Guardar y entrar" }));
-    expect(await screen.findByRole("heading", { name: "Estado del sistema" })).toBeTruthy();
+    // Entra a la portada «Hoy» (F9.5-T03, D11).
+    expect(await screen.findByRole("heading", { level: 1, name: "Hoy" })).toBeTruthy();
     expect(await screen.findByText("nueva@ejemplo.cl")).toBeTruthy();
     await waitFor(async () =>
       expect((await h.auth.users.findByEmail("nueva@ejemplo.cl"))?.hasPassword).toBe(true),

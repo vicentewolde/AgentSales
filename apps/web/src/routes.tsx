@@ -3,6 +3,10 @@ import { Link, type RouteObject, useRouteError } from "react-router";
 import { Layout } from "./layout/Layout.js";
 
 // Cada página se carga al visitarla (D5 del spec F1): el bundle inicial queda más chico.
+// F9.5-T03 (D11): la portada «Hoy» en `/`; la salud del sistema, en `/estado`.
+const HomePage = lazy(() =>
+  import("./pages/HomePage.js").then((module) => ({ default: module.HomePage })),
+);
 const StatusPage = lazy(() =>
   import("./pages/StatusPage.js").then((module) => ({ default: module.StatusPage })),
 );
@@ -116,7 +120,8 @@ export const routes: RouteObject[] = [
         // Sin ruta propia: solo atrapa los errores de las páginas, dentro del layout.
         errorElement: <PageError />,
         children: [
-          { index: true, element: <StatusPage /> },
+          { index: true, element: <HomePage /> },
+          { path: "estado", element: <StatusPage /> },
           { path: "propiedades", element: <ListingsPage /> },
           { path: "propiedades/:id", element: <ListingDetailPage /> },
           { path: "importar", element: <ImportPage /> },
