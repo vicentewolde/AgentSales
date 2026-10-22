@@ -74,6 +74,7 @@ import {
   retryAtAfter,
   waitMinutesOf,
 } from "../publish/wait.js";
+import { brokerPublishMode } from "../publish-mode.js";
 import { scrubMessage } from "../redact.js";
 import { listingIdOf } from "../subject.js";
 import { xSpendLimitOf } from "../x/account.js";
@@ -149,7 +150,10 @@ export type PublishPublicationDeps = {
    * publicación en `dry_run` también lo necesita (lo envuelve `withDryRun`, que no lo llama).
    */
   publishers: Readonly<Partial<Record<Platform, Publisher>>>;
-  /** El `PUBLISH_MODE` del worker: solo decide si una pedida en `live` se puede publicar (D11). */
+  /**
+   * El `PUBLISH_MODE` **del servidor** (el del worker): con el corredor de la publicación decide, vía
+   * `effectivePublishMode`, si una pedida en `live` se puede publicar (D11, ADR-0036).
+   */
   workerMode: PublishMode;
   /** Marketplace: avisos por día y cuenta (`MARKETPLACE_DAILY_LIMIT`; por defecto 3, D8). */
   marketplaceDailyLimit?: number;
@@ -677,6 +681,18 @@ async function requireAutomationAllowed(
   assertMarketplaceAutomationAllowed(broker, deps.marketplaceAutomation);
 }
 
+/**
+ * Si, hoy, la marca de la cuenta publicaría en simulación (servidor, marca o propiedad apagados).
+ * Sin cuenta no hay nada que decidir aquí: el intento falla enseguida con `ACCOUNT_NOT_CONNECTED`.
+ */
+async function runsInSimulation(
+  deps: PublishPublicationDeps,
+  account: PlatformAccount | null,
+): Promise<boolean> {
+  if (account === null) return false;
+  return (await brokerPublishMode(deps, deps.workerMode, account.brokerId)) === "dry-run";
+}
+
 /** Todo lo que se revisa y arma antes de llamar a la plataforma. */
 async function prepareAttempt(
   deps: PublishPublicationDeps,
@@ -684,13 +700,15 @@ async function prepareAttempt(
   now: Date,
   signal: AbortSignalLike | undefined,
 ) {
-  if (!publication.dryRun && deps.workerMode === "dry-run") {
+  const account = await deps.platformAccounts.get(publication.platformAccountId);
+  // Las dos llaves (ADR-0036): una publicación fijada en `live` solo sale si el servidor sigue en
+  // `live` y su marca sigue encendida (apagarla entre medio la detiene sin llamar a la plataforma).
+  if (!publication.dryRun && (await runsInSimulation(deps, account))) {
     throw new AppError(
       "PUBLISH_MODE_MISMATCH",
-      "Se pidió publicar en vivo, pero el worker está en simulación: no se publicó nada",
+      "Se pidió publicar en vivo, pero el worker o la marca están en simulación: no se publicó nada",
     );
   }
-  const account = await deps.platformAccounts.get(publication.platformAccountId);
   if (account === null || account.status !== "connected") {
     throw new AppError(
       "ACCOUNT_NOT_CONNECTED",

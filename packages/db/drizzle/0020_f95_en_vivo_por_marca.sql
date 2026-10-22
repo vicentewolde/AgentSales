@@ -1,0 +1,1 @@
+ALTER TABLE "brokers" ADD COLUMN "live_enabled" boolean DEFAULT false NOT NULL;

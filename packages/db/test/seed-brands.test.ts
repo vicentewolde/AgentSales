@@ -26,6 +26,8 @@ const brandRows = () =>
       kind: brokers.kind,
       operatorOwned: brokers.operatorOwned,
       autoPublish: brokers.autoPublish,
+      // F9.5-T22 (ADR-0036): el seed nunca enciende el modo en vivo de nada.
+      liveEnabled: brokers.liveEnabled,
     })
     .from(brokers)
     .where(inArray(brokers.slug, ["vinny", "agentpey"]))
@@ -49,8 +51,16 @@ describe("seed · marcas del operador (PGlite)", () => {
         kind: "brand",
         operatorOwned: true,
         autoPublish: false,
+        liveEnabled: false,
       },
-      { slug: "vinny", name: "Vinny", kind: "brand", operatorOwned: true, autoPublish: false },
+      {
+        slug: "vinny",
+        name: "Vinny",
+        kind: "brand",
+        operatorOwned: true,
+        autoPublish: false,
+        liveEnabled: false,
+      },
     ]);
     const profiles = await test.db
       .select()

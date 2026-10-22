@@ -16,6 +16,8 @@ export {
 export {
   assertAutoPublishAllowed,
   assertBrokerHoldsListings,
+  assertLiveAllowed,
+  assertLiveConfirmed,
   autoPublishAllowed,
   BRAND_TEXT_MAX,
   type Broker,
@@ -792,6 +794,13 @@ export {
   retryAtAfter,
   waitMinutesOf,
 } from "./publish/wait.js";
+export {
+  brokerPublishMode,
+  effectiveDryRun,
+  effectivePublishMode,
+  liveEnabledBrokers,
+  type PublishModeBroker,
+} from "./publish-mode.js";
 export * from "./redact.js";
 export { RUN_WAIT } from "./run-wait.js";
 export {

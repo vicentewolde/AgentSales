@@ -39,6 +39,11 @@ export interface BrokerRepository {
    */
   setAutoPublish(id: string, autoPublish: boolean): Promise<Broker>;
   /**
+   * Enciende o apaga el modo en vivo de la marca (F9.5-T22, ADR-0036): solo el administrador, con
+   * las reglas en `updateBroker`. `BROKER_NOT_FOUND` si no existe. Devuelve el corredor.
+   */
+  setLiveEnabled(id: string, liveEnabled: boolean): Promise<Broker>;
+  /**
    * Lo que solo cambia el administrador (spec F7 §4.5): si es propio y el tope de IA (`null` = sin
    * tope). `undefined` = no tocar. `BROKER_NOT_FOUND` si no existe. Devuelve el corredor.
    */

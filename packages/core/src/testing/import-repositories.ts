@@ -72,6 +72,7 @@ export function createInMemoryBrokerRepository(
         logoMediaId: null,
         autoPublish: false,
         operatorOwned: false,
+        liveEnabled: false,
         llmMonthlyCapUsd: null,
         kind: createOptions.kind ?? "broker",
       };
@@ -113,6 +114,15 @@ export function createInMemoryBrokerRepository(
           ? {}
           : { llmMonthlyCapUsd: normalizeLlmMonthlyCap(settings.llmMonthlyCapUsd) }),
       };
+      stored.set(id, updated);
+      return structuredCopy(updated);
+    },
+    async setLiveEnabled(id, liveEnabled) {
+      const current = stored.get(id);
+      if (current === undefined) {
+        throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${id}`);
+      }
+      const updated = { ...current, liveEnabled };
       stored.set(id, updated);
       return structuredCopy(updated);
     },

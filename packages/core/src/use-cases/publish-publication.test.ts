@@ -247,6 +247,35 @@ describe("publishPublication · errores", () => {
     expect((await t.listings.get(t.listingId))?.status).toBe("ready");
   });
 
+  it("live con el servidor en live pero la marca apagada (ADR-0036): PUBLISH_MODE_MISMATCH, sin llamar a la plataforma", async () => {
+    const { t, fake, post, run } = await setup({ workerMode: "live" });
+    const listing = await t.listings.get(t.listingId);
+    await t.brokers.setLiveEnabled(listing?.brokerId ?? "", false);
+    await expect(run(post)).rejects.toMatchObject({
+      code: "PUBLISH_MODE_MISMATCH",
+      retriable: false,
+    });
+    expect(current(t, post.id)).toMatchObject({ status: "failed" });
+    expect(fake.published).toEqual([]);
+  });
+
+  it("live con el servidor en live y la marca encendida: publica de verdad con el publisher falso", async () => {
+    const { t, fake, post, run } = await setup({ workerMode: "live" });
+    const listing = await t.listings.get(t.listingId);
+    const broker = await t.brokers.findById(listing?.brokerId ?? "");
+    expect(broker).toMatchObject({ liveEnabled: true, operatorOwned: true });
+    await expect(run(post)).resolves.toMatchObject({ outcome: "published" });
+    expect(fake.published).toHaveLength(1);
+  });
+
+  it("live con la marca que dejó de ser propia: PUBLISH_MODE_MISMATCH", async () => {
+    const { t, fake, post, run } = await setup({ workerMode: "live" });
+    const listing = await t.listings.get(t.listingId);
+    await t.brokers.setSettings(listing?.brokerId ?? "", { operatorOwned: false });
+    await expect(run(post)).rejects.toMatchObject({ code: "PUBLISH_MODE_MISMATCH" });
+    expect(fake.published).toEqual([]);
+  });
+
   it("un error reintentable sigue en publishing y relanza; en el último intento queda failed", async () => {
     const unavailable = () =>
       new AppError("IG_UNAVAILABLE", "Instagram no respondió", { retriable: true });

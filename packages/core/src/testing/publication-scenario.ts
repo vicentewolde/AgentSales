@@ -62,8 +62,10 @@ export async function createPublicationScenario(
   const media = createInMemoryMediaRepository();
   const storage = createInMemoryMediaStorage();
   // Un corredor propio del operador (F3 a F6): el formulario automático de Marketplace es suyo
-  // (ADR-0023). Los tests de F7 que necesitan uno ajeno lo cambian con `setSettings`.
-  const broker = contentBrokerFixture({ operatorOwned: true });
+  // (ADR-0023). Los tests de F7 que necesitan uno ajeno lo cambian con `setSettings`. Con el modo
+  // en vivo encendido (ADR-0036): los tests de «en vivo» solo dependen del modo del servidor; los
+  // de la segunda llave lo apagan con `setLiveEnabled`.
+  const broker = contentBrokerFixture({ operatorOwned: true, liveEnabled: true });
   const listings = createInMemoryListingRepository(ids);
   const {
     id: _id,

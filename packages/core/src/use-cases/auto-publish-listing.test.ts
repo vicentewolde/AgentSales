@@ -32,7 +32,7 @@ async function setup(
     contents: t.contents,
     platformAccounts: t.platformAccounts,
     marketplace: { ufConfigured: true },
-    dryRun: options.dryRun ?? true,
+    serverMode: options.dryRun === false ? ("live" as const) : ("dry-run" as const),
     now: () => NOW,
   };
   const run = () => autoPublishListing(deps, { listingId: t.listingId });
@@ -73,6 +73,25 @@ describe("autoPublishListing", () => {
       publications.length,
     );
     expect((await t.contents.get(await t.instagramId()))?.status).toBe("approved");
+  });
+
+  it("con el servidor en live, el modo sale de la marca del aviso (ADR-0036): apagada o ajena, simulación", async () => {
+    for (const change of [
+      (t: Awaited<ReturnType<typeof setup>>["t"], brokerId: string) =>
+        t.brokers.setLiveEnabled(brokerId, false),
+      (t: Awaited<ReturnType<typeof setup>>["t"], brokerId: string) =>
+        t.brokers.setSettings(brokerId, { operatorOwned: false }),
+    ]) {
+      const { t, run } = await setup({ dryRun: false });
+      const listing = await t.listings.get(t.listingId);
+      await change(t, listing?.brokerId ?? "");
+
+      await run();
+
+      const publications = t.publications.all();
+      expect(publications.length).toBeGreaterThan(0);
+      expect(publications.every((publication) => publication.dryRun)).toBe(true);
+    }
   });
 
   it("con errores en la revisión solo la deja para el operador", async () => {
