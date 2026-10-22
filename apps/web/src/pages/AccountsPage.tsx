@@ -154,7 +154,6 @@ function BrokerAccounts({
           <ConnectBox
             broker={broker}
             oauth={data.connect.instagram.oauth}
-            startUrl={data.connect.instagram.startUrl}
             reconnect={instagram.reconnect}
           />
         )}

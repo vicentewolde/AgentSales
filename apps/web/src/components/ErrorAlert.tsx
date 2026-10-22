@@ -1,12 +1,12 @@
 import { manualConfirmCommands } from "@agentsales/core";
 import { ApiError } from "../api/client.js";
 import { CopyCommand } from "./accounts/CopyCommand.js";
+import { errorText } from "./error-messages.js";
 import {
   marketplaceIssuesHint,
   portalIssuesHint,
   ReadinessIssueList,
 } from "./ReadinessIssueList.js";
-import { errorText } from "./error-messages.js";
 import { Alert } from "./ui/Alert.js";
 import { Button } from "./ui/Button.js";
 

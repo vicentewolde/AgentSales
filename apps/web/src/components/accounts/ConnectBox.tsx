@@ -1,34 +1,34 @@
 import { type Broker, tokenStdinCommand } from "@agentsales/core";
+import { Link } from "react-router";
 import { buttonClasses } from "../ui/styles.js";
 import { CopyCommand } from "./CopyCommand.js";
 
 /**
- * Cómo conectar (o reconectar) la cuenta de un corredor: el enlace del OAuth solo con `https` (F7),
- * al inicio que da la API en el host de su vuelta (la cookie del `state` va en ese host; en internet
- * es el mismo del panel, spec F8 §4.3); en F3 (D4), el
+ * Cómo conectar (o reconectar) la cuenta de un corredor: con el OAuth (solo `https`, F7), el botón
+ * lleva a la pantalla previa `/cuentas/instagram` (F9.5-T20), que explica qué se autoriza y sigue
+ * al inicio que da la API en el host de su vuelta (la cookie del `state` va en ese host; en
+ * internet es el mismo del panel, spec F8 §4.3); en F3 (D4), el
  * comando de la CLI con el token del panel de Meta, para copiar.
  */
 export function ConnectBox({
   broker,
   oauth,
-  startUrl,
   reconnect,
 }: {
   broker: Broker;
   oauth: boolean;
-  startUrl: string;
   reconnect: boolean;
 }) {
   const label = reconnect ? "Reconectar Instagram" : "Conectar Instagram";
   if (oauth) {
     return (
-      <a
-        href={`${startUrl}?broker=${encodeURIComponent(broker.slug)}`}
+      <Link
+        to={`/cuentas/instagram?broker=${encodeURIComponent(broker.slug)}`}
         aria-label={`${label} de ${broker.brandName}`}
         className={`mt-3 ${buttonClasses("primary", "sm")}`}
       >
         {label}
-      </a>
+      </Link>
     );
   }
   const command = tokenStdinCommand(broker.slug);

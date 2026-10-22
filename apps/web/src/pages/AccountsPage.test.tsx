@@ -139,7 +139,8 @@ describe("panel: Cuentas", () => {
       const link = within(section).getByRole("link", {
         name: "Conectar Instagram de Marca sin-cuenta",
       });
-      expect(link.getAttribute("href")).toBe(`${START_URL}?broker=sin-cuenta`);
+      // Antes de ir a Instagram, la pantalla que explica qué se autoriza (F9.5-T20).
+      expect(link.getAttribute("href")).toBe("/cuentas/instagram?broker=sin-cuenta");
     } else {
       // Solo en Instagram: LinkedIn, X y TikTok tienen su propio enlace desde F9-T19.
       const instagram = within(section).getByRole("region", { name: "Instagram" });
@@ -156,7 +157,7 @@ describe("panel: Cuentas", () => {
 
     const section = await screen.findByRole("region", { name: /mio/ });
     const link = within(section).getByRole("link", { name: "Conectar Instagram de Marca mio" });
-    expect(link.getAttribute("href")).toBe(`${START_URL}?broker=mio`);
+    expect(link.getAttribute("href")).toBe("/cuentas/instagram?broker=mio");
     // En Instagram ya no lo pide; Mercado Libre y Facebook siguen siendo del administrador.
     const instagram = within(section).getByRole("region", { name: "Instagram" });
     expect(instagram.textContent).not.toContain("Pídele al administrador");

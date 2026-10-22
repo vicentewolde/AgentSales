@@ -22,6 +22,12 @@ const ImportRunPage = lazy(() =>
 const AccountsPage = lazy(() =>
   import("./pages/AccountsPage.js").then((module) => ({ default: module.AccountsPage })),
 );
+// F9.5-T20: la pantalla previa a Conectar Instagram.
+const InstagramConnectPage = lazy(() =>
+  import("./pages/InstagramConnectPage.js").then((module) => ({
+    default: module.InstagramConnectPage,
+  })),
+);
 const TrackingPage = lazy(() =>
   import("./pages/TrackingPage.js").then((module) => ({ default: module.TrackingPage })),
 );
@@ -128,6 +134,7 @@ export const routes: RouteObject[] = [
           { path: "importar/:id", element: <ImportRunPage /> },
           // Adonde vuelve el OAuth (`/cuentas?conectada=instagram` o `?error=`, spec F3 §4.6).
           { path: "cuentas", element: <AccountsPage /> },
+          { path: "cuentas/instagram", element: <InstagramConnectPage /> },
           { path: "seguimiento", element: <TrackingPage /> },
           // F9-T17: Contenido (posts de marca) y el detalle de un post.
           { path: "contenido", element: <PostsPage /> },
