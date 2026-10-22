@@ -367,10 +367,21 @@ El operador probó la demo como administrador y como un corredor nuevo (Oficina 
   - [ ] `pnpm check` pasa (CI)
 
 ### F9.5-T25 · Tarjetas y biblioteca de imágenes desde el post
-- **Depende de:** la nota `docs/integraciones/imagenes-y-videos-generados.md` y las decisiones del operador sobre proveedor y tope de gasto
-- **Descripción:** al crear un post sin medios, un botón **Conseguir imagen** ofrece, en este orden: (1) **tarjeta de texto** con las plantillas de la marca (el título del post sobre sus colores y logo, vertical u horizontal, carrusel de tarjetas con las ideas del texto), gratis y sin proveedor, hecha con sharp; (2) **buscar en una biblioteca de fotos** (stock) con el tema del post, que se descarga a R2 respetando la licencia; (3) **generar con IA** (imagen y, después, video) con el proveedor y el tope por marca que el operador decida. Un video corto sale de las tarjetas con ffmpeg y la música de T19. Lo generado queda marcado como tal si la red lo exige. El detalle (proveedor, límites, etiquetas) se cierra con la nota de integraciones.
-- **Archivos principales:** se definen con la nota; `packages/media`, `packages/core/src/social/`, una ruta nueva de posts, `apps/web/src/components/posts/`
-- **Hecho cuando:** (se completan con la nota y el ADR) una tarjeta de texto se genera y se adjunta como medio del post; con `fake`, la biblioteca y la IA devuelven una imagen de prueba; el gasto se anota y respeta el tope; `pnpm check` pasa (CI)
+- **Depende de:** T21 (el botón vive donde T21 dice «Falta la imagen»); la nota `docs/integraciones/imagenes-y-videos-generados.md` y ADR-0038 (decisiones del operador del 2026-10-22)
+- **Descripción:** en un post sin los medios que su tipo pide, un botón **Conseguir imagen** abre un panel con tres pestañas, en este orden:
+  1. **Tarjetas de la marca** (por defecto, US$0, sin proveedor): sharp dibuja el título del post (o, en un carrusel, una portada, una tarjeta por punto del texto y una de cierre) sobre el color y el logo de la marca, en 4:5 (1080×1350) o 9:16 (1080×1920); el texto sale del post, nunca inventado. Para un post de video, «Hacer video de las tarjetas» las une con ffmpeg y la música de T19 (el mismo motor del reel desde fotos, T18).
+  2. **Biblioteca (Pixabay)**: una búsqueda con el tema del post (editable), hasta 12 resultados sin personas como filtro sugerido; el usuario elige y el archivo **se descarga a R2** antes de usarse (nunca se enlaza a Pixabay). 100 peticiones por minuto; un 429 se dice en simple.
+  3. **Crear con IA (Nano Banana 2.1)**: una indicación que propone la IA de texto desde el post (editable), sin texto dentro de la imagen; 4:5 o 9:16. Cada imagen anota su costo; **tope de US$2 al mes por marca** (configurable), y al llegar se niega con «Llegaste al tope de imágenes con IA de este mes».
+  Lo conseguido entra como medios del post (mismo camino que una foto subida: R2, sha256, variantes) y pasa por la vista previa y la aprobación. **No se marca como IA** (ADR-0038 §4: solo cuando la red lo exige, hoy video realista, que no se construye). Puertos nuevos en core, `StockPhotoProvider` e `ImageGenerator`, con adaptadores `pixabay`, `gemini` y `fake`; modelo y precio en configuración (`PIXABAY_API_KEY`, `GEMINI_API_KEY`, `IMAGE_AI_MODEL`, `IMAGE_AI_PRICE_USD`, `IMAGE_AI_MONTHLY_CAP_USD`); sin claves, las pestañas 2 y 3 dicen qué falta y las tarjetas funcionan igual. Sin SDK nuevo (`fetch` + zod). La generación corre en el worker (job nuevo), no en la API. CLI: `post media <id> --card | --stock "<búsqueda>" --pick <n> | --ai "<indicación>"`.
+- **Fuera de esta tarea:** video con IA; stock o IA en propiedades (permitido por ADR-0038 §6, se construye después si hace falta).
+- **Archivos principales:** `packages/core/src/ports/` (dos puertos), `packages/core/src/use-cases/` (conseguir medios de un post y su gasto), `packages/media` (tarjetas con sharp y video de tarjetas), un paquete o carpeta de adaptadores (`pixabay`, `gemini`), `packages/config`, `apps/worker` (job), `apps/api/src/routes/posts.ts` y contratos, `apps/cli/src/commands/post.ts`, `apps/web/src/components/posts/` (panel «Conseguir imagen»), `docs/04-formato-publicaciones.md` (tarjetas), `docs/08-guia-operador.md`, `.env.example`
+- **Hecho cuando:**
+  - [ ] una tarjeta y un carrusel de tarjetas se generan con el texto del post y la marca, y quedan como medios del post (tests con sharp de verdad, sin red)
+  - [ ] un video de tarjetas sale con ffmpeg y música (test con la misma prueba de T18)
+  - [ ] con `fake`, la biblioteca y la IA devuelven una imagen que se guarda en R2 falso y se adjunta (tests); el adaptador de Pixabay y el de Gemini se prueban con msw (sin red)
+  - [ ] el gasto se anota por marca, `cli usage` lo muestra aparte del texto, y al pasar el tope se niega (tests)
+  - [ ] sin claves, el panel ofrece solo tarjetas y dice qué falta (test del panel)
+  - [ ] `pnpm check` pasa (CI)
 
 ### F9.5-T26 · Un diseño acogedor para corredores de propiedades
 - **Depende de:** T20, T21, T23 (tocan los mismos archivos del panel)
