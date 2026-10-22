@@ -173,7 +173,9 @@ describe("panel: detalle de un post", () => {
       expect(screen.queryByRole("button", { name: /Publicar en Discord/ })).toBeNull(),
     );
     expect(screen.queryByRole("button", { name: "Programar…" })).toBeNull();
-    expect(screen.getByText(/Todo lo aprobado ya salió o está saliendo/)).toBeTruthy();
+    expect(
+      screen.getByText(/Todo lo aprobado ya salió, está saliendo o está programado/),
+    ).toBeTruthy();
   });
 
   it("sin cuenta en la red aprobada no ofrece publicar ni programar: dice el motivo y enlaza a Cuentas", async () => {

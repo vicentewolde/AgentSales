@@ -115,11 +115,10 @@ function AgendaEntry({
           prefix=" · "
         />
       )}
-      {/* El consejo dice qué hacer; el código, solo si no hay consejo (y como tal). */}
-      {item.advice !== null ? (
-        <span className="block text-fg-muted">{item.advice}</span>
-      ) : (
-        item.code !== null && <span className="block text-danger-700">Error: {item.code}</span>
+      {/* El consejo dice qué hacer; el código va aparte, chico, para quien lo busque. */}
+      {item.advice !== null && <span className="block text-fg-muted">{item.advice}</span>}
+      {item.code !== null && (
+        <span className="block text-xs text-fg-subtle">código {item.code}</span>
       )}
       {item.action !== "none" && (
         <span className="block text-xs text-fg-muted">{ACTION_TEXT[item.action]}</span>
@@ -182,6 +181,7 @@ function CellPublication({
     publication.expiry?.soon ? `vence en ${publication.expiry.daysLeft} d` : null,
     publication.expiry?.expired ? "venció" : null,
     publication.lastError === null ? null : publication.lastError.message,
+    publication.lastError === null ? null : `código ${publication.lastError.code}`,
   ].filter(Boolean);
   return (
     <li>

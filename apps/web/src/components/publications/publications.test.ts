@@ -276,8 +276,15 @@ describe("algo por publicar (F9.5-T02)", () => {
     for (const status of ["published", "publishing", "scheduled", "outcome_unknown"] as const) {
       expect(hasSomethingToPublish([content()], [publication({ status })])).toBe(false);
     }
-    // Una descartada no cuenta: al publicar nace otra.
+    // Una descartada o una retirada no cuenta: al publicar nace otra.
     expect(hasSomethingToPublish([content()], [publication({ status: "cancelled" })])).toBe(true);
+    expect(hasSomethingToPublish([content()], [publication({ status: "unpublished" })])).toBe(true);
+    expect(
+      hasSomethingToPublish(
+        [content()],
+        [publication({ status: "unpublished" }), publication({ status: "published" })],
+      ),
+    ).toBe(false);
     // Sin texto aprobado, nada; las publicaciones de otro texto no cuentan.
     expect(hasSomethingToPublish([content({ status: "draft" })], [])).toBe(false);
     expect(

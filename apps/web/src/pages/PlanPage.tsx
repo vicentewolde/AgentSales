@@ -190,9 +190,7 @@ function PlanStatus({ plan }: { plan: PlanRunView }) {
   if (plan.status === "succeeded") return null;
   return (
     <p role="status" className="mt-3 text-sm text-fg-muted">
-      {plan.status === "queued"
-        ? "Plan en cola: esperando al worker…"
-        : "La IA está proponiendo ideas…"}
+      {plan.status === "queued" ? "Plan en cola…" : "La IA está proponiendo ideas…"}
     </p>
   );
 }

@@ -12,6 +12,7 @@ import {
   PUBLISH_ATTEMPT_RESULT_TEXT,
   publicationActorText,
   publicationEventDetail,
+  publicationFormatPhrase,
   publicationFormatText,
   publicationModeText,
   publishAttemptPayloadSchema,
@@ -42,6 +43,18 @@ export const publicationName = (
   publication: Pick<PublicationView, "format" | "platform" | "mediaIds">,
 ) =>
   `${publicationFormatText(publication.platform, publication.format, publication.mediaIds.length)} de ${PLATFORM_TEXT[publication.platform]}`;
+
+type Named = Pick<PublicationView, "format" | "platform" | "mediaIds">;
+const phraseOf = (publication: Named) =>
+  publicationFormatPhrase(publication.platform, publication.format, publication.mediaIds.length);
+
+/** Con su artículo: `el carrusel de Instagram`, `la imagen de Instagram` (F9.5-T02). */
+export const theName = (publication: Named) =>
+  `${phraseOf(publication).el} ${publicationName(publication)}`;
+
+/** `del carrusel de Instagram`, `de la imagen de Instagram`. */
+export const ofTheName = (publication: Named) =>
+  `${phraseOf(publication).del} ${publicationName(publication)}`;
 
 /** Un motivo de lo que le falta al aviso para un canal, con su columna del Excel: `  • Falta … (dormitorios)`. */
 export const readinessIssueLine = (issue: ReadinessIssueView) =>

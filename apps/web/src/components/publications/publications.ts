@@ -123,10 +123,11 @@ export function retryBlockedReason(
 }
 
 /**
- * Si hay algo que publicar con estos textos (F9.5-T02): un texto aprobado sin publicaciones (nacen
- * al publicar; las descartadas no cuentan, porque al publicar nacen otras) o con alguna aprobada o
- * fallida. Si todas salieron o están saliendo, no hay botón Publicar. Lo usan el canal de un aviso y
- * cada red de un post. La API lo vuelve a revisar (`NOTHING_TO_PUBLISH`).
+ * Si hay algo que publicar con estos textos (F9.5-T02): un texto aprobado sin publicaciones activas
+ * (nacen al publicar; las descartadas y las retiradas no cuentan, porque al publicar nacen otras,
+ * `ACTIVE_PUBLICATION_STATUSES`) o con alguna aprobada o fallida. Si todas salieron, están saliendo
+ * o están programadas, no hay botón Publicar. Lo usan el canal de un aviso y cada red de un post. La
+ * API lo vuelve a revisar (`NOTHING_TO_PUBLISH`).
  */
 export function hasSomethingToPublish(
   contents: readonly Pick<ContentView, "id" | "status">[],
@@ -135,7 +136,7 @@ export function hasSomethingToPublish(
   return contents.some((content) => {
     if (content.status !== "approved") return false;
     const own = publications.filter(
-      (publication) => publication.contentId === content.id && publication.status !== "cancelled",
+      (publication) => publication.contentId === content.id && active.has(publication.status),
     );
     return (
       own.length === 0 ||
