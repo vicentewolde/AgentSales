@@ -158,6 +158,37 @@ describe("/posts: crear, listar, ver, editar y archivar", () => {
     expect(postResponseSchema.parse(await unmarked.json()).post.xLinkAllowed).toBe(false);
   });
 
+  it("la música de sus videos (F9.5-T19): elegirla o quitarla rehace los videos (post.media)", async () => {
+    const s = await setup();
+    const post = await s.deps.posts.create({
+      brokerId: s.mine.id,
+      topic: "Recorrido",
+      kind: "video",
+    });
+    expect(post.musicTrackId).toBeNull();
+    const chosen = await s.broker(`/posts/${post.id}`, {
+      method: "PATCH",
+      json: { musicTrackId: "up-in-the-sky" },
+    });
+    expect(chosen.status).toBe(200);
+    expect(postResponseSchema.parse(await chosen.json()).post.musicTrackId).toBe("up-in-the-sky");
+    const cleared = await s.broker(`/posts/${post.id}`, {
+      method: "PATCH",
+      json: { musicTrackId: null },
+    });
+    expect(postResponseSchema.parse(await cleared.json()).post.musicTrackId).toBeNull();
+    expect(s.queue.jobs.map((job) => [job.name, job.data])).toEqual([
+      ["post.media", { postId: post.id }],
+      ["post.media", { postId: post.id }],
+    ]);
+    const invalid = await s.broker(`/posts/${post.id}`, {
+      method: "PATCH",
+      json: { musicTrackId: "no-existe" },
+    });
+    expect(invalid.status).toBe(400);
+    expect((await errorOf(invalid)).code).toBe("REQUEST_INVALID");
+  });
+
   it("validación: un campo desconocido o un tema vacío son 400", async () => {
     const s = await setup();
     const unknown = await s.broker("/posts", {

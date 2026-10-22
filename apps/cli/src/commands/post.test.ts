@@ -622,6 +622,24 @@ describe("errores con su consejo y permisos", () => {
     expect(s.h.errors()).toContain("--date");
   });
 
+  it("--music (F9.5-T19): elige y quita la música de los videos; una pista que no existe no llama", async () => {
+    const s = await setup();
+    await runPostCreate(s.deps(), "Recorrido en video", { broker: "agentpey", kind: "video" });
+    const post = await s.created();
+    expect(await runPostEdit(s.deps(), post.id, { music: "up-in-the-sky" })).toBe(0);
+    expect(s.h.text()).toContain("música: Up in the Sky · Moderna (los videos se rehacen solos)");
+    expect((await s.h.posts.get(post.id))?.musicTrackId).toBe("up-in-the-sky");
+    s.h.out.length = 0;
+    expect(await runPostShow(s.deps(), post.id)).toBe(0);
+    expect(s.h.text()).toContain("Música de los videos: Up in the Sky · Moderna");
+
+    expect(await runPostEdit(s.deps(), post.id, { music: "ninguna" })).toBe(0);
+    expect((await s.h.posts.get(post.id))?.musicTrackId).toBeNull();
+
+    expect(await runPostEdit(s.deps(), post.id, { music: "reggaeton" })).toBe(1);
+    expect(s.h.errors()).toContain("MUSIC_TRACK_INVALID");
+  });
+
   it("approve sin --platform aprueba solo las redes del post; con todas quitadas, lo explica", async () => {
     const s = await setup();
     await runPostCreate(s.deps(), "Dos redes", { broker: "agentpey" });

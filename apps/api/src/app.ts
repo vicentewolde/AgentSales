@@ -48,6 +48,7 @@ import { editorialProfileRoutes } from "./routes/editorial-profile.js";
 import { importRoutes } from "./routes/imports.js";
 import { listingRoutes } from "./routes/listings.js";
 import { type MetaSignatureVerifier, metaRoutes } from "./routes/meta.js";
+import { musicRoutes } from "./routes/music.js";
 import { type OAuthDeps, oauthRoutes } from "./routes/oauth.js";
 import { type LinkedInOAuthDeps, linkedinOAuthRoutes } from "./routes/oauth-linkedin.js";
 import { planRoutes } from "./routes/plans.js";
@@ -94,9 +95,12 @@ export type AppDeps = {
   /**
    * Las URLs de lectura temporales de los medios (fotos, renders y reel); desde F7-T14, subir el
    * logo de un corredor, y desde F8 (spec §4.4, ADR-0025) firmar las subidas directas de una carga,
-   * revisar que llegaron y borrarlas.
+   * revisar que llegaron y borrarlas; desde F9.5-T19, ver si una pista de música está en R2.
    */
-  storage: Pick<MediaStorage, "signedReadUrl" | "put" | "signedUploadUrl" | "list" | "delete">;
+  storage: Pick<
+    MediaStorage,
+    "signedReadUrl" | "put" | "signedUploadUrl" | "list" | "delete" | "head"
+  >;
   /** El logo de un corredor con sharp (`@agentsales/media/logo`; F7-T14). */
   logos: LogoNormalizer;
   /** sha256 hexadecimal de unos bytes (`node:crypto`, lo compone `server.ts`). */
@@ -392,6 +396,7 @@ export function createApp(input: AppDeps) {
     .route("/brokers", editorialProfileRoutes(deps))
     .route("/posts", postRoutes(deps))
     .route("/plans", planRoutes(deps))
+    .route("/music", musicRoutes(deps))
     .route("/schedule", scheduleRoutes(publicationDeps))
     .route(
       "/",

@@ -4,7 +4,7 @@ import { createInMemoryFieldDefinitionRepository } from "@agentsales/core/testin
 import { Command } from "commander";
 import { afterEach, describe, expect, it } from "vitest";
 import { brokerData, harness, newListing } from "../../test/harness.js";
-import { register, runListing } from "./listing.js";
+import { register, runListing, runListingMusic } from "./listing.js";
 
 /** Definición global sintética: solo importan la clave, la etiqueta y el orden. */
 const definition = (key: string, label: string, sortOrder: number): FieldDefinition => ({
@@ -78,6 +78,7 @@ describe("runListing", () => {
         "  Estado: Borrador (draft) · Corredor: marca",
         "  Precio: UF 5.800",
         "  Dirección: Calle Inventada 123, 45, Ñuñoa, Metropolitana (no se publica la dirección exacta)",
+        "  Música del reel: Sin música",
         "  Destacados: Luminoso",
         "  Notas internas (no se publican): Llaves en conserjería",
         `  id: ${listing.id}`,
@@ -188,5 +189,50 @@ describe("listing <acción> --broker por commander (ensayo de la demo de F9)", (
     expect(h.errors()).not.toContain("LISTING_AMBIGUOUS");
     expect(process.exitCode).toBe(0);
     expect((await h.listings.get(listing.id))?.status).toBe("closed");
+  });
+});
+
+describe("listing music (F9.5-T19)", () => {
+  afterEach(() => {
+    process.exitCode = undefined;
+  });
+
+  it("elige una pista, la muestra en el detalle y sugiere preparar; ninguna la quita", async () => {
+    const { h, listing } = await setup();
+    const io = { ...h.io, client: h.client };
+
+    expect(await runListingMusic(io, "P-001", "Serenade-Guitar")).toBe(0);
+    expect(h.text()).toContain("✓ P-001: música del reel → Serenade Guitar · Elegante");
+    expect(h.text()).toContain("agentsales prepare P-001 --no-texts");
+    expect(h.requests).toContain(`PATCH /listings/${listing.id}`);
+    expect((await h.listings.get(listing.id))?.musicTrackId).toBe("serenade-guitar");
+
+    await runListing(io, "P-001");
+    expect(h.text()).toContain("  Música del reel: Serenade Guitar · Elegante");
+
+    expect(await runListingMusic(io, "P-001", "ninguna")).toBe(0);
+    expect((await h.listings.get(listing.id))?.musicTrackId).toBeNull();
+  });
+
+  it("una pista que no existe se rechaza sin llamar a la API, con la lista de pistas", async () => {
+    const { h, listing } = await setup();
+    expect(await runListingMusic({ ...h.io, client: h.client }, "P-001", "rock")).not.toBe(0);
+    expect(h.errors()).toContain("MUSIC_TRACK_INVALID");
+    expect(h.errors()).toContain("calm-piano");
+    expect(h.requests).not.toContain(`PATCH /listings/${listing.id}`);
+  });
+
+  it("por commander: listing music <propiedad> <pista> --broker", async () => {
+    const { h, listing } = await setup();
+    const program = new Command().exitOverride();
+    register(program, {
+      ...h.io,
+      api: () => h.client,
+    } as unknown as Parameters<typeof register>[1]);
+    await program.parseAsync(["listing", "music", "P-001", "calm-piano", "--broker", "marca"], {
+      from: "user",
+    });
+    expect(process.exitCode).toBe(0);
+    expect((await h.listings.get(listing.id))?.musicTrackId).toBe("calm-piano");
   });
 });

@@ -31,6 +31,10 @@ import {
   MAX_XLSX_BYTES,
   MEDIA_KINDS,
   MEDIA_VARIANTS,
+  MUSIC_LICENSES,
+  MUSIC_STYLES,
+  MUSIC_TRACK_IDS,
+  musicTrackIdSchema,
   ONBOARDING_STEPS,
   OPERATIONS,
   PLAN_RUN_STATUSES,
@@ -129,6 +133,15 @@ export const listingStatusBodySchema = z.object({
 });
 export type ListingStatusBody = z.infer<typeof listingStatusBodySchema>;
 
+/**
+ * `PATCH /listings/:id` (F9.5-T19): la música del reel, un id del catálogo o `null` (sin música).
+ * Es lo único de la propiedad que se edita aquí (lo demás viene de la planilla).
+ */
+export const listingUpdateBodySchema = z
+  .object({ musicTrackId: musicTrackIdSchema.nullable() })
+  .strict();
+export type ListingUpdateBody = z.infer<typeof listingUpdateBodySchema>;
+
 /** Un aviso tal como viaja en JSON: las fechas llegan como texto ISO y se vuelven `Date`. */
 export const listingJsonSchema = listingSchema.extend({
   createdAt: z.coerce.date(),
@@ -191,6 +204,31 @@ export const listingDetailResponseSchema = z.object({
   fields: z.array(listingFieldSchema),
 });
 export type ListingDetailResponse = z.infer<typeof listingDetailResponseSchema>;
+
+/** `PATCH /listings/:id` (F9.5-T19): la propiedad ya cambiada. */
+export const listingResponseSchema = z.object({ listing: listingJsonSchema });
+export type ListingResponse = z.infer<typeof listingResponseSchema>;
+
+/**
+ * Una pista de la biblioteca de música (`GET /music/tracks`, F9.5-T19): sus datos del catálogo,
+ * si el operador ya la subió a R2 (`available`) y, si está, una URL firmada de corta vida para
+ * escucharla (`previewUrl`; 10 min). Una pista sin archivo se puede elegir igual: el reel sale sin
+ * música, con un aviso, hasta que se suba.
+ */
+export const musicTrackViewSchema = z.object({
+  id: z.enum(MUSIC_TRACK_IDS),
+  title: z.string(),
+  author: z.string(),
+  style: z.enum(MUSIC_STYLES),
+  license: z.enum(MUSIC_LICENSES),
+  sourceUrl: z.string(),
+  available: z.boolean(),
+  previewUrl: z.string().nullable(),
+});
+export type MusicTrackView = z.infer<typeof musicTrackViewSchema>;
+
+export const musicTrackListResponseSchema = z.object({ tracks: z.array(musicTrackViewSchema) });
+export type MusicTrackListResponse = z.infer<typeof musicTrackListResponseSchema>;
 
 export const brokerListResponseSchema = z.object({ brokers: z.array(brokerSchema) });
 export type BrokerListResponse = z.infer<typeof brokerListResponseSchema>;
@@ -1501,6 +1539,11 @@ export const updatePostBodySchema = z
      * pedidas, programar o publicar usa solo estas; `null` = todas las de la marca.
      */
     platforms: z.array(z.enum(POST_PLATFORMS)).max(POST_PLATFORMS.length).nullable().optional(),
+    /**
+     * La música de sus videos (F9.5-T19): un id del catálogo o `null` (sin música). Cambiarla
+     * encola `post.media`, que rehace los videos (reel, X y Discord) con la pista nueva.
+     */
+    musicTrackId: musicTrackIdSchema.nullable().optional(),
   })
   .strict();
 export type UpdatePostBody = z.infer<typeof updatePostBodySchema>;
