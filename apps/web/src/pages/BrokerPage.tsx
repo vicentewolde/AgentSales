@@ -5,7 +5,7 @@ import { Link, useParams } from "react-router";
 import { BrandForm } from "../components/brokers/BrandForm.js";
 import { LogoAndTemplate } from "../components/brokers/LogoAndTemplate.js";
 import { OnboardingList } from "../components/brokers/OnboardingList.js";
-import { OneTimeLink } from "../components/brokers/OneTimeLink.js";
+import { OneTimeLink, type OneTimeLinkKind } from "../components/brokers/OneTimeLink.js";
 import { SpendLine } from "../components/brokers/SpendLine.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { EditorialProfileSection } from "../components/posts/EditorialProfileForm.js";
@@ -23,7 +23,7 @@ function BrokerUsers({ brokerId }: { brokerId: string }) {
   const invite = useInviteUser();
   const reset = useResetUser();
   const toggle = useSetUserDisabled();
-  const [link, setLink] = useState<UserLinkResponse | null>(null);
+  const [link, setLink] = useState<{ link: UserLinkResponse; kind: OneTimeLinkKind } | null>(null);
   const [confirmingDisable, setConfirmingDisable] = useState<string | null>(null);
   const stopConfirming = () => setConfirmingDisable(null);
   const emailInput = useRef<HTMLInputElement>(null);
@@ -36,8 +36,12 @@ function BrokerUsers({ brokerId }: { brokerId: string }) {
     toggle.reset();
   };
   /** El enlace pasa al estado de la página y sale de la mutación (no queda en la caché). */
-  const showLink = (created: UserLinkResponse, mutation: { reset: () => void }) => {
-    setLink(created);
+  const showLink = (
+    created: UserLinkResponse,
+    kind: OneTimeLinkKind,
+    mutation: { reset: () => void },
+  ) => {
+    setLink({ link: created, kind });
     mutation.reset();
   };
   const submit = (event: FormEvent<HTMLFormElement>) => {
@@ -54,7 +58,7 @@ function BrokerUsers({ brokerId }: { brokerId: string }) {
       },
       {
         onSuccess: (created) => {
-          showLink(created, invite);
+          showLink(created, "invitation", invite);
           formElement.reset();
         },
       },
@@ -66,7 +70,8 @@ function BrokerUsers({ brokerId }: { brokerId: string }) {
       <h2 className="text-lg font-semibold">Usuarios</h2>
       {link !== null && (
         <OneTimeLink
-          link={link}
+          link={link.link}
+          kind={link.kind}
           onDone={() => {
             setLink(null);
             emailInput.current?.focus();
@@ -88,7 +93,9 @@ function BrokerUsers({ brokerId }: { brokerId: string }) {
               aria-label={`Restablecer a ${user.email}`}
               onClick={() => {
                 startAction();
-                reset.mutate(user.id, { onSuccess: (created) => showLink(created, reset) });
+                reset.mutate(user.id, {
+                  onSuccess: (created) => showLink(created, "reset", reset),
+                });
               }}
             >
               Restablecer

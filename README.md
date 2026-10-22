@@ -111,7 +111,7 @@ pnpm -s cli users list|reset|disable|enable                  # los usuarios; res
 pnpm -s cli brokers show|edit|logo <slug>                    # su marca, sus ajustes (--cap <usd> para el tope de IA) y su logo
 pnpm llm:smoke --provider anthropic-api                      # una llamada corta por la API (gasta centavos)
 ```
-En el panel: **Corredores** (alta, marca, logo, planilla, usuarios y gasto), **Ver corredor** para mirar uno a la vez y, para el corredor, **Mi marca**. Los enlaces de invitación son secretos: envíalos por un canal privado.
+En el panel: **Corredores** (alta, marca, logo, planilla, usuarios y gasto), **Ver corredor** para mirar uno a la vez y, para el corredor, **Mi marca**. Los enlaces de invitación son secretos: envíalos por un canal privado o con **Enviar por correo** (al correo del invitado, sin reenviarlo).
 
 Contenido de marca (F9), con `pnpm dev` corriendo. Cada red necesita su app y sus variables en `.env` (salvo Discord) y su prueba de entrada antes de publicar de verdad (`docs/07-checklist-cuentas.md`, "F9 · Contenido de marca"); el paso a paso está en `docs/08-guia-operador.md` ("El contenido de tus marcas, de punta a punta"):
 ```bash
