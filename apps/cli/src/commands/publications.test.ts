@@ -2,9 +2,12 @@ import { randomUUID } from "node:crypto";
 import { Command } from "commander";
 import { afterEach, describe, expect, it } from "vitest";
 import { PORT, publicationHarness } from "../../test/harness.js";
+import { ApiCallError } from "../api-client.js";
+import { CliError } from "../output.js";
 import { localServerUrl } from "../server.js";
 import { createMemorySessionStore } from "../session.js";
 import {
+  explainedResolve,
   register,
   runCancelPublication,
   runPublications,
@@ -245,5 +248,32 @@ describe("publications · registro en commander", () => {
     expect(process.exitCode).toBe(0);
     await program.parseAsync(["publications", setup.t.listingId], { from: "user" });
     expect(setup.h.text()).toContain("Publicaciones de");
+  });
+});
+
+describe("explainedResolve (F9.5-T04a)", () => {
+  const pipe = "pbpaste | agentsales publications resolve pub-1 --published --url-stdin";
+  const explained = (code: string) =>
+    explainedResolve(new ApiCallError(`${code}: mensaje`, code, 400, "mensaje de la API"), pipe);
+
+  it("Portal en vivo sin enlace: pide el enlace o el número MLC y da el comando", () => {
+    const error = explained("PUBLISHED_URL_REQUIRED");
+    expect(error).toBeInstanceOf(CliError);
+    expect(error).toMatchObject({ code: "PUBLISHED_URL_REQUIRED", message: "mensaje de la API" });
+    expect((error as CliError).hint).toContain("MLC");
+    expect((error as CliError).hint).toContain(pipe);
+  });
+
+  it("un enlace que no sirve dice que en Portal también vale el número MLC", () => {
+    expect((explained("PUBLISHED_URL_INVALID") as CliError).hint).toContain("MLC");
+  });
+
+  it("el aviso de otra publicación pide pegar el que salió ahora", () => {
+    expect((explained("PORTAL_ITEM_IN_USE") as CliError).hint).toContain("salió ahora");
+  });
+
+  it("un código sin pista sube tal cual", () => {
+    const original = new ApiCallError("OTRO: x", "OTRO");
+    expect(explainedResolve(original, pipe)).toBe(original);
   });
 });

@@ -35,6 +35,18 @@ const portalItemRequired = (publicationId: string) =>
   );
 
 /**
+ * «Salió» en Portal con un ítem que ya es de otra publicación de la misma propiedad y cuenta (por
+ * ejemplo, el enlace del aviso anterior a republicar, F9.5-T04a): dos publicaciones con el mismo
+ * ítem se pisarían al sincronizar, pausar o cerrar.
+ */
+const portalItemInUse = (publicationId: string, otherId: string) =>
+  new AppError(
+    "PORTAL_ITEM_IN_USE",
+    "Ese aviso de Mercado Libre ya es de otra publicación de esta propiedad (por ejemplo, el aviso anterior a republicar): pega el enlace o el número del aviso que salió ahora",
+    { details: { publicationId, otherPublicationId: otherId } },
+  );
+
+/**
  * El progreso de Portal con el ítem que dijo el operador (F9.5-T04a): pausar, reactivar, cerrar y
  * actualizar exigen que `itemId` sea el `external_id` y reutilizan el contacto y las fotos que el
  * intento guardó antes de crear. Un progreso que no se lee no se toca (las operaciones lo dicen:
@@ -60,7 +72,8 @@ const notPublishedError = () => ({
  *   candado); `external_id` = el id del enlace, o `null` si no lo pegó; en simulación el enlace
  *   se ignora (`dry-run:<id>`, sin enlace), como en `confirmManualPublication`. En `live`, un aviso pasa de `ready` a `active`, como al publicar; un post nunca.
  *   Portal en `live` (F9.5-T04a): el enlace o el id del ítem es obligatorio
- *   (`PUBLISHED_URL_REQUIRED`), `external_id` es el `MLC…` y el progreso guarda ese `itemId`
+ *   (`PUBLISHED_URL_REQUIRED`), el ítem no puede ser de otra publicación de la misma propiedad y
+ *   cuenta (`PORTAL_ITEM_IN_USE`), `external_id` es el `MLC…` y el progreso guarda ese `itemId`
  *   (`portalProgressWithItem`); quien llama pide el sync (`publication.sync`, la ruta de la API)
  *   para leer su estado y su vencimiento.
  * - `not_published` ("no salió"): → `failed` con `OUTCOME_RESOLVED_NOT_PUBLISHED` y **sin el
@@ -133,6 +146,21 @@ export async function resolvePublication(
       publication.platform === "portal_inmobiliario"
     ) {
       throw portalItemRequired(publicationId);
+    }
+    if (
+      outcome === "published" &&
+      item !== null &&
+      !publication.dryRun &&
+      publication.platform === "portal_inmobiliario"
+    ) {
+      const other = (await locked.repos.publications.listBySubject(publication.subject)).find(
+        (candidate) =>
+          candidate.id !== publicationId &&
+          candidate.platform === "portal_inmobiliario" &&
+          candidate.platformAccountId === publication.platformAccountId &&
+          candidate.externalId === item.externalId,
+      );
+      if (other !== undefined) throw portalItemInUse(publicationId, other.id);
     }
     if (outcome === "not_published") {
       const failed = await locked.repos.publications.transition(

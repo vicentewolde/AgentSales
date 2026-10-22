@@ -309,3 +309,116 @@ describe("resultado dudoso de un aviso (F9.5-T04a)", () => {
     ).resolves.toMatchObject({ publication: { externalId: `dry-run:${id}`, externalUrl: null } });
   });
 });
+
+const OLD_ITEM = "MLC1111111111";
+const DOUBTFUL = {
+  code: "ML_PUBLISH_OUTCOME_UNKNOWN",
+  message: "x",
+  retriable: false,
+} as const;
+
+/**
+ * Un aviso de Portal republicado (F6): la publicación vieja quedó `unpublished` con su ítem y la
+ * nueva (`relistedFrom`) terminó en resultado dudoso con el progreso que se le pasa (el del
+ * `relist` sin respuesta, o ninguno).
+ */
+async function doubtfulRelist(progress: unknown) {
+  const t = await createPublicationScenario({ platform: PORTAL });
+  const [previous] = (
+    await publishListing(t.deps, {
+      listingId: t.listingId,
+      platform: PORTAL,
+      dryRun: false,
+      actor: "operator",
+    })
+  ).started;
+  if (previous === undefined) throw new Error("falta la publicación");
+  await t.publications.transition(
+    previous.id,
+    { from: "publishing", to: "published", changes: { externalId: OLD_ITEM, publishedAt: NOW } },
+    { actor: "system" },
+  );
+  await t.publications.transition(
+    previous.id,
+    { from: "published", to: "unpublished" },
+    { actor: "system" },
+  );
+  const relisted = await t.publications.create(
+    {
+      listingId: t.listingId,
+      platformAccountId: previous.platformAccountId,
+      platform: PORTAL,
+      format: "post",
+      contentId: previous.contentId,
+      mediaIds: previous.mediaIds,
+      listingSourceHash: previous.listingSourceHash ?? "h",
+      relistedFrom: previous.id,
+    },
+    { actor: "operator" },
+  );
+  await t.publications.transition(
+    relisted.id,
+    { from: "approved", to: "publishing", changes: { dryRun: false } },
+    { actor: "operator" },
+  );
+  if (progress !== null) await t.publications.saveProgress(relisted.id, progress);
+  await t.publications.transition(
+    relisted.id,
+    { from: "publishing", to: "outcome_unknown", changes: { lastError: DOUBTFUL } },
+    { actor: "system" },
+  );
+  return { t, id: relisted.id, previousId: previous.id };
+}
+
+describe("resolver un aviso republicado de Portal (F9.5-T04a, revisión)", () => {
+  it("«salió» con el ítem del aviso anterior es PORTAL_ITEM_IN_USE, sin cambiar nada; con el nuevo, sí", async () => {
+    const { t, id, previousId } = await doubtfulRelist(null);
+
+    await expect(
+      resolvePublication(t.deps, {
+        publicationId: id,
+        outcome: "published",
+        url: "https://articulo.mercadolibre.cl/MLC-1111111111-depto-_JM",
+        actor: "operator",
+      }),
+    ).rejects.toMatchObject({
+      code: "PORTAL_ITEM_IN_USE",
+      retriable: false,
+      details: { publicationId: id, otherPublicationId: previousId },
+    });
+    expect(t.publications.all().find((p) => p.id === id)?.status).toBe("outcome_unknown");
+
+    await expect(
+      resolvePublication(t.deps, {
+        publicationId: id,
+        outcome: "published",
+        url: ITEM_ID,
+        actor: "operator",
+      }),
+    ).resolves.toMatchObject({ publication: { status: "published", externalId: ITEM_ID } });
+  });
+
+  it.each([
+    [
+      "del relist sin respuesta",
+      { pictureIds: [], relistRequestedAt: NOW.toISOString() },
+      { pictureIds: [], relistRequestedAt: NOW.toISOString(), itemId: ITEM_ID },
+    ],
+    ["vacío", null, { pictureIds: [], itemId: ITEM_ID }],
+  ])(
+    "con el progreso %s, «salió» anota el ítem sin contacto ni fotos (pausar y actualizar piden hacerlo a mano)",
+    async (_name, progress, expected) => {
+      const { t, id } = await doubtfulRelist(progress);
+
+      const { publication } = await resolvePublication(t.deps, {
+        publicationId: id,
+        outcome: "published",
+        url: ITEM_ID,
+        actor: "operator",
+      });
+
+      expect(publication.progress).toEqual(expected);
+      expect(publication.progress).not.toHaveProperty("sellerContact");
+    },
+  );
+});

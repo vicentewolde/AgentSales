@@ -356,7 +356,14 @@ describe("POST /publications/:id/resolve en Portal (F9.5-T04a)", () => {
   const SELLER_CONTACT = { contact: null, email: null, countryCode2: "56", phone2: "911112222" };
 
   /** Una publicación de Portal en vivo con resultado dudoso: `POST /items` sin respuesta. */
-  async function doubtful(t: PublicationScenario): Promise<Publication> {
+  async function doubtful(
+    t: PublicationScenario,
+    progress: unknown = {
+      pictureIds: ["1-MLC_PIC"],
+      sellerContact: SELLER_CONTACT,
+      createRequestedAt: "2026-10-22T12:00:00.000Z",
+    },
+  ): Promise<Publication> {
     const [started] = (
       await publishListing(t.deps, {
         listingId: t.listingId,
@@ -366,11 +373,7 @@ describe("POST /publications/:id/resolve en Portal (F9.5-T04a)", () => {
       })
     ).started;
     if (started === undefined) throw new Error("falta la publicación");
-    await t.publications.saveProgress(started.id, {
-      pictureIds: ["1-MLC_PIC"],
-      sellerContact: SELLER_CONTACT,
-      createRequestedAt: "2026-10-22T12:00:00.000Z",
-    });
+    await t.publications.saveProgress(started.id, progress);
     return t.publications.transition(
       started.id,
       {
@@ -459,6 +462,32 @@ describe("POST /publications/:id/resolve en Portal (F9.5-T04a)", () => {
     const paused = await post(`/publications/${publication.id}/pause`);
     expect(paused.status).toBe(200);
     expect(sent).toEqual([{ id: ITEM_ID, contact: SELLER_CONTACT }]);
+  });
+
+  it("un relist resuelto sin el contacto guardado: el sync se pide, y pausar es 409 PORTAL_PROGRESS_UNUSABLE sin llamar", async () => {
+    const refuse = async (): Promise<never> => {
+      throw new Error("no se llama a Mercado Libre");
+    };
+    const real = createPortalOperations({
+      items: { get: refuse, setStatus: refuse, getLastModeration: refuse },
+    });
+    const { t, post, errorOf } = await setup({ operations: real });
+    // Lo que deja un `relist` sin respuesta: la hora del pedido, sin fotos ni contacto.
+    const publication = await doubtful(t, {
+      pictureIds: [],
+      relistRequestedAt: "2026-10-22T12:00:00.000Z",
+    });
+
+    const resolved = await post(`/publications/${publication.id}/resolve`, {
+      outcome: "published",
+      url: ITEM_ID,
+    });
+    expect(resolved.status).toBe(200);
+    expect(t.queue.jobs.map((job) => job.name)).toContain("publication.sync");
+
+    const paused = await post(`/publications/${publication.id}/pause`);
+    const body = await errorOf(paused);
+    expect([paused.status, body.code]).toEqual([409, "PORTAL_PROGRESS_UNUSABLE"]);
   });
 
   it("si el sync no se puede encolar, «salió» igual responde 200", async () => {
