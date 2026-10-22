@@ -278,7 +278,10 @@ describe("agendaItems con el worker apagado (F9.5-T24)", () => {
     // 2026-10-15 23:30 en Chile; la próxima revisión es la de las 06:50 del 16.
     const night = new Date("2026-10-16T02:30:00.000Z");
     const at = (hours: number) => new Date(night.getTime() + hours * 60 * 60_000);
-    const items = run([scheduled(at(2.5)), scheduled(at(8))], { worker: { running: false }, now: night });
+    const items = run([scheduled(at(2.5)), scheduled(at(8))], {
+      worker: { running: false },
+      now: night,
+    });
 
     // 02:00 espera al worker; 07:30, después de la revisión de las 06:50, es una próxima.
     expect(items.map((item) => item.kind)).toEqual(["worker_off", "upcoming"]);

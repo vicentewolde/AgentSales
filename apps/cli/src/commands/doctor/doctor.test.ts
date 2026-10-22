@@ -799,7 +799,8 @@ describe("runDoctor · un servidor remoto", () => {
     // NOW es 2026-10-15 16:00 en Chile.
     expect(report.items.find((item) => item.name === "Horario del worker")).toMatchObject({
       level: "ok",
-      detail: "próxima revisión 2026-10-15 16:50 (cada hora a los :50, de 06:50 a 22:50, hora de Chile)",
+      detail:
+        "próxima revisión 2026-10-15 16:50 (cada hora a los :50, de 06:50 a 22:50, hora de Chile)",
     });
     const worker = report.items.find((item) => item.name === "Worker");
     expect(worker).toMatchObject({ level: "warn", detail: "apagado desde 2026-10-15 09:20" });

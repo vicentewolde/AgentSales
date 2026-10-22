@@ -42,7 +42,9 @@ describe("nextWorkerCheck", () => {
   });
 
   it("una franja sin revisiones da null", () => {
-    expect(nextWorkerCheck(at("2026-10-22T13:00:00Z"), { from: "10:00", until: "09:50" })).toBeNull();
+    expect(
+      nextWorkerCheck(at("2026-10-22T13:00:00Z"), { from: "10:00", until: "09:50" }),
+    ).toBeNull();
   });
 });
 
