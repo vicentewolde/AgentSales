@@ -1541,7 +1541,8 @@ export const updatePostBodySchema = z
     platforms: z.array(z.enum(POST_PLATFORMS)).max(POST_PLATFORMS.length).nullable().optional(),
     /**
      * La música de sus videos (F9.5-T19): un id del catálogo o `null` (sin música). Cambiarla
-     * encola `post.media`, que rehace los videos (reel, X y Discord) con la pista nueva.
+     * encola `post.media`, que rehace los videos (reel, X y Discord) con la pista nueva. Solo en un
+     * post de video: en otro, `POST_INVALID` (400).
      */
     musicTrackId: musicTrackIdSchema.nullable().optional(),
   })

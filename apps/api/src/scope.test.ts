@@ -204,6 +204,18 @@ describe("lo de otro corredor no existe", () => {
     expect((await s.broker(`/imports/${s.mine.importRun.id}`)).status).toBe(200);
     expect((await s.admin(`/listings/${s.theirs.listing.id}`)).status).toBe(200);
   });
+
+  it("la música del reel de una propiedad ajena (F9.5-T19): 404 y no cambia; la suya sí", async () => {
+    const s = await setup();
+    const body = JSON.stringify({ musicTrackId: "calm-piano" });
+    const foreign = await s.broker(`/listings/${s.theirs.listing.id}`, { method: "PATCH", body });
+    expect(foreign.status).toBe(404);
+    expect((await errorOf(foreign)).code).toBe("LISTING_NOT_FOUND");
+    expect((await s.deps.listings.get(s.theirs.listing.id))?.musicTrackId).toBeNull();
+    const own = await s.broker(`/listings/${s.mine.listing.id}`, { method: "PATCH", body });
+    expect(own.status).toBe(200);
+    expect((await s.deps.listings.get(s.mine.listing.id))?.musicTrackId).toBe("calm-piano");
+  });
 });
 
 /** Un post de un corredor con su corrida, su texto y una publicación (F9, ADR-0029). */

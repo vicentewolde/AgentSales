@@ -22,6 +22,7 @@ async function setup(
     platforms?: PostPlatform[] | null;
     discordVideoFails?: boolean;
     discordVideoThrows?: boolean;
+    musicFails?: boolean;
   } = {},
 ) {
   const posts = createInMemoryPostRepository();
@@ -39,6 +40,7 @@ async function setup(
     ...(options.discordVideoThrows === undefined
       ? {}
       : { discordVideoThrows: options.discordVideoThrows }),
+    ...(options.musicFails === undefined ? {} : { musicFails: options.musicFails }),
   });
   const post = await posts.create({
     brokerId: "brand-1",
@@ -444,6 +446,28 @@ describe("processPostMedia", () => {
         media: { existing: 1 },
         warnings: [expect.stringContaining("ya no está en la biblioteca")],
       });
+    });
+
+    it("si ffmpeg no puede mezclar la pista: videos sin música, con las claves de siempre y un aviso", async () => {
+      const s = await setup({ platforms: ["discord", "x"], musicFails: true });
+      await s.storage.put(musicPath, encode("DAÑADA"), "audio/mpeg");
+      await s.original(1, "video", "video");
+      await s.posts.update(s.post.id, { musicTrackId: "calm-piano" });
+      const result = await processPostMedia(
+        { ...s.deps, discordLimits: smallLimits },
+        { postId: s.post.id },
+      );
+      expect(result).toMatchObject({
+        media: { processed: 1, failed: 0 },
+        warnings: [expect.stringContaining("no se pudo mezclar")],
+      });
+      if (result.outcome !== "processed") throw new Error("no se procesó");
+      expect(result.warnings).toHaveLength(1);
+      const paths = (await s.media.listBySubject({ kind: "post", id: s.post.id }))
+        .filter((item) => item.kind === "video" && item.role === "processed")
+        .map((item) => item.storagePath);
+      expect(paths).toHaveLength(3);
+      expect(paths.every((path) => path.endsWith(`${sha(1)}-v7.mp4`))).toBe(true);
     });
 
     it("un post solo con fotos no busca la música", async () => {

@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
@@ -21,7 +22,7 @@ export type MusicUploadOutcome =
   | {
       file: string;
       status: "rejected";
-      reason: "unknown_track" | "not_mp3" | "too_large" | "empty" | "not_a_file";
+      reason: "unknown_track" | "not_mp3" | "not_decodable" | "too_large" | "empty" | "not_a_file";
     };
 
 export type MusicUploadReport = {
@@ -43,10 +44,34 @@ export function looksLikeMp3(bytes: Uint8Array): boolean {
   return first === 0xff && (second & 0xe0) === 0xe0 && (second & 0x06) === 0x02;
 }
 
-/** Sube las pistas de `dir` (sin subcarpetas); devuelve qué pasó con cada archivo. */
+/** Si ffmpeg decodifica el archivo entero sin errores (lo mismo que hará al mezclarlo). */
+export type DecodeCheck = (path: string) => Promise<boolean>;
+
+/**
+ * La revisión de verdad: `ffmpeg -v error -i <archivo> -f null -` decodifica la pista entera y
+ * falla, o escribe en stderr, si está dañada. Un archivo que no pasa no se sube: al mezclarlo, el
+ * reel saldría sin música.
+ */
+export function ffmpegDecodes(ffmpegPath: string): DecodeCheck {
+  return (path) =>
+    new Promise((resolve) => {
+      execFile(
+        ffmpegPath,
+        ["-hide_banner", "-nostdin", "-v", "error", "-i", path, "-vn", "-f", "null", "-"],
+        { timeout: 60_000 },
+        (error, _stdout, stderr) => resolve(error === null && stderr.trim() === ""),
+      );
+    });
+}
+
+/**
+ * Sube las pistas de `dir` (sin subcarpetas) que pasan `decodes`; devuelve qué pasó con cada
+ * archivo.
+ */
 export async function uploadMusicFolder(
   storage: Pick<MediaStorage, "put">,
   dir: string,
+  decodes: DecodeCheck,
 ): Promise<MusicUploadReport> {
   const names = (await readdir(dir)).filter((name) => !name.startsWith(".")).sort();
   const outcomes: MusicUploadOutcome[] = [];
@@ -77,6 +102,10 @@ export async function uploadMusicFolder(
       outcomes.push({ file, status: "rejected", reason: "not_mp3" });
       continue;
     }
+    if (!(await decodes(path))) {
+      outcomes.push({ file, status: "rejected", reason: "not_decodable" });
+      continue;
+    }
     await storage.put(musicTrackPath(track.id), bytes, "audio/mpeg");
     uploaded.add(track.id);
     outcomes.push({
@@ -94,6 +123,7 @@ const REASON_TEXT: Record<Extract<MusicUploadOutcome, { status: "rejected" }>["r
   unknown_track: `el nombre no es una pista del catálogo (${MUSIC_TRACK_IDS.map((id) => `${id}.mp3`).join(", ")})`,
   not_mp3:
     "no es un MP3 (convierte el WAV u OGG con ffmpeg: ver docs/integraciones/musica-reels.md)",
+  not_decodable: "ffmpeg no lo puede leer entero (archivo dañado o cortado): bájalo de nuevo",
   too_large: `pesa más de ${MUSIC_MAX_BYTES / 1024 / 1024} MB`,
   empty: "está vacío",
   not_a_file: "no es un archivo",

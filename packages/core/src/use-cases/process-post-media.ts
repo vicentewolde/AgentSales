@@ -157,7 +157,19 @@ export async function processPostMedia(
     });
   };
   const saveVideo = (original: Media, variant: VideoMediaVariant, output: VideoOutput) => {
-    const storagePath = postVideoPath(postId, variant, original.checksum, version, musicId);
+    // ffmpeg no pudo mezclar la música (F9.5-T19): la clave sin música y un aviso (uno por post).
+    const dropped = output.withoutMusic === true;
+    if (dropped && music !== null) {
+      const text = `La música «${music.track.title}» no se pudo mezclar (el archivo no se lee): los videos quedaron sin música. Vuelve a subir la pista con pnpm music:upload`;
+      if (!warnings.includes(text)) warnings.push(text);
+    }
+    const storagePath = postVideoPath(
+      postId,
+      variant,
+      original.checksum,
+      version,
+      dropped ? null : musicId,
+    );
     return save(
       () =>
         deps.storage.putStream(storagePath, output.open(), {

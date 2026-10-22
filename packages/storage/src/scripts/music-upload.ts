@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { loadEnv, loadEnvFile } from "@agentsales/config";
-import { musicUploadText, uploadMusicFolder } from "../music-upload.js";
+import { ffmpegDecodes, musicUploadText, uploadMusicFolder } from "../music-upload.js";
 import { createR2Storage } from "../r2-storage.js";
 
 // `pnpm music:upload <carpeta>` (F9.5-T19): sube a R2 las pistas de música que el operador bajó,
@@ -23,9 +23,11 @@ const storage = createR2Storage({
   signedUrlTtlSeconds: env.SIGNED_URL_TTL_SECONDS,
 });
 // pnpm corre el script en `packages/storage`: la carpeta relativa es la del operador (`INIT_CWD`).
+// Cada pista pasa por ffmpeg antes de subirse (`FFMPEG_PATH`): una que no se lee no se sube.
 const report = await uploadMusicFolder(
   storage,
   resolve(process.env.INIT_CWD ?? process.cwd(), dir),
+  ffmpegDecodes(env.FFMPEG_PATH),
 );
 process.stdout.write(`${musicUploadText(report)}\n`);
 process.exit(report.outcomes.some((outcome) => outcome.status === "rejected") ? 1 : 0);

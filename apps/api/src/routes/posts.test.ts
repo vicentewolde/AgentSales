@@ -187,6 +187,17 @@ describe("/posts: crear, listar, ver, editar y archivar", () => {
     });
     expect(invalid.status).toBe(400);
     expect((await errorOf(invalid)).code).toBe("REQUEST_INVALID");
+
+    // Un post que no es de video no lleva música: 400 con el motivo.
+    const text = await s.deps.posts.create({ brokerId: s.mine.id, topic: "Texto", kind: "text" });
+    const notVideo = await s.broker(`/posts/${text.id}`, {
+      method: "PATCH",
+      json: { musicTrackId: "calm-piano" },
+    });
+    expect(notVideo.status).toBe(400);
+    const error = await errorOf(notVideo);
+    expect(error.code).toBe("POST_INVALID");
+    expect(error.message).toContain("La música es solo para los posts de video");
   });
 
   it("validación: un campo desconocido o un tema vacío son 400", async () => {

@@ -41,6 +41,11 @@ export type InMemoryMediaProcessorOptions = {
   discordVideoThrows?: boolean;
   /** El reel con fotos falla con `MEDIA_DECODE_FAILED` (como si ffmpeg no pudiera armarlo). */
   photoReelThrows?: boolean;
+  /**
+   * ffmpeg no puede leer la pista (F9.5-T19): los videos salen sin música y con `withoutMusic`,
+   * como el adaptador al rehacerlos sin ella.
+   */
+  musicFails?: boolean;
 };
 
 export type InMemoryMediaProcessor = MediaProcessor & { calls: MediaProcessorCall[] };
@@ -81,7 +86,9 @@ function throwIfAborted(signal: AbortSignalLike | undefined) {
 const video = (
   out: Uint8Array,
   size: { width: number; height: number; durationS: number },
+  withoutMusic = false,
 ): VideoOutput => ({
+  ...(withoutMusic ? { withoutMusic: true } : {}),
   ...size,
   size: out.length,
   sha256: fakeHash(decoder.decode(out)),
@@ -145,7 +152,8 @@ export function createInMemoryMediaProcessor(
         music: music === null ? null : decoder.decode(music.bytes),
       });
       // Con música, cada video la lleva (otro contenido, otro sha256); sin ella, como antes.
-      const withMusic = music === null ? "" : `:m=${decoder.decode(music.bytes)}`;
+      const dropped = music !== null && options.musicFails === true;
+      const withMusic = music === null || dropped ? "" : `:m=${decoder.decode(music.bytes)}`;
       if (isCorrupt(bytes)) throw decodeFailed();
       if (discordVideo !== null && options.discordVideoThrows === true) throw decodeFailed();
       const measurements = measure(bytes, "video");
@@ -171,21 +179,23 @@ export function createInMemoryMediaProcessor(
         reel:
           reelBytes === null
             ? null
-            : video(reelBytes, {
-                width: 1080,
-                height: 1920,
-                durationS: Math.min(duration, REEL_MAX_DURATION_S),
-              }),
+            : video(
+                reelBytes,
+                {
+                  width: 1080,
+                  height: 1920,
+                  durationS: Math.min(duration, REEL_MAX_DURATION_S),
+                },
+                dropped,
+              ),
         xVideo:
-          xBytes === null ? null : video(xBytes, { width: 1280, height: 720, durationS: duration }),
+          xBytes === null
+            ? null
+            : video(xBytes, { width: 1280, height: 720, durationS: duration }, dropped),
         discordVideo:
           discordBytes === null
             ? null
-            : video(discordBytes, {
-                width: 1280,
-                height: 720,
-                durationS: duration,
-              }),
+            : video(discordBytes, { width: 1280, height: 720, durationS: duration }, dropped),
       };
     },
     async processPhotoReel(photos, { overlayPng, music = null }, signal): Promise<VideoOutput> {
@@ -208,14 +218,15 @@ export function createInMemoryMediaProcessor(
         sources.some((source) => source.startsWith("CORRUPTO"))
       )
         throw decodeFailed();
+      const dropped = music !== null && options.musicFails === true;
       const out = encoder.encode(
-        `photo_reel:v${version}:${sources.join("|")}:${overlayPng?.length ?? 0}${music === null ? "" : `:m=${decoder.decode(music.bytes)}`}`,
+        `photo_reel:v${version}:${sources.join("|")}:${overlayPng?.length ?? 0}${music === null || dropped ? "" : `:m=${decoder.decode(music.bytes)}`}`,
       );
-      return video(out, {
-        width: 1080,
-        height: 1920,
-        durationS: photos.length * PHOTO_REEL_SLIDE_S,
-      });
+      return video(
+        out,
+        { width: 1080, height: 1920, durationS: photos.length * PHOTO_REEL_SLIDE_S },
+        dropped,
+      );
     },
   };
 }

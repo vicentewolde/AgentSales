@@ -7,7 +7,7 @@ import {
   type PostStatus,
 } from "../enums.js";
 import { AppError } from "../errors.js";
-import { PLATFORM_TEXT } from "../labels.js";
+import { PLATFORM_TEXT, POST_KIND_TEXT } from "../labels.js";
 import { checkMusicTrackId } from "../music/catalog.js";
 import { assertCan, scopeOf } from "../permissions.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
@@ -225,7 +225,8 @@ export type UpdatePostInput = {
   platforms?: readonly string[] | null | undefined;
   /**
    * La música de sus videos (F9.5-T19): un id del catálogo o `null`, sin música. Otro id es
-   * `MUSIC_TRACK_INVALID` (400). Cambiarla encola `post.media`, que rehace los videos.
+   * `MUSIC_TRACK_INVALID` (400); una pista en un post que no es de video (con el `kind` que queda),
+   * `POST_INVALID` (400). Cambiarla encola `post.media`, que rehace los videos.
    */
   musicTrackId?: string | null | undefined;
 };
@@ -280,8 +281,18 @@ export async function updatePost(
     changes.pillar =
       (await checkPillar(deps.editorialProfiles, current.brokerId, input.pillar)) ?? null;
   }
-  if (input.musicTrackId !== undefined)
+  if (input.musicTrackId !== undefined) {
     changes.musicTrackId = checkMusicTrackId(input.musicTrackId);
+    // La música es de los videos: un post de texto o de imágenes no la lleva (quitarla, sí).
+    const kind = changes.kind ?? current.kind;
+    if (changes.musicTrackId !== null && kind !== "video") {
+      throw new AppError(
+        "POST_INVALID",
+        `La música es solo para los posts de video, y este es de tipo «${POST_KIND_TEXT[kind].toLowerCase()}»: cámbialo a video o deja «Sin música»`,
+        { details: { postId, kind } },
+      );
+    }
+  }
   let musicChanged = false;
   const updated = await deps.postLock.run(postId, async ({ posts, publications }) => {
     const post = await posts.get(postId);

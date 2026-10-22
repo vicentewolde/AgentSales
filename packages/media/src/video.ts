@@ -8,6 +8,7 @@ import {
   type AbortSignalLike,
   AppError,
   discordVideoBitrateKbps,
+  isAppError,
   type MusicInput,
   type PhotoReelOptions,
   type ProcessedVideo,
@@ -262,6 +263,33 @@ const threadsOf = (options: VideoToolOptions) =>
   options.threads === undefined ? null : String(options.threads);
 
 /**
+ * Corre ffmpeg con la música y, si falla, otra vez sin ella (F9.5-T19): una pista que ffmpeg no
+ * puede leer deja el video sin música, no sin video. Devuelve si quedó sin la música pedida; si
+ * también falla sin música, el error es del video. El corte (`MEDIA_ABORTED`) no se reintenta.
+ */
+async function withMusicFallback(
+  musicPath: string | null,
+  run: (musicPath: string | null) => Promise<unknown>,
+): Promise<boolean> {
+  if (musicPath === null) {
+    await run(null);
+    return false;
+  }
+  try {
+    await run(musicPath);
+    return false;
+  } catch (error) {
+    if (isAppError(error) && error.code === "MEDIA_ABORTED") throw error;
+    await run(null);
+    return true;
+  }
+}
+
+/** La salida, marcada si quedó sin la música pedida. */
+const markedOutput = (output: VideoOutput, withoutMusic: boolean): VideoOutput =>
+  withoutMusic ? { ...output, withoutMusic: true } : output;
+
+/**
  * Lo que comparten los dos reels (el de un video y el de fotos) después de los filtros: duración,
  * codificador (`REEL_SPEC`), audio AAC y el contenedor que pide Instagram.
  */
@@ -302,31 +330,36 @@ async function encodeReel(
   // La música, o la pista silenciosa de un video sin audio (Instagram la espera), va después del
   // video y, si hay, del texto.
   const audioIndex = overlayPath === null ? 1 : 2;
-  const audioInput =
-    musicPath !== null ? musicInput(musicPath) : source.hasAudio ? [] : silentAudioInput(durationS);
-  const filter =
-    musicPath === null
-      ? reelFilter(overlayPath !== null)
-      : `${reelFilter(overlayPath !== null)};${musicAudioFilter(source.hasAudio ? "0:a:0" : null, audioIndex, durationS)}`;
-  const audioMap = musicPath !== null ? "[a]" : source.hasAudio ? "0:a:0" : `${audioIndex}:a:0`;
-  const args = [
-    ...["-hide_banner", "-loglevel", "error", "-nostdin", "-y"],
-    ...(threads === null ? [] : ["-filter_complex_threads", threads]),
-    ...["-i", path, ...(overlayPath === null ? [] : ["-i", overlayPath]), ...audioInput],
-    ...["-filter_complex", filter, "-map", "[v]", "-map", audioMap],
-    ...reelOutputArgs(durationS, threads, reelPath),
-  ];
+  const argsFor = (music: string | null) => {
+    const audioInput =
+      music !== null ? musicInput(music) : source.hasAudio ? [] : silentAudioInput(durationS);
+    const filter =
+      music === null
+        ? reelFilter(overlayPath !== null)
+        : `${reelFilter(overlayPath !== null)};${musicAudioFilter(source.hasAudio ? "0:a:0" : null, audioIndex, durationS)}`;
+    const audioMap = music !== null ? "[a]" : source.hasAudio ? "0:a:0" : `${audioIndex}:a:0`;
+    return [
+      ...["-hide_banner", "-loglevel", "error", "-nostdin", "-y"],
+      ...(threads === null ? [] : ["-filter_complex_threads", threads]),
+      ...["-i", path, ...(overlayPath === null ? [] : ["-i", overlayPath]), ...audioInput],
+      ...["-filter_complex", filter, "-map", "[v]", "-map", audioMap],
+      ...reelOutputArgs(durationS, threads, reelPath),
+    ];
+  };
+  let withoutMusic: boolean;
   try {
     // Un fallo al armar el reel (también del codificador o del disco) es MEDIA_DECODE_FAILED: la
     // corrida lo toma como aviso de ese video, sin reel, y la siguiente lo vuelve a intentar.
-    await runOrDecodeFailed(options.ffmpegPath, args, signal);
+    withoutMusic = await withMusicFallback(musicPath, (music) =>
+      runOrDecodeFailed(options.ffmpegPath, argsFor(music), signal),
+    );
   } catch (error) {
     await rm(reelPath, { force: true });
     throw error;
   } finally {
     if (overlayPath !== null) await rm(overlayPath, { force: true });
   }
-  return outputOf(reelPath, options, signal);
+  return markedOutput(await outputOf(reelPath, options, signal), withoutMusic);
 }
 
 /**
@@ -426,6 +459,7 @@ export async function encodeReelFromPhotos(
   const threads = threadsOf(options);
   const imageOptions = { ...options, ensureFfmpeg: options.ensureTools };
   let musicPath: string | null = null;
+  let withoutMusic = false;
   try {
     for (const { photo, path } of frames) {
       throwIfAborted(signal);
@@ -444,22 +478,24 @@ export async function encodeReelFromPhotos(
     const audioIndex = photos.length + (overlayPath === null ? 0 : 1);
     if (music !== null) musicPath = await writeMusic(music, options);
     const videoFilter = photoReelFilter(photos.length, overlayPath !== null);
-    const args = [
+    const argsFor = (music: string | null) => [
       ...["-hide_banner", "-loglevel", "error", "-nostdin", "-y"],
       ...(threads === null ? [] : ["-filter_complex_threads", threads]),
       ...inputs,
       ...(overlayPath === null ? [] : ["-i", overlayPath]),
-      ...(musicPath === null ? silentAudioInput(durationS) : musicInput(musicPath)),
+      ...(music === null ? silentAudioInput(durationS) : musicInput(music)),
       ...[
         "-filter_complex",
-        musicPath === null
+        music === null
           ? videoFilter
           : `${videoFilter};${musicAudioFilter(null, audioIndex, durationS)}`,
       ],
-      ...["-map", "[v]", "-map", musicPath === null ? `${audioIndex}:a:0` : "[a]"],
+      ...["-map", "[v]", "-map", music === null ? `${audioIndex}:a:0` : "[a]"],
       ...reelOutputArgs(durationS, threads, reelPath),
     ];
-    await runOrDecodeFailed(options.ffmpegPath, args, signal);
+    withoutMusic = await withMusicFallback(musicPath, (music) =>
+      runOrDecodeFailed(options.ffmpegPath, argsFor(music), signal),
+    );
   } catch (error) {
     await rm(reelPath, { force: true });
     throw error;
@@ -468,7 +504,7 @@ export async function encodeReelFromPhotos(
     if (overlayPath !== null) await rm(overlayPath, { force: true });
     if (musicPath !== null) await rm(musicPath, { force: true });
   }
-  return outputOf(reelPath, options, signal);
+  return markedOutput(await outputOf(reelPath, options, signal), withoutMusic);
 }
 
 /** Lo que dura como mínimo un video en X (la guía de medios: 0,5 s). */
@@ -558,34 +594,48 @@ async function encodeXVideo(
   const { fps, x264, audio } = X_VIDEO_SPEC;
   const size = xVideoSize(source);
   const threads = options.threads === undefined ? null : String(options.threads);
-  const streams = reducedStreams(
-    path,
-    source,
-    `fps=${fps},scale=${size.width}:${size.height},format=yuv420p,setsar=1`,
-    musicPath,
-    threads,
-  );
-  const args = [
-    ...["-hide_banner", "-loglevel", "error", "-nostdin", "-y"],
-    ...streams.args,
-    ...["-r", String(fps)],
-    ...["-c:v", "libx264", "-preset", x264.preset, "-profile:v", "high", "-crf", String(x264.crf)],
-    ...(threads === null ? [] : ["-threads", threads]),
-    ...["-maxrate", x264.maxrate, "-bufsize", x264.bufsize],
-    ...["-g", String(x264.gop), "-keyint_min", String(x264.gop), "-sc_threshold", "0"],
-    ...["-flags", "+cgop"],
-    ...(streams.withAudio
-      ? ["-c:a", "aac", "-b:a", audio.bitrate, "-ac", "2", "-ar", String(audio.sampleRate)]
-      : ["-an"]),
-    ...["-movflags", "+faststart", "-map_metadata", "-1", outPath],
-  ];
+  const argsFor = (music: string | null) => {
+    const streams = reducedStreams(
+      path,
+      source,
+      `fps=${fps},scale=${size.width}:${size.height},format=yuv420p,setsar=1`,
+      music,
+      threads,
+    );
+    return [
+      ...["-hide_banner", "-loglevel", "error", "-nostdin", "-y"],
+      ...streams.args,
+      ...["-r", String(fps)],
+      ...[
+        "-c:v",
+        "libx264",
+        "-preset",
+        x264.preset,
+        "-profile:v",
+        "high",
+        "-crf",
+        String(x264.crf),
+      ],
+      ...(threads === null ? [] : ["-threads", threads]),
+      ...["-maxrate", x264.maxrate, "-bufsize", x264.bufsize],
+      ...["-g", String(x264.gop), "-keyint_min", String(x264.gop), "-sc_threshold", "0"],
+      ...["-flags", "+cgop"],
+      ...(streams.withAudio
+        ? ["-c:a", "aac", "-b:a", audio.bitrate, "-ac", "2", "-ar", String(audio.sampleRate)]
+        : ["-an"]),
+      ...["-movflags", "+faststart", "-map_metadata", "-1", outPath],
+    ];
+  };
+  let withoutMusic: boolean;
   try {
-    await runOrDecodeFailed(options.ffmpegPath, args, signal);
+    withoutMusic = await withMusicFallback(musicPath, (music) =>
+      runOrDecodeFailed(options.ffmpegPath, argsFor(music), signal),
+    );
   } catch (error) {
     await rm(outPath, { force: true });
     throw error;
   }
-  return outputOf(outPath, options, signal);
+  return markedOutput(await outputOf(outPath, options, signal), withoutMusic);
 }
 
 /**
@@ -613,30 +663,35 @@ async function encodeDiscordVideo(
   const size = discordVideoSize(source);
   const threads = options.threads === undefined ? null : String(options.threads);
   const rate = `${kbps}k`;
-  const streams = reducedStreams(
-    path,
-    source,
-    `fps=${fps},scale=${size.width}:${size.height},format=yuv420p,setsar=1`,
-    musicPath,
-    threads,
-  );
-  const args = [
-    ...["-hide_banner", "-loglevel", "error", "-nostdin", "-y"],
-    ...streams.args,
-    ...["-r", String(fps)],
-    ...["-c:v", "libx264", "-preset", x264.preset, "-profile:v", "high"],
-    ...(threads === null ? [] : ["-threads", threads]),
-    // Bitrate medio = tope, con un búfer de `bufferS` segundos: el VBV acota el peso del video.
-    ...["-b:v", rate, "-maxrate", rate, "-bufsize", `${Math.round(kbps * bufferS)}k`],
-    ...["-g", String(x264.gop), "-keyint_min", String(x264.gop), "-sc_threshold", "0"],
-    ...["-flags", "+cgop"],
-    ...(streams.withAudio
-      ? ["-c:a", "aac", "-b:a", `${audio.kbps}k`, "-ac", "2", "-ar", String(audio.sampleRate)]
-      : ["-an"]),
-    ...["-movflags", "+faststart", "-map_metadata", "-1", outPath],
-  ];
+  const argsFor = (music: string | null) => {
+    const streams = reducedStreams(
+      path,
+      source,
+      `fps=${fps},scale=${size.width}:${size.height},format=yuv420p,setsar=1`,
+      music,
+      threads,
+    );
+    return [
+      ...["-hide_banner", "-loglevel", "error", "-nostdin", "-y"],
+      ...streams.args,
+      ...["-r", String(fps)],
+      ...["-c:v", "libx264", "-preset", x264.preset, "-profile:v", "high"],
+      ...(threads === null ? [] : ["-threads", threads]),
+      // Bitrate medio = tope, con un búfer de `bufferS` segundos: el VBV acota el peso del video.
+      ...["-b:v", rate, "-maxrate", rate, "-bufsize", `${Math.round(kbps * bufferS)}k`],
+      ...["-g", String(x264.gop), "-keyint_min", String(x264.gop), "-sc_threshold", "0"],
+      ...["-flags", "+cgop"],
+      ...(streams.withAudio
+        ? ["-c:a", "aac", "-b:a", `${audio.kbps}k`, "-ac", "2", "-ar", String(audio.sampleRate)]
+        : ["-an"]),
+      ...["-movflags", "+faststart", "-map_metadata", "-1", outPath],
+    ];
+  };
+  let withoutMusic: boolean;
   try {
-    await runOrDecodeFailed(options.ffmpegPath, args, signal);
+    withoutMusic = await withMusicFallback(musicPath, (music) =>
+      runOrDecodeFailed(options.ffmpegPath, argsFor(music), signal),
+    );
   } catch (error) {
     await rm(outPath, { force: true });
     throw error;
@@ -646,7 +701,7 @@ async function encodeDiscordVideo(
     await rm(outPath, { force: true });
     return null;
   }
-  return outputOf(outPath, options, signal);
+  return markedOutput(await outputOf(outPath, options, signal), withoutMusic);
 }
 
 /**

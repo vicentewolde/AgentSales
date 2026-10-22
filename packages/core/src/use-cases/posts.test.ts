@@ -231,7 +231,11 @@ describe("updatePost · música (F9.5-T19)", () => {
     const s = await setup();
     const queue = createInMemoryJobQueue();
     const deps = { ...s.deps, queue };
-    const post = await createPost(deps, ADMIN, { brokerId: s.mine.id, topic: "Con video" });
+    const post = await createPost(deps, ADMIN, {
+      brokerId: s.mine.id,
+      topic: "Con video",
+      kind: "video",
+    });
     expect(post.musicTrackId).toBeNull();
 
     const chosen = await updatePost(deps, brokerUser(s.mine.id), post.id, {
@@ -255,6 +259,29 @@ describe("updatePost · música (F9.5-T19)", () => {
       updatePost(deps, ADMIN, post.id, { musicTrackId: "no-existe" }),
     ).rejects.toMatchObject({ code: "MUSIC_TRACK_INVALID" });
     expect(queue.jobs).toHaveLength(2);
+  });
+
+  it("un post que no es de video no lleva música (POST_INVALID, con el mensaje); quitarla sí", async () => {
+    const s = await setup();
+    const queue = createInMemoryJobQueue();
+    const deps = { ...s.deps, queue };
+    const post = await createPost(deps, ADMIN, { brokerId: s.mine.id, topic: "Solo texto" });
+    await expect(
+      updatePost(deps, ADMIN, post.id, { musicTrackId: "calm-piano" }),
+    ).rejects.toMatchObject({
+      code: "POST_INVALID",
+      message: expect.stringContaining("La música es solo para los posts de video"),
+    });
+    expect(
+      (await updatePost(deps, ADMIN, post.id, { musicTrackId: null })).musicTrackId,
+    ).toBeNull();
+    // Pasarlo a video en el mismo cambio, sí.
+    const video = await updatePost(deps, ADMIN, post.id, {
+      kind: "video",
+      musicTrackId: "calm-piano",
+    });
+    expect(video).toMatchObject({ kind: "video", musicTrackId: "calm-piano" });
+    expect(queue.jobs).toHaveLength(1);
   });
 });
 

@@ -408,6 +408,7 @@ describe("panel: detalle de un post", () => {
     cleanup();
 
     const s = await setup();
+    await s.deps.posts.update(s.post.id, { kind: "video" });
     await s.media.create({
       listingId: null,
       postId: s.post.id,

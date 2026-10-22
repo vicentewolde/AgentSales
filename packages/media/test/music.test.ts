@@ -205,6 +205,79 @@ describe("processVideo con música (F9.5-T19)", () => {
   }, 90_000);
 });
 
+describe("X y Discord con voz y música (F9.5-T19)", () => {
+  it("la voz al frente y la música detrás, más baja, con la duración del video", async () => {
+    const result = await (await processor()).processVideo(video("conVoz"), {
+      reel: null,
+      xVideo: true,
+      discordVideo: { maxBytes: 2_000_000 },
+      music,
+    });
+    for (const output of [result.xVideo, result.discordVideo]) {
+      if (output === null) throw new Error("falta un video");
+      expect(output.withoutMusic).toBeUndefined();
+      const path = await save(output.open);
+      const { video: videoS, audio: audioS } = durations(path);
+      expect(Math.abs(audioS - videoS)).toBeLessThan(0.15);
+      const voice = bandLevel(path, VOICE_HZ, 2, 1.5);
+      const musicMid = bandLevel(path, MUSIC_HZ, 2, 1.5);
+      expect(voice).toBeGreaterThan(-35);
+      expect(voice - musicMid).toBeGreaterThan(12);
+      expect(musicMid).toBeGreaterThan(-75);
+    }
+  }, 90_000);
+});
+
+describe("una pista que ffmpeg no puede leer (F9.5-T19)", () => {
+  it("el reel, X, Discord y el reel con fotos salen igual, sin música y marcados", async () => {
+    // La cabecera de un MP3 y después basura: pasa por MP3, pero ffmpeg no la decodifica.
+    const broken = {
+      bytes: Uint8Array.from([
+        0x49,
+        0x44,
+        0x33,
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        ...Array.from({ length: 4000 }, (_, index) => index % 7),
+      ]),
+    };
+    const work = await mkdtemp(join(dir, "intento-"));
+    const result = await (await processor(work)).processVideo(video("conVoz"), {
+      reel: { overlayPng: null },
+      xVideo: true,
+      discordVideo: { maxBytes: 2_000_000 },
+      music: broken,
+    });
+    for (const output of [result.reel, result.xVideo, result.discordVideo]) {
+      if (output === null) throw new Error("falta un video");
+      expect(output.withoutMusic).toBe(true);
+      const path = await save(output.open);
+      // El sonido propio del video sigue ahí.
+      expect(bandLevel(path, VOICE_HZ, 2, 1.5)).toBeGreaterThan(-35);
+    }
+    const photos = await Promise.all([
+      syntheticPhoto(900, 1600),
+      syntheticPhoto(1600, 900),
+      syntheticPhoto(1200, 1200),
+    ]);
+    const reel = await (await processor(work)).processPhotoReel(
+      photos.map((bytes) => ({ mime: "image/jpeg", read: async () => bytes })),
+      { overlayPng: null, music: broken },
+    );
+    expect(reel.withoutMusic).toBe(true);
+    const path = await save(reel.open);
+    expect(streams(path).find((stream) => stream.codec_type === "audio")).toMatchObject({
+      codec_name: "aac",
+    });
+    expect((await readdir(work)).filter((name) => name.includes("musica"))).toEqual([]);
+  }, 120_000);
+});
+
 describe("processPhotoReel con música (F9.5-T19)", () => {
   it("el reel con fotos lleva la música sola en vez del silencio, del largo del reel", async () => {
     const photos = await Promise.all([

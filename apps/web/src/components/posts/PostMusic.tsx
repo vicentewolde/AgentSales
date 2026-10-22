@@ -3,7 +3,8 @@ import { useUpdatePost } from "../../queries/posts.js";
 import { MusicPicker } from "../music/MusicPicker.js";
 
 /**
- * «Música del reel» de un post (F9.5-T19): solo si tiene un video (o ya eligió una pista). Cambiarla
+ * «Música del reel» de un post (F9.5-T19): solo si es de video y tiene un video (o ya eligió una
+ * pista, para poder quitarla; la API rechaza música en un post que no es de video). Cambiarla
  * guarda con `PATCH /posts/:id` y el worker rehace sus videos (reel, X y Discord) con la pista.
  */
 export function PostMusic({
@@ -16,7 +17,12 @@ export function PostMusic({
   lockReason: string | null;
 }) {
   const update = useUpdatePost(post.id);
-  if (post.musicTrackId === null && !media.some((item) => item.kind === "video")) return null;
+  // Solo un post de video (con un video subido) la elige; si ya tiene una, se ve para quitarla.
+  if (
+    post.musicTrackId === null &&
+    (post.kind !== "video" || !media.some((m) => m.kind === "video"))
+  )
+    return null;
   const pending = update.isPending && update.variables?.musicTrackId !== undefined;
   return (
     <MusicPicker

@@ -52,6 +52,8 @@ async function setup(
     broker?: Partial<Broker>;
     ownName?: LLMProvider["name"];
     apiLlm?: ScriptedLlmResponse[] | null;
+    /** F9.5-T19: ffmpeg no puede leer la pista de música. */
+    musicFails?: boolean;
   } = {},
 ) {
   const media = createInMemoryMediaRepository();
@@ -128,6 +130,7 @@ async function setup(
       kind === "image"
         ? { width: options.photoWidth ?? 2000, height: 1500, durationS: null }
         : { width: 1920, height: 1080, durationS: options.videoDurationS ?? 30 },
+    ...(options.musicFails === undefined ? {} : { musicFails: options.musicFails }),
   });
   const deps: PrepareContentDeps = {
     contentRuns: contentRepos.contentRuns,
@@ -601,6 +604,28 @@ describe("prepareContent · música del reel (F9.5-T19)", () => {
       reel: "created",
       warnings: [],
     });
+  });
+
+  it("si ffmpeg no puede mezclar la pista, el reel sale sin música, con la clave sin música y un aviso", async () => {
+    for (const originals of [undefined, PHOTOS]) {
+      const t = await setup({
+        musicFails: true,
+        ...(originals === undefined ? {} : { originals }),
+      });
+      await upload(t, "calm-piano", "PIANO-DAÑADO");
+      await t.prepare(await t.newRun(false));
+      const plain = await reelOf(t);
+      await t.listings.setMusicTrack(t.listingId, "calm-piano");
+      const runId = await t.newRun(false);
+      await t.prepare(runId);
+      const run = await t.contentRepos.contentRuns.get(runId);
+      expect(run?.status).toBe("succeeded");
+      expect(run?.report?.warnings).toEqual([
+        expect.stringContaining("no se pudo mezclar (el archivo no se lee)"),
+      ]);
+      // La misma clave que sin música: la próxima corrida lo vuelve a intentar con la pista.
+      expect((await reelOf(t))?.storagePath).toBe(plain?.storagePath);
+    }
   });
 
   it("una pista que ya no está en el catálogo: sin música y con aviso", async () => {

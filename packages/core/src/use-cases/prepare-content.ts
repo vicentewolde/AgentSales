@@ -520,6 +520,21 @@ function reelText(state: Run, music: ReelMusic | null) {
   return { overlay, textKey };
 }
 
+/**
+ * ffmpeg no pudo mezclar la música (la pista no se lee) y el reel salió sin ella (F9.5-T19): se
+ * guarda con la clave sin música (la siguiente corrida lo intenta de nuevo) y se avisa.
+ */
+function musicDropped(
+  state: Run,
+  music: ReelMusic | null,
+  pathOf: (textKey: string) => string,
+): string {
+  state.report.warnings.push(
+    `La música «${music?.track.title ?? ""}» no se pudo mezclar (el archivo no se lee): el reel quedó sin música. Vuelve a subir la pista con pnpm music:upload`,
+  );
+  return pathOf(reelText(state, null).textKey);
+}
+
 /** El PNG transparente del texto que va encima del reel. */
 async function reelOverlayPng(state: Run, overlay: ReelOverlayData): Promise<Uint8Array> {
   const { deps, signal } = state;
@@ -606,7 +621,14 @@ async function videoReel(
       await dropDerivative(state, currentReel);
       return;
     }
-    await saveReel(state, storagePath, first.id, reel);
+    await saveReel(
+      state,
+      reel.withoutMusic === true
+        ? musicDropped(state, music, (key) => reelPath(ids, first.checksum, key))
+        : storagePath,
+      first.id,
+      reel,
+    );
     state.report.reel = "created";
   } catch (error) {
     // El video no se pudo armar como reel: aviso de ese video; la siguiente corrida lo reintenta.
@@ -652,7 +674,14 @@ async function photoReel(
       { overlayPng, ...(music === null ? {} : { music: await music.input() }) },
       signal,
     );
-    await saveReel(state, storagePath, first.id, reel);
+    await saveReel(
+      state,
+      reel.withoutMusic === true
+        ? musicDropped(state, music, (key) => photoReelPath(ids, photosKey, key))
+        : storagePath,
+      first.id,
+      reel,
+    );
     state.report.reel = "created";
   } catch (error) {
     // Las fotos no se pudieron armar como reel: un aviso; la siguiente corrida lo reintenta.

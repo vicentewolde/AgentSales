@@ -26,6 +26,11 @@ export type VideoOutput = {
   height: number;
   durationS: number;
   open(): AsyncIterable<Uint8Array>;
+  /**
+   * Se pidió música (F9.5-T19) y ffmpeg no pudo mezclarla (la pista no se lee): el video salió
+   * igual, sin música. Quien lo guarda lo hace con la clave sin música y avisa.
+   */
+  withoutMusic?: boolean;
 };
 
 export type ProcessedImage = {
