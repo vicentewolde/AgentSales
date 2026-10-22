@@ -383,8 +383,18 @@ describe("loadEnv", () => {
   });
 
   describe("El worker se apaga solo (F9.5-T24)", () => {
-    it("por defecto (o vacía) nunca se apaga: 0", () => {
+    it("por defecto (o vacía) nunca se apaga: 0; mira 70 min adelante", () => {
       expect(loadEnv(validSource).WORKER_IDLE_EXIT_MINUTES).toBe(0);
+      expect(loadEnv(validSource).WORKER_STAY_AHEAD_MINUTES).toBe(70);
+      expect(
+        loadEnv({ ...validSource, WORKER_STAY_AHEAD_MINUTES: "90" }).WORKER_STAY_AHEAD_MINUTES,
+      ).toBe(90);
+      expect(envErrorOf({ ...validSource, WORKER_STAY_AHEAD_MINUTES: "0" }).issues).toEqual([
+        {
+          variable: "WORKER_STAY_AHEAD_MINUTES",
+          message: "debe ser un número entero de minutos entre 1 y 1440",
+        },
+      ]);
       expect(
         loadEnv({ ...validSource, WORKER_IDLE_EXIT_MINUTES: "" }).WORKER_IDLE_EXIT_MINUTES,
       ).toBe(0);

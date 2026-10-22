@@ -28,9 +28,9 @@ export const AGENDA_ACTION_TEXT: Readonly<Record<AgendaAction, string>> = {
   resolve: "Revisa la red y di si salió o no desde el post, en Contenido",
   confirm: "Publícala a mano en la red y confirma con el enlace desde el post, en Contenido",
   reconnect: "Vuelve a conectar la cuenta en Cuentas",
-  // F9.5-T24 (ADR-0037): el worker se enciende solo en cada ventana del horario.
+  // F9.5-T24 (ADR-0037): el horario enciende el worker cada hora a los :50, de día.
   start_worker:
-    "Sale cuando se encienda el worker, en la próxima ventana del horario. Para que salga ya: en el servidor, GitHub → Actions → «Encender el worker» → Run workflow; en el Mac, pnpm dev",
+    "Sale cuando se encienda el worker, en la próxima revisión del horario (cada hora a los :50, de 06:50 a 22:50). Para que salga ya: en el servidor, GitHub → Actions → «Encender el worker» → Run workflow; en el Mac, pnpm dev",
   backup:
     "En el Mac, corre pnpm db:backup en tu terminal; en el servidor lo hace el worker al encenderse y a las 13:00 (el error está en sus logs)",
   none: "",

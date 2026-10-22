@@ -3,7 +3,7 @@ import {
   AGENDA_KIND_TEXT,
   AGENDA_KINDS,
   formatChileTime,
-  nextWorkerWindowText,
+  nextWorkerCheckText,
   PLATFORM_TEXT,
   publicationFormatText,
 } from "@agentsales/core";
@@ -46,7 +46,7 @@ function publicationCommands(item: Item): string[] | null {
 }
 
 /**
- * Encender el worker (F9.5-T24, ADR-0037): en el servidor lo enciende el horario en cada ventana; para
+ * Encender el worker (F9.5-T24, ADR-0037): en el servidor lo enciende el horario en su revisión de cada hora; para
  * que salga ya, el workflow a mano. En el Mac, `pnpm dev`.
  */
 export const START_WORKER_COMMANDS = [
@@ -169,12 +169,12 @@ export function renderAgenda(items: readonly Item[], c: Colors, now: Date = new 
   for (const kind of AGENDA_KINDS) {
     const group = items.filter((item) => item.kind === kind);
     if (group.length === 0) continue;
-    // El worker apagado (F9.5-T24): lo que espera sale en la próxima ventana del horario.
+    // El worker apagado (F9.5-T24): lo que espera sale en la próxima revisión del horario.
     const title = `${AGENDA_KIND_TEXT[kind] ?? kind} (${group.length})`;
     lines.push(
       "",
       kind === "worker_off"
-        ? `${c.yellow(c.bold(title))} · sale cuando se encienda, en la próxima ventana: ${nextWorkerWindowText(now)}`
+        ? `${c.yellow(c.bold(title))} · sale cuando se encienda, en la próxima revisión: ${nextWorkerCheckText(now)}`
         : c.bold(title),
     );
     for (const item of group) {

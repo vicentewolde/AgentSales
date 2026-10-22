@@ -16,7 +16,7 @@ import { autoPublishApplies, autoPublishContents } from "../use-cases/auto-publi
 import { canRelist, relistedIds } from "../use-cases/relist-publication.js";
 import { STALE_PUBLISHING_MS } from "../use-cases/watch-publications.js";
 import type { WorkerStatus } from "../worker-heartbeat.js";
-import { nextWorkerWindow } from "../worker-schedule.js";
+import { nextWorkerCheck } from "../worker-schedule.js";
 import { isManualTask } from "./manual-tasks.js";
 import { accountTokenExpiry } from "./token-expiry.js";
 
@@ -26,8 +26,8 @@ import { accountTokenExpiry } from "./token-expiry.js";
 /**
  * Las clases de ítem, en el orden en que se muestran:
  * - `worker_off`: el worker está apagado y una programada ya venció (y sale en cuanto se encienda) o
- *   vence antes de la próxima ventana del horario (F9.5-T24, ADR-0037): hay que encenderlo o esperar
- *   la ventana; reemplaza a su `upcoming`. Solo con el estado del worker (`AgendaInput.worker`);
+ *   vence antes de la próxima revisión del horario (F9.5-T24, ADR-0037): sale cuando se encienda, o
+ *   hay que encenderlo ya; reemplaza a su `upcoming`. Solo con el estado del worker (`AgendaInput.worker`);
  * - `overdue`: programada que no salió (más de 12 h de atraso);
  * - `your_turn`: recordatorio de Marketplace con la hora vencida ("te toca");
  * - `outcome_unknown`: el intento se cortó después de enviar y no se sabe si salió (F9, ADR-0029
@@ -84,7 +84,7 @@ export const AGENDA_ACTIONS = [
   "confirm",
   /** `token_expiring`: volver a conectar la cuenta. */
   "reconnect",
-  /** `worker_off`: encender el worker (o esperar la próxima ventana del horario). */
+  /** `worker_off`: encender el worker (o esperar la próxima revisión del horario). */
   "start_worker",
   "backup",
   "none",
@@ -223,9 +223,9 @@ export function agendaItems(input: AgendaInput): AgendaItem[] {
   const listings = new Map(input.listings.map((listing) => [listing.id, listing]));
   const posts = new Map((input.posts ?? []).map((post) => [post.id, post]));
   const relisted = relistedIds(input.publications);
-  // Con el worker apagado, lo que vence antes de su próxima ventana la espera (ADR-0037).
+  // Con el worker apagado, lo que vence antes de la próxima revisión del horario la espera (ADR-0037).
   const workerOff: WorkerOff | null =
-    input.worker?.running === false ? { nextWindow: nextWorkerWindow(now) } : null;
+    input.worker?.running === false ? { nextCheck: nextWorkerCheck(now) } : null;
   const items: AgendaItem[] = [];
   for (const publication of input.publications) {
     const owner = ownerOf(publication, listings, posts);
@@ -362,13 +362,13 @@ function manualReadyAt(publication: Publication): Date {
   return parsed.success ? new Date(parsed.data.manual.readyAt) : publication.updatedAt;
 }
 
-/** El worker apagado y la próxima ventana del horario (`null` sin ventanas). */
-type WorkerOff = { nextWindow: Date | null };
+/** El worker apagado y la próxima revisión del horario (`null` si no hay ninguna). */
+type WorkerOff = { nextCheck: Date | null };
 
 /**
  * Si una programada espera al worker apagado (`worker_off`): no es un recordatorio a mano
  * (Marketplace) y ya venció sin pasar las 12 h (sale en cuanto se encienda), o vence antes de la
- * próxima ventana. Una atrasada sigue como `overdue`: ya no sale sola.
+ * próxima revisión. Una atrasada sigue como `overdue`: ya no sale sola.
  */
 function waitsForWorker(
   publication: Publication,
@@ -379,8 +379,8 @@ function waitsForWorker(
   if (state === "due") return true;
   return (
     state === "upcoming" &&
-    workerOff.nextWindow !== null &&
-    publication.scheduledAt.getTime() < workerOff.nextWindow.getTime()
+    workerOff.nextCheck !== null &&
+    publication.scheduledAt.getTime() < workerOff.nextCheck.getTime()
   );
 }
 

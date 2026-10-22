@@ -10,7 +10,7 @@ Guía paso a paso para poner AgentSales en internet, en `https://agentsales.agen
 
 - **Una app de Fly** (`agentsales`, en São Paulo, junto a Neon) con **dos procesos** de la misma imagen:
   - **`api`**: el panel y la API. Se apaga sola cuando nadie la usa y se enciende con el primer pedido (tarda unos segundos).
-  - **`worker`**: prepara, publica y corre lo programado. Hoy **no se apaga solo**: lo enciendes y lo apagas tú (paso 8). Con el **horario activado** (paso 8, "El worker con horario", F9.5-T24, ADR-0037) se enciende solo unos minutos antes de cada ventana (09:00 y 17:00 de Chile) y se apaga solo cuando no le queda nada que hacer.
+  - **`worker`**: prepara, publica y corre lo programado. Hoy **no se apaga solo**: lo enciendes y lo apagas tú (paso 8). Con el **horario activado** (paso 8, "El worker con horario", F9.5-T24, ADR-0037) lo enciende una revisión cada hora (a los :50, de 06:50 a 22:50 hora de Chile) y se apaga solo cuando no le queda nada que hacer ni nada que venza antes de la próxima revisión.
 - **Modo demo (D1):** las máquinas se encienden los días de demo y se apagan después. Cuesta unos US$ 0,56 por día encendido, más centavos por el disco de las máquinas apagadas. Con el worker apagado, Neon se duerme y no gasta su cupo gratis.
 - **Simulación (D9):** el servidor corre con `PUBLISH_MODE=dry-run` (en `fly.toml`). Pasarlo a `live` es una decisión tuya, que pides en el chat.
 - **Las migraciones** se aplican solas en cada despliegue, antes de reemplazar nada. Si fallan, el despliegue se detiene y queda la versión anterior.
@@ -182,14 +182,15 @@ La API se apaga sola sin tráfico. **El worker hay que apagarlo a mano al termin
 
 ### El worker con horario (F9.5-T24, ADR-0037)
 
-En vez de encenderlo y apagarlo tú, el worker puede **encenderse solo** unos minutos antes de cada ventana de publicación y **apagarse solo** cuando no tiene nada que hacer. Pagas solo el rato que está encendido y Neon se duerme entre ventanas.
+En vez de encenderlo y apagarlo tú, el worker puede **encenderse solo** cada hora y **apagarse solo** cuando no tiene nada que hacer ni nada por vencer. Pagas solo el rato que está encendido y Neon se duerme mientras está apagado.
 
 **Cómo funciona:**
-- **Las ventanas** son las **09:00 y 17:00 de Chile**. El flujo `.github/workflows/worker-schedule.yml` ("Encender el worker") corre 10 minutos antes de cada una y enciende la máquina del worker. GitHub puede atrasar un cron varios minutos (nunca lo adelanta); el flujo enciende igual si llega hasta 45 minutos tarde.
-- **El worker se apaga solo** cuando lleva `WORKER_IDLE_EXIT_MINUTES` minutos (10) sin jobs activos y sin publicaciones programadas que venzan dentro de ese margen: cierra limpio, como con `fly machine stop` (espera los trabajos en curso), y la máquina queda detenida (`[[restart]]` con `on-failure`: una salida sin error no la reinicia). Nunca se apaga con un trabajo en curso ni con algo por vencer en los próximos 10 minutos.
-- **Lo programado entre ventanas** (por ejemplo, a las 11:00) sale cuando el worker se vuelve a encender, en la siguiente ventana. La agenda lo muestra en **"El worker está apagado y hay algo por vencer"** con cómo encenderlo ya, y `doctor` dice la próxima ventana. Ojo: lo que pasa **más de 12 h** sin salir queda **atrasado** y ya no sale solo (D2 de F6): con las ventanas de las 17:00 y las 09:00, no programes entre las 17:10 y las 21:00 si no vas a encenderlo a mano.
-- **Preparar textos y fotos, importar y pedir un plan** también necesitan el worker: con el horario, esperan a la próxima ventana o a que lo enciendas a mano (abajo).
-- **Cambiar las horas:** pídele a Claude el cambio; van en el flujo (`WORKER_WINDOWS` y sus `cron`) y en `packages/core/src/worker-schedule.ts`, y un test revisa que calcen.
+- **La revisión de cada hora:** el flujo `.github/workflows/worker-schedule.yml` ("Encender el worker") corre **cada hora a los :50** y enciende la máquina del worker si está apagada, solo **dentro de la franja de 07:00 a 23:00 de Chile** (la primera revisión es la de las 06:50 y la última la de las 22:50): de noche no lo despierta. GitHub puede atrasar un cron varios minutos (nunca lo adelanta). El repositorio es público: los minutos de Actions no se cobran.
+- **El worker se apaga solo** cuando lleva `WORKER_IDLE_EXIT_MINUTES` minutos seguidos (10) sin jobs activos, sin un formulario de Marketplace abierto y sin publicaciones programadas que venzan en los próximos `WORKER_STAY_AHEAD_MINUTES` (70 por defecto: la próxima revisión llega en 60 o menos, más el atraso de GitHub). Cierra limpio, como con `fly machine stop` (espera los trabajos en curso), y la máquina queda detenida (`[[restart]]` con `on-failure`: una salida sin error no la reinicia). Lo vencido hace menos de 12 h también lo mantiene encendido, para que salga.
+- **Así, lo programado de día sale a su hora:** por ejemplo, un post a las 10:00 lo ve la revisión de las 08:50 o la de las 09:50, que deja el worker encendido hasta publicarlo y se apaga unos 10 minutos después.
+- **Lo programado de madrugada** (después de las 00:00, cuando ya no lo ve la revisión de las 22:50) **sale a las 06:50**, con la primera revisión de la mañana. La agenda lo muestra en **"El worker está apagado y hay algo por vencer"** con cómo encenderlo ya, y `doctor` dice la próxima revisión. Lo que pasa **más de 12 h** sin salir queda atrasado y no sale solo (D2 de F6): con la franja de 07:00 a 23:00 eso no pasa.
+- **Preparar textos y fotos, importar y pedir un plan** también necesitan el worker: con el horario, esperan a la próxima revisión (como mucho una hora de día) o a que lo enciendas a mano (abajo).
+- **Cambiar la franja o el minuto:** pídele a Claude el cambio; van en el flujo (`ACTIVE_FROM`, `ACTIVE_UNTIL`, `LEAD_MINUTES` y el `cron`) y en `packages/core/src/worker-schedule.ts`, y un test revisa que calcen. `WORKER_STAY_AHEAD_MINUTES` (en `fly.toml` o con `fly secrets`, 1 a 1440) no debería bajar de 70: con menos, lo que vence justo antes de la revisión siguiente espera a esa revisión.
 
 **Activarlo (lo haces tú, una vez):**
 
@@ -209,7 +210,7 @@ En vez de encenderlo y apagarlo tú, el worker puede **encenderse solo** unos mi
 
 **Sin el secreto, el flujo no hace nada:** cada corrida programada termina en verde con el aviso "Falta el secreto FLY_WORKER_START_TOKEN" (el horario queda escrito, pero apagado). Y sin el paso 5, el worker nunca se apaga solo (como hoy).
 
-**Encender ya** (para preparar o publicar fuera de ventana): **Actions** → **Encender el worker** → **Run workflow**, o `fly machine start <id_worker> -a agentsales` (arriba). Con el paso 5 hecho, se vuelve a apagar solo; no hace falta apagarlo.
+**Encender ya** (para preparar o publicar sin esperar la revisión, o de noche): **Actions** → **Encender el worker** → **Run workflow**, o `fly machine start <id_worker> -a agentsales` (arriba). Con el paso 5 hecho, se vuelve a apagar solo; no hace falta apagarlo.
 
 **Para una demo** con el horario activado: enciéndelo a mano al empezar. Si la demo tiene pausas de más de 10 minutos sin nada que hacer, el worker se apaga; vuelve a encenderlo o, para ese día, sube `WORKER_IDLE_EXIT_MINUTES` (`fly machine update <id_worker> -a agentsales --env WORKER_IDLE_EXIT_MINUTES=120 --yes`; un despliegue lo devuelve al valor de `fly.toml`).
 
@@ -499,8 +500,8 @@ Sin `-f instance=…` (o con **Instancia** en `principal`), el flujo despliega l
 | El despliegue falla en `release_command` | Falló una migración: `fly logs -a agentsales` muestra el error. La versión anterior sigue corriendo. Pásale el error a Claude (sin secretos) |
 | La API no arranca y los logs dicen `PUBLIC_URL`, `API_HOST`, `CLIENT_IP_HEADER`, `LLM_PROVIDER` (debe ser `anthropic-api`), `BACKUP_TARGET` (debe ser `r2`, con las credenciales del bucket de respaldos), `BROWSER_PROFILES_DIR` (no debe estar) o un secreto que falta | Falta un secreto (paso 2) o cambió `fly.toml`. `fly secrets list -a agentsales` muestra los nombres |
 | `https://agentsales.agentpey.com` no abre | `fly certs check agentsales.agentpey.com -a agentsales` (paso 5) y que la máquina `api` exista (`fly status`) |
-| `doctor` dice que el worker está apagado | Si es día de demo, enciéndelo (paso 8). Con el horario activado es lo normal entre ventanas: `doctor` dice la próxima |
-| La agenda dice "El worker está apagado y hay algo por vencer" | Sale en la próxima ventana del horario; para que salga ya, **Actions** → **Encender el worker** → **Run workflow** (paso 8, "El worker con horario") |
+| `doctor` dice que el worker está apagado | Si es día de demo, enciéndelo (paso 8). Con el horario activado es lo normal sin nada por vencer: `doctor` dice la próxima revisión |
+| La agenda dice "El worker está apagado y hay algo por vencer" | Sale en la próxima revisión del horario; para que salga ya, **Actions** → **Encender el worker** → **Run workflow** (paso 8, "El worker con horario") |
 | Una corrida de "Encender el worker" dice "Falta el secreto FLY_WORKER_START_TOKEN" | El horario no está activado: paso 8, "El worker con horario", puntos 1 a 3 |
 | `doctor` dice que el respaldo está atrasado o que falló | Con el worker encendido, respalda al arrancar (si el último tiene más de 20 h) y cada día a las 13:00. El código del error está en los logs del worker (paso 7). `STORAGE_ERROR`: el token o el bucket de respaldos no calzan (paso 2); `STORAGE_UNAVAILABLE`: R2 no respondió y se reintenta a los 5 min |
 | Se agotó el cupo de Neon | Quedó el worker encendido. Neon no borra datos: vuelve el mes siguiente o pasa a Launch (paso 11) |

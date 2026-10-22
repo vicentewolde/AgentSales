@@ -6,10 +6,12 @@ import {
 } from "@agentsales/core";
 import { QUEUE_SCHEMA } from "@agentsales/queue";
 
-// El worker se apaga solo (F9.5-T24, ADR-0037): cuando lleva `WORKER_IDLE_EXIT_MINUTES` sin nada
-// que hacer, cierra limpio (el mismo apagado de SIGTERM: espera los jobs, cierra pg-boss y la base)
-// y sale con 0; en Fly, la máquina queda detenida (`[[restart]] policy = "on-failure"`) hasta que
-// el workflow `worker-schedule.yml` la vuelve a encender en la próxima ventana del horario.
+// El worker se apaga solo (F9.5-T24, ADR-0037): cuando lleva `WORKER_IDLE_EXIT_MINUTES` seguidos sin
+// nada que hacer ni nada programado que venza en los próximos `WORKER_STAY_AHEAD_MINUTES`, cierra
+// limpio (el mismo apagado de SIGTERM: espera los jobs, cierra pg-boss y la base) y sale con 0. En
+// Fly la máquina queda detenida (`[[restart]] policy = "on-failure"`) hasta que el workflow
+// `worker-schedule.yml` la vuelve a encender en su próxima revisión (cada hora a los :50, de día):
+// mirar 70 min adelante cubre lo que vence antes de esa revisión y su atraso en GitHub.
 
 /** Cada cuánto se revisa si queda algo que hacer. */
 export const IDLE_CHECK_INTERVAL_MS = 60_000;
@@ -85,6 +87,8 @@ export async function countPendingJobs(
 export type IdleExitDeps = {
   /** `WORKER_IDLE_EXIT_MINUTES`; 0 (o menos) no arranca nada: el worker nunca se apaga solo. */
   idleMinutes: number;
+  /** `WORKER_STAY_AHEAD_MINUTES`: cuánto mira hacia adelante la revisión (lo que vence, los jobs). */
+  stayAheadMinutes: number;
   probe: (marginMs: number) => Promise<IdleReason | null>;
   /** El apagado limpio (el mismo de SIGTERM). Se llama una sola vez. */
   onIdle: () => void;
@@ -96,8 +100,8 @@ export type IdleExitDeps = {
 export type IdleExit = { stop(): void };
 
 /**
- * Revisa cada minuto si queda algo que hacer (con margen `idleMinutes`): cada vez que hay algo, el
- * reloj vuelve a cero; cuando pasan `idleMinutes` seguidos sin nada, llama a `onIdle`. Si la
+ * Revisa cada minuto si queda algo que hacer (mirando `stayAheadMinutes` adelante): cada vez que hay
+ * algo, el reloj vuelve a cero; cuando pasan `idleMinutes` seguidos sin nada, llama a `onIdle`. Si la
  * revisión falla (la base no respondió), no se sabe: cuenta como ocupado y no se apaga.
  * `null` si `idleMinutes` es 0: no se revisa nada.
  */
@@ -105,6 +109,7 @@ export function startIdleExit(deps: IdleExitDeps): IdleExit | null {
   if (deps.idleMinutes <= 0) return null;
   const now = deps.now ?? (() => Date.now());
   const idleMs = deps.idleMinutes * 60_000;
+  const aheadMs = deps.stayAheadMinutes * 60_000;
   let idleSince = now();
   let checking = false;
   let stopped = false;
@@ -115,7 +120,7 @@ export function startIdleExit(deps: IdleExitDeps): IdleExit | null {
     try {
       let reason: IdleReason | "unknown" | null;
       try {
-        reason = await deps.probe(idleMs);
+        reason = await deps.probe(aheadMs);
       } catch (error) {
         reason = "unknown";
         deps.logger.warn(
@@ -135,8 +140,8 @@ export function startIdleExit(deps: IdleExitDeps): IdleExit | null {
         stopped = true;
         clearInterval(timer);
         deps.logger.info(
-          { idleMinutes: deps.idleMinutes },
-          "sin trabajo ni nada por vencer: el worker se apaga solo hasta la próxima ventana",
+          { idleMinutes: deps.idleMinutes, stayAheadMinutes: deps.stayAheadMinutes },
+          "sin trabajo ni nada por vencer: el worker se apaga solo hasta la próxima revisión del horario",
         );
         deps.onIdle();
       }

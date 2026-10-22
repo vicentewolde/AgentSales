@@ -226,13 +226,13 @@ describe("agendaItems", () => {
 });
 
 describe("agendaItems con el worker apagado (F9.5-T24)", () => {
-  // NOW es 2026-10-15 12:00 en Chile: la próxima ventana es a las 17:00 (en 5 h).
+  // NOW es 2026-10-15 12:00 en Chile: la próxima revisión del horario es a las 12:50.
   const scheduled = (at: Date, extra: Partial<Publication> = {}) =>
     publication({ status: "scheduled", scheduledAt: at, ...extra });
 
-  it("el worker está apagado y hay algo por vencer: la vencida y la que vence antes de la próxima ventana, con encenderlo", () => {
+  it("el worker está apagado y hay algo por vencer: la vencida y la que vence antes de la próxima revisión, con encenderlo", () => {
     const due = scheduled(minutes(-5));
-    const beforeWindow = scheduled(minutes(120));
+    const beforeWindow = scheduled(minutes(30));
     const items = run([due, beforeWindow], { worker: { running: false } });
 
     expect(items.map((item) => [item.kind, item.action, item.publicationId])).toEqual([
@@ -255,10 +255,10 @@ describe("agendaItems con el worker apagado (F9.5-T24)", () => {
     expect(items.map((item) => [item.kind, item.postId])).toEqual([["worker_off", "p1"]]);
   });
 
-  it("lo que vence después de la próxima ventana sigue como próxima; una atrasada, atrasada; Marketplace, te toca", () => {
+  it("lo que vence después de la próxima revisión sigue como próxima; una atrasada, atrasada; Marketplace, te toca", () => {
     const items = run(
       [
-        scheduled(minutes(6 * 60)), // 18:00, después de la ventana de las 17:00
+        scheduled(minutes(60)), // 13:00, después de la revisión de las 12:50: esa lo enciende
         scheduled(minutes(-13 * 60)), // atrasada: ya no sale sola
         scheduled(minutes(-30), { platform: "fb_marketplace" }), // recordatorio: lo aprieta el operador
         scheduled(minutes(60), { platform: "fb_marketplace" }),
@@ -274,8 +274,18 @@ describe("agendaItems con el worker apagado (F9.5-T24)", () => {
     ]);
   });
 
+  it("de noche, lo de la madrugada espera a la primera revisión de la mañana (06:50)", () => {
+    // 2026-10-15 23:30 en Chile; la próxima revisión es la de las 06:50 del 16.
+    const night = new Date("2026-10-16T02:30:00.000Z");
+    const at = (hours: number) => new Date(night.getTime() + hours * 60 * 60_000);
+    const items = run([scheduled(at(2.5)), scheduled(at(8))], { worker: { running: false }, now: night });
+
+    // 02:00 espera al worker; 07:30, después de la revisión de las 06:50, es una próxima.
+    expect(items.map((item) => item.kind)).toEqual(["worker_off", "upcoming"]);
+  });
+
   it("con el worker encendido, o sin saber su estado, no hay aviso", () => {
-    const publications = [scheduled(minutes(-5)), scheduled(minutes(120))];
+    const publications = [scheduled(minutes(-5)), scheduled(minutes(30))];
 
     for (const worker of [{ running: true }, null, undefined]) {
       expect(

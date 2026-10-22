@@ -1,28 +1,23 @@
 # Encender el worker según el horario (F9.5-T24, ADR-0037). El worker se apaga solo cuando no tiene
-# nada que hacer (`WORKER_IDLE_EXIT_MINUTES`); este flujo lo vuelve a encender unos minutos antes de
-# cada ventana de publicación, y a pedido ("Run workflow": encender ahora). Solo enciende la máquina
-# del worker de la instancia principal: nunca despliega, apaga ni cambia nada más.
+# nada que hacer ni nada que venza antes de la próxima revisión (`WORKER_IDLE_EXIT_MINUTES` y
+# `WORKER_STAY_AHEAD_MINUTES`); este flujo revisa **cada hora, a los :50**, y lo enciende si está
+# apagado (de día: dentro de la franja de abajo), y a pedido ("Run workflow": encender ahora). Solo
+# enciende la máquina del worker de la instancia principal: nunca despliega, apaga ni cambia nada más.
 #
 # El token de Fly lo crea y lo guarda el operador (docs/10-despliegue.md, paso 8): vive en el
 # Environment `worker-schedule` de GitHub, que solo acepta la rama `main`. **Sin ese secreto este
 # flujo no hace nada**: avisa y termina sin error (el horario queda escrito, pero apagado).
 #
-# Las ventanas, en hora de Chile, se cambian aquí en dos lugares que deben calzar: `WORKER_WINDOWS`
-# y los `cron` de abajo. Las mismas horas están en `WORKER_WINDOWS` de
-# `packages/core/src/worker-schedule.ts` (la agenda y `doctor` dicen la próxima con ellas); un test
-# del worker (`apps/worker/src/worker-schedule-workflow.test.ts`) falla si no calzan.
+# La franja (`ACTIVE_FROM`, `ACTIVE_UNTIL` y `LEAD_MINUTES`) y el minuto del `cron` están también en
+# `packages/core/src/worker-schedule.ts` (la agenda y `doctor` dicen la próxima revisión con ellos);
+# un test del worker (`apps/worker/src/worker-schedule-workflow.test.ts`) falla si no calzan.
 name: Encender el worker
 
 on:
   schedule:
-    # GitHub lee el cron en UTC y Chile cambia de horario (UTC−3 en verano, UTC−4 en invierno): cada
-    # ventana va dos veces, 10 min antes en cada horario, y el paso "¿Toca encenderlo?" deja pasar
-    # solo la que cae cerca de la ventana en la hora de Chile de ese día. GitHub puede atrasar un
-    # cron varios minutos (nunca lo adelanta); por eso se pide 10 min antes y en el minuto 50.
-    - cron: "50 11 * * *" # 08:50 en Chile con UTC−3 (ventana de las 09:00)
-    - cron: "50 12 * * *" # 08:50 en Chile con UTC−4 (ventana de las 09:00)
-    - cron: "50 19 * * *" # 16:50 en Chile con UTC−3 (ventana de las 17:00)
-    - cron: "50 20 * * *" # 16:50 en Chile con UTC−4 (ventana de las 17:00)
+    # Cada hora a los :50 (UTC; Chile va 3 o 4 horas atrás, así que también a los :50 allí). GitHub
+    # puede atrasar un cron varios minutos (nunca lo adelanta): el worker mira 70 min adelante.
+    - cron: "50 * * * *"
   workflow_dispatch:
 
 # No lee el repositorio ni escribe nada en GitHub.
@@ -36,12 +31,12 @@ concurrency:
 env:
   # La app de Fly de la instancia principal (`app` de fly.toml).
   FLY_APP: agentsales
-  # Las ventanas, en hora de Chile (HH:MM, separadas por un espacio).
-  WORKER_WINDOWS: "09:00 17:00"
-  # Cuánto antes y después de una ventana vale encender (minutos): absorbe el atraso de GitHub y
-  # deja fuera el cron del otro horario (que cae una hora antes o después).
-  EARLIEST_MINUTES: "30"
-  LATEST_MINUTES: "45"
+  # La franja en hora de Chile (HH:MM): se enciende desde LEAD_MINUTES antes de ACTIVE_FROM hasta
+  # antes de ACTIVE_UNTIL (con 07:00, 23:00 y 10: de 06:50 a 22:50). De noche no lo despierta: lo
+  # programado de madrugada sale a las 06:50.
+  ACTIVE_FROM: "07:00"
+  ACTIVE_UNTIL: "23:00"
+  LEAD_MINUTES: "10"
 
 jobs:
   start:
@@ -71,18 +66,15 @@ jobs:
           now="$(TZ=America/Santiago date +%H:%M)"
           minutes() { echo $((10#${1%%:*} * 60 + 10#${1##*:})); }
           now_min="$(minutes "$now")"
-          go=false
-          for window in $WORKER_WINDOWS; do
-            delta=$((now_min - $(minutes "$window")))
-            if [ "$delta" -ge "-$EARLIEST_MINUTES" ] && [ "$delta" -lt "$LATEST_MINUTES" ]; then
-              echo "Son las $now en Chile: toca la ventana de las $window."
-              go=true
-            fi
-          done
-          if [ "$go" = false ]; then
-            echo "Son las $now en Chile: ninguna ventana ($WORKER_WINDOWS) está cerca; este cron es el del otro horario."
+          from_min=$(($(minutes "$ACTIVE_FROM") - LEAD_MINUTES))
+          until_min="$(minutes "$ACTIVE_UNTIL")"
+          if [ "$now_min" -ge "$from_min" ] && [ "$now_min" -lt "$until_min" ]; then
+            echo "Son las $now en Chile: dentro de la franja ($ACTIVE_FROM a $ACTIVE_UNTIL)."
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Son las $now en Chile: fuera de la franja ($ACTIVE_FROM a $ACTIVE_UNTIL); no se despierta de noche."
+            echo "go=false" >> "$GITHUB_OUTPUT"
           fi
-          echo "go=$go" >> "$GITHUB_OUTPUT"
 
       - name: El token de Fly
         id: token

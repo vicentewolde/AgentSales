@@ -817,12 +817,13 @@ try {
       },
       "worker listo",
     );
-    // Sin trabajo ni nada por vencer en ese margen, se apaga solo (exit 0) hasta la próxima
-    // ventana del horario, que lo vuelve a encender (`worker-schedule.yml`, ADR-0037).
+    // Sin trabajo ni nada por vencer antes de la próxima revisión del horario, se apaga solo (exit
+    // 0); esa revisión lo vuelve a encender (`worker-schedule.yml`, cada hora a los :50; ADR-0037).
     idleExit = shuttingDown
       ? null
       : startIdleExit({
           idleMinutes: env.WORKER_IDLE_EXIT_MINUTES,
+          stayAheadMinutes: env.WORKER_STAY_AHEAD_MINUTES,
           probe: createIdleProbe({
             pendingJobs: (withinMs) => countPendingJobs(boss.getDb(), withinMs),
             publications,
@@ -839,8 +840,11 @@ try {
       );
     } else {
       logger.info(
-        { idleMinutes: env.WORKER_IDLE_EXIT_MINUTES },
-        "el worker se apaga solo cuando no tiene trabajo ni nada por vencer en ese margen",
+        {
+          idleMinutes: env.WORKER_IDLE_EXIT_MINUTES,
+          stayAheadMinutes: env.WORKER_STAY_AHEAD_MINUTES,
+        },
+        "el worker se apaga solo cuando no tiene trabajo ni nada por vencer antes de la próxima revisión",
       );
     }
   }

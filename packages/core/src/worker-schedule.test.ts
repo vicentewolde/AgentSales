@@ -1,49 +1,59 @@
 import { describe, expect, it } from "vitest";
 import { formatChileTime } from "./chile-time.js";
 import {
-  nextWorkerWindow,
-  nextWorkerWindowText,
-  WORKER_WINDOWS,
-  workerWindowsText,
+  isWorkerCheckTime,
+  nextWorkerCheck,
+  nextWorkerCheckText,
+  WORKER_ACTIVE_HOURS,
+  workerScheduleText,
 } from "./worker-schedule.js";
 
-// F9.5-T24 (ADR-0037): la próxima ventana del horario del worker, en hora de Chile.
+// F9.5-T24 (ADR-0037): la próxima revisión del horario del worker (cada hora a los :50, de día),
+// en hora de Chile.
 
 const at = (iso: string) => new Date(iso);
 const chile = (date: Date | null) => (date === null ? null : formatChileTime(date));
 
-describe("nextWorkerWindow", () => {
-  it("antes de la primera ventana del día, esa; entre ventanas, la siguiente; después, la de mañana", () => {
-    // Octubre: Chile va a UTC−3.
-    expect(chile(nextWorkerWindow(at("2026-10-22T10:00:00Z")))).toBe("2026-10-22 09:00"); // 07:00
-    expect(chile(nextWorkerWindow(at("2026-10-22T15:00:00Z")))).toBe("2026-10-22 17:00"); // 12:00
-    expect(chile(nextWorkerWindow(at("2026-10-22T22:00:00Z")))).toBe("2026-10-23 09:00"); // 19:00
+describe("nextWorkerCheck", () => {
+  it("de día, la próxima hora :50 (horario de verano, UTC−3)", () => {
+    expect(chile(nextWorkerCheck(at("2026-10-22T13:00:00Z")))).toBe("2026-10-22 10:50"); // 10:00
+    expect(chile(nextWorkerCheck(at("2026-10-22T13:55:00Z")))).toBe("2026-10-22 11:50"); // 10:55
   });
 
-  it("justo a la hora de una ventana, la siguiente (la que empieza después)", () => {
-    expect(chile(nextWorkerWindow(at("2026-10-22T12:00:00Z")))).toBe("2026-10-22 17:00"); // 09:00
+  it("justo a la hora de una revisión, la siguiente", () => {
+    expect(chile(nextWorkerCheck(at("2026-10-22T13:50:00Z")))).toBe("2026-10-22 11:50"); // 10:50
+  });
+
+  it("de noche, la primera de la mañana (06:50); la última del día es la de las 22:50", () => {
+    expect(chile(nextWorkerCheck(at("2026-10-23T01:30:00Z")))).toBe("2026-10-22 22:50"); // 22:30
+    expect(chile(nextWorkerCheck(at("2026-10-23T02:00:00Z")))).toBe("2026-10-23 06:50"); // 23:00
+    expect(chile(nextWorkerCheck(at("2026-10-23T06:00:00Z")))).toBe("2026-10-23 06:50"); // 03:00
   });
 
   it("con el horario de invierno (UTC−4) también", () => {
-    expect(nextWorkerWindow(at("2026-07-01T12:00:00Z"))?.toISOString()).toBe(
-      "2026-07-01T13:00:00.000Z",
+    // 2026-07-01 08:00 en Chile.
+    expect(nextWorkerCheck(at("2026-07-01T12:00:00Z"))?.toISOString()).toBe(
+      "2026-07-01T12:50:00.000Z",
+    );
+    // 2026-07-01 23:10 en Chile: la de las 06:50 del día siguiente.
+    expect(nextWorkerCheck(at("2026-07-02T03:10:00Z"))?.toISOString()).toBe(
+      "2026-07-02T10:50:00.000Z",
     );
   });
 
-  it("sin ventanas, null; el orden en que vienen no importa", () => {
-    expect(nextWorkerWindow(at("2026-10-22T10:00:00Z"), [])).toBeNull();
-    expect(chile(nextWorkerWindow(at("2026-10-22T15:00:00Z"), ["17:00", "09:00"]))).toBe(
-      "2026-10-22 17:00",
-    );
+  it("una franja sin revisiones da null", () => {
+    expect(nextWorkerCheck(at("2026-10-22T13:00:00Z"), { from: "10:00", until: "09:50" })).toBeNull();
   });
 });
 
-describe("textos del horario", () => {
-  it("las ventanas en una frase y la próxima con su hora", () => {
-    expect(WORKER_WINDOWS).toEqual(["09:00", "17:00"]);
-    expect(workerWindowsText()).toBe("09:00 y 17:00");
-    expect(workerWindowsText(["08:00", "13:00", "18:00"])).toBe("08:00, 13:00 y 18:00");
-    expect(nextWorkerWindowText(at("2026-10-22T15:00:00Z"))).toBe("2026-10-22 17:00");
-    expect(nextWorkerWindowText(at("2026-10-22T15:00:00Z"), [])).toBe("sin ventanas");
+describe("la franja y los textos", () => {
+  it("de 06:50 a 22:50 con la franja de 07:00 a 23:00", () => {
+    expect(WORKER_ACTIVE_HOURS).toEqual({ from: "07:00", until: "23:00" });
+    expect(isWorkerCheckTime(6 * 60 + 50)).toBe(true);
+    expect(isWorkerCheckTime(5 * 60 + 50)).toBe(false);
+    expect(isWorkerCheckTime(22 * 60 + 50)).toBe(true);
+    expect(isWorkerCheckTime(23 * 60 + 50)).toBe(false);
+    expect(workerScheduleText()).toBe("cada hora a los :50, de 06:50 a 22:50, hora de Chile");
+    expect(nextWorkerCheckText(at("2026-10-22T13:00:00Z"))).toBe("2026-10-22 10:50");
   });
 });

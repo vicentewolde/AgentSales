@@ -1,38 +1,29 @@
 import { readFileSync } from "node:fs";
-import { WORKER_WINDOW_LEAD_MINUTES, WORKER_WINDOWS } from "@agentsales/core";
+import {
+  WORKER_ACTIVE_HOURS,
+  WORKER_CHECK_LEAD_MINUTES,
+  WORKER_CHECK_MINUTE,
+} from "@agentsales/core";
 import { describe, expect, it } from "vitest";
 
-// F9.5-T24 (ADR-0037): las ventanas del workflow que enciende el worker calzan con las de core (las
-// que usan la agenda y `doctor`). El workflow las tiene dos veces: `WORKER_WINDOWS` (hora de Chile) y
-// los `cron` (UTC), uno por cada horario de Chile, `WORKER_WINDOW_LEAD_MINUTES` antes.
+// F9.5-T24 (ADR-0037): el workflow que enciende el worker calza con el horario de core (el que usan
+// la agenda y `doctor` para decir la próxima revisión): el minuto del `cron` y la franja del día.
 
 const workflow = readFileSync(
   new URL("../../../.github/workflows/worker-schedule.yml", import.meta.url),
   "utf8",
 );
 
-const toMinutes = (time: string) => {
-  const [hours = 0, minutes = 0] = time.split(":").map(Number);
-  return hours * 60 + minutes;
-};
-
-/** El cron diario (UTC) de un minuto del día en Chile con ese desfase de UTC (en horas). */
-const cronFor = (chileMinutes: number, utcOffsetHours: number) => {
-  const utc = (((chileMinutes + utcOffsetHours * 60) % 1440) + 1440) % 1440;
-  return `${utc % 60} ${Math.floor(utc / 60)} * * *`;
-};
-
 describe("worker-schedule.yml", () => {
-  it("WORKER_WINDOWS es la lista de core", () => {
-    expect(workflow).toMatch(new RegExp(`WORKER_WINDOWS: "${WORKER_WINDOWS.join(" ")}"`));
+  it("revisa cada hora en el minuto de core, con un solo cron", () => {
+    const crons = [...workflow.matchAll(/- cron: "([^"]+)"/g)].map((match) => match[1]);
+    expect(crons).toEqual([`${WORKER_CHECK_MINUTE} * * * *`]);
   });
 
-  it("un cron por ventana y por horario de Chile (UTC−3 y UTC−4), unos minutos antes, y nada más", () => {
-    const crons = [...workflow.matchAll(/- cron: "([^"]+)"/g)].map((match) => match[1]);
-    const expected = WORKER_WINDOWS.flatMap((window) =>
-      [3, 4].map((offset) => cronFor(toMinutes(window) - WORKER_WINDOW_LEAD_MINUTES, offset)),
-    );
-    expect([...crons].sort()).toEqual([...expected].sort());
+  it("la franja del día es la de core", () => {
+    expect(workflow).toContain(`ACTIVE_FROM: "${WORKER_ACTIVE_HOURS.from}"`);
+    expect(workflow).toContain(`ACTIVE_UNTIL: "${WORKER_ACTIVE_HOURS.until}"`);
+    expect(workflow).toContain(`LEAD_MINUTES: "${WORKER_CHECK_LEAD_MINUTES}"`);
   });
 
   it("se enciende a pedido, sin permisos sobre el repositorio, y avisa sin el secreto", () => {

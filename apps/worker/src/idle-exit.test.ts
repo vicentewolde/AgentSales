@@ -25,12 +25,13 @@ describe("startIdleExit", () => {
   });
 
   /** El worker con una revisión que responde lo que diga `state.reason` en cada momento. */
-  function start(idleMinutes = 10) {
+  function start(idleMinutes = 10, stayAheadMinutes = 70) {
     const state: { reason: IdleReason | null | Error } = { reason: null };
     const margins: number[] = [];
     const onIdle = vi.fn();
     const idle = startIdleExit({
       idleMinutes,
+      stayAheadMinutes,
       probe: async (marginMs) => {
         margins.push(marginMs);
         if (state.reason instanceof Error) throw state.reason;
@@ -42,14 +43,15 @@ describe("startIdleExit", () => {
     return { state, margins, onIdle, idle };
   }
 
-  it("sin nada que hacer, cierra a los N minutos (una sola vez) y revisa con ese margen", async () => {
-    const { onIdle, margins } = start(10);
+  it("sin nada que hacer, cierra a los N minutos (una sola vez) y mira 70 min adelante", async () => {
+    const { onIdle, margins } = start(10, 70);
 
     await vi.advanceTimersByTimeAsync(9 * MINUTE);
     expect(onIdle).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(MINUTE);
     expect(onIdle).toHaveBeenCalledTimes(1);
-    expect(margins.every((margin) => margin === 10 * MINUTE)).toBe(true);
+    expect(margins.length).toBeGreaterThan(0);
+    expect(margins.every((margin) => margin === 70 * MINUTE)).toBe(true);
 
     await vi.advanceTimersByTimeAsync(30 * MINUTE);
     expect(onIdle).toHaveBeenCalledTimes(1);
@@ -101,6 +103,65 @@ describe("startIdleExit", () => {
     idle?.stop();
     await vi.advanceTimersByTimeAsync(30 * MINUTE);
     expect(onIdle).not.toHaveBeenCalled();
+  });
+});
+
+describe("startIdleExit con la revisión real (WORKER_STAY_AHEAD_MINUTES = 70)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** El worker con una programada a `minutes` de T0, sin jobs. */
+  function startWith(minutes: number) {
+    const publication = {
+      id: "pub",
+      platform: "instagram",
+      status: "scheduled",
+      scheduledAt: new Date(T0.getTime() + minutes * MINUTE),
+    } as Publication;
+    const onIdle = vi.fn();
+    startIdleExit({
+      idleMinutes: 10,
+      stayAheadMinutes: 70,
+      probe: createIdleProbe({
+        pendingJobs: async () => 0,
+        publications: {
+          listDue: async (query: DueQuery) =>
+            (publication.scheduledAt?.getTime() ?? 0) <= query.now.getTime() &&
+            (publication.scheduledAt?.getTime() ?? 0) >= query.since.getTime()
+              ? [publication]
+              : [],
+        },
+      }),
+      onIdle,
+      logger,
+    });
+    return onIdle;
+  }
+
+  it("se queda si algo vence en 60 minutos (y hasta que salga)", async () => {
+    const onIdle = startWith(60);
+    await vi.advanceTimersByTimeAsync(60 * MINUTE);
+    expect(onIdle).not.toHaveBeenCalled();
+  });
+
+  it("con 80 minutos ya lo ve a los 10 (70 de margen + 10 de espera): no se apaga", async () => {
+    const onIdle = startWith(80);
+    await vi.advanceTimersByTimeAsync(30 * MINUTE);
+    expect(onIdle).not.toHaveBeenCalled();
+  });
+
+  it("se apaga a los 10 minutos si, al apagarse, a lo próximo le faltan 80 (lo enciende la revisión siguiente)", async () => {
+    // Vence a los 90 de T0: a los 10 min, cuando se apaga, le faltan 80, más que los 70 que mira.
+    const onIdle = startWith(90);
+    await vi.advanceTimersByTimeAsync(9 * MINUTE);
+    expect(onIdle).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(MINUTE);
+    expect(onIdle).toHaveBeenCalledTimes(1);
   });
 });
 

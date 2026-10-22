@@ -121,14 +121,14 @@ describe("agenda con posts", () => {
 });
 
 describe("agenda con el worker apagado (F9.5-T24)", () => {
-  // 2026-10-22 12:00 en Chile: la próxima ventana es a las 17:00.
+  // 2026-10-22 12:00 en Chile: la próxima revisión del horario es a las 12:50.
   const NOW = new Date("2026-10-22T15:00:00.000Z");
   const off = item({ kind: "worker_off", action: "start_worker" });
 
-  it("dice que el worker está apagado, la próxima ventana y cómo encenderlo", () => {
+  it("dice que el worker está apagado, la próxima revisión y cómo encenderlo", () => {
     const text = renderAgenda([off], c, NOW);
     expect(text).toContain(
-      "El worker está apagado y hay algo por vencer (1) · sale cuando se encienda, en la próxima ventana: 2026-10-22 17:00",
+      "El worker está apagado y hay algo por vencer (1) · sale cuando se encienda, en la próxima revisión: 2026-10-22 12:50",
     );
     expect(text).toContain(
       "→ en el servidor: GitHub → Actions → «Encender el worker» → Run workflow",
