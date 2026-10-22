@@ -4,9 +4,11 @@ import {
   type Broker,
   type BrokerPurgeRepository,
   type BrokerRepository,
+  brokerSheetDraft,
   createBroker,
   type EditorialProfileRepository,
   type LogoNormalizer,
+  MAX_BROKER_TEMPLATE_BYTES,
   MAX_LOGO_BYTES,
   type MediaRepository,
   type MediaStorage,
@@ -14,6 +16,7 @@ import {
   type PlatformAccountRepository,
   purgeBroker,
   purgeBrokerSummary,
+  type RawBrokerSheet,
   setBrokerLogo,
   type UserRepository,
   updateBroker,
@@ -27,10 +30,12 @@ import {
   type BrokerPurgeResponse,
   type BrokerPurgeSummaryResponse,
   type BrokerResponse,
+  type BrokerTemplateDraftResponse,
   brokerCreateBodySchema,
   brokerDeleteBodySchema,
   brokerLogoFormSchema,
   brokerPatchBodySchema,
+  brokerTemplateFormSchema,
   idParamSchema,
   XLSX_CONTENT_TYPE,
 } from "../contracts/index.js";
@@ -55,6 +60,8 @@ export type BrokerRoutesDeps = {
   sha256Bytes: (bytes: Uint8Array) => string;
   /** La planilla del corredor (`writeBrokerTemplate` con la plantilla oficial). */
   brokerTemplate: (broker: Broker) => Promise<Uint8Array>;
+  /** La hoja Corredor de una planilla (`readBrokerWorkbook`; F9.5-T16, crear desde una planilla). */
+  readBrokerTemplate: (bytes: Uint8Array) => Promise<RawBrokerSheet>;
 };
 
 /** Margen del multipart (encabezados y el nombre del archivo) sobre el tope del logo. */
@@ -97,6 +104,36 @@ export function brokerRoutes(deps: BrokerRoutesDeps) {
         const broker = await createBroker(deps, requireAuth(c).user, c.req.valid("json"));
         return c.json(await detail(broker), 201);
       })
+      // F9.5-T16: la hoja Corredor de una planilla → los datos para llenar el formulario de crear.
+      // Solo lee: no crea el corredor ni guarda el archivo.
+      .post(
+        "/parse-template",
+        // El permiso antes de leer el archivo (además de `access.ts`).
+        async (c, next) => {
+          assertCan(requireAuth(c).user, "brokers.create");
+          await next();
+        },
+        // Un tope propio, más bajo que el de una carga: exceljs corre aquí, dentro de la API, y
+        // carga el libro entero (el descomprimido lo corta `readBrokerWorkbook`, a 8 MB). El
+        // multipart se lee completo en memoria: el tope va antes de leerlo (413).
+        bodyLimit({
+          maxSize: MAX_BROKER_TEMPLATE_BYTES + MULTIPART_OVERHEAD_BYTES,
+          onError: () => {
+            throw new AppError(
+              "REQUEST_TOO_LARGE",
+              `La planilla pasa de ${MAX_BROKER_TEMPLATE_BYTES / 1024 / 1024} MB`,
+            );
+          },
+        }),
+        validated("form", brokerTemplateFormSchema),
+        async (c) => {
+          const bytes = new Uint8Array(await c.req.valid("form").file.arrayBuffer());
+          const body: BrokerTemplateDraftResponse = {
+            draft: brokerSheetDraft(await deps.readBrokerTemplate(bytes)),
+          };
+          return c.json(body, 200);
+        },
+      )
       .get("/:id", validated("param", idParamSchema), async (c) => {
         return c.json(await detail(await brokerOf(c.req.valid("param").id)), 200);
       })

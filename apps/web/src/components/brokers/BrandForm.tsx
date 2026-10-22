@@ -6,8 +6,8 @@ import { ErrorAlert } from "../ErrorAlert.js";
 import { Button } from "../ui/Button.js";
 import { Input } from "../ui/Field.js";
 
-/** Lo que manda el formulario: la marca, el `slug` al crear y, del administrador, los ajustes. */
-export type BrandFormValues = BrokerFields & { slug?: string };
+/** Lo que manda el formulario: la marca y, del administrador, los ajustes. */
+export type BrandFormValues = BrokerFields;
 
 /** Un texto vacío borra un campo opcional (`null`); los obligatorios van tal cual (la API valida). */
 const optional = (value: FormDataEntryValue | null) => {
@@ -17,13 +17,12 @@ const optional = (value: FormDataEntryValue | null) => {
 const required = (value: FormDataEntryValue | null) => (typeof value === "string" ? value : "");
 
 /**
- * La marca de un corredor (spec F7 §4.6): crear (con `slug`) o editar. Con `admin`, además, si es
- * propio y su tope de IA. Las reglas las revisa la API (las de la hoja Corredor) y el error dice
- * qué campo no sirve.
+ * La marca de un corredor (spec F7 §4.6): editarla (crear es `CreateBrokerForm`, F9.5-T16). Con
+ * `admin`, además, si es propio y su tope de IA. Las reglas las revisa la API (las de la hoja
+ * Corredor) y el error dice qué campo no sirve.
  */
 export function BrandForm({
   broker,
-  withSlug = false,
   admin = false,
   submitLabel,
   pending,
@@ -31,7 +30,6 @@ export function BrandForm({
   onSubmit,
 }: {
   broker?: Broker;
-  withSlug?: boolean;
   admin?: boolean;
   submitLabel: string;
   pending: boolean;
@@ -53,7 +51,6 @@ export function BrandForm({
     }
     setCapError(null);
     onSubmit({
-      ...(withSlug ? { slug: required(form.get("slug")).trim() } : {}),
       name: required(form.get("name")),
       brandName: required(form.get("brandName")),
       primaryColor: required(form.get("primaryColor")),
@@ -95,7 +92,6 @@ export function BrandForm({
   );
   return (
     <form onSubmit={submit} className="mt-3 grid gap-3 sm:grid-cols-2">
-      {withSlug && field("slug", "Identificador", "", "minúsculas, números y guiones (no cambia)")}
       {field("name", "Nombre de la persona", broker?.name)}
       {field("brandName", "Marca", broker?.brandName)}
       {field("primaryColor", "Color primario", broker?.primaryColor, "#RRGGBB")}

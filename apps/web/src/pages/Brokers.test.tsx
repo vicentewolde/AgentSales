@@ -129,12 +129,9 @@ describe("Corredores (F7-T18)", () => {
     h.renderApp("/corredores");
 
     fireEvent.click(await screen.findByRole("button", { name: "Crear un corredor" }));
-    fireEvent.change(screen.getByLabelText("Identificador"), { target: { value: "nueva" } });
-    fireEvent.change(screen.getByLabelText("Nombre de la persona"), {
-      target: { value: "Persona Nueva" },
-    });
-    fireEvent.change(screen.getByLabelText("Marca"), { target: { value: "Nueva" } });
-    fireEvent.change(screen.getByLabelText("Color primario"), { target: { value: "#112233" } });
+    // F9.5-T16: solo el nombre y la marca (el identificador sale de la marca).
+    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Persona Nueva" } });
+    fireEvent.change(screen.getByLabelText("Nombre de la marca"), { target: { value: "Nueva" } });
     fireEvent.click(screen.getByRole("button", { name: "Crear corredor" }));
 
     expect(await screen.findByRole("heading", { name: /Nueva/ })).toBeTruthy();

@@ -480,6 +480,11 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     },
     sha256Bytes: (bytes) => `sha-${bytes.byteLength}`,
     brokerTemplate: async (broker) => new TextEncoder().encode(`planilla de ${broker.slug}`),
+    // Crear desde una planilla (F9.5-T16): el doble no lee Excel; los tests de la ruta usan el
+    // lector real (`readBrokerWorkbook`) y los del panel interceptan el pedido.
+    readBrokerTemplate: async () => {
+      throw new AppError("IMPORT_FILE_INVALID", "El doble no lee planillas");
+    },
     importRuns: createInMemoryImportRunRepository({ nextId: randomUUID }),
     queue: createInMemoryJobQueue(),
     newId: randomUUID,

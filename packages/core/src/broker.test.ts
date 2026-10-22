@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { type Broker, brokerDiffers, parseBrokerSheet, slugify } from "./broker.js";
+import {
+  type Broker,
+  brokerDiffers,
+  brokerSheetDraft,
+  parseBrokerSheet,
+  slugify,
+} from "./broker.js";
+import { isAppError } from "./errors.js";
 
 /** Hoja Corredor sintética (datos inventados). */
 const SHEET = {
@@ -117,5 +124,50 @@ describe("slugify y brokerDiffers", () => {
     expect(brokerDiffers(broker, parsed.data)).toBe(false);
     expect(brokerDiffers(broker, { ...parsed.data, fixedHashtags: ["#uno"] })).toBe(true);
     expect(brokerDiffers(broker, { ...parsed.data, tone: "Formal" })).toBe(true);
+  });
+});
+
+// F9.5-T16: crear un corredor desde una planilla llena el formulario, sin guardar.
+describe("brokerSheetDraft", () => {
+  it("lleva la hoja a los campos de la marca, normalizados", () => {
+    expect(brokerSheetDraft({ ...SHEET, Otra: "x" })).toEqual({
+      name: "Persona Inventada",
+      brandName: "Marca Inventada Propiedades",
+      primaryColor: "#1F3A5F",
+      secondaryColor: null,
+      whatsapp: "+56 9 0000 0000",
+      email: "contacto@example.cl",
+      instagramHandle: "marca.inventada",
+      website: "example.cl",
+      tone: "Cercano",
+      fixedHashtags: ["#uno", "#dos"],
+      logoFile: "logo.png",
+      warnings: ["Campo desconocido en la hoja Corredor: «Otra»"],
+    });
+  });
+
+  it("lo que falta queda vacío (también los obligatorios: se llenan en el formulario)", () => {
+    expect(brokerSheetDraft({ nombre_marca: "Solo Marca" })).toMatchObject({
+      name: null,
+      brandName: "Solo Marca",
+      primaryColor: null,
+      fixedHashtags: [],
+      logoFile: null,
+    });
+  });
+
+  it("un valor que no sirve es BROKER_INVALID con el campo de la API", () => {
+    let caught: unknown;
+    try {
+      brokerSheetDraft({ ...SHEET, color_primario: "azul", email: "x", tono: { richText: [] } });
+    } catch (error) {
+      caught = error;
+    }
+    expect(isAppError(caught) && caught.code).toBe("BROKER_INVALID");
+    expect(isAppError(caught) && caught.message).toMatch(/^La hoja Corredor tiene valores/);
+    const fields = isAppError(caught)
+      ? ((caught.details?.issues ?? []) as { field: string }[]).map((issue) => issue.field)
+      : [];
+    expect(fields.sort()).toEqual(["email", "primaryColor", "tone"]);
   });
 });

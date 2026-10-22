@@ -1,11 +1,11 @@
 import { llmSpendText } from "@agentsales/core";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { BrandForm } from "../components/brokers/BrandForm.js";
+import { CreateBrokerForm } from "../components/brokers/CreateBrokerForm.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { Button } from "../components/ui/Button.js";
 import { PageHeader } from "../components/ui/PageHeader.js";
-import { useBrokers, useCreateBroker } from "../queries/brokers.js";
+import { useBrokers, useCreateBroker, useParseBrokerTemplate } from "../queries/brokers.js";
 import { useUsage } from "../queries/usage.js";
 import { useCan, useRole } from "../scope/broker-scope.js";
 
@@ -19,6 +19,7 @@ export function BrokersPage() {
   const brokers = useBrokers();
   const usage = useUsage(allowed);
   const create = useCreateBroker();
+  const parseTemplate = useParseBrokerTemplate();
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
   // Mientras no se sabe el rol, nada de la vista del administrador.
@@ -79,24 +80,17 @@ export function BrokersPage() {
         {creating ? (
           <>
             <h2 className="text-lg font-semibold">Crear un corredor</h2>
-            <BrandForm
-              withSlug
-              admin
-              submitLabel="Crear corredor"
+            <CreateBrokerForm
               pending={create.isPending}
               error={create.error}
-              onSubmit={({ slug, name, brandName, primaryColor, ...rest }) =>
-                create.mutate(
-                  {
-                    ...rest,
-                    slug: slug ?? "",
-                    name: name ?? "",
-                    brandName: brandName ?? "",
-                    primaryColor: primaryColor ?? "",
-                  },
-                  { onSuccess: ({ broker }) => navigate(`/corredores/${broker.id}`) },
-                )
+              onSubmit={(values) =>
+                create.mutate(values, {
+                  onSuccess: ({ broker }) => navigate(`/corredores/${broker.id}`),
+                })
               }
+              parsing={parseTemplate.isPending}
+              parseError={parseTemplate.error}
+              onParseTemplate={(file, done) => parseTemplate.mutate(file, { onSuccess: done })}
             />
           </>
         ) : (

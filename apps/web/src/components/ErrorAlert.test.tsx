@@ -62,3 +62,30 @@ describe("ErrorAlert · Marketplace", () => {
     expect(screen.getByRole("alert").textContent).toContain("sigue mañana");
   });
 });
+
+// F9.5-T16: los campos de la marca que no sirven (`BROKER_INVALID`) no son de una plataforma.
+describe("ErrorAlert · la marca", () => {
+  it("BROKER_INVALID con issues: el mensaje, sin el encabezado de Portal", () => {
+    render(
+      <ErrorAlert
+        error={
+          new ApiError(
+            "La hoja Corredor tiene valores que no sirven: Color primario: «azul» no es un color HEX (#RRGGBB)",
+            "BROKER_INVALID",
+            400,
+            [
+              {
+                code: "BROKER_FIELD_INVALID",
+                field: "primaryColor",
+                message: "Color primario: «azul» no es un color HEX (#RRGGBB)",
+              },
+            ],
+          )
+        }
+      />,
+    );
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("Color primario: «azul» no es un color HEX");
+    expect(alert.textContent).not.toContain("Falta información para publicar");
+  });
+});
