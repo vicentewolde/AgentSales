@@ -297,6 +297,104 @@ El operador probó la demo en el servidor (propiedad de ejemplo, programar y sal
   - [ ] solo pistas CC0 (test del catálogo)
   - [ ] `pnpm check` pasa (CI)
 
+### Lote 3 · Lo que vio el operador al probar como corredor (2026-10-22) y publicar a diario desde AgentPey
+El operador probó la demo como administrador y como un corredor nuevo (Oficina Demo) y pidió: arreglar lo que confunde, un diseño acogedor para corredores de propiedades, escribir y crear imágenes sin tener fotos, ideas del plan que obedezcan lo que él pide, y **empezar a publicar a diario desde la marca personal de AgentPey** en X, LinkedIn, Discord y TikTok además de Instagram. Decisiones del 2026-10-22: **el modo en vivo es por marca** (ADR-0036) y **el worker se enciende y se apaga solo** por horario (ADR-0037, propuesto). Este lote cierra con `v1.6.0`.
+
+**Orden de las redes, de la más fácil a la más difícil de dejar publicando a diario** (con lo que ya está probado):
+1. **Instagram:** ya funciona (carrusel, reel e imagen). Se publica de verdad con la prueba S1 hecha.
+2. **Discord:** la más fácil. Un webhook, sin revisión ni costo, texto, imágenes y video hasta 20 MiB (con la versión liviana); S5 pasó.
+3. **X:** fácil. API con OAuth, S4 pasó; cuesta unos US$ 0,015 por post de texto (US$ 0,20 con enlace) y tiene tope mensual; hay que cuidar la automatización.
+4. **LinkedIn:** media. En modo **a mano** funciona hoy (el sistema deja el texto listo y el operador lo pega, 1 minuto al día). Por la API depende de S2 y S3 y de que LinkedIn lo permita en un perfil personal; la página de empresa pide una aprobación aparte de semanas.
+5. **TikTok:** la más difícil. Solo video, y en Sandbox llega como borrador al teléfono; publicar directo exige la auditoría de TikTok (video demo, dominio, política) y puede tardar o rechazarse.
+
+| Cupo | Tareas |
+|---|---|
+| Tanda A | T20 (corredor sin trabas, web) · T21 (texto e imagen pendientes en un post, core y web) · T22 (en vivo por marca, ADR-0036) |
+| Tanda B | T23 (ideas del plan con instrucciones) · T24 (worker programado, ADR-0037) · T25 (tarjetas y biblioteca de imágenes) |
+| Tanda C | T26 (diseño acogedor, tras A y B por tocar todo el panel) · T27 (publicar a diario en Discord, X, LinkedIn y TikTok) |
+
+### F9.5-T20 · Un corredor sin trabas
+- **Depende de:** —
+- **Descripción:** (1) en un aviso, **Publicar y Programar quedan desactivados** mientras la red no tenga cuenta conectada, con el motivo y un enlace a **Cuentas** (como ya pasa en los posts); (2) los errores se muestran **en simple y sin código**: un mapa de códigos a mensajes (`ACCOUNT_NOT_CONNECTED`: «Conecta tu cuenta de Instagram en Cuentas para publicar»; `USER_EMAIL_TAKEN`: «Ese correo ya tiene un usuario en AgentSales»; y un mensaje genérico para el resto, con el código chico al final para reportarlo); (3) la vista previa de Instagram dice «Instagram sin conectar» en vez de «tu cuenta»; (4) **Cuentas** muestra solo las redes que sirven al tipo de corredor (propiedades: Instagram, Mercado Libre y Marketplace; marcas: Instagram, X, LinkedIn, Discord y TikTok); (5) en **Hoy**, cada publicación dice su formato («carrusel», «reel», «imagen»); (6) antes de **Conectar Instagram**, una pantalla en español explica qué se va a autorizar y por qué, que la cuenta debe ser profesional y que, mientras Meta no apruebe la app, solo funciona con cuentas evaluadoras; con un botón «Continuar a Instagram»; (7) el enlace de invitación **no desaparece** al recargar mientras no se cierre («Listo, ocultarlo»), con un botón **Copiar mensaje completo** además de «Enviar por correo», y una frase que dice «si lo perdiste, usa Restablecer».
+- **Archivos principales:** `apps/web/src/components/publications/PublicationsPanel.tsx` y `publications.ts`, `apps/web/src/components/ErrorAlert.tsx` y un mapa en `apps/web/src/labels.ts`, `components/preview/account-name.ts`, `apps/web/src/pages/AccountsPage.tsx`, `pages/HomePage.tsx`, `components/brokers/OneTimeLink.tsx`
+- **Hecho cuando:**
+  - [ ] con Instagram sin conectar, Publicar y Programar están desactivados y dicen por qué (test)
+  - [ ] ningún error del panel muestra un código técnico sin su explicación (test que recorre el mapa)
+  - [ ] Cuentas de un corredor de propiedades no ofrece X, TikTok, LinkedIn ni Discord (test)
+  - [ ] la pantalla previa a Instagram existe y el botón continúa el flujo (test)
+  - [ ] el enlace de invitación sobrevive a una recarga hasta ocultarlo (test)
+  - [ ] `pnpm check` pasa (CI)
+
+### F9.5-T21 · Un post sin imágenes: el texto y lo que falta
+- **Depende de:** —
+- **Descripción:** el texto de un post se puede redactar y **aprobar sin tener las imágenes**; lo que falta se dice como pendiente y no como error rojo. `MEDIA_REQUIREMENT` pasa de error a **advertencia «Falta la imagen / el video»** en la revisión del texto; **publicar y programar** siguen bloqueados hasta que existan los medios, con un botón «Conseguir imagen» (T25). La marca roja «!» en la pestaña de una red desaparece cuando el único motivo es que faltan medios, y cuando hay un error de verdad la pestaña dice cuál al pasar el cursor y en el panel («Instagram · español: el texto pasa de 2.200 caracteres»).
+- **Archivos principales:** `packages/core/src/social/check.ts` (`MEDIA_REQUIREMENT`), `use-cases/draft-post.ts` y `kindProblem`, `use-cases/post-content.ts` (aprobar), `use-cases/publish-post.ts` (bloquear), `apps/web/src/components/posts/PostTexts.tsx` y `PostPublishing.tsx`
+- **Hecho cuando:**
+  - [ ] un post de imágenes sin imágenes redacta su texto, se aprueba y no se puede publicar ni programar (tests de core)
+  - [ ] la revisión dice «Falta la imagen» como advertencia, y un error real sigue siendo error (test)
+  - [ ] la pestaña explica su «!» (test del panel)
+  - [ ] `pnpm check` pasa (CI)
+
+### F9.5-T22 · En vivo por marca (ADR-0036)
+- **Depende de:** —
+- **Descripción:** columna `brokers.live_enabled` (migración aditiva, por defecto `false`), `effectivePublishMode(serverMode, broker)` en core como única fuente del modo, y que publicar, programar, el reloj y los publishers la usen; `brokers live <slug> on|off` en la CLI (administrador, pide confirmación, solo corredores propios) y un interruptor en la ficha del corredor; el banner del panel y la CLI muestran el modo de la marca elegida («Simulación» o «En vivo» con el nombre). Una marca que no es del operador no se enciende. Con `PUBLISH_MODE=dry-run`, todo sigue en simulación.
+- **Archivos principales:** `packages/db/src/schema.ts` y la migración `0020`, `packages/core/src/publication.ts` (`requirePublicationMode`), `use-cases/publish-publication.ts`, `schedule-*.ts`, `start-due-publications.ts`, `packages/core/src/publish-mode.ts` (nuevo), `apps/api` (rutas de corredores, `PublishModeBanner`), `apps/cli/src/commands/brokers.ts`, `apps/web/src/layout/PublishModeBanner.tsx`
+- **Hecho cuando:**
+  - [ ] la tabla completa de combinaciones (servidor `dry-run` o `live` × marca encendida o apagada × propia o no) da el modo esperado (test)
+  - [ ] un test recorre el código y falla si algo lee `PUBLISH_MODE` sin pasar por la función (test)
+  - [ ] publicar en una marca apagada con el servidor en `live` sale en simulación; en una encendida, de verdad (tests con los publishers falsos)
+  - [ ] el panel y la CLI dicen el modo de la marca (tests)
+  - [ ] `docs/10-despliegue.md` y la guía dicen cómo volver atrás (poner `dry-run` antes) y `pnpm check` pasa (CI)
+
+### F9.5-T23 · Ideas del plan que obedecen
+- **Depende de:** —
+- **Descripción:** (1) en **Plan**, un campo **«¿Qué quieres que trate este plan?»** (opcional, hasta 500 caracteres, con ejemplos: «lanzamiento del 3 de noviembre», «solo ideas para principiantes», «evita hablar de precios») que llega al prompt como pedido del operador; es una guía de **temas y tono**, nunca una fuente de hechos (ADR-0030: los hechos siguen saliendo solo del perfil); `PLAN_PROMPT_VERSION` sube. (2) Si el perfil de la marca está vacío (sin temas ni hechos), el panel y la CLI **avisan antes de pedir el plan** («Tu perfil está vacío: las ideas saldrán genéricas») con un botón a **Mi marca** y un asistente corto de 4 preguntas (qué haces, para quién, de qué temas hablas, qué no dices) que llena el perfil para revisarlo. (3) Las ideas ya no hablan en primera persona del plural si el perfil no dice que es un equipo.
+- **Archivos principales:** `packages/core/src/social/plan-prompt.ts` y `plan.ts`, `use-cases/request-plan-run.ts`, `apps/api/src/routes/plans.ts` y contratos, `apps/cli/src/commands/plan.ts` (`--brief`), `apps/web/src/pages/PlanPage.tsx`, `docs/04-formato-publicaciones.md`, `docs/adr/0030-*.md` (seguimiento)
+- **Hecho cuando:**
+  - [ ] el pedido del operador llega al prompt y el plan de ejemplo (`fake`) lo refleja (tests)
+  - [ ] un pedido con cifras o clientes que no están en el perfil no se vuelve un hecho en las ideas (test de la verificación)
+  - [ ] con el perfil vacío, el panel avisa y ofrece el asistente (test)
+  - [ ] `pnpm check` pasa (CI)
+
+### F9.5-T24 · El worker se enciende y se apaga solo (ADR-0037)
+- **Depende de:** —
+- **Descripción:** el worker cierra limpio cuando no tiene nada que hacer ni nada por vencer en `WORKER_IDLE_EXIT_MINUTES`; el workflow `.github/workflows/worker-schedule.yml` (cron con las ventanas y `workflow_dispatch`) arranca la máquina con un token de Fly acotado; la agenda y `doctor` dicen la próxima ventana y avisan si el worker está apagado con algo por vencer; la guía de despliegue explica cómo crear el token y activar el workflow (lo hace el operador). **El workflow no se activa solo: el secreto lo crea el operador.**
+- **Archivos principales:** `apps/worker/src/worker.ts` y un módulo de reposo, `packages/config` (variable nueva), `.github/workflows/worker-schedule.yml`, `packages/core/src/tracking/agenda.ts`, `apps/cli/src/commands/doctor.ts`, `docs/10-despliegue.md`
+- **Hecho cuando:**
+  - [ ] con un job activo o una publicación que vence en menos de N minutos, el worker no se apaga; sin nada, cierra limpio (tests con reloj falso)
+  - [ ] la agenda avisa «el worker está apagado y hay algo por vencer» (test)
+  - [ ] el workflow valida con `actionlint` y la guía lo explica
+  - [ ] `pnpm check` pasa (CI)
+
+### F9.5-T25 · Tarjetas y biblioteca de imágenes desde el post
+- **Depende de:** T21 (el botón vive donde T21 dice «Falta la imagen»); la nota `docs/integraciones/imagenes-y-videos-generados.md` y ADR-0038 (decisiones del operador del 2026-10-22)
+- **Descripción:** en un post sin los medios que su tipo pide, un botón **Conseguir imagen** abre un panel con tres pestañas, en este orden:
+  1. **Tarjetas de la marca** (por defecto, US$0, sin proveedor): sharp dibuja el título del post (o, en un carrusel, una portada, una tarjeta por punto del texto y una de cierre) sobre el color y el logo de la marca, en 4:5 (1080×1350) o 9:16 (1080×1920); el texto sale del post, nunca inventado. Para un post de video, «Hacer video de las tarjetas» las une con ffmpeg y la música de T19 (el mismo motor del reel desde fotos, T18).
+  2. **Biblioteca (Pixabay)**: una búsqueda con el tema del post (editable), hasta 12 resultados sin personas como filtro sugerido; el usuario elige y el archivo **se descarga a R2** antes de usarse (nunca se enlaza a Pixabay). 100 peticiones por minuto; un 429 se dice en simple.
+  3. **Crear con IA (Nano Banana 2.1)**: una indicación que propone la IA de texto desde el post (editable), sin texto dentro de la imagen; 4:5 o 9:16. Cada imagen anota su costo; **tope de US$2 al mes por marca** (configurable), y al llegar se niega con «Llegaste al tope de imágenes con IA de este mes».
+  Lo conseguido entra como medios del post (mismo camino que una foto subida: R2, sha256, variantes) y pasa por la vista previa y la aprobación. **No se marca como IA** (ADR-0038 §4: solo cuando la red lo exige, hoy video realista, que no se construye). Puertos nuevos en core, `StockPhotoProvider` e `ImageGenerator`, con adaptadores `pixabay`, `gemini` y `fake`; modelo y precio en configuración (`PIXABAY_API_KEY`, `GEMINI_API_KEY`, `IMAGE_AI_MODEL`, `IMAGE_AI_PRICE_USD`, `IMAGE_AI_MONTHLY_CAP_USD`); sin claves, las pestañas 2 y 3 dicen qué falta y las tarjetas funcionan igual. Sin SDK nuevo (`fetch` + zod). La generación corre en el worker (job nuevo), no en la API. CLI: `post media <id> --card | --stock "<búsqueda>" --pick <n> | --ai "<indicación>"`.
+- **Fuera de esta tarea:** video con IA; stock o IA en propiedades (permitido por ADR-0038 §6, se construye después si hace falta).
+- **Archivos principales:** `packages/core/src/ports/` (dos puertos), `packages/core/src/use-cases/` (conseguir medios de un post y su gasto), `packages/media` (tarjetas con sharp y video de tarjetas), un paquete o carpeta de adaptadores (`pixabay`, `gemini`), `packages/config`, `apps/worker` (job), `apps/api/src/routes/posts.ts` y contratos, `apps/cli/src/commands/post.ts`, `apps/web/src/components/posts/` (panel «Conseguir imagen»), `docs/04-formato-publicaciones.md` (tarjetas), `docs/08-guia-operador.md`, `.env.example`
+- **Hecho cuando:**
+  - [ ] una tarjeta y un carrusel de tarjetas se generan con el texto del post y la marca, y quedan como medios del post (tests con sharp de verdad, sin red)
+  - [ ] un video de tarjetas sale con ffmpeg y música (test con la misma prueba de T18)
+  - [ ] con `fake`, la biblioteca y la IA devuelven una imagen que se guarda en R2 falso y se adjunta (tests); el adaptador de Pixabay y el de Gemini se prueban con msw (sin red)
+  - [ ] el gasto se anota por marca, `cli usage` lo muestra aparte del texto, y al pasar el tope se niega (tests)
+  - [ ] sin claves, el panel ofrece solo tarjetas y dice qué falta (test del panel)
+  - [ ] `pnpm check` pasa (CI)
+
+### F9.5-T26 · Un diseño acogedor para corredores de propiedades
+- **Depende de:** T20, T21, T23 (tocan los mismos archivos del panel)
+- **Descripción:** un nuevo sistema visual pensado como lo haría una diseñadora de interiores: cálido y acogedor, que invite a comprar una casa y que los propios corredores quieran usar. Paleta de tonos tierra (crema, arena, terracota suave, verde salvia y madera), tipografía con título serif elegante y texto limpio, fotos grandes de las propiedades como protagonistas, tarjetas con esquinas suaves y sombras tibias, una portada «Hoy» con una imagen de bienvenida y el saludo por nombre, y estados vacíos con ilustraciones de hogar. **Primero una muestra** (marco, «Hoy», lista y ficha de una propiedad) que el operador ve; con su visto bueno, se aplica a todo el panel como T01. Se mantiene el contraste AA y el uso en el teléfono.
+- **Archivos principales:** `apps/web/src/index.css` (tokens), `apps/web/src/components/ui/`, `Layout.tsx`, y todas las páginas
+- **Hecho cuando:** (D3) la muestra se publica para el operador antes de aplicar; no quedan colores ni clases del diseño anterior; las pruebas del panel pasan sin cambiar sus aserciones; contraste AA verificado; `pnpm check` pasa (CI)
+
+### F9.5-T27 · Publicar a diario desde AgentPey
+- **Depende de:** T22, T24 y T25 (en parte)
+- **Descripción:** que el flujo semanal de una marca sea corto en las cinco redes: (1) **«Aprobar la semana»**: ver las ideas aceptadas de la semana con sus textos por red, aprobarlas y programarlas de una vez, con las horas de la cadencia; (2) por red: **Discord** y **X** quedan listos para vivo (revisar tope de X, imágenes y video con su variante, enlace marcado); **LinkedIn a mano** con un asistente «Copiar texto y abrir LinkedIn» y confirmar con el enlace; **TikTok** en borrador con el video listo y la nota de que publicar directo espera la auditoría; (3) una lista **«Lista para publicar a diario»** en Cuentas por marca: cuenta conectada, prueba de entrada hecha, modo de la marca, worker programado, tope de gasto; (4) la guía paso a paso para el operador (`docs/12-demo-oficina.md` se amplía o una guía nueva).
+- **Archivos principales:** `apps/web/src/pages/` (Plan y Calendario), `apps/web/src/components/accounts/`, `packages/core/src/use-cases/schedule-subject.ts`, `docs/08-guia-operador.md`
+- **Hecho cuando:** (se completan con las tareas anteriores) aprobar y programar una semana de ideas en una sola acción (test); la lista por marca dice qué falta (test); `pnpm check` pasa (CI)
+
 ## 6. Criterios de aceptación de la fase
 1. Todas las pantallas del panel usan el mismo sistema visual y la portada resume el día.
 2. Ningún estado, botón o mensaje del recorrido de la demo usa palabras técnicas; «simulación» aparece solo en `dry-run`.
@@ -341,6 +439,7 @@ Antes (jueves 29, el operador): desplegar; crear su corredor para propiedades y 
 | 2026-10-22 | Borrador tras la entrevista con el operador; alcance y nombre aprobados por él |
 | 2026-10-22 | Revisión del `arquitecto` (5 bloqueantes, aplicados): Portal al resolver un resultado dudoso (id `MLC…`, enlace obligatorio en `live`, sync, «many») y T04 partida en T04a y T04b; la reserva de gasto de X con candado sobre la cuenta; D7 definida y ADR-0034; dependencias por archivos y tandas rearmadas; T11 sin tocar `contracts`. No bloqueantes también aplicados: D4 por estado, `publicationFormatText` con el número de medios, el renovador de X en la API, `discord_video` sin migración, `useAccounts()` en T12, `publishedAt` en la portada, criterios verificables y riesgos de la demo |
 | 2026-10-22 | **Aprobado por el operador** (el alcance, el nombre y el trabajo en paralelo) |
+| 2026-10-22 | **Lote 3** (T20 a T27): lo que vio el operador como corredor nuevo y publicar a diario desde AgentPey; ADR-0036 (en vivo por marca) y ADR-0037 (worker programado, propuesto) |
 | 2026-10-22 | **Cierre del lote 2** (`v1.5.0`): T14 a T19 integradas en #233 a #239 |
 | 2026-10-22 | **Lote 2** (T14 a T19) con las observaciones del operador en su primera prueba en el servidor; ADR-0035 (borrar un corredor) |
 | 2026-10-22 | T19 (PR #239, revisión del `revisor`): las decisiones del operador sobre la música (solo CC0 sin crédito, mezcla con la música detrás a −18 dB, todas las redes, sin música por defecto; en un aviso se aplica al rehacer las imágenes, en un post solo); el criterio de atribución pasa a «solo pistas CC0 (test del catálogo)» |
