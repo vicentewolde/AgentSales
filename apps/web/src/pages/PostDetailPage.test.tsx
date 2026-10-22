@@ -4,13 +4,17 @@ import { chileInputValue, formatChileTime, requestContentRun } from "@agentsales
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { brokerData, harness } from "../../test/harness.js";
+import { BROKER_SCOPE_STORAGE_KEY } from "../scope/broker-scope.js";
 
 // F9-T17 (spec F9 §4.10): el detalle de un post en el panel, contra la API real en proceso: los
 // textos por red e idioma (editar con el conteo de la red, aprobar), los medios con avance, pedir
 // los textos a la IA, publicar una red, programar, y resolver una publicación dudosa o confirmar
 // una que se publica a mano.
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  sessionStorage.clear();
+});
 
 async function setup() {
   const h = harness();
@@ -169,6 +173,28 @@ describe("panel: detalle de un post", () => {
     );
     fireEvent.click(publish);
     expect(s.requests).not.toContain(`POST /posts/${s.post.id}/publish`);
+  });
+
+  it("un administrador con otro corredor en el selector ve activas las redes de la marca del post", async () => {
+    // F9.5-T12: las cuentas se piden con el alcance de la sesión, no con el corredor del selector,
+    // y se eligen las de la marca del post (`accountOwnedBy`).
+    const s = await setup();
+    await s.brokers.create(brokerData("otro"));
+    sessionStorage.setItem(BROKER_SCOPE_STORAGE_KEY, "otro");
+    await s.draft();
+    await s.client.posts[":id"].contents[":platform"][":language"].approve.$post({
+      param: { id: s.post.id, platform: "discord", language: "es" },
+    });
+    await s.open();
+    const section = screen.getByRole("region", { name: "Publicar" });
+    const publish = await within(section).findByRole("button", {
+      name: "Publicar en Discord (simulación)",
+    });
+    await waitFor(() => expect(s.requests).toContain("GET /brokers"));
+    await waitFor(() => expect(s.requests).toContain("GET /accounts"));
+    expect(s.requests.filter((request) => request.startsWith("GET /accounts?"))).toEqual([]);
+    expect(publish).toHaveProperty("disabled", false);
+    expect(within(section).queryByText(/Sin cuenta conectada/)).toBeNull();
   });
 
   it("programar pide la hora de Chile y deja la publicación programada", async () => {
