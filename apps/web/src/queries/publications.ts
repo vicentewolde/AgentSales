@@ -188,6 +188,9 @@ export type PublicationAction =
   // Marketplace (spec F5 §4.3, desde F5-T13): "Lo publiqué" (con el enlace en vivo) y "No lo publiqué".
   | { kind: "confirm"; id: string; url?: string }
   | { kind: "not-published"; id: string }
+  // Resultado dudoso de Instagram o Portal (F9.5-T04b): "Salió" (con el enlace o, en Portal, el
+  // número MLC; obligatorio en Portal en vivo) o "No salió".
+  | { kind: "resolve"; id: string; outcome: "published" | "not_published"; url?: string }
   // Calendario y Portal (spec F6 §4.3 y §4.7, desde F6-T12): `at` en ISO con zona.
   | { kind: "schedule"; id: string; at: string }
   | { kind: "unschedule"; id: string }
@@ -200,7 +203,10 @@ export type PublicationAction =
  */
 export type PublicationActionResult = { listingBackToReady?: boolean; queued?: boolean };
 
-/** Publicar o reintentar una, descartarla, marcarla como retirada y, en Portal, operarla. */
+/**
+ * Publicar o reintentar una, descartarla, marcarla como retirada, decir si salió una dudosa y, en
+ * Portal, operarla. Todas vuelven a pedir lo mismo al terminar (`useRefreshAfter`).
+ */
 export function usePublicationAction(listingId: string) {
   const client = useApiClient();
   const refresh = useRefreshAfter(listingId);
@@ -272,6 +278,18 @@ export function usePublicationAction(listingId: string) {
           await unwrap(
             client.publications[":id"]["not-published"].$post({ param }),
             publicationResponseSchema,
+          );
+          return {};
+        case "resolve":
+          await unwrap(
+            client.publications[":id"].resolve.$post({
+              param,
+              json: {
+                outcome: action.outcome,
+                ...(action.url === undefined ? {} : { url: action.url }),
+              },
+            }),
+            publicationConfirmResponseSchema,
           );
           return {};
         case "schedule":

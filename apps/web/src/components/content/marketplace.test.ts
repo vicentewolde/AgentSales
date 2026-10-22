@@ -1,6 +1,6 @@
 import type { MarketplaceManualView, PublicationView } from "@agentsales/api/contracts";
 import { describe, expect, it } from "vitest";
-import { planBPrice } from "./marketplace.js";
+import { marketplacePreviewPrice, planBPrice } from "./marketplace.js";
 
 const manual: MarketplaceManualView = {
   formReadyAt: new Date("2026-10-10T15:00:00Z"),
@@ -41,5 +41,22 @@ describe("planBPrice (spec F5 §4.12)", () => {
     expect(planBPrice([], uf)).toBe("UF 5.800 (sin convertir: Marketplace lo pide en pesos)");
     expect(planBPrice([publication("approved", false)], clp)).toBe("$650.000/mes");
     expect(planBPrice([], null)).toBe("—");
+  });
+});
+
+describe("marketplacePreviewPrice (F9.5-T07)", () => {
+  it("convertido por un intento activo: en pesos con la UF usada, como el plan B", () => {
+    expect(marketplacePreviewPrice([publication("awaiting_manual_confirm")], uf)).toBe(
+      planBPrice([publication("awaiting_manual_confirm")], uf),
+    );
+    expect(marketplacePreviewPrice([publication("awaiting_manual_confirm")], uf)).toBe(
+      "$238.559.452 (UF del 2026-10-10: $41.130,94)",
+    );
+  });
+
+  it("sin intento: en pesos tal cual; en UF, que se publica en pesos; sin precio, nada", () => {
+    expect(marketplacePreviewPrice([publication("cancelled")], clp)).toBe("$650.000/mes");
+    expect(marketplacePreviewPrice([], uf)).toBe("UF 5.800 (se publica en pesos)");
+    expect(marketplacePreviewPrice([], null)).toBeNull();
   });
 });

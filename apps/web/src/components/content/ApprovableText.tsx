@@ -1,6 +1,7 @@
 import type { ContentView, ListingPublicationView } from "@agentsales/api/contracts";
 import type { ListingStatus, PublishMode } from "@agentsales/core";
 import type { ReactNode } from "react";
+import type { PreviewText } from "../preview/preview.js";
 import { editBlockedReason } from "../publications/publications.js";
 import { ApprovalBar } from "./ApprovalBar.js";
 import type { ListingPrice } from "./marketplace.js";
@@ -26,15 +27,20 @@ export type EditContext = {
   listingPrice: ListingPrice | null;
 };
 
-/** El texto con su aprobación y su edición (bloqueada si tiene publicaciones activas). */
+/**
+ * El texto con su aprobación y su edición (bloqueada si tiene publicaciones activas). La vista
+ * previa la arma quien lo usa, con el borrador que avisa `onDraft` mientras se edita.
+ */
 export function ApprovableText({
   content,
   edit,
+  onDraft,
   children,
 }: {
   content: ContentView;
   edit: EditContext;
-  children: ReactNode;
+  onDraft?: (draft: PreviewText | null) => void;
+  children?: ReactNode;
 }) {
   return (
     <>
@@ -50,6 +56,7 @@ export function ApprovableText({
         listingId={edit.listingId}
         lockReason={edit.lockReason ?? editBlockedReason(content, edit.publications)}
         onReload={edit.onReload}
+        onDraft={onDraft}
       >
         {children}
       </EditableText>
