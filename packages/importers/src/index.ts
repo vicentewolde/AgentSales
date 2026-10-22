@@ -3,9 +3,11 @@ export { createMediaFolderSource, type MediaFolderSourceOptions } from "./media-
 export { BROKER_TEMPLATE_PATH, writeBrokerTemplate } from "./template-writer.js";
 export {
   checkXlsxUncompressedSize,
+  MAX_BROKER_XLSX_UNCOMPRESSED_BYTES,
   MAX_DATA_ROWS,
   MAX_XLSX_BYTES,
   MAX_XLSX_UNCOMPRESSED_BYTES,
+  readBrokerWorkbook,
   readListingsWorkbook,
 } from "./xlsx-reader.js";
 export {

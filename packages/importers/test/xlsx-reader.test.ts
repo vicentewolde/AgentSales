@@ -7,9 +7,11 @@ import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 import {
   checkXlsxUncompressedSize,
+  MAX_BROKER_XLSX_UNCOMPRESSED_BYTES,
   MAX_DATA_ROWS,
   MAX_XLSX_BYTES,
   MAX_XLSX_UNCOMPRESSED_BYTES,
+  readBrokerWorkbook,
   readListingsWorkbook,
 } from "../src/xlsx-reader.js";
 import { buildWorkbook, syntheticRow } from "./workbook.js";
@@ -372,5 +374,64 @@ describe("readListingsWorkbook · archivos inválidos", () => {
     const bytes = await buildWorkbook({ listings: { headers: ["id_propiedad"], rows } });
     const error = await expectError(readListingsWorkbook(bytes), "IMPORT_FILE_INVALID");
     expect(isAppError(error) && error.details).toEqual({ maxRows: MAX_DATA_ROWS });
+  });
+});
+
+// F9.5-T16: crear un corredor desde una planilla lee solo la hoja Corredor.
+describe("readBrokerWorkbook", () => {
+  it("lee la hoja Corredor aunque falte la hoja Propiedades", async () => {
+    const bytes = await buildWorkbook({ listings: "missing", broker: BROKER });
+    expect(await readBrokerWorkbook(bytes)).toEqual({
+      nombre_corredor: "Persona Inventada",
+      nombre_marca: "Marca Inventada",
+      logo: "logo.png",
+      color_primario: "#1F3A5F",
+      color_secundario: "",
+      hashtags_fijos: "#uno #dos",
+    });
+  });
+
+  it("con la hoja Propiedades a medias, no la lee ni la exige completa", async () => {
+    const bytes = await buildWorkbook({ listings: { headers: ["otra"] }, broker: BROKER });
+    expect(await readBrokerWorkbook(bytes)).toMatchObject({ nombre_marca: "Marca Inventada" });
+  });
+
+  it("sin la hoja Corredor → IMPORT_FILE_INVALID con las hojas encontradas", async () => {
+    const bytes = await buildWorkbook({ broker: "missing" });
+    const error = await expectError(readBrokerWorkbook(bytes), "IMPORT_FILE_INVALID");
+    expect(isAppError(error) && error.message).toBe("La planilla no tiene la hoja Corredor");
+    expect(isAppError(error) && error.details).toEqual({ sheets: ["Propiedades"] });
+  });
+
+  it("la hoja Corredor sin valores → IMPORT_FILE_INVALID que dice que está vacía", async () => {
+    const bytes = await buildWorkbook({ broker: [["nombre_corredor", ""]] });
+    const error = await expectError(readBrokerWorkbook(bytes), "IMPORT_FILE_INVALID");
+    expect(isAppError(error) && error.message).toMatch(/hoja Corredor está vacía/);
+  });
+
+  it("descomprimido en más de 8 MB → IMPORT_XLSX_TOO_LARGE sin abrirlo con exceljs", async () => {
+    // 9 MB de ceros con deflate: el archivo pesa unos kB, muy bajo cualquier tope comprimido.
+    const bomb = buildZip([
+      { name: "xl/worksheets/sheet1.xml", data: Buffer.alloc(9 * 1024 * 1024), method: "deflate" },
+    ]);
+    expect(bomb.byteLength).toBeLessThan(3 * 1024 * 1024);
+    // exceljs lo rechazaría como "no es un Excel" (le faltan las partes): este código dice que la
+    // revisión corrió antes y no llegó a abrirlo.
+    const error = await expectError(
+      readBrokerWorkbook(new Uint8Array(bomb)),
+      "IMPORT_XLSX_TOO_LARGE",
+    );
+    expect(isAppError(error) && error.details).toMatchObject({
+      maxBytes: MAX_BROKER_XLSX_UNCOMPRESSED_BYTES,
+    });
+    expect(isAppError(error) && error.message).toBe("El Excel descomprimido pasa de 8 MB");
+  });
+
+  it("lo que no es un xlsx o pasa del tope → IMPORT_FILE_INVALID", async () => {
+    await expectError(readBrokerWorkbook(new Uint8Array([1, 2, 3])), "IMPORT_FILE_INVALID");
+    await expectError(
+      readBrokerWorkbook(new Uint8Array(MAX_XLSX_BYTES + 1)),
+      "IMPORT_FILE_INVALID",
+    );
   });
 });

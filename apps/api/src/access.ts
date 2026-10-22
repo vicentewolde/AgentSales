@@ -85,6 +85,8 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   // F7-T13 y T14: crear es del administrador; el corredor edita su marca (lo demás, 403 en core),
   // sube su logo y baja su planilla.
   "POST /brokers": "admin",
+  // F9.5-T16: leer la hoja Corredor de una planilla para llenar el formulario de crear (no guarda).
+  "POST /brokers/parse-template": "admin",
   "GET /brokers/:id": "session",
   "PATCH /brokers/:id": "session",
   "POST /brokers/:id/logo": "session",

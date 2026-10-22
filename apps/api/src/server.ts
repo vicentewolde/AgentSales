@@ -50,7 +50,11 @@ import {
   readServerVersion,
   toPgConnectionString,
 } from "@agentsales/db";
-import { BROKER_TEMPLATE_PATH, writeBrokerTemplate } from "@agentsales/importers";
+import {
+  BROKER_TEMPLATE_PATH,
+  readBrokerWorkbook,
+  writeBrokerTemplate,
+} from "@agentsales/importers";
 // La subruta: sharp solo para el logo, sin ffmpeg ni el navegador del resto del paquete.
 import { createLogoNormalizer } from "@agentsales/media/logo";
 import {
@@ -184,6 +188,8 @@ const app = createApp({
   sha256Bytes: (bytes) => createHash("sha256").update(bytes).digest("hex"),
   brokerTemplate: (broker) =>
     writeBrokerTemplate(join(findWorkspaceRoot(), BROKER_TEMPLATE_PATH), broker),
+  // Crear un corredor desde una planilla (F9.5-T16): solo la hoja Corredor, sin guardar.
+  readBrokerTemplate: readBrokerWorkbook,
   importRuns: createImportRunRepository(database.db),
   contentRuns: createContentRunRepository(database.db),
   contents: createContentRepository(database.db),

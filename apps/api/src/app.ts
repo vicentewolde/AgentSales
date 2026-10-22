@@ -28,6 +28,7 @@ import {
   type PublicationOperations,
   type PublicationRepository,
   type PublishMode,
+  type RawBrokerSheet,
   type Subject,
   type XAuth,
 } from "@agentsales/core";
@@ -107,6 +108,8 @@ export type AppDeps = {
   sha256Bytes: (bytes: Uint8Array) => string;
   /** La planilla de un corredor (`writeBrokerTemplate` con la plantilla oficial; F7-T14). */
   brokerTemplate: (broker: Broker) => Promise<Uint8Array>;
+  /** La hoja Corredor de una planilla (`readBrokerWorkbook` de importers; F9.5-T16). */
+  readBrokerTemplate: (bytes: Uint8Array) => Promise<RawBrokerSheet>;
   // Importación (F1-T11): la API solo crea el run y encola (ADR-0005).
   importRuns: ImportRunRepository;
   queue: JobQueue;

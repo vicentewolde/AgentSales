@@ -48,10 +48,14 @@ function hintFor(error: Error): string | null {
  * con un encabezado corto y no además el mensaje, que junta los mismos motivos (spec F4-T22).
  */
 function IssueList({ error }: { error: Error }) {
+  const code = error instanceof ApiError ? error.code : undefined;
   const issues = error instanceof ApiError ? (error.issues ?? []) : [];
-  if (issues.length === 0) return <p className="font-semibold text-danger-800">{error.message}</p>;
-  const channel =
-    error instanceof ApiError && error.code === "MARKETPLACE_NOT_READY" ? "Marketplace" : "Portal";
+  // Las `issues` de otros códigos (`BROKER_INVALID`: los campos de la marca) ya van en el mensaje.
+  const readiness = code === "PORTAL_NOT_READY" || code === "MARKETPLACE_NOT_READY";
+  if (issues.length === 0 || !readiness) {
+    return <p className="font-semibold text-danger-800">{error.message}</p>;
+  }
+  const channel = code === "MARKETPLACE_NOT_READY" ? "Marketplace" : "Portal";
   return (
     <>
       <p className="font-semibold text-danger-800">Falta información para publicar en {channel}:</p>
