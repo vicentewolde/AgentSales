@@ -414,7 +414,7 @@ export function renderPostDetail(detail: PostDetailResponse, brandSlug: string, 
         : post.platforms.map((platform) => PLATFORM_TEXT[platform] ?? platform).join(", ")
     }`,
   );
-  if (post.pillar !== null) lines.push(`  Línea: ${post.pillar}`);
+  if (post.pillar !== null) lines.push(`  Tema: ${post.pillar}`);
   // F9-T16: la marca del operador que permite un enlace en X (sin ella, un texto con enlace no se aprueba).
   if (postPublishesOn(post, "x") || contents.some((content) => content.platform === "x")) {
     lines.push(
@@ -1382,7 +1382,7 @@ export function register(program: Command, ctx: CliContext): void {
     .argument("<tema>", "de qué trata el post")
     .option("--brief <texto>", "lo que la IA puede usar y afirmar (además del perfil de la marca)")
     .option("--kind <tipo>", `tipo: ${POST_KINDS.join(", ")} (por defecto texto)`)
-    .option("--pillar <línea>", "la línea de contenido del perfil editorial (su clave)")
+    .option("--pillar <línea>", "el tema de la marca del perfil editorial (su clave)")
     .option("--date <hora>", 'fecha planificada en hora de Chile: "AAAA-MM-DD HH:MM"')
     .option("--broker <slug>", "la marca (si ves más de una)")
     .action((topic: string, options: PostCreateOptions) =>

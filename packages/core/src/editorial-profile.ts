@@ -153,14 +153,14 @@ export type EditorialProfileIssue = {
   code: "EDITORIAL_PROFILE_FIELD_INVALID";
   /** El campo de la API, con su posición si es de una lista: `pillars[1].key`, `cadence.x.hours`. */
   field: string;
-  /** En español, con la etiqueta del campo: «Líneas de contenido: la clave «a b» no sirve…». */
+  /** En español, con la etiqueta del campo: «Temas de la marca: la clave «a b» no sirve…». */
   message: string;
 };
 
 const FIELD_LABELS: Record<keyof EditorialProfileInput, string> = {
   languages: "Idiomas",
   audience: "Público",
-  pillars: "Líneas de contenido",
+  pillars: "Temas de la marca",
   facts: "Hechos",
   avoid: "Cosas que evitar",
   cadence: "Cadencia",
@@ -260,7 +260,7 @@ export function normalizeEditorialProfile(input: EditorialProfileInput): Editori
     keys.add(key);
     const name = text("pillars", `${at}.name`, raw.name, L.pillarName);
     if (name === null && raw.name.trim() === "") {
-      issue("pillars", `${at}.name`, `la línea «${key}» no tiene nombre`);
+      issue("pillars", `${at}.name`, `el tema «${key}» no tiene nombre`);
     }
     const description =
       text("pillars", `${at}.description`, raw.description ?? "", L.pillarDescription) ?? "";
@@ -274,7 +274,7 @@ export function normalizeEditorialProfile(input: EditorialProfileInput): Editori
     pillars.push({ key, name: name ?? "", description, weight: raw.weight });
   });
   if (input.pillars.length > 0 && input.pillars.every((pillar) => !(pillar.weight > 0))) {
-    issue("pillars", "pillars", "al menos una línea debe tener peso mayor que 0");
+    issue("pillars", "pillars", "al menos un tema debe tener peso mayor que 0");
   }
 
   /** Una lista de frases: sin vacías ni repetidas, con su tope de cantidad y de largo. */

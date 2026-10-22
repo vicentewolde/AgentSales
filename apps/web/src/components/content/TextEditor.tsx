@@ -5,6 +5,7 @@ import { ApiError } from "../../api/client.js";
 import { useEditContent } from "../../queries/content.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 import type { PreviewText } from "../preview/preview.js";
+import { Alert } from "../ui/Alert.js";
 import { Button } from "../ui/Button.js";
 import { Input, Textarea } from "../ui/Field.js";
 import { Checks } from "./Checks.js";
@@ -195,9 +196,9 @@ function Editor({
           : ""}
       </p>
       {lockReason !== null && (
-        <p role="alert" className="text-sm text-warning-800">
+        <Alert tone="warning" role="alert">
           {lockReason} Tu edición queda aquí hasta que termine.
-        </p>
+        </Alert>
       )}
       {stale && lockReason === null && (
         <div
@@ -288,7 +289,11 @@ export function EditableText({
           Editar
         </Button>
       </div>
-      {lockReason !== null && <p className="mt-1 text-xs text-warning-800">{lockReason}</p>}
+      {lockReason !== null && (
+        <Alert tone="warning" className="mt-2">
+          {lockReason}
+        </Alert>
+      )}
       {children}
       <Checks content={content} />
     </>

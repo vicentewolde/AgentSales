@@ -96,8 +96,8 @@ function printProfile(deps: Io, broker: Broker, profile: EditorialProfileJson): 
     `Idiomas: ${main === undefined ? "—" : `${LANGUAGE_TEXT[main] ?? main} (principal)`}${others.map((lang) => `, ${LANGUAGE_TEXT[lang] ?? lang}`).join("")}`,
   );
   deps.print(`Público: ${profile.audience ?? c.dim("sin definir")}`);
-  deps.print("Líneas de contenido:");
-  if (profile.pillars.length === 0) deps.print(c.dim("  (ninguna)"));
+  deps.print("Temas de la marca:");
+  if (profile.pillars.length === 0) deps.print(c.dim("  (ninguno)"));
   for (const pillar of profile.pillars) {
     deps.print(
       `  · ${pillar.name} [${pillar.key}] · peso ${pillar.weight}${pillar.description === "" ? "" : `: ${pillar.description}`}`,
@@ -404,7 +404,7 @@ export function register(program: Command, ctx: CliContext): void {
     .option("--audience <texto>", "a quién le habla, en una o dos frases (vacío lo borra)")
     .option(
       "--pillar <clave|nombre|peso|descripción>",
-      "una línea de contenido (repetible; reemplaza las líneas)",
+      "un tema de la marca; el peso reparte las ideas, 1 poco, 2 normal, 3 mucho (repetible; reemplaza los temas)",
       collect,
     )
     .option(

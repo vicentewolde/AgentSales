@@ -23,6 +23,7 @@ import { useAccountName } from "../preview/account-name.js";
 import { PostPreview } from "../preview/PostPreview.js";
 import { draftDiffers, type PreviewText } from "../preview/preview.js";
 import { editBlockedReason, unapproveBlockedReason } from "../publications/publications.js";
+import { Alert } from "../ui/Alert.js";
 import { Button } from "../ui/Button.js";
 import { Field, Input, Textarea } from "../ui/Field.js";
 import { type PostContentView, postContents } from "./labels.js";
@@ -207,6 +208,10 @@ function TextTab({
           : null);
   const unapproveBlocked = lockReason ?? unapproveBlockedReason(content, publications);
   const blocked = approved ? unapproveBlocked : approveBlocked;
+  // Por qué no se edita o no se aprueba, a la vista y en tono de aviso (F9.5-T15), sin repetir.
+  const notices = [...new Set([editBlocked, blocked])].filter(
+    (notice): notice is string => notice !== null,
+  );
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -239,7 +244,12 @@ function TextTab({
           </Button>
         </div>
       </div>
-      {blocked !== null && !editing && <p className="text-xs text-warning-800">{blocked}</p>}
+      {!editing &&
+        notices.map((notice) => (
+          <Alert key={notice} tone="warning">
+            {notice}
+          </Alert>
+        ))}
       {editing ? (
         <Editor
           postId={postId}
