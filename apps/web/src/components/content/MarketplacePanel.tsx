@@ -5,12 +5,14 @@ import type {
   ReadinessView,
 } from "@agentsales/api/contracts";
 import { useState } from "react";
+import { MarketplacePreview } from "../preview/MarketplacePreview.js";
+import type { PreviewText } from "../preview/preview.js";
 import { PublicationsPanel } from "../publications/PublicationsPanel.js";
 import { safeExternalUrl } from "../publications/publications.js";
 import { marketplaceIssuesHint, ReadinessIssueList } from "../ReadinessIssueList.js";
 import { Button } from "../ui/Button.js";
 import { ApprovableText, type EditContext } from "./ApprovableText.js";
-import { type ListingPrice, planBPrice } from "./marketplace.js";
+import { type ListingPrice, marketplacePreviewPrice, planBPrice } from "./marketplace.js";
 
 const MARKETPLACE = "fb_marketplace";
 
@@ -184,6 +186,9 @@ export function MarketplacePanel({
       byHand={byHand}
     />
   );
+  // La vista previa sigue al borrador del editor mientras se edita (F9.5-T07).
+  const [draft, setDraft] = useState<PreviewText | null>(null);
+  const text: PreviewText | null = draft ?? content ?? null;
   return (
     <div>
       <MarketplaceReadiness readiness={readiness} />
@@ -191,24 +196,17 @@ export function MarketplacePanel({
       {content === undefined ? (
         <p className="text-sm text-fg-subtle">Sin texto todavía.</p>
       ) : (
-        <ApprovableText content={content} edit={edit}>
-          <h3 className="mt-2 text-lg font-semibold">{content.title}</h3>
-          <p className="mt-2 whitespace-pre-line text-sm">{content.body}</p>
-        </ApprovableText>
+        <ApprovableText content={content} edit={edit} onDraft={setDraft} />
       )}
-      <h3 className="mt-4 text-sm font-semibold text-fg">Fotos ({photos.length})</h3>
-      <ul className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
-        {photos.map((item, index) => (
-          <li key={item.id}>
-            <img
-              src={item.url}
-              alt={`Foto ${index + 1} para Facebook Marketplace`}
-              loading="lazy"
-              className="aspect-[4/3] w-full rounded-md bg-slate-100 object-cover"
-            />
-          </li>
-        ))}
-      </ul>
+      <h3 className="mt-4 mb-2 text-sm font-semibold text-fg">Fotos ({photos.length})</h3>
+      <MarketplacePreview
+        label="Vista previa de Facebook Marketplace"
+        title={text?.title ?? null}
+        price={marketplacePreviewPrice(publications, edit.listingPrice)}
+        photos={photos.map((item) => ({ id: item.id, src: item.url }))}
+        description={text?.body ?? null}
+        draft={draft !== null}
+      />
       <PublicationsPanel
         platform={MARKETPLACE}
         listingId={edit.listingId}

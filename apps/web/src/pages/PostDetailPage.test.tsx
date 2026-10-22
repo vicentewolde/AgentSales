@@ -127,6 +127,32 @@ describe("panel: detalle de un post", () => {
     expect(screen.getByRole("figure", { name: "Vista previa de Discord · español" })).toBeTruthy();
   });
 
+  it("la vista previa de la red: la cuenta, el texto como se envía, y sigue al borrador antes de guardar (F9.5-T07)", async () => {
+    const s = await setup();
+    await s.draft([{ platform: "discord", language: "es", body: "Lo de esta semana" }]);
+    await s.open();
+    const preview = () => screen.getByRole("figure", { name: "Vista previa de Discord · español" });
+    // El nombre del webhook conectado de la marca.
+    await waitFor(() => expect(within(preview()).getByText("#anuncios")).toBeTruthy());
+    expect(within(preview()).getByText("Lo de esta semana")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Editar" }));
+    const form = screen.getByRole("form", { name: "Editar el texto de Discord · español" });
+    fireEvent.change(within(form).getByLabelText("Texto"), {
+      target: { value: "Lo nuevo de la semana" },
+    });
+    fireEvent.change(within(form).getByLabelText("Hashtags"), { target: { value: "#equipo" } });
+    expect(within(preview()).getByText("Lo nuevo de la semana")).toBeTruthy();
+    // Discord no lleva hashtags: no se envían.
+    expect(preview().textContent).not.toContain("#equipo");
+    expect(preview().textContent).toContain("con tu borrador, sin guardar");
+    expect(s.requests.filter((request) => request.startsWith("PATCH"))).toEqual([]);
+
+    fireEvent.click(within(form).getByRole("button", { name: "Cancelar" }));
+    expect(within(preview()).getByText("Lo de esta semana")).toBeTruthy();
+    expect(preview().textContent).not.toContain("sin guardar");
+  });
+
   it("aprobar abre la publicación; Publicar en una red (simulación) la pone en curso", async () => {
     const s = await setup();
     await s.draft();

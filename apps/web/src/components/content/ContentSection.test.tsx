@@ -137,7 +137,7 @@ describe("panel: sección Contenido", () => {
     expect(within(section).getByRole("list", { name: "Carrusel de Instagram" })).toBeTruthy();
   });
 
-  it("Instagram: carrusel, caption con ver más, reel y revisión", async () => {
+  it("Instagram: carrusel, caption con «… más», reel y revisión", async () => {
     const t = await setup({ video: true });
     await t.prepared();
     const section = await t.open();
@@ -150,14 +150,64 @@ describe("panel: sección Contenido", () => {
     expect(within(section).getByLabelText("Reel de Instagram")).toBeTruthy();
 
     const caption = () => within(section).getByRole("region", { name: "Caption de Instagram" });
-    expect(caption().textContent).toMatch(/…ver más$/);
-    fireEvent.click(within(section).getByRole("button", { name: "ver más" }));
+    // Como Instagram (F9.5-T07): el comienzo del caption y «… más».
+    expect(caption().textContent).toMatch(/… más$/);
+    fireEvent.click(within(section).getByRole("button", { name: "más" }));
     expect(caption().textContent).toContain("#");
     expect(
       within(
         within(section).getByRole("region", { name: "Revisión editorial de Instagram" }),
       ).getByText("✓ Revisión editorial sin problemas"),
     ).toBeTruthy();
+  });
+
+  it("la vista previa por canal: la cuenta de Instagram, las páginas del carrusel, el precio y la galería (F9.5-T07)", async () => {
+    const t = await setup({ video: true });
+    await t.platformAccounts.upsertConnected({
+      brokerId: t.broker.id,
+      platform: "instagram",
+      externalAccountId: "17841400000000001",
+      displayName: "@corredora",
+      tokenExpiresAt: new Date(Date.now() + 30 * 86_400_000),
+      meta: { accountType: "BUSINESS", permissions: null },
+      credentials: { accessToken: "token-de-prueba" },
+    });
+    await t.prepared();
+    const section = await t.open();
+    await within(section).findByRole("tablist", { name: "Canales" });
+
+    const instagram = within(section).getByRole("figure", { name: "Vista previa de Instagram" });
+    const caption = within(instagram).getByRole("region", { name: "Caption de Instagram" });
+    await waitFor(() => expect(caption.textContent).toMatch(/^@corredora /));
+    // El carrusel dice en qué imagen va: la primera de 4.
+    expect(within(instagram).getByText("1/4")).toBeTruthy();
+    const reel = within(section).getByRole("figure", {
+      name: "Vista previa del reel de Instagram",
+    });
+    expect(within(reel).getByLabelText("Reel de Instagram")).toBeTruthy();
+    expect(within(reel).getByText("@corredora")).toBeTruthy();
+
+    fireEvent.click(tab("Portal Inmobiliario"));
+    const portal = within(section).getByRole("figure", {
+      name: "Vista previa de Portal Inmobiliario",
+    });
+    expect(within(portal).getByText("UF 5.800")).toBeTruthy();
+    const photos = within(portal).getAllByRole("img");
+    // La portada grande primero y las demás en miniatura.
+    expect(photos.map((photo) => photo.getAttribute("alt"))).toEqual([
+      "Foto 1 de 3 para Portal Inmobiliario",
+      "Foto 2 de 3 para Portal Inmobiliario",
+      "Foto 3 de 3 para Portal Inmobiliario",
+    ]);
+
+    fireEvent.click(tab("Facebook Marketplace"));
+    const marketplace = within(section).getByRole("figure", {
+      name: "Vista previa de Facebook Marketplace",
+    });
+    // En UF y sin un intento que lo convierta: Marketplace lo pide en pesos.
+    expect(within(marketplace).getByText("UF 5.800 (se publica en pesos)")).toBeTruthy();
+    expect(within(marketplace).getByText(/no tiene título/)).toBeTruthy();
+    expect(within(marketplace).getByText(/\+56911112222/)).toBeTruthy();
   });
 
   it("Portal y Marketplace: título, descripción y fotos 4:3", async () => {
@@ -378,6 +428,48 @@ describe("panel: edición de textos", () => {
     return { ...t, section, form };
   }
 
+  it("la vista previa sigue al borrador antes de guardar y al cancelar vuelve al guardado (F9.5-T07)", async () => {
+    const t = await editing("Portal Inmobiliario");
+    const preview = () =>
+      within(t.section).getByRole("figure", { name: "Vista previa de Portal Inmobiliario" });
+    const saved = within(preview()).getByRole("heading").textContent ?? "";
+    // Con el editor abierto, la vista previa ya es la del borrador (todavía igual al guardado).
+    expect(saved).toMatch(/en venta .* en Ñuñoa/);
+    expect(preview().textContent).toContain("con tu borrador, sin guardar");
+
+    fireEvent.change(within(t.form).getByLabelText("Título"), {
+      target: { value: "Casa con patio en Ñuñoa" },
+    });
+    fireEvent.change(within(t.form).getByLabelText("Descripción"), {
+      target: { value: "  Texto del borrador.  " },
+    });
+    // Antes de guardar: el título y la descripción del borrador (recortada, como la guardaría la
+    // API), con la leyenda de que no está guardado; no se pidió nada a la API.
+    expect(within(preview()).getByRole("heading").textContent).toBe("Casa con patio en Ñuñoa");
+    expect(within(preview()).getByText("Texto del borrador.")).toBeTruthy();
+    expect(preview().textContent).toContain("con tu borrador, sin guardar");
+    expect(t.requests.filter((request) => request.startsWith("PATCH"))).toEqual([]);
+
+    fireEvent.click(within(t.form).getByRole("button", { name: "Cancelar" }));
+    expect(within(preview()).getByRole("heading").textContent).toBe(saved);
+    expect(within(preview()).queryByText("Texto del borrador.")).toBeNull();
+    expect(preview().textContent).not.toContain("sin guardar");
+  });
+
+  it("en Instagram, el caption de la vista previa lleva el texto y los hashtags del borrador", async () => {
+    const t = await editing("Instagram");
+    fireEvent.change(within(t.form).getByLabelText("Texto"), {
+      target: { value: "Casa nueva con patio" },
+    });
+    fireEvent.change(within(t.form).getByLabelText("Hashtags"), { target: { value: "Ñuñoa" } });
+
+    const caption = () => within(t.section).getByRole("region", { name: "Caption de Instagram" });
+    // "Casa nueva con patio", una línea en blanco y "#nunoa": Instagram muestra dos líneas.
+    expect(caption().textContent).toBe("tu cuenta Casa nueva con patio… más");
+    fireEvent.click(within(caption()).getByRole("button", { name: "más" }));
+    expect(caption().textContent).toBe("tu cuenta Casa nueva con patio\n\n#nunoa ver menos");
+  });
+
   it("edita y guarda: queda editado a mano y la revisión llega con la respuesta", async () => {
     const t = await editing("Portal Inmobiliario");
 
@@ -390,10 +482,12 @@ describe("panel: edición de textos", () => {
     fireEvent.click(within(t.form).getByRole("button", { name: "Guardar" }));
 
     const panel = within(t.section).getByRole("tabpanel");
+    // La vista previa ya mostraba el borrador (F9.5-T07): se espera a que se guarde.
+    expect(await within(panel).findByText("Texto: editado a mano")).toBeTruthy();
     expect(
-      await within(panel).findByRole("heading", { name: "Departamento luminoso en Ñuñoa" }),
+      within(panel).getByRole("heading", { name: "Departamento luminoso en Ñuñoa" }),
     ).toBeTruthy();
-    expect(within(panel).getByText("Texto: editado a mano")).toBeTruthy();
+    expect(within(panel).queryByText(/con tu borrador, sin guardar/)).toBeNull();
     // La revisión nueva la calcula el servidor: "increíble" es un superlativo.
     const checks = within(panel).getByRole("region", {
       name: "Revisión editorial de Portal Inmobiliario",

@@ -7,7 +7,6 @@ import type {
 import {
   CONTENT_STATUS_TEXT,
   hasContentErrors,
-  joinedPostText,
   LANGUAGE_TEXT,
   linksIn,
   PLATFORM_TEXT,
@@ -15,16 +14,22 @@ import {
   postPublishesOn,
   postTextLength,
 } from "@agentsales/core";
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useEditPostContent, usePostApproval } from "../../queries/posts.js";
 import { Checks } from "../content/Checks.js";
 import { parseHashtags } from "../content/editor.js";
 import { ErrorAlert } from "../ErrorAlert.js";
+import { useAccountName } from "../preview/account-name.js";
+import { PostPreview } from "../preview/PostPreview.js";
+import type { PreviewText } from "../preview/preview.js";
 import { editBlockedReason, unapproveBlockedReason } from "../publications/publications.js";
 import { Button } from "../ui/Button.js";
 import { Field, Input, Textarea } from "../ui/Field.js";
 import { type PostContentView, postContents } from "./labels.js";
 import { needsXLinkMark, X_LINK_COST_TEXT } from "./XLinkControl.js";
+
+/** Lo que los textos necesitan del post: sus redes, la marca del enlace en X, su tipo y su marca. */
+type PostTextsPost = Pick<PostJson, "platforms" | "xLinkAllowed" | "kind" | "brokerId">;
 
 /** El nombre de una pestaña: la red y el idioma. */
 export const tabName = (content: Pick<ContentView, "platform" | "language">) =>
@@ -69,57 +74,46 @@ function XLinkNote({ platform, text }: { platform: PostPlatform; text: string })
   );
 }
 
-/** Lo que se publicaría: el texto con los hashtags y los medios del post, como lo verá la red. */
-function Preview({ content, media }: { content: ContentView; media: readonly PostMediaItem[] }) {
-  const text = joinedPostText(content);
-  const shown = media.slice(0, content.platform === "x" ? 4 : 10);
-  return (
-    <figure
-      aria-label={`Vista previa de ${tabName(content)}`}
-      className="rounded-xl border border-line bg-surface p-4 shadow-xs"
-    >
-      <figcaption className="text-xs font-medium text-fg-subtle">
-        Vista previa · {PLATFORM_TEXT[content.platform]}
-      </figcaption>
-      <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-fg">{text}</p>
-      {shown.length > 0 && (
-        <ul className="mt-2 flex flex-wrap gap-2">
-          {shown.map((item) => (
-            <li key={item.id}>
-              {item.thumbUrl !== null ? (
-                <img
-                  src={item.thumbUrl}
-                  alt=""
-                  className="h-16 w-16 rounded-md border border-line object-cover"
-                />
-              ) : (
-                <span className="flex h-16 w-16 items-center justify-center rounded-md border border-line bg-slate-100 text-xs text-fg-subtle">
-                  {item.kind === "video" ? "video" : "foto"}
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </figure>
-  );
-}
-
-/** El formulario de edición de un texto: cuerpo, hashtags y el conteo de la red mientras se escribe. */
+/**
+ * El formulario de edición de un texto: cuerpo, hashtags y el conteo de la red mientras se escribe.
+ * Cada cambio se avisa a la vista previa (`onDraft`, F9.5-T07), y al cerrar, `null`.
+ */
 function Editor({
   postId,
   content,
   onClose,
+  onDraft,
 }: {
   postId: string;
   content: PostContentView;
   onClose: () => void;
+  onDraft: (draft: PreviewText | null) => void;
 }) {
   const ids = useId();
   const { platform } = content;
   const [body, setBody] = useState(content.body);
   const [hashtags, setHashtags] = useState(content.hashtags.join(" "));
   const save = useEditPostContent(postId);
+  const draftOf = (next: { body: string; hashtags: string }): PreviewText => ({
+    title: null,
+    body: next.body.trim(),
+    hashtags: parseHashtags(next.hashtags),
+  });
+  const onDraftRef = useRef(onDraft);
+  onDraftRef.current = onDraft;
+  const firstDraft = useRef(draftOf({ body, hashtags }));
+  useEffect(() => {
+    onDraftRef.current(firstDraft.current);
+    return () => onDraftRef.current(null);
+  }, []);
+  const changeBody = (value: string) => {
+    setBody(value);
+    onDraft(draftOf({ body: value, hashtags }));
+  };
+  const changeHashtags = (value: string) => {
+    setHashtags(value);
+    onDraft(draftOf({ body, hashtags: value }));
+  };
   const tags = parseHashtags(hashtags);
   const changed = body.trim() !== content.body || tags.join(" ") !== content.hashtags.join(" ");
   const blank = body.trim() === "";
@@ -142,7 +136,7 @@ function Editor({
       <Field label="Texto">
         <Textarea
           value={body}
-          onChange={(event) => setBody(event.target.value)}
+          onChange={(event) => changeBody(event.target.value)}
           rows={8}
           aria-describedby={`${ids}-counter`}
           aria-invalid={blank}
@@ -151,7 +145,7 @@ function Editor({
       <Field label="Hashtags">
         <Input
           value={hashtags}
-          onChange={(event) => setHashtags(event.target.value)}
+          onChange={(event) => changeHashtags(event.target.value)}
           placeholder="#bastidores #producto"
         />
       </Field>
@@ -184,16 +178,19 @@ function TextTab({
 }: {
   postId: string;
   /**
-   * Sus redes (`platforms`): el texto de una red quitada no se aprueba (F9-T21); y la marca del
-   * enlace en X (`xLinkAllowed`, F9-T16).
+   * Sus redes (`platforms`): el texto de una red quitada no se aprueba (F9-T21); la marca del
+   * enlace en X (`xLinkAllowed`, F9-T16); y, para la vista previa, su tipo y su marca (F9.5-T07).
    */
-  post: Pick<PostJson, "platforms" | "xLinkAllowed">;
+  post: PostTextsPost;
   content: PostContentView;
   media: readonly PostMediaItem[];
   publications: readonly PublicationView[];
   lockReason: string | null;
 }) {
   const [editing, setEditing] = useState(false);
+  // La vista previa sigue al borrador mientras se edita (F9.5-T07).
+  const [draft, setDraft] = useState<PreviewText | null>(null);
+  const accountName = useAccountName(post.brokerId, content.platform);
   const approval = usePostApproval(postId);
   const { platform } = content;
   const editBlocked = lockReason ?? editBlockedReason(content, publications);
@@ -244,14 +241,27 @@ function TextTab({
       </div>
       {blocked !== null && !editing && <p className="text-xs text-warning-800">{blocked}</p>}
       {editing ? (
-        <Editor postId={postId} content={content} onClose={() => setEditing(false)} />
+        <Editor
+          postId={postId}
+          content={content}
+          onClose={() => setEditing(false)}
+          onDraft={setDraft}
+        />
       ) : (
         <>
           <PostCounter platform={platform} body={content.body} hashtags={content.hashtags} />
           <XLinkNote platform={platform} text={content.body} />
-          <Preview content={content} media={media} />
         </>
       )}
+      <PostPreview
+        label={`Vista previa de ${tabName(content)}`}
+        platform={platform}
+        kind={post.kind}
+        media={media}
+        text={draft ?? content}
+        accountName={accountName}
+        draft={draft !== null}
+      />
       <Checks content={content} />
       {approval.error && <ErrorAlert error={approval.error} />}
     </div>
@@ -260,7 +270,7 @@ function TextTab({
 
 /**
  * Los textos del post: una pestaña por red e idioma (en el orden de la API), con el texto editable,
- * el conteo de la red, una vista previa simple, la revisión con su consejo y aprobar o quitar la
+ * el conteo de la red, la vista previa con la forma de la red, la revisión con su consejo y aprobar o quitar la
  * aprobación. `lockReason` bloquea todo mientras la IA redacta o si el post está archivado.
  */
 export function PostTexts({
@@ -272,7 +282,7 @@ export function PostTexts({
   lockReason,
 }: {
   postId: string;
-  post: Pick<PostJson, "platforms" | "xLinkAllowed">;
+  post: PostTextsPost;
   contents: readonly ContentView[];
   media: readonly PostMediaItem[];
   publications: readonly PublicationView[];

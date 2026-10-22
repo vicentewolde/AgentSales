@@ -1,9 +1,10 @@
 import type { ContentEditBody, ContentView } from "@agentsales/api/contracts";
 import { CONTENT_STATUS_TEXT, PLATFORM_TEXT } from "@agentsales/core";
-import { type ReactNode, useId, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { ApiError } from "../../api/client.js";
 import { useEditContent } from "../../queries/content.js";
 import { ErrorAlert } from "../ErrorAlert.js";
+import type { PreviewText } from "../preview/preview.js";
 import { Button } from "../ui/Button.js";
 import { Input, Textarea } from "../ui/Field.js";
 import { Checks } from "./Checks.js";
@@ -69,12 +70,14 @@ function Editor({
   lockReason,
   onClose,
   onReload,
+  onDraft,
 }: {
   content: ContentView;
   listingId: string;
   lockReason: string | null;
   onClose: () => void;
   onReload: () => void;
+  onDraft?: ((draft: PreviewText | null) => void) | undefined;
 }) {
   const ids = useId();
   const instagram = content.platform === "instagram";
@@ -85,6 +88,28 @@ function Editor({
   const [hashtags, setHashtags] = useState(content.hashtags.join(" "));
   const save = useEditContent(listingId);
   const stale = base.id !== content.id;
+
+  // La vista previa sigue al borrador mientras se escribe (F9.5-T07): cada cambio se avisa con el
+  // texto como lo guardaría la API, y al cerrar el editor la vista previa vuelve al guardado.
+  const draftOf = (next: { title: string; body: string; hashtags: string }): PreviewText => ({
+    title: instagram ? null : next.title.trim(),
+    body: next.body.trim(),
+    hashtags: instagram ? parseHashtags(next.hashtags) : [],
+  });
+  const onDraftRef = useRef(onDraft);
+  onDraftRef.current = onDraft;
+  const firstDraft = useRef(draftOf({ title, body, hashtags }));
+  useEffect(() => {
+    onDraftRef.current?.(firstDraft.current);
+    return () => onDraftRef.current?.(null);
+  }, []);
+  const change = (next: Partial<{ title: string; body: string; hashtags: string }>) => {
+    const merged = { title, body, hashtags, ...next };
+    if (next.title !== undefined) setTitle(next.title);
+    if (next.body !== undefined) setBody(next.body);
+    if (next.hashtags !== undefined) setHashtags(next.hashtags);
+    onDraft?.(draftOf(merged));
+  };
 
   const parsedTags = parseHashtags(hashtags);
   const counter = textCounter(content.platform, {
@@ -101,9 +126,11 @@ function Editor({
   const blank = body.trim() === "" || (!instagram && title.trim() === "");
   const discard = () => {
     setBase(content);
-    setTitle(content.title ?? "");
-    setBody(content.body);
-    setHashtags(content.hashtags.join(" "));
+    change({
+      title: content.title ?? "",
+      body: content.body,
+      hashtags: content.hashtags.join(" "),
+    });
   };
   const counterId = `${ids}-counter`;
   const blankId = `${ids}-blank`;
@@ -123,7 +150,7 @@ function Editor({
           Título
           <Input
             value={title}
-            onChange={(event) => setTitle(event.target.value)}
+            onChange={(event) => change({ title: event.target.value })}
             aria-describedby={describedBy(blankId)}
             aria-invalid={title.trim() === ""}
             className="mt-1"
@@ -134,7 +161,7 @@ function Editor({
         {instagram ? "Texto" : "Descripción"}
         <Textarea
           value={body}
-          onChange={(event) => setBody(event.target.value)}
+          onChange={(event) => change({ body: event.target.value })}
           rows={instagram ? 10 : 14}
           aria-describedby={instagram ? describedBy(blankId) : blankId}
           aria-invalid={body.trim() === ""}
@@ -147,7 +174,7 @@ function Editor({
             Hashtags
             <Input
               value={hashtags}
-              onChange={(event) => setHashtags(event.target.value)}
+              onChange={(event) => change({ hashtags: event.target.value })}
               placeholder="#nunoa #departamento"
               aria-describedby={describedBy(`${ids}-tags`)}
               className="mt-1"
@@ -212,21 +239,24 @@ function Editor({
 }
 
 /**
- * Un texto de un canal: la vista (que arma quien lo usa) con su estado, su revisión y "Editar", o
- * el formulario de edición. `lockReason` bloquea la edición mientras se regeneran los textos.
+ * Un texto de un canal: su estado, lo que arma quien lo usa (`children`, opcional), su revisión y
+ * "Editar", o el formulario de edición. `lockReason` bloquea la edición mientras se regeneran los
+ * textos. `onDraft` recibe el borrador mientras se edita (y `null` al cerrar), para la vista previa.
  */
 export function EditableText({
   content,
   listingId,
   lockReason,
   onReload,
+  onDraft,
   children,
 }: {
   content: ContentView;
   listingId: string;
   lockReason: string | null;
   onReload: () => void;
-  children: ReactNode;
+  onDraft?: ((draft: PreviewText | null) => void) | undefined;
+  children?: ReactNode;
 }) {
   const [editing, setEditing] = useState(false);
   if (editing) {
@@ -237,6 +267,7 @@ export function EditableText({
         lockReason={lockReason}
         onClose={() => setEditing(false)}
         onReload={onReload}
+        onDraft={onDraft}
       />
     );
   }

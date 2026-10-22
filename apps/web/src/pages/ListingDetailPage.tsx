@@ -163,6 +163,7 @@ function DetailView({ detail }: { detail: Detail }) {
         listingId={listing.id}
         listingStatus={listing.status}
         listingPrice={listing}
+        brokerId={listing.brokerId}
       />
     </>
   );
