@@ -17,14 +17,10 @@ import {
 import { useId, useState } from "react";
 import { Link } from "react-router";
 import { useAccounts } from "../../queries/accounts.js";
-import {
-  type PostPublicationAction,
-  usePostPublicationAction,
-  usePublishPost,
-  useSchedulePost,
-} from "../../queries/posts.js";
+import { usePostPublicationAction, usePublishPost, useSchedulePost } from "../../queries/posts.js";
 import { useBrokerFilter } from "../../scope/broker-scope.js";
 import { ErrorAlert } from "../ErrorAlert.js";
+import { OutcomeBox } from "../publications/OutcomeBox.js";
 import { PublicationMode } from "../publications/PublicationMode.js";
 import {
   platformsToPublish,
@@ -35,7 +31,6 @@ import {
 import { ScheduleForm } from "../publications/ScheduleForm.js";
 import { PublicationStatusBadge } from "../StatusBadge.js";
 import { Button } from "../ui/Button.js";
-import { Input } from "../ui/Field.js";
 import { LiveConfirmButton } from "./LiveConfirm.js";
 import { postContents } from "./labels.js";
 
@@ -250,85 +245,6 @@ export function PostPublishBar({
       )}
       {schedule.data && <ScheduleResults result={schedule.data} />}
       {schedule.error && <ErrorAlert error={schedule.error} />}
-    </div>
-  );
-}
-
-/**
- * Decir si salió una publicación con resultado dudoso (`outcome_unknown`, ADR-0029 punto 8) o
- * confirmar una que se publica a mano (`awaiting_manual_confirm`: LinkedIn, TikTok), con su enlace.
- * El enlace no se guarda en la caché ni se muestra de vuelta: va solo en el pedido.
- */
-function OutcomeBox({
-  publication,
-  pending,
-  onAction,
-}: {
-  publication: PublicationView;
-  pending: boolean;
-  onAction: (action: PostPublicationAction) => void;
-}) {
-  const id = useId();
-  const [url, setUrl] = useState("");
-  const link = url.trim() === "" ? undefined : url.trim();
-  const unknown = publication.status === "outcome_unknown";
-  const network = PLATFORM_TEXT[publication.platform];
-  return (
-    <div className="mt-3 rounded-lg border border-warning-200 bg-warning-50 p-3 text-sm">
-      <p className="text-warning-800">
-        {unknown
-          ? `No se sabe si salió: se cortó justo al enviar. Revisa ${network} y di si está publicada (no se reintenta sola, para no publicarla dos veces).`
-          : `Publícala a mano en ${network} con el texto aprobado y los medios del post, y después confírmala aquí con su enlace.`}
-      </p>
-      <label htmlFor={id} className="mt-3 mb-1.5 block font-medium text-fg">
-        Enlace de la publicación{publication.dryRun ? " (en simulación no hace falta)" : ""}
-      </label>
-      <Input
-        id={id}
-        type="url"
-        value={url}
-        onChange={(event) => setUrl(event.target.value)}
-        placeholder="https://"
-        autoComplete="off"
-      />
-      <div className="mt-3 flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          disabled={pending}
-          onClick={() =>
-            onAction(
-              unknown
-                ? {
-                    kind: "resolve",
-                    id: publication.id,
-                    outcome: "published",
-                    ...(link === undefined ? {} : { url: link }),
-                  }
-                : {
-                    kind: "confirm",
-                    id: publication.id,
-                    ...(link === undefined ? {} : { url: link }),
-                  },
-            )
-          }
-        >
-          {unknown ? "Sí, salió" : "Lo publiqué"}
-        </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={pending}
-          onClick={() =>
-            onAction(
-              unknown
-                ? { kind: "resolve", id: publication.id, outcome: "not_published" }
-                : { kind: "not-published", id: publication.id },
-            )
-          }
-        >
-          {unknown ? "No salió" : "No lo publiqué"}
-        </Button>
-      </div>
     </div>
   );
 }
