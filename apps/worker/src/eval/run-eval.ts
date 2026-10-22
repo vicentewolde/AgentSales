@@ -10,6 +10,7 @@ import {
   isAppError,
   type ListingEvaluation,
   type ListingRepository,
+  listingAiTells,
   PLATFORM_TEXT,
 } from "@agentsales/core";
 
@@ -58,6 +59,10 @@ function checkLines(item: EvaluatedText): string[] {
   );
 }
 
+/** El conteo de muletillas de IA (advertencia: no cambia el resultado). */
+export const aiTellsLine = (tells: number, texts: number): string =>
+  `Muletillas de IA: ${tells}${tells > 0 ? ` en ${texts} ${texts === 1 ? "texto" : "textos"}` : ""} (advertencia, no cambia el resultado)`;
+
 /** Los textos de un aviso, para leerlos en `tmp/eval/` (Markdown). */
 export function renderEvaluation(evaluation: ListingEvaluation): string {
   const lines = [
@@ -102,6 +107,10 @@ export async function runEval(
   let failed = 0;
   let withErrors = 0;
   let evaluated = 0;
+  // Muletillas de IA (spec F9.5, D6): cuántas y en cuántos textos. Son advertencias: no cambian
+  // el código de salida.
+  let aiTells = 0;
+  let textsWithAiTells = 0;
   const fileNameOf = fileNamer();
   for (const listing of listings) {
     // Con Ctrl+C no se pide nada más (cada llamada a la IA gasta cuota del plan).
@@ -117,6 +126,9 @@ export async function runEval(
       if (evaluation.hasErrors) withErrors += 1;
       deps.print(`${evaluation.hasErrors ? "✗" : "✓"} ${listing.externalRef}`);
       for (const item of evaluation.texts) {
+        const tells = listingAiTells(item.text).length;
+        aiTells += tells;
+        if (tells > 0) textsWithAiTells += 1;
         const [first, ...rest] = checkLines(item);
         deps.print(`  ${PLATFORM_TEXT[item.platform]}: ${first}`);
         for (const line of rest) deps.print(`    ${line}`);
@@ -136,6 +148,7 @@ export async function runEval(
     `Evaluadas ${evaluated} de ${listings.length} · con errores ${withErrors}` +
       (failed > 0 ? ` · no se pudieron evaluar ${failed}` : ""),
   );
+  deps.print(aiTellsLine(aiTells, textsWithAiTells));
   if (evaluated > 0) deps.print(`Textos en ${deps.outDir}`);
   return withErrors > 0 || failed > 0 || evaluated < listings.length ? 1 : 0;
 }

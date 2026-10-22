@@ -47,7 +47,10 @@ export const X_REQUEST_TIMEOUT_MS = 30_000;
 /** Tope de cada subida de medios (una imagen o un trozo de 4 MB). */
 export const X_UPLOAD_TIMEOUT_MS = 120_000;
 
-/** Tope de la descarga de cada medio desde R2 (con su URL firmada de 1 hora). */
+/**
+ * Tope por inactividad de la descarga de cada medio desde R2 (con su URL firmada de 1 hora): la
+ * espera de la respuesta y la de cada trozo, no el total (el video se lee al ritmo de la subida).
+ */
 export const X_MEDIA_DOWNLOAD_TIMEOUT_MS = 120_000;
 
 /**

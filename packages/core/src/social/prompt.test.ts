@@ -142,7 +142,10 @@ describe("buildSocialPrompt", () => {
   });
 
   it("tiene versión propia, distinta de la de avisos", () => {
-    expect(SOCIAL_PROMPT_VERSION).toBe("social-post-v1");
+    expect(SOCIAL_PROMPT_VERSION).toBe("social-post-v2");
+    // v2 (F9.5-T05): el estilo de una persona, sin muletillas de IA y con hashtags medidos.
+    expect(SOCIAL_SYSTEM_PROMPT).toContain("Sin clichés de marketing ni muletillas");
+    expect(SOCIAL_SYSTEM_PROMPT).toContain("Instagram y TikTok: de 3 a 5");
   });
 });
 

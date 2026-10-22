@@ -6,6 +6,8 @@ import {
   portalIssuesHint,
   ReadinessIssueList,
 } from "./ReadinessIssueList.js";
+import { Alert } from "./ui/Alert.js";
+import { Button } from "./ui/Button.js";
 
 /** Qué hacer ante los errores de la API que tienen arreglo del lado del operador. */
 function hintFor(error: Error): string | null {
@@ -47,13 +49,13 @@ function hintFor(error: Error): string | null {
  */
 function IssueList({ error }: { error: Error }) {
   const issues = error instanceof ApiError ? (error.issues ?? []) : [];
-  if (issues.length === 0) return <p className="font-semibold text-red-800">{error.message}</p>;
+  if (issues.length === 0) return <p className="font-semibold text-danger-800">{error.message}</p>;
   const channel =
     error instanceof ApiError && error.code === "MARKETPLACE_NOT_READY" ? "Marketplace" : "Portal";
   return (
     <>
-      <p className="font-semibold text-red-800">Falta información para publicar en {channel}:</p>
-      <ReadinessIssueList issues={issues} className="text-red-800" />
+      <p className="font-semibold text-danger-800">Falta información para publicar en {channel}:</p>
+      <ReadinessIssueList issues={issues} className="text-danger-800" />
     </>
   );
 }
@@ -73,7 +75,7 @@ function WaitingCommands({ error }: { error: Error }) {
   }
   const commands = manualConfirmCommands(error.publicationId);
   return (
-    <div className="mt-2 text-sm text-red-800">
+    <div className="mt-2 text-danger-800">
       <p>Si la publicaste:</p>
       <CopyCommand command={commands.confirm} label="Copiar el comando de Lo publiqué" />
       <p className="mt-1">Si no:</p>
@@ -99,20 +101,15 @@ export function ErrorAlert({
 }) {
   const hint = ownHint ?? hintFor(error);
   return (
-    <div role="alert" className="mt-6 rounded-lg border border-red-300 bg-red-50 p-4">
+    <Alert role="alert" tone="danger" className="mt-4">
       <IssueList error={error} />
-      {hint && <p className="mt-1 text-sm text-red-700">{hint}</p>}
+      {hint && <p className="mt-1 text-danger-700">{hint}</p>}
       <WaitingCommands error={error} />
       {onRetry && (
-        <button
-          type="button"
-          onClick={onRetry}
-          disabled={retrying}
-          className="mt-3 rounded-md bg-red-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-        >
+        <Button variant="secondary" size="sm" onClick={onRetry} loading={retrying} className="mt-3">
           {retrying ? "Reintentando…" : "Reintentar"}
-        </button>
+        </Button>
       )}
-    </div>
+    </Alert>
   );
 }

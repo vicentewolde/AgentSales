@@ -390,4 +390,29 @@ describe("checkPostContent: advertencias", () => {
     expect(codes("linkedin", "Esto es **importante**.")).toEqual(["MARKDOWN"]);
     expect(codes("discord", "Esto es **importante**.")).toEqual([]);
   });
+
+  it("las muletillas de IA son una advertencia, en español y en inglés, en cualquier red", () => {
+    const es = check("linkedin", "No es solo una herramienta, es un aliado. ¡Súmate! ¡Ya! ¡Hoy!");
+    expect(es).toEqual([
+      {
+        code: "AI_TELL",
+        severity: "warning",
+        message:
+          "Suena escrito por IA: «no es solo X, es Y», 3 signos de exclamación. Cámbialo por algo concreto o dilo más simple",
+      },
+    ]);
+    expect(hasContentErrors(es)).toBe(false);
+    const en = check("x", "Unlock seamless publishing — it's a game-changer 🚀🔥", context(), []);
+    expect(en.map((item) => [item.code, item.severity])).toEqual([["AI_TELL", "warning"]]);
+    expect(en[0]?.message).toContain(
+      "«unlock», «seamless», «game-changer», guion largo como pausa",
+    );
+    expect(en[0]?.message).toContain("emojis seguidos (🚀🔥)");
+    expect(codes("discord", "Descubre lo nuevo")).toEqual(["AI_TELL"]);
+  });
+
+  it("un texto concreto no tiene muletillas, y los hashtags no se revisan", () => {
+    expect(codes("instagram", CLEAN_ES, context(), ["#descubre"])).toEqual([]);
+    expect(codes("linkedin", CLEAN_EN)).toEqual([]);
+  });
 });

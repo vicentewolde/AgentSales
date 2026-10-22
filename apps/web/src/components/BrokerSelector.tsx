@@ -1,30 +1,44 @@
 import { useId } from "react";
 import { useBrokers } from "../queries/brokers.js";
-import { useBrokerScope, useRole } from "../scope/broker-scope.js";
+import { useBrokerScope, useRole, useScopedBroker } from "../scope/broker-scope.js";
+import { Select } from "./ui/Field.js";
+
+const BOX = "mt-4 rounded-lg border border-line bg-slate-50 px-3 py-2.5";
+const CAPTION = "block text-xs font-medium text-fg-subtle";
 
 /**
- * El selector de corredor del administrador (spec F7 §4.11): "Todos" o uno; filtra Propiedades,
- * Seguimiento y Cuentas. Un corredor no lo ve.
+ * El corredor o la marca que se mira (spec F7 §4.11 y F9.5-T01). El administrador lo elige:
+ * "Todos" o uno; filtra Propiedades, Seguimiento y Cuentas. Un corredor ve el suyo, sin elegir.
  */
 export function BrokerSelector() {
   const role = useRole();
   const brokers = useBrokers();
+  const scoped = useScopedBroker();
   const { selected, select } = useBrokerScope();
   const id = useId();
+  if (role === "broker") {
+    if (scoped === undefined) return null;
+    return (
+      <div className={BOX}>
+        <span className={CAPTION}>{scoped.kind === "brand" ? "Marca" : "Corredor"}</span>
+        <span className="block truncate text-sm font-semibold text-fg">{scoped.brandName}</span>
+      </div>
+    );
+  }
   if (role !== "admin") return null;
   const known = brokers.data ?? [];
   // Un corredor elegido que ya no existe se muestra como "Todos" (y no filtra a nada).
   const value = known.some((broker) => broker.slug === selected) ? (selected ?? "") : "";
   return (
-    <div className="mt-3 px-3 md:mt-4">
-      <label htmlFor={id} className="block text-xs font-medium text-slate-500">
+    <div className={BOX}>
+      <label htmlFor={id} className={CAPTION}>
         Ver corredor
       </label>
-      <select
+      <Select
         id={id}
         value={value}
         onChange={(event) => select(event.target.value === "" ? undefined : event.target.value)}
-        className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-sm"
+        className="mt-1"
       >
         <option value="">Todos</option>
         {known.map((broker) => (
@@ -32,7 +46,7 @@ export function BrokerSelector() {
             {broker.brandName}
           </option>
         ))}
-      </select>
+      </Select>
     </div>
   );
 }

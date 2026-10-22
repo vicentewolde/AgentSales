@@ -21,7 +21,7 @@ import {
   TERMINAL_PUBLICATION_STATUSES,
 } from "../publication-state.js";
 import { listingSubject, sameSubject, subjectFieldsFor, subjectOfInput } from "../subject.js";
-import { COST_COUNTED_STATUSES } from "../x/cost.js";
+import { COST_COUNTED_STATUSES, xSpendLimitReached } from "../x/cost.js";
 import { structuredCopy } from "./copy.js";
 
 export type InMemoryPublicationRepository = PublicationRepository & {
@@ -34,6 +34,12 @@ export type InMemoryPublicationRepository = PublicationRepository & {
    */
   eraseExternalData(platformAccountId: string, event: PublicationEventInput): number;
 };
+
+/** El margen de redondeo al comparar con el tope: los montos van con 4 decimales. */
+const COST_EPSILON_USD = 1e-9;
+
+/** `cost_usd` va con 4 decimales. */
+const roundCostUsd = (value: number) => Math.round(value * 10_000) / 10_000;
 
 const notFound = (id: string) =>
   new AppError("PUBLICATION_NOT_FOUND", `No existe la publicación ${id}`, {
@@ -57,6 +63,22 @@ export function createInMemoryPublicationRepository(
     const found = publications.get(id);
     if (found === undefined) throw notFound(id);
     return found;
+  };
+  /** El gasto de `live` de una cuenta desde `since` (`COST_COUNTED_STATUSES`), sin `excludeId`. */
+  const spentSince = (platformAccountId: string, since: Date, excludeId?: string) => {
+    const counted: ReadonlySet<string> = new Set(COST_COUNTED_STATUSES);
+    return [...publications.values()]
+      .map(({ publication }) => publication)
+      .filter(
+        (publication) =>
+          publication.platformAccountId === platformAccountId &&
+          publication.id !== excludeId &&
+          !publication.dryRun &&
+          publication.costUsd !== null &&
+          counted.has(publication.status) &&
+          (publication.publishedAt ?? publication.updatedAt).getTime() >= since.getTime(),
+      )
+      .reduce((sum, publication) => sum + (publication.costUsd ?? 0), 0);
   };
   const pushEvent = (
     publicationId: string,
@@ -357,26 +379,42 @@ export function createInMemoryPublicationRepository(
       }
       const publication = {
         ...found.publication,
-        costUsd: costUsd === null ? null : Math.round(costUsd * 10_000) / 10_000,
+        costUsd: costUsd === null ? null : roundCostUsd(costUsd),
         updatedAt: later(found.publication.updatedAt),
       };
       publications.set(id, { ...found, publication });
       return structuredCopy(publication);
     },
     async sumCostUsdSince(platformAccountId, since, options = {}) {
-      const counted: ReadonlySet<string> = new Set(COST_COUNTED_STATUSES);
-      return [...publications.values()]
-        .map(({ publication }) => publication)
-        .filter(
-          (publication) =>
-            publication.platformAccountId === platformAccountId &&
-            publication.id !== options.excludePublicationId &&
-            !publication.dryRun &&
-            publication.costUsd !== null &&
-            counted.has(publication.status) &&
-            (publication.publishedAt ?? publication.updatedAt).getTime() >= since.getTime(),
-        )
-        .reduce((sum, publication) => sum + (publication.costUsd ?? 0), 0);
+      return spentSince(platformAccountId, since, options.excludePublicationId);
+    },
+    async reserveCostUsd(id, platformAccountId, costUsd, { limitUsd, since }) {
+      // Sin `await` entre leer y escribir: atómica como la de Drizzle con su candado por cuenta.
+      const found = find(id);
+      if (found.publication.status !== "publishing") {
+        throw new AppError(
+          "PUBLICATION_NOT_PUBLISHING",
+          "La publicación ya no se está publicando",
+          { details: { publicationId: id, status: found.publication.status } },
+        );
+      }
+      if (found.publication.platformAccountId !== platformAccountId) {
+        throw new AppError("INTERNAL_ERROR", "La publicación no es de esa cuenta", {
+          details: { publicationId: id },
+        });
+      }
+      const amount = roundCostUsd(costUsd);
+      const spentUsd = spentSince(platformAccountId, since, id);
+      if (spentUsd + amount > limitUsd + COST_EPSILON_USD) {
+        throw xSpendLimitReached({ spentUsd: roundCostUsd(spentUsd), costUsd: amount, limitUsd });
+      }
+      const publication = {
+        ...found.publication,
+        costUsd: amount,
+        updatedAt: later(found.publication.updatedAt),
+      };
+      publications.set(id, { ...found, publication });
+      return structuredCopy(publication);
     },
     async countLiveAttemptsSince(platformAccountId, since) {
       const own = new Set(

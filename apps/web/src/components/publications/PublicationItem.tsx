@@ -5,7 +5,6 @@ import {
   type ListingStatus,
   marketplacePriceText,
   PLATFORM_TEXT,
-  PUBLICATION_STATUS_TEXT,
   type PublishMode,
   publicationFormatText,
   publicationModeText,
@@ -14,7 +13,6 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { ApiError } from "../../api/client.js";
-import { PUBLICATION_STATUS_TONE } from "../../labels.js";
 import { useFreshPublishMode } from "../../queries/health.js";
 import {
   isPublishing,
@@ -26,6 +24,9 @@ import {
 } from "../../queries/publications.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 import { PollStoppedAlert } from "../PollStoppedAlert.js";
+import { PublicationStatusBadge } from "../StatusBadge.js";
+import { Badge } from "../ui/Badge.js";
+import { Button } from "../ui/Button.js";
 import { MarketplaceConfirm } from "./MarketplaceConfirm.js";
 import { PublicationEvents } from "./PublicationEvents.js";
 import {
@@ -35,10 +36,6 @@ import {
   safeExternalUrl,
 } from "./publications.js";
 import { ScheduleForm } from "./ScheduleForm.js";
-
-const BUTTON =
-  "rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-800 hover:bg-slate-100 disabled:opacity-50";
-const DANGER = "rounded-md bg-red-700 px-2 py-1 text-xs font-medium text-white disabled:opacity-50";
 
 type Confirming =
   | "cancel"
@@ -65,10 +62,10 @@ function ScheduleState({ publication }: { publication: ListingPublicationView })
   const at = formatChileTime(publication.scheduledAt);
   if (publication.schedule === "overdue") {
     return (
-      <p className="mt-1 text-sm text-amber-800">
-        <span className="mr-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold">
+      <p className="mt-1 text-sm text-warning-800">
+        <Badge tone="warning" className="mr-1">
           Atrasada
-        </span>
+        </Badge>
         Era para el {at} y no salió (el worker estuvo apagado más de 12 h): publícala ahora,
         reprográmala o descártala.
       </p>
@@ -76,13 +73,13 @@ function ScheduleState({ publication }: { publication: ListingPublicationView })
   }
   if (publication.platform === "fb_marketplace" && publication.schedule === "due") {
     return (
-      <p className="mt-1 text-sm font-semibold text-sky-800">
+      <p className="mt-1 text-sm font-semibold text-info-800">
         Te toca: era para el {at}. Aprieta Publicar ahora y sigue en la ventana de Facebook.
       </p>
     );
   }
   return (
-    <p className="mt-1 text-sm text-slate-700">
+    <p className="mt-1 text-sm text-fg-muted">
       Programada para el {at} (hora de Chile)
       {publication.platform === "fb_marketplace" ? ": a esa hora te toca publicarla a ti" : ""}.
     </p>
@@ -95,7 +92,7 @@ function Expiry({ publication }: { publication: ListingPublicationView }) {
   if (expiry === null) return null;
   if (expiry.expired) {
     return (
-      <p className="mt-1 text-sm font-semibold text-amber-800">
+      <p className="mt-1 text-sm font-semibold text-warning-800">
         {publication.status === "unpublished"
           ? "El aviso venció: republícalo."
           : "El aviso venció en Mercado Libre: usa Actualizar para leer su estado."}
@@ -104,7 +101,7 @@ function Expiry({ publication }: { publication: ListingPublicationView }) {
   }
   if (!expiry.soon) return null;
   return (
-    <p className="mt-1 text-sm text-amber-800">
+    <p className="mt-1 text-sm text-warning-800">
       Vence en {expiry.daysLeft} {expiry.daysLeft === 1 ? "día" : "días"}.
     </p>
   );
@@ -162,12 +159,12 @@ function RemoteState({ publication }: { publication: ListingPublicationView }) {
   const remote = publication.remoteState;
   if (remote === null) return null;
   return (
-    <div className="mt-1 text-sm text-slate-700">
+    <div className="mt-1 text-sm text-fg-muted">
       <p>
         En Mercado Libre: <span className="font-medium">{remoteStatusText(remote)}</span>
         {remote.stopTime !== null && <> · vence el {dateText(remote.stopTime)}</>}
       </p>
-      {remote.reason !== undefined && <p className="text-amber-800">{remote.reason.message}</p>}
+      {remote.reason !== undefined && <p className="text-warning-800">{remote.reason.message}</p>}
     </div>
   );
 }
@@ -352,19 +349,15 @@ export function PublicationItem({
     <article
       ref={card}
       aria-label={`Publicación ${format}`}
-      className="rounded-lg border border-slate-200 bg-white p-3"
+      className="rounded-xl border border-line bg-surface p-3 shadow-xs"
     >
       <div className="flex flex-wrap items-center gap-2">
         <h4 className="font-semibold capitalize">{format}</h4>
-        <span
-          className={`rounded-full px-2 py-0.5 text-xs font-semibold ${PUBLICATION_STATUS_TONE[publication.status]}`}
-        >
-          {PUBLICATION_STATUS_TEXT[publication.status]}
-        </span>
-        <span className="text-xs text-slate-500">{publicationModeText(publication.dryRun)}</span>
+        <PublicationStatusBadge status={publication.status} />
+        <span className="text-xs text-fg-subtle">{publicationModeText(publication.dryRun)}</span>
       </div>
       {/* Siempre montada: los lectores de pantalla anuncian los cambios de una región que ya estaba. */}
-      <p aria-live="polite" className="mt-1 text-sm text-slate-700">
+      <p aria-live="polite" className="mt-1 text-sm text-fg-muted">
         {isPublishing(publication.status) ? "Publicando…" : ""}
       </p>
       {link !== null && (
@@ -372,7 +365,7 @@ export function PublicationItem({
           href={link}
           target="_blank"
           rel="noreferrer"
-          className="block text-sm break-all text-sky-700 underline"
+          className="block text-sm break-all text-info-700 underline"
         >
           Ver en {channel}
         </a>
@@ -381,10 +374,10 @@ export function PublicationItem({
       <ScheduleState publication={publication} />
       <Expiry publication={publication} />
       {publication.status === "published" && publication.dryRun && (
-        <p className="mt-1 text-xs text-slate-500">{SIMULATION_TEXT[publication.platform]}</p>
+        <p className="mt-1 text-xs text-fg-subtle">{SIMULATION_TEXT[publication.platform]}</p>
       )}
       {publication.status === "published" && publication.manual !== null && (
-        <p className="mt-1 text-xs text-slate-600">
+        <p className="mt-1 text-xs text-fg-muted">
           Precio en el formulario: {marketplacePriceText(publication.manual)}
         </p>
       )}
@@ -398,9 +391,9 @@ export function PublicationItem({
       )}
       {publication.lastError !== null && publication.status === "failed" && (
         <>
-          <p className="mt-1 text-sm text-red-700">{publication.lastError.message}</p>
+          <p className="mt-1 text-sm text-danger-700">{publication.lastError.message}</p>
           {publication.errorAdvice !== null && (
-            <p className="mt-1 text-sm text-slate-700">Qué hacer: {publication.errorAdvice}</p>
+            <p className="mt-1 text-sm text-fg-muted">Qué hacer: {publication.errorAdvice}</p>
           )}
         </>
       )}
@@ -424,54 +417,54 @@ export function PublicationItem({
       {confirming === null && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {actions.retry && (
-            <button
-              type="button"
-              className={BUTTON}
+            <Button
+              variant="secondary"
+              size="sm"
               aria-label={`Reintentar el ${format}`}
               disabled={action.isPending || retryBlocked !== null || modeUnknown}
               onClick={(event) => void retry(event.currentTarget)}
             >
               Reintentar
-            </button>
+            </Button>
           )}
           {actions.publishNow && (
-            <button
-              type="button"
-              className={BUTTON}
+            <Button
+              variant="secondary"
+              size="sm"
               aria-label={`Publicar ahora el ${format}`}
               disabled={action.isPending || modeUnknown}
               onClick={(event) => void retry(event.currentTarget, "publish-now")}
             >
               Publicar ahora
-            </button>
+            </Button>
           )}
           {(actions.schedule || actions.reschedule) && (
-            <button
-              type="button"
-              className={BUTTON}
+            <Button
+              variant="secondary"
+              size="sm"
               aria-label={`${actions.reschedule ? "Reprogramar" : "Programar"} el ${format}`}
               disabled={action.isPending || scheduleBlocked !== null}
               title={scheduleBlocked ?? undefined}
               onClick={(event) => open("schedule", event.currentTarget)}
             >
               {actions.reschedule ? "Reprogramar" : "Programar"}
-            </button>
+            </Button>
           )}
           {actions.unschedule && (
-            <button
-              type="button"
-              className={BUTTON}
+            <Button
+              variant="secondary"
+              size="sm"
               aria-label={`Desprogramar el ${format}`}
               disabled={action.isPending}
               onClick={() => run({ kind: "unschedule", id: publication.id })}
             >
               Desprogramar
-            </button>
+            </Button>
           )}
           {actions.update && (
-            <button
-              type="button"
-              className={BUTTON}
+            <Button
+              variant="secondary"
+              size="sm"
               aria-label={`Actualizar el aviso del ${format} en ${channel}`}
               disabled={action.isPending}
               onClick={(event) => {
@@ -482,12 +475,12 @@ export function PublicationItem({
               {action.isPending && action.variables?.kind === "update"
                 ? "Actualizando…"
                 : "Actualizar aviso"}
-            </button>
+            </Button>
           )}
           {actions.relist && (
-            <button
-              type="button"
-              className={BUTTON}
+            <Button
+              variant="secondary"
+              size="sm"
               aria-label={`Republicar el ${format}`}
               disabled={action.isPending}
               onClick={(event) => {
@@ -496,44 +489,44 @@ export function PublicationItem({
               }}
             >
               Republicar
-            </button>
+            </Button>
           )}
           {isPublishing(publication.status) && (
-            <button
-              type="button"
-              className={BUTTON}
+            <Button
+              variant="secondary"
+              size="sm"
               aria-label={`Volver a encolar el ${format}`}
               disabled={action.isPending}
               onClick={() => run({ kind: "publish", id: publication.id })}
             >
               Volver a encolar
-            </button>
+            </Button>
           )}
           {actions.cancel && (
-            <button
-              type="button"
-              className={BUTTON}
+            <Button
+              variant="secondary"
+              size="sm"
               aria-label={`Descartar el ${format}`}
               onClick={(event) => open("cancel", event.currentTarget)}
             >
               Descartar
-            </button>
+            </Button>
           )}
           {actions.pause && (
-            <button
-              type="button"
-              className={BUTTON}
+            <Button
+              variant="secondary"
+              size="sm"
               aria-label={`Pausar el ${format}`}
               disabled={action.isPending}
               onClick={() => run({ kind: "pause", id: publication.id })}
             >
               {action.isPending && action.variables?.kind === "pause" ? "Pausando…" : "Pausar"}
-            </button>
+            </Button>
           )}
           {actions.resume && (
-            <button
-              type="button"
-              className={BUTTON}
+            <Button
+              variant="secondary"
+              size="sm"
               aria-label={`Reactivar el ${format}`}
               disabled={action.isPending}
               onClick={() => run({ kind: "resume", id: publication.id })}
@@ -541,88 +534,90 @@ export function PublicationItem({
               {action.isPending && action.variables?.kind === "resume"
                 ? "Reactivando…"
                 : "Reactivar"}
-            </button>
+            </Button>
           )}
           {actions.close && (
-            <button
-              type="button"
-              className={BUTTON}
+            <Button
+              variant="secondary"
+              size="sm"
               aria-label={`Cerrar el ${format}`}
               disabled={action.isPending}
               onClick={(event) => open("close", event.currentTarget)}
             >
               Cerrar
-            </button>
+            </Button>
           )}
           {actions.sync && (
-            <button
-              type="button"
-              className={BUTTON}
+            <Button
+              variant="secondary"
+              size="sm"
               aria-label={`Actualizar el estado del ${format}`}
               disabled={action.isPending}
               onClick={() => run({ kind: "sync", id: publication.id })}
             >
               Actualizar
-            </button>
+            </Button>
           )}
           {actions.retire && (
-            <button
-              type="button"
-              className={BUTTON}
+            <Button
+              variant="secondary"
+              size="sm"
               aria-label={`Marcar como retirado el ${format}`}
               onClick={(event) => open("retire", event.currentTarget)}
             >
               Marcar como retirada
-            </button>
+            </Button>
           )}
-          <button
-            type="button"
-            className="text-xs underline"
+          <Button
+            variant="link"
+            className="text-xs"
             aria-expanded={showEvents}
             aria-label={`Bitácora del ${format}`}
             onClick={() => setShowEvents(!showEvents)}
           >
             {showEvents ? "Ocultar bitácora" : "Ver bitácora"}
-          </button>
+          </Button>
         </div>
       )}
       {actions.retry && retryBlocked !== null && (
-        <p className="mt-1 text-xs text-amber-800">{retryBlocked}</p>
+        <p className="mt-1 text-xs text-warning-800">{retryBlocked}</p>
       )}
       {actions.retry && modeUnknown && (
-        <p className="mt-1 text-xs text-amber-800">
+        <p className="mt-1 text-xs text-warning-800">
           Todavía no se sabe si la API está en simulación o en vivo.
         </p>
       )}
       {isPublishing(publication.status) && (
-        <p className="mt-1 text-xs text-slate-500">
+        <p className="mt-1 text-xs text-fg-subtle">
           Volver a encolar sirve si el worker estuvo apagado o la cola falló: no la publica dos
           veces.
         </p>
       )}
 
       {confirming === "live-retry" && (
-        <div role="alert" className="mt-2 rounded-md border border-red-300 bg-red-50 p-2 text-sm">
-          <p className="font-semibold text-red-800">
+        <div
+          role="alert"
+          className="mt-2 rounded-md border border-danger-200 bg-danger-50 p-2 text-sm"
+        >
+          <p className="font-semibold text-danger-800">
             {retryReason === "publish-now"
               ? `Se publicará ahora, sin esperar la hora programada. ${liveRetryText(publication, format, channel)}`
               : liveRetryText(publication, format, channel)}
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              type="button"
-              className={DANGER}
+            <Button
+              variant="danger"
+              size="sm"
               disabled={action.isPending}
               onClick={() => run({ kind: "publish", id: publication.id })}
             >
               {retryReason === "publish-now"
                 ? "Sí, publicar ahora en vivo"
                 : "Sí, reintentar en vivo"}
-            </button>
-            {/* biome-ignore lint/a11y/noAutofocus: el foco va a la opción segura al abrir la confirmación */}
-            <button type="button" autoFocus className="text-xs underline" onClick={close}>
+            </Button>
+            <Button variant="link" autoFocus className="text-xs" onClick={close}>
               Cancelar
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -637,21 +632,23 @@ export function PublicationItem({
         />
       )}
       {(confirming === "update" || confirming === "relist") && (
-        <div role="alert" className="mt-2 rounded-md border border-red-300 bg-red-50 p-2 text-sm">
-          <p className="font-semibold text-red-800">{confirmMessage}</p>
+        <div
+          role="alert"
+          className="mt-2 rounded-md border border-danger-200 bg-danger-50 p-2 text-sm"
+        >
+          <p className="font-semibold text-danger-800">{confirmMessage}</p>
           <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              type="button"
-              className={DANGER}
+            <Button
+              variant="danger"
+              size="sm"
               disabled={action.isPending}
               onClick={() => run({ kind: confirming, id: publication.id, confirmed: true })}
             >
               {confirming === "update" ? "Sí, actualizar en vivo" : "Sí, republicar en vivo"}
-            </button>
-            {/* biome-ignore lint/a11y/noAutofocus: el foco va a la opción segura al abrir la confirmación */}
-            <button type="button" autoFocus className="text-xs underline" onClick={close}>
+            </Button>
+            <Button variant="link" autoFocus className="text-xs" onClick={close}>
               Cancelar
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -663,18 +660,17 @@ export function PublicationItem({
               ` Ojo: ya empezó en vivo, así que pudo haber salido en ${channel}; revísalo antes.`}
           </legend>
           <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              type="button"
-              className={DANGER}
+            <Button
+              variant="danger"
+              size="sm"
               disabled={action.isPending}
               onClick={() => run({ kind: "cancel", id: publication.id })}
             >
               Sí, descartar
-            </button>
-            {/* biome-ignore lint/a11y/noAutofocus: el foco va a la opción segura al abrir la confirmación */}
-            <button type="button" autoFocus className="text-xs underline" onClick={close}>
+            </Button>
+            <Button variant="link" autoFocus className="text-xs" onClick={close}>
               No
-            </button>
+            </Button>
           </div>
         </fieldset>
       )}
@@ -694,18 +690,17 @@ export function PublicationItem({
             <p>Es una simulación: no hay nada que borrar en {channel}.</p>
           )}
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className={DANGER}
+            <Button
+              variant="danger"
+              size="sm"
               disabled={action.isPending || (live && !removedByHand)}
               onClick={() => run({ kind: "retire", id: publication.id, removedByHand: live })}
             >
               Sí, marcar como retirada
-            </button>
-            {/* biome-ignore lint/a11y/noAutofocus: el foco va a la opción segura al abrir la confirmación */}
-            <button type="button" autoFocus className="text-xs underline" onClick={close}>
+            </Button>
+            <Button variant="link" autoFocus className="text-xs" onClick={close}>
               Cancelar
-            </button>
+            </Button>
           </div>
         </fieldset>
       )}
@@ -717,23 +712,22 @@ export function PublicationItem({
               : `¿Cerrar el ${format}? Es una simulación: no se cambia nada en Mercado Libre.`}
           </legend>
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className={DANGER}
+            <Button
+              variant="danger"
+              size="sm"
               disabled={action.isPending}
               onClick={() => run({ kind: "close", id: publication.id, confirmed: live })}
             >
               {action.isPending ? "Cerrando…" : "Sí, cerrar"}
-            </button>
-            {/* biome-ignore lint/a11y/noAutofocus: el foco va a la opción segura al abrir la confirmación */}
-            <button type="button" autoFocus className="text-xs underline" onClick={close}>
+            </Button>
+            <Button variant="link" autoFocus className="text-xs" onClick={close}>
               Cancelar
-            </button>
+            </Button>
           </div>
         </fieldset>
       )}
       {notice !== null && (
-        <p role="status" className="mt-2 text-sm text-slate-700">
+        <p role="status" className="mt-2 text-sm text-fg-muted">
           {notice}
         </p>
       )}
@@ -756,7 +750,10 @@ export function PublicationItem({
                 ? "Facebook"
                 : "Instagram"}{" "}
             del corredor en{" "}
-            <Link to="/cuentas" className="underline">
+            <Link
+              to="/cuentas"
+              className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-900"
+            >
               Cuentas
             </Link>
             .

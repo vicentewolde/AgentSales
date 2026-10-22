@@ -189,6 +189,7 @@ describe("runSocialEval con fake", () => {
       tooLong: 0,
       escapes: 0,
       massMentions: 0,
+      aiTells: 0,
       failures: 0,
       textsWithErrors: 0,
     });
@@ -448,6 +449,45 @@ describe("runSocialEval cuenta los problemas que se le inyectan", () => {
   });
 });
 
+describe("runSocialEval cuenta las muletillas de IA", () => {
+  it("son una advertencia: se cuentan y no cambian el resultado", async () => {
+    const item = profile("con-historial");
+    const plan: ScriptedLlmResponse = {
+      data: { ideas: [idea("Cómo regar en verano", "2026-10-21")], warnings: [] },
+    };
+    const textLlm = createInMemoryLlmProvider([
+      {
+        data: {
+          texts: [
+            {
+              platform: "instagram",
+              language: "es",
+              body: "Descubre el huerto. Sin duda, la cosecha te espera. ¡Ya! ¡Hoy! ¡Ven!",
+              hashtags: ["#huerta"],
+            },
+          ],
+          warnings: [],
+        },
+      },
+    ]);
+    const { exitCode, report, output } = await run(
+      { planLlm: createInMemoryLlmProvider([plan]), textLlm },
+      [item],
+      { ideas: 1 },
+    );
+
+    const [text] = report.profiles[0]?.texts ?? [];
+    expect(text?.checks.map((check) => [check.code, check.severity])).toEqual([
+      ["AI_TELL", "warning"],
+    ]);
+    // «descubre», «sin duda», «te espera» y 3 signos de exclamación.
+    expect(report.totals).toMatchObject({ aiTells: 4, textsWithErrors: 0 });
+    expect(output).toContain("⚠ AI_TELL");
+    expect(output).toContain("muletillas de IA 4");
+    expect(exitCode).toBe(0);
+  });
+});
+
 describe("runSocialEval sin red", () => {
   it("un proveedor que no responde queda como falla del perfil y sigue con el siguiente", async () => {
     const planLlm = createInMemoryLlmProvider([
@@ -602,6 +642,7 @@ describe("las piezas de la evaluación", () => {
       escapes: 0,
       massMentions: 0,
       avoided: 0,
+      aiTells: 0,
       texts: 2,
       textsWithErrors: 0,
       failures: 0,
@@ -614,7 +655,9 @@ describe("las piezas de la evaluación", () => {
     expect(
       socialEvalExitCode(totals({ ideasDiscarded: 1 }), { stopped: false, strict: true }),
     ).toBe(1);
-    expect(socialEvalExitCode(totals({ similar: 2, avoided: 1 }), { stopped: false })).toBe(0);
+    expect(
+      socialEvalExitCode(totals({ similar: 2, avoided: 1, aiTells: 3 }), { stopped: false }),
+    ).toBe(0);
     expect(socialEvalExitCode(totals({ textsWithErrors: 1 }), { stopped: false })).toBe(1);
     expect(socialEvalExitCode(totals({ escapes: 1 }), { stopped: false })).toBe(1);
     expect(socialEvalExitCode(totals({ failures: 1 }), { stopped: false })).toBe(1);

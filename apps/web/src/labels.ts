@@ -1,37 +1,52 @@
-import type { ListingStatus, PlatformAccountStatus, PublicationStatus } from "@agentsales/core";
+import type {
+  ImportRunStatus,
+  ListingStatus,
+  PlatformAccountStatus,
+  PublicationStatus,
+} from "@agentsales/core";
+import type { BadgeTone } from "./components/ui/styles.js";
 
 // Los textos de estados y operaciones viven en core (los comparte la CLI). Aquí, solo lo propio
-// de la interfaz: colores y botones.
+// de la interfaz: el tono de cada insignia (F9.5-T01: los colores salen del sistema visual).
 
-/** Colores de la etiqueta de estado (Tailwind). */
-export const LISTING_STATUS_TONE: Readonly<Record<ListingStatus, string>> = {
-  draft: "bg-slate-100 text-slate-700",
-  ready: "bg-emerald-100 text-emerald-800",
-  active: "bg-sky-100 text-sky-800",
-  paused: "bg-amber-100 text-amber-800",
-  closed: "bg-slate-200 text-slate-600",
-  archived: "bg-slate-200 text-slate-600",
+/** El tono de la insignia de estado de una propiedad. */
+export const LISTING_STATUS_TONE: Readonly<Record<ListingStatus, BadgeTone>> = {
+  draft: "neutral",
+  ready: "success",
+  active: "brand",
+  paused: "warning",
+  closed: "muted",
+  archived: "muted",
 };
 
-/** Colores de la etiqueta de estado de una cuenta conectada. */
-export const ACCOUNT_STATUS_TONE: Readonly<Record<PlatformAccountStatus, string>> = {
-  connected: "bg-emerald-100 text-emerald-800",
-  expired: "bg-red-100 text-red-800",
-  revoked: "bg-slate-200 text-slate-600",
-  error: "bg-red-100 text-red-800",
+/** El tono de la insignia de estado de una cuenta conectada. */
+export const ACCOUNT_STATUS_TONE: Readonly<Record<PlatformAccountStatus, BadgeTone>> = {
+  connected: "success",
+  expired: "danger",
+  revoked: "muted",
+  error: "danger",
 };
 
-/** Colores de la etiqueta de estado de una publicación. */
-export const PUBLICATION_STATUS_TONE: Readonly<Record<PublicationStatus, string>> = {
-  approved: "bg-sky-100 text-sky-800",
-  scheduled: "bg-sky-100 text-sky-800",
-  publishing: "bg-amber-100 text-amber-800",
-  awaiting_manual_confirm: "bg-amber-100 text-amber-800",
-  published: "bg-emerald-100 text-emerald-800",
-  failed: "bg-red-100 text-red-800",
-  paused: "bg-slate-200 text-slate-600",
-  unpublished: "bg-slate-200 text-slate-600",
-  cancelled: "bg-slate-200 text-slate-600",
+/** El tono de la insignia de estado de una publicación. */
+export const PUBLICATION_STATUS_TONE: Readonly<Record<PublicationStatus, BadgeTone>> = {
+  approved: "brand",
+  scheduled: "info",
+  publishing: "warning",
+  awaiting_manual_confirm: "warning",
+  published: "success",
+  failed: "danger",
+  paused: "muted",
+  unpublished: "muted",
+  cancelled: "muted",
   // F9 (ADR-0029): espera que el operador diga si salió.
-  outcome_unknown: "bg-amber-100 text-amber-800",
+  outcome_unknown: "warning",
+};
+
+/** El tono de la insignia de estado de una carga. */
+export const IMPORT_RUN_STATUS_TONE: Readonly<Record<ImportRunStatus, BadgeTone>> = {
+  awaiting_upload: "neutral",
+  queued: "warning",
+  running: "info",
+  succeeded: "success",
+  failed: "danger",
 };
