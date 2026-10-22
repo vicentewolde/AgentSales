@@ -26,7 +26,7 @@ export function paintPublicationStatus(
   publication: Pick<PublicationView, "status">,
   c: Colors,
 ): string {
-  const text = PUBLICATION_STATUS_TEXT[publication.status];
+  const text = PUBLICATION_STATUS_TEXT[publication.status] ?? publication.status;
   if (publication.status === "published") return c.green(text);
   if (publication.status === "failed") return c.red(text);
   if (
@@ -42,7 +42,7 @@ export function paintPublicationStatus(
 export const publicationName = (
   publication: Pick<PublicationView, "format" | "platform" | "mediaIds">,
 ) =>
-  `${publicationFormatText(publication.platform, publication.format, publication.mediaIds.length)} de ${PLATFORM_TEXT[publication.platform]}`;
+  `${publicationFormatText(publication.platform, publication.format, publication.mediaIds.length)} de ${PLATFORM_TEXT[publication.platform] ?? publication.platform}`;
 
 type Named = Pick<PublicationView, "format" | "platform" | "mediaIds">;
 const phraseOf = (publication: Named) =>
@@ -145,7 +145,7 @@ export function renderPublications(publications: readonly PublicationView[], c: 
     ],
     publications.map((publication) => [
       publication.id,
-      PLATFORM_TEXT[publication.platform],
+      PLATFORM_TEXT[publication.platform] ?? publication.platform,
       publicationFormatText(publication.platform, publication.format, publication.mediaIds.length),
       paintPublicationStatus(publication, c),
       publicationModeText(publication.dryRun),
@@ -211,8 +211,14 @@ export function renderPublicationEvents(
     .map((event) => {
       const when = `  ${c.dim(formatDateTime(event.createdAt))}  ${publicationActorText(event.actor, event.userName)}`;
       if (event.type === "status_changed") {
-        const from = event.fromStatus === null ? "nace" : PUBLICATION_STATUS_TEXT[event.fromStatus];
-        const to = event.toStatus === null ? "?" : PUBLICATION_STATUS_TEXT[event.toStatus];
+        const from =
+          event.fromStatus === null
+            ? "nace"
+            : (PUBLICATION_STATUS_TEXT[event.fromStatus] ?? event.fromStatus);
+        const to =
+          event.toStatus === null
+            ? "?"
+            : (PUBLICATION_STATUS_TEXT[event.toStatus] ?? event.toStatus);
         // Un cambio que vino de leer la plataforma (el sync de Portal) dice qué leyó.
         const { sync, remoteStatus } = event.payload;
         const read =
@@ -249,7 +255,7 @@ export function renderPublicationEvents(
       if (!attempt.success) return `${when}  intento (detalle ilegible)`;
       const { mode, attempt: number, retry, result, error, sent, notes } = attempt.data;
       const lines = [
-        `${when}  intento ${number}${retry > 0 ? ` (reintento ${retry})` : ""} en ${mode === "dry-run" ? "simulación" : "vivo"}: ${PUBLISH_ATTEMPT_RESULT_TEXT[result]}`,
+        `${when}  intento ${number}${retry > 0 ? ` (reintento ${retry})` : ""} en ${mode === "dry-run" ? "simulación" : "vivo"}: ${PUBLISH_ATTEMPT_RESULT_TEXT[result] ?? result}`,
       ];
       if (error !== undefined) lines.push(`      ${c.red(`${error.code}: ${error.message}`)}`);
       if (sent !== undefined) {

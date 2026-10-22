@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CONTENT_REEL_OUTCOMES } from "./content.js";
+import type { PublicationFormat } from "./enums.js";
 import {
   BROKER_KINDS,
   CLOSE_REASONS,
@@ -153,6 +154,17 @@ describe("publicationFormatText (F4-T20, F9.5-T02)", () => {
     expect(publicationFormatText("instagram", "post", 2)).toBe("carrusel");
     // Sin saber cuántos medios lleva (un formato saltado, otro servidor), el carrusel de un aviso.
     expect(publicationFormatText("instagram", "post", null)).toBe("carrusel");
+  });
+
+  it("un formato que no conoce (de un servidor más nuevo, F9.5-T11) se muestra tal cual", () => {
+    const unknown = "story" as PublicationFormat;
+    expect(publicationFormatText("instagram", unknown, 1)).toBe("story");
+    expect(publicationFormatPhrase("instagram", unknown, 1)).toEqual({
+      name: "story",
+      el: "el",
+      del: "del",
+      o: "o",
+    });
   });
 
   it("publicationFormatPhrase: el artículo concuerda con el formato (la imagen, el carrusel)", () => {
