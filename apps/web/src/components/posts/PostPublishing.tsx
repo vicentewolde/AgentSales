@@ -6,6 +6,7 @@ import type {
   PublicationView,
 } from "@agentsales/api/contracts";
 import {
+  accountOwnedBy,
   formatChileTime,
   LANGUAGE_TEXT,
   PLATFORM_TEXT,
@@ -24,7 +25,6 @@ import {
   usePublishPost,
   useSchedulePost,
 } from "../../queries/posts.js";
-import { useBrokerFilter } from "../../scope/broker-scope.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 import { publishButtonText, safeExternalUrl } from "../publications/publications.js";
 import { ScheduleForm } from "../publications/ScheduleForm.js";
@@ -53,9 +53,10 @@ export function approvedPlatforms(
 }
 
 /**
- * Las redes que no tienen una cuenta conectada de la marca (ensayo de la demo de F9): publicarlas
- * o programarlas daría `ACCOUNT_NOT_CONNECTED`. Mientras no se saben las cuentas (`undefined`),
- * ninguna: el panel no esconde nada que la API podría aceptar.
+ * Las redes que no tienen una cuenta conectada de la marca del post (ensayo de la demo de F9;
+ * `accountOwnedBy`, F9.5-T12): publicarlas o programarlas daría `ACCOUNT_NOT_CONNECTED`.
+ * Mientras no se saben las cuentas (`undefined`), ninguna: el panel no esconde nada que la API
+ * podría aceptar.
  */
 export function platformsWithoutAccount(
   platforms: readonly PostPlatform[],
@@ -67,7 +68,7 @@ export function platformsWithoutAccount(
     (platform) =>
       !accounts.some(
         (account) =>
-          account.brokerId === brokerId &&
+          accountOwnedBy(account, brokerId) &&
           account.platform === platform &&
           account.status === "connected",
       ),
@@ -117,7 +118,9 @@ export function PostPublishBar({
   const ids = useId();
   const publish = usePublishPost(postId);
   const schedule = useSchedulePost(postId);
-  const accounts = useAccounts(useBrokerFilter());
+  // Todas las cuentas que la sesión puede ver (su alcance), no las del corredor del selector: un
+  // administrador con otro corredor elegido mira igual las redes de la marca del post (F9.5-T12).
+  const accounts = useAccounts();
   const platforms = approvedPlatforms(contents, post);
   const excludedOnly = platforms.length === 0 && approvedPlatforms(contents).length > 0;
   const unconnected = platformsWithoutAccount(platforms, accounts.data?.accounts, post.brokerId);
