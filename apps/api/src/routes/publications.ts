@@ -17,6 +17,7 @@ import {
   PENDING_PUBLICATION_STATUSES,
   type Platform,
   type PlatformAccountRepository,
+  type PlatformTokenRefresher,
   type PublicationOperations,
   type PublicationRepository,
   type PublishListingDeps,
@@ -100,6 +101,12 @@ export type PublicationRoutesDeps = PublishListingDeps &
       "get" | "getCredentials" | "changeStatus" | "withCredentialsLock"
     >;
     mercadoLibreRefresh: Pick<MercadoLibreAuth, "refresh"> | null;
+    /**
+     * F9.5-T09: la renovación de los tokens que rotan (X), para retirar borrando con
+     * `ensureRotatingAccessToken`. La compone `createApp` (la misma del refresco a pedido); sin la
+     * de una red, un token por vencer es `TOKEN_REFRESH_NOT_CONFIGURED`.
+     */
+    tokenRefreshers?: Readonly<Partial<Record<Platform, PlatformTokenRefresher>>>;
     logger: AppLogger;
     /** Por defecto `OPERATION_TIMEOUT_MS`; los tests lo bajan para ver el corte. */
     operationTimeoutMs?: number;
@@ -375,8 +382,9 @@ export function publicationRoutes(deps: PublicationRoutesDeps) {
       validated("json", publicationRetireBodySchema),
       async (c) => {
         const { removedByHand, deleteRemote } = c.req.valid("json");
-        // F9-T19: borrar por la API (LinkedIn en modo `api`) es síncrono, con el tope de las
-        // operaciones; el modo lo decide la publicación y la API (nunca en simulación).
+        // F9-T19: borrar por la API (LinkedIn en modo `api`; X desde F9.5-T09, con su token
+        // renovado bajo el candado de credenciales) es síncrono, con el tope de las operaciones;
+        // el modo lo decide la publicación y la API (nunca en simulación).
         const result = await retirePublication(
           {
             ...deps,
@@ -384,6 +392,8 @@ export function publicationRoutes(deps: PublicationRoutesDeps) {
               apiMode: deps.publishMode,
               platformAccounts: deps.platformAccounts,
               operationsFor: deps.operationsFor,
+              refreshers: deps.tokenRefreshers ?? {},
+              ...(deps.now === undefined ? {} : { now: deps.now }),
               onWarning: operations.onWarning,
             },
           },
@@ -474,6 +484,27 @@ export function publicationRoutes(deps: PublicationRoutesDeps) {
           actor: actorOf(c),
           ...(url === undefined ? {} : { url }),
         });
+        // Portal en vivo (F9.5-T04a): el sync lee el ítem que dijo el operador (`remote_state` y
+        // su vencimiento). Si no se puede encolar, la respuesta no falla: lo hace el arranque del
+        // worker, la vigilancia o Actualizar.
+        if (
+          changed &&
+          publication.status === "published" &&
+          publication.platform === "portal_inmobiliario" &&
+          !publication.dryRun
+        ) {
+          await requestPublicationSync(deps, { publicationId: publication.id }).catch(
+            (error: unknown) =>
+              deps.logger.warn(
+                {
+                  publicationId: publication.id,
+                  step: "enqueue_sync",
+                  code: isAppError(error) ? error.code : "INTERNAL_ERROR",
+                },
+                "no se pudo pedir el sync de la publicación resuelta",
+              ),
+          );
+        }
         const body: PublicationConfirmResponse = {
           publication: publicationView(publication),
           changed,

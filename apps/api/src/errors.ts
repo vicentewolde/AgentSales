@@ -52,6 +52,8 @@ const CONFLICTS = new Set([
   // F9-T19: borrar por la API al retirar no se puede (la red, el modo de la cuenta o el enlace).
   "RETIRE_DELETE_UNSUPPORTED",
   "LINKEDIN_DELETE_UNSUPPORTED",
+  // F9.5-T09 (D9): TikTok no tiene cómo borrar por la API.
+  "TIKTOK_DELETE_UNSUPPORTED",
   "OPERATION_NOT_SUPPORTED",
   // F9-T15: el modo `manual`/`api` es solo de las redes de contenido de marca.
   "ACCOUNT_MODE_NOT_SUPPORTED",
@@ -108,6 +110,9 @@ const CONFLICTS = new Set([
   // F9-T06 (ADR-0029 punto 8): una publicación con resultado dudoso espera que el operador diga si
   // salió (descartar, reintentar, programar, quitar la aprobación, cerrar o archivar).
   "OUTCOME_UNKNOWN_PENDING",
+  // F9.5-T04a: «salió» en Portal con el aviso de otra publicación de la misma propiedad y cuenta
+  // (por ejemplo, el anterior a republicar): se pega el enlace del aviso nuevo.
+  "PORTAL_ITEM_IN_USE",
   // F9-T11: pedir los textos de un post de una marca sin redes (ni cuentas ni cadencia en su
   // perfil): se conecta una cuenta o se define la cadencia y se vuelve a pedir.
   "POST_NO_PLATFORMS",

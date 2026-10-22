@@ -6,6 +6,7 @@ export {
   inScope,
   scopedBrokerId,
 } from "./access.js";
+export { accountOwnedBy } from "./accounts/owner.js";
 export {
   type AttributeEntry,
   describeAttributes,
@@ -321,6 +322,10 @@ export {
 } from "./marketplace/validate.js";
 export { type Media, mediaSchema } from "./media.js";
 export {
+  DISCORD_FILE_MAX_BYTES,
+  DISCORD_VIDEO_MAX_BYTES,
+  DISCORD_VIDEO_RATE,
+  discordVideoBitrateKbps,
   PHOTO_MIN_WIDTH,
   PHOTO_SIZE_WARNING_CODES,
   PHOTO_SIZE_WARNING_TEXT,
@@ -1185,6 +1190,7 @@ export {
   resumePublication,
 } from "./use-cases/resume-publication.js";
 export {
+  REMOTE_DELETE_PLATFORMS,
   type RetiredPublication,
   type RetirePublicationDeps,
   retirePublication,

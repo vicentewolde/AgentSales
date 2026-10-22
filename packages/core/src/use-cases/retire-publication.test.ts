@@ -5,7 +5,11 @@ import {
   createPostPublicationScenario,
   POST_SCENARIO_TOKEN,
 } from "../testing/post-publication-scenario.js";
-import { type RetireRemovalDeps, retirePublication } from "./retire-publication.js";
+import {
+  REMOTE_DELETE_PLATFORMS,
+  type RetireRemovalDeps,
+  retirePublication,
+} from "./retire-publication.js";
 
 // F9-T19: retirar un post de LinkedIn borrándolo por la API (`deleteRemote`), solo con la cuenta en
 // modo `api` y la API en `live`; en simulación nunca se llama. El `remove` es un doble.
@@ -154,47 +158,6 @@ describe("retirar borrando por la API (F9-T19)", () => {
     expect(discord.current(published.id)?.status).toBe("published");
   });
 
-  it("X y TikTok (token que rota) no borran todavía, aunque tengan remove: no se llama", async () => {
-    for (const platform of ["x", "tiktok"] as const) {
-      // TikTok publica solo videos.
-      const t = await createPostPublicationScenario({
-        ...(platform === "tiktok" ? { kind: "video" as const, images: 0, video: true } : {}),
-        texts: [{ platform, language: "es" }],
-      });
-      const started = await t.toPublishing(t.publicationOf(platform));
-      const published = await t.publications.transition(
-        started.id,
-        { from: "publishing", to: "published", changes: { externalId: "id-en-la-red" } },
-        { actor: "system", payload: { mode: "live" } },
-      );
-      const calls: PublishedRef[] = [];
-      const error = await caught(
-        retirePublication(
-          {
-            ...t.subjectDeps,
-            removal: {
-              apiMode: "live",
-              platformAccounts: t.platformAccounts,
-              operationsFor: () => ({
-                async remove(ref) {
-                  calls.push(ref);
-                },
-              }),
-            },
-          },
-          { publicationId: published.id, actor: "operator", deleteRemote: true },
-        ),
-      );
-      expect(isAppError(error) && error.code).toBe("RETIRE_DELETE_UNSUPPORTED");
-      expect(isAppError(error) && error.details).toEqual({
-        publicationId: published.id,
-        platform,
-      });
-      expect(calls).toEqual([]);
-      expect(t.current(published.id)?.status).toBe("published");
-    }
-  });
-
   it("un acceso rechazado deja la cuenta vencida y la publicación publicada", async () => {
     const { t, publication, retire, fail } = await setup();
     fail(new AppError("LINKEDIN_AUTH_INVALID", "LinkedIn no acepta el acceso"));
@@ -214,5 +177,186 @@ describe("retirar borrando por la API (F9-T19)", () => {
     fail(null);
     await expect(retire()).resolves.toMatchObject({ publication: { status: "unpublished" } });
     expect(calls).toHaveLength(2);
+  });
+});
+
+// F9.5-T09: X borra con el token que asegura `ensureRotatingAccessToken` (renovado bajo el candado
+// de credenciales si está por vencer); TikTok no tiene cómo borrar por la API (D9).
+describe("retirar borrando en X y TikTok (F9.5-T09)", () => {
+  const NOW = new Date("2026-10-22T12:00:00Z");
+  const SOON = new Date(NOW.getTime() + 5 * 60_000).toISOString();
+  const LATER = new Date(NOW.getTime() + 2 * 3600_000).toISOString();
+  const X_POST_ID = "1850000000000000001";
+
+  async function xSetup(options: { accessTokenExpiresAt?: string; dryRun?: boolean } = {}) {
+    const t = await createPostPublicationScenario({
+      texts: [{ platform: "x", language: "es" }],
+      accounts: [
+        {
+          platform: "x",
+          meta: { accessTokenExpiresAt: options.accessTokenExpiresAt ?? LATER, mode: "api" },
+        },
+      ],
+    });
+    const started = await t.toPublishing(t.publicationOf("x"), {
+      dryRun: options.dryRun ?? false,
+    });
+    const publication = await t.publications.transition(
+      started.id,
+      { from: "publishing", to: "published", changes: { externalId: X_POST_ID } },
+      { actor: "system", payload: { mode: options.dryRun ? "dry-run" : "live" } },
+    );
+    const removed: Array<{ ref: PublishedRef; token: string }> = [];
+    const refreshed: string[] = [];
+    let locks = 0;
+    const platformAccounts = {
+      get: t.platformAccounts.get,
+      getCredentials: t.platformAccounts.getCredentials,
+      changeStatus: t.platformAccounts.changeStatus,
+      withCredentialsLock: ((
+        ...args: Parameters<typeof t.platformAccounts.withCredentialsLock>
+      ) => {
+        locks += 1;
+        return t.platformAccounts.withCredentialsLock(...args);
+      }) as typeof t.platformAccounts.withCredentialsLock,
+    };
+    const refresher = {
+      async refresh(refreshToken: string) {
+        refreshed.push(refreshToken);
+        return {
+          accessToken: "token-x-nuevo",
+          refreshToken: "refresh-x-nuevo",
+          accessTokenExpiresAt: new Date(NOW.getTime() + 2 * 3600_000),
+          refreshTokenExpiresAt: null,
+        };
+      },
+      isRejected: () => false,
+    };
+    const retire = (
+      extra: { apiMode?: "live" | "dry-run"; withRefresher?: boolean } = {},
+    ): Promise<unknown> =>
+      retirePublication(
+        {
+          ...t.subjectDeps,
+          removal: {
+            apiMode: extra.apiMode ?? "live",
+            platformAccounts,
+            now: () => NOW,
+            ...(extra.withRefresher === false ? {} : { refreshers: { x: refresher } }),
+            operationsFor: (platform) =>
+              platform === "x"
+                ? {
+                    async remove(ref, ctx) {
+                      removed.push({ ref, token: await ctx.accessToken() });
+                    },
+                  }
+                : undefined,
+          },
+        },
+        { publicationId: publication.id, actor: "operator", deleteRemote: true },
+      );
+    return { t, publication, removed, refreshed, locks: () => locks, retire };
+  }
+
+  it("en vivo, con el token vigente: borra en X sin renovar y queda unpublished", async () => {
+    const { t, publication, removed, refreshed, retire } = await xSetup();
+
+    await expect(retire()).resolves.toMatchObject({ publication: { status: "unpublished" } });
+    expect(removed).toEqual([
+      { ref: { externalId: X_POST_ID, progress: null }, token: POST_SCENARIO_TOKEN },
+    ]);
+    expect(refreshed).toEqual([]);
+    expect((await t.publications.listEvents(publication.id)).at(-1)?.payload).toEqual({
+      mode: "live",
+      removedByHand: false,
+      removedByApi: true,
+    });
+  });
+
+  it("con el token por vencer: lo renueva una vez bajo el candado, guarda el par y borra con el nuevo", async () => {
+    const { t, publication, removed, refreshed, locks, retire } = await xSetup({
+      accessTokenExpiresAt: SOON,
+    });
+
+    await expect(retire()).resolves.toMatchObject({ publication: { status: "unpublished" } });
+    expect(refreshed).toEqual(["refresh-post-prueba"]);
+    expect(locks()).toBe(1);
+    expect(removed.map((call) => call.token)).toEqual(["token-x-nuevo"]);
+    expect(await t.platformAccounts.getCredentials(publication.platformAccountId)).toEqual({
+      accessToken: "token-x-nuevo",
+      refreshToken: "refresh-x-nuevo",
+    });
+  });
+
+  it("sin la renovación de X y el token por vencer: TOKEN_REFRESH_NOT_CONFIGURED, sin borrar", async () => {
+    const { t, publication, removed, retire } = await xSetup({ accessTokenExpiresAt: SOON });
+
+    expect(await codeOf(retire({ withRefresher: false }))).toBe("TOKEN_REFRESH_NOT_CONFIGURED");
+    expect(removed).toEqual([]);
+    expect(t.current(publication.id)?.status).toBe("published");
+  });
+
+  it("solo en vivo: con la API en simulación no renueva ni borra; una simulada se retira sin llamar", async () => {
+    const live = await xSetup({ accessTokenExpiresAt: SOON });
+    expect(await codeOf(live.retire({ apiMode: "dry-run" }))).toBe("PUBLISH_MODE_MISMATCH");
+    expect(live.removed).toEqual([]);
+    expect(live.refreshed).toEqual([]);
+    expect(live.t.current(live.publication.id)?.status).toBe("published");
+
+    const simulated = await xSetup({ dryRun: true });
+    await expect(simulated.retire()).resolves.toMatchObject({
+      publication: { status: "unpublished" },
+    });
+    expect(simulated.removed).toEqual([]);
+  });
+
+  it("TikTok: TIKTOK_DELETE_UNSUPPORTED con el mensaje de borrarlo a mano en la app, sin llamar", async () => {
+    // TikTok publica solo videos.
+    const t = await createPostPublicationScenario({
+      kind: "video",
+      images: 0,
+      video: true,
+      texts: [{ platform: "tiktok", language: "es" }],
+    });
+    const started = await t.toPublishing(t.publicationOf("tiktok"));
+    const published = await t.publications.transition(
+      started.id,
+      { from: "publishing", to: "published", changes: { externalId: "7430000000000000001" } },
+      { actor: "system", payload: { mode: "live" } },
+    );
+    const calls: PublishedRef[] = [];
+    const error = await caught(
+      retirePublication(
+        {
+          ...t.subjectDeps,
+          removal: {
+            apiMode: "live",
+            platformAccounts: t.platformAccounts,
+            // Aunque la red tuviera `remove`, TikTok no se borra por la API.
+            operationsFor: () => ({
+              async remove(ref) {
+                calls.push(ref);
+              },
+            }),
+          },
+        },
+        { publicationId: published.id, actor: "operator", deleteRemote: true },
+      ),
+    );
+    expect(isAppError(error) && error.code).toBe("TIKTOK_DELETE_UNSUPPORTED");
+    expect(isAppError(error) && error.message).toContain("bórralo a mano en la app de TikTok");
+    expect(isAppError(error) && error.details).toEqual({
+      publicationId: published.id,
+      platform: "tiktok",
+    });
+    expect(calls).toEqual([]);
+    expect(t.current(published.id)?.status).toBe("published");
+  });
+});
+
+describe("REMOTE_DELETE_PLATFORMS (F9.5-T09)", () => {
+  it("LinkedIn y X se borran por la API; TikTok no (D9)", () => {
+    expect([...REMOTE_DELETE_PLATFORMS].sort()).toEqual(["linkedin", "x"]);
+    expect(REMOTE_DELETE_PLATFORMS.has("tiktok")).toBe(false);
   });
 });

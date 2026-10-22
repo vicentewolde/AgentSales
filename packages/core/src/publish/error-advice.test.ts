@@ -113,6 +113,8 @@ const F9_CONNECT_AND_RETIRE = [
   "X_APP_CREDENTIALS_INVALID",
   "LINKEDIN_DELETE_UNSUPPORTED",
   "RETIRE_DELETE_UNSUPPORTED",
+  // F9.5-T09 (D9).
+  "TIKTOK_DELETE_UNSUPPORTED",
 ];
 
 // Raros o de programación: el genérico basta (reintentar o descartar).
@@ -129,6 +131,22 @@ const GENERIC_ON_PURPOSE = [
 ];
 
 describe("publicationErrorAdvice", () => {
+  it("el resultado dudoso de Instagram y Portal dice Salió / No salió, sin «descártala» (F9.5-T04a)", () => {
+    for (const code of ["IG_PUBLISH_OUTCOME_UNKNOWN", "ML_PUBLISH_OUTCOME_UNKNOWN"]) {
+      const advice = publicationErrorAdvice(code);
+      expect(advice, code).toContain("«Salió»");
+      expect(advice, code).toContain("«No salió»");
+      expect(advice, code).toContain("publications resolve <id> --published --url-stdin");
+      expect(advice, code).toContain("--not-published");
+      expect(advice, code).not.toMatch(/descart/i);
+    }
+    // Portal: con varios avisos, cerrar los sobrantes va antes de decir que no salió.
+    const portal = publicationErrorAdvice("ML_PUBLISH_OUTCOME_UNKNOWN");
+    expect(portal).toContain("cierra a mano los que sobren");
+    expect(portal.indexOf("cierra a mano")).toBeLessThan(portal.indexOf("«No salió»"));
+    expect(portal).toContain("MLC");
+  });
+
   it.each(WITH_ADVICE)("%s tiene un consejo propio, en una frase", (code) => {
     const advice = publicationErrorAdvice(code);
     expect(advice).not.toBe(GENERIC_ERROR_ADVICE);
@@ -144,6 +162,12 @@ describe("publicationErrorAdvice", () => {
 
   it.each(GENERIC_ON_PURPOSE)("%s cae a propósito en el genérico", (code) => {
     expect(publicationErrorAdvice(code)).toBe(GENERIC_ERROR_ADVICE);
+  });
+
+  it("TIKTOK_DELETE_UNSUPPORTED dice que se borra a mano en la app y se retira sin --delete (D9)", () => {
+    const advice = publicationErrorAdvice("TIKTOK_DELETE_UNSUPPORTED");
+    expect(advice).toContain("a mano en la app de TikTok");
+    expect(advice).toContain("publications retire <id> (sin --delete)");
   });
 
   it("un código desconocido da el genérico", () => {

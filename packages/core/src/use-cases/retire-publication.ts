@@ -5,10 +5,11 @@ import { PLATFORM_TEXT } from "../labels.js";
 import { isManualAccount } from "../platform-account.js";
 import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
-import { storedAccessToken } from "../ports/publisher.js";
+import { type AccessTokenProvider, storedAccessToken } from "../ports/publisher.js";
+import type { PlatformTokenRefresher } from "../ports/token-refresher.js";
 import type { Publication, PublicationActor } from "../publication.js";
 import { runOnSubject, type SubjectLocks } from "../subject-lock.js";
-import { ROTATING_TOKEN_PLATFORMS } from "./ensure-access-token.js";
+import { ROTATING_TOKEN_PLATFORMS, rotatingAccessTokenProvider } from "./ensure-access-token.js";
 import { expireAccountIfRejected } from "./platform-auth.js";
 import {
   codeOf,
@@ -19,17 +20,35 @@ import {
 import { publicationNotFound } from "./publication-start.js";
 
 /**
- * Borrar lo publicado por la API al retirar (F9-T19, LinkedIn en modo `api`): el modo de la API,
- * las cuentas (el token guardado; un acceso rechazado la deja `expired`) y el `remove` de cada
- * plataforma (`operationsFor`, sin envolver: el modo lo decide la publicación).
+ * Borrar lo publicado por la API al retirar (F9-T19, LinkedIn en modo `api`; F9.5-T09, X): el modo
+ * de la API, las cuentas (el token guardado o, en una red con token que rota, el que asegura
+ * `ensureRotatingAccessToken` bajo el candado de credenciales; un acceso rechazado la deja
+ * `expired`) y el `remove` de cada plataforma (`operationsFor`, sin envolver: el modo lo decide la
+ * publicación).
  */
 export type RetireRemovalDeps = {
   apiMode: PublishMode;
-  platformAccounts: Pick<PlatformAccountRepository, "get" | "getCredentials" | "changeStatus">;
+  platformAccounts: Pick<
+    PlatformAccountRepository,
+    "get" | "getCredentials" | "changeStatus" | "withCredentialsLock"
+  >;
   operationsFor(platform: Platform): PublicationOperations | undefined;
+  /**
+   * F9.5-T09: la renovación de las redes con token que rota (X), la misma del intento y de
+   * `tokens.refresh`. Sin la de la red, un token por vencer es `TOKEN_REFRESH_NOT_CONFIGURED`.
+   */
+  refreshers?: Readonly<Partial<Record<Platform, PlatformTokenRefresher>>>;
+  now?: () => Date;
   /** Un paso secundario que falló sin cortar (el estado de la cuenta): solo ids y códigos. */
   onWarning?: (warning: { publicationId: string; step: "account_status"; code: string }) => void;
 };
+
+/**
+ * Las redes que AgentSales sabe borrar por la API al retirar (F9-T19, LinkedIn; F9.5-T09, X), con la
+ * cuenta en modo `api`. La CLI la usa para avisar antes de preguntar; quien decide es el `remove`
+ * de `operationsFor`. TikTok no está: no tiene cómo borrar por la API (D9 de F9.5).
+ */
+export const REMOTE_DELETE_PLATFORMS: ReadonlySet<Platform> = new Set(["linkedin", "x"]);
 
 /** `postLock` hace falta para una publicación de un post (sin él, `SUBJECT_NOT_LISTING`). */
 export type RetirePublicationDeps = SubjectLocks & {
@@ -62,13 +81,15 @@ export type RetiredPublication = {
  * - en `live` sin la confirmación → `REMOVAL_NOT_CONFIRMED` (409), sin cambiar nada;
  * - no está publicada → `INVALID_TRANSITION` (409).
  *
- * F9-T19, `deleteRemote` (LinkedIn con la cuenta en modo `api`): en vez de confirmar que se borró
- * a mano, se borra por la API **antes y fuera** del candado, con el token guardado. Solo con la
- * publicación en `live` y la API en `live` (`PUBLISH_MODE_MISMATCH`: en simulación nunca se llama);
- * en `dry-run` no hay nada que borrar y se retira igual. `RETIRE_DELETE_UNSUPPORTED` (409) si la
- * plataforma no borra por la API o la cuenta está a mano; el `remove` de la plataforma puede
- * negarse (LinkedIn: un enlace pegado a mano no trae el id que acepta la API). Borrar es
- * idempotente: si guardar el cambio falla después, retirar de nuevo vuelve a borrar sin error.
+ * F9-T19, `deleteRemote` (LinkedIn con la cuenta en modo `api`; desde F9.5-T09, también X): en vez
+ * de confirmar que se borró a mano, se borra por la API **antes y fuera** del candado, con el token
+ * guardado (X: el que asegura `ensureRotatingAccessToken`). Solo con la publicación en `live` y la
+ * API en `live` (`PUBLISH_MODE_MISMATCH`: en simulación nunca se llama); en `dry-run` no hay nada
+ * que borrar y se retira igual. `RETIRE_DELETE_UNSUPPORTED` (409) si la plataforma no borra por la
+ * API o la cuenta está a mano, y `TIKTOK_DELETE_UNSUPPORTED` (409, D9 de F9.5) en TikTok, que no
+ * tiene cómo borrar por la API; el `remove` de la plataforma puede negarse (LinkedIn: un enlace
+ * pegado a mano no trae el id que acepta la API). Borrar es idempotente: si guardar el cambio falla
+ * después, retirar de nuevo vuelve a borrar sin error.
  */
 export async function retirePublication(
   deps: RetirePublicationDeps,
@@ -151,11 +172,22 @@ const deleteUnsupported = (publication: Publication, reason: string) =>
     { details: { publicationId: publication.id, platform: publication.platform } },
   );
 
+/** TikTok no tiene cómo borrar por la API (D9 de F9.5, `tiktok.md` §1): se borra en la app. */
+const tiktokDeleteUnsupported = (publication: Publication) =>
+  new AppError(
+    "TIKTOK_DELETE_UNSUPPORTED",
+    "TikTok no deja borrar un video por la API: bórralo a mano en la app de TikTok y después márcalo como retirado sin borrar",
+    { details: { publicationId: publication.id, platform: publication.platform } },
+  );
+
 /**
  * Borra en la plataforma una publicación en `live` (F9-T19), fuera del candado. Revisa antes, sin
- * llamar: que esté publicada, que la plataforma borre por la API (una con token que rota, todavía
- * no: `ROTATING_TOKEN_PLATFORMS`), la API en `live`, la cuenta conectada y en modo `api`, y el id
- * en la plataforma. Un acceso rechazado deja la cuenta `expired`.
+ * llamar: que esté publicada, que no sea de TikTok (D9), que la plataforma borre por la API, la API
+ * en `live`, la cuenta conectada y en modo `api`, y el id en la plataforma. El token es el guardado
+ * o, en una red con token que rota (`ROTATING_TOKEN_PLATFORMS`: X, F9.5-T09), el que asegura
+ * `ensureRotatingAccessToken`: lo renueva, si le quedan menos de 30 min o la red lo rechazó, **una**
+ * vez y dentro del candado de credenciales (renovarlo en dos lugares a la vez lo invalida, S4).
+ * Un acceso rechazado deja la cuenta `expired`.
  */
 async function removeRemote(
   removal: RetireRemovalDeps | undefined,
@@ -168,14 +200,10 @@ async function removeRemote(
       details: { publicationId, from: publication.status, to: "unpublished" },
     });
   }
+  if (publication.platform === "tiktok") throw tiktokDeleteUnsupported(publication);
   const remove = removal?.operationsFor(publication.platform)?.remove;
   if (removal === undefined || remove === undefined) {
     throw deleteUnsupported(publication, "Esta red no se borra desde AgentSales");
-  }
-  // Borrar usa solo el token guardado: en una red con token que rota (X, TikTok) puede estar
-  // vencido. Hasta que se asegure con `ensureRotatingAccessToken`, no se llama (ADR-0029).
-  if (ROTATING_TOKEN_PLATFORMS.has(publication.platform)) {
-    throw deleteUnsupported(publication, "Esta red todavía no se borra desde AgentSales");
   }
   if (removal.apiMode !== "live") {
     throw new AppError(
@@ -198,13 +226,12 @@ async function removeRemote(
   if (publication.externalId === null) {
     throw deleteUnsupported(publication, "La publicación no tiene su id en la red");
   }
-  const credentials = await removal.platformAccounts.getCredentials(account.id);
   try {
     await remove(
       { externalId: publication.externalId, progress: publication.progress },
       {
         account,
-        accessToken: storedAccessToken(credentials),
+        accessToken: await removalToken(removal, publication, account.id),
         ...(signal === undefined ? {} : { signal }),
       },
     );
@@ -214,4 +241,33 @@ async function removeRemote(
     );
     throw error;
   }
+}
+
+/**
+ * El token para borrar: en una red con token que rota (X), el proveedor de
+ * `ensureRotatingAccessToken` (la misma política del intento, con el candado de credenciales; lee
+ * las credenciales él mismo); en las demás, el guardado.
+ */
+async function removalToken(
+  removal: RetireRemovalDeps,
+  publication: Publication,
+  accountId: string,
+): Promise<AccessTokenProvider> {
+  if (!ROTATING_TOKEN_PLATFORMS.has(publication.platform)) {
+    return storedAccessToken(await removal.platformAccounts.getCredentials(accountId));
+  }
+  return rotatingAccessTokenProvider(
+    {
+      platformAccounts: removal.platformAccounts,
+      refreshers: removal.refreshers ?? {},
+      ...(removal.now === undefined ? {} : { now: removal.now }),
+      onWarning: (warning) =>
+        removal.onWarning?.({
+          publicationId: publication.id,
+          step: "account_status",
+          code: warning.code,
+        }),
+    },
+    accountId,
+  );
 }

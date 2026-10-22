@@ -1,9 +1,15 @@
 import type { AbortSignalLike } from "../abort.js";
+import { videosOf } from "../content/compose.js";
 import { postVariantPath, postVideoPath } from "../content/media-keys.js";
 import type { ProcessedMediaVariant, VideoMediaVariant } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
 import type { Media } from "../media.js";
-import { REEL_MIN_DURATION_S } from "../media-checks.js";
+import {
+  DISCORD_FILE_MAX_BYTES,
+  DISCORD_VIDEO_MAX_BYTES,
+  discordVideoBitrateKbps,
+  REEL_MIN_DURATION_S,
+} from "../media-checks.js";
 import type {
   ImageOutput,
   ImageVariant,
@@ -13,6 +19,7 @@ import type {
 import type { MediaRepository, NewDerivative } from "../ports/media-repository.js";
 import type { MediaStorage } from "../ports/media-storage.js";
 import type { PostRepository } from "../ports/post-repository.js";
+import { postPublishesOn } from "../social/post-networks.js";
 import { postSubject } from "../subject.js";
 
 // Las variantes de los medios de un post (spec F9 §4.5, F9-T10), con el procesador de siempre
@@ -20,6 +27,9 @@ import { postSubject } from "../subject.js";
 // texto encima y hasta 90 s; desde 3 s) y el video reducido para X (`x_video`). Sin `pi_4x3`: un
 // post no va a Portal ni a Marketplace. Lo vigente es lo de la clave de la versión actual del
 // procesador: una vuelta solo arma lo que falta, así reintentar o encolar dos veces no repite.
+// Desde F9.5 (D8), si el post va a Discord y el video más liviano (`x_video` o `ig_reel`) de su
+// primer video no cabe en sus 20 MiB, además el video liviano para Discord (`discord_video`, bajo
+// 19 MiB).
 
 /** Las variantes JPEG de una foto de un post. */
 export const POST_PHOTO_VARIANTS = ["thumb", "ig_4x5"] as const satisfies readonly ImageVariant[];
@@ -35,6 +45,23 @@ export type ProcessPostMediaDeps = {
   processor: MediaProcessor;
   /** Un objeto viejo que no se pudo borrar de R2 (queda sin uso); solo para el log. */
   onCleanupFailed?: (objectPath: string, error: unknown) => void;
+  /**
+   * Los topes del video para Discord (D8 de F9.5): desde cuánto pesa el video más liviano para que
+   * haga falta (`fileMaxBytes`) y bajo cuánto debe quedar (`videoMaxBytes`). Por defecto, los de
+   * Discord (`DISCORD_FILE_MAX_BYTES` y `DISCORD_VIDEO_MAX_BYTES`); los tests los achican.
+   */
+  discordLimits?: { fileMaxBytes: number; videoMaxBytes: number };
+  /**
+   * El primer video no quedó con su video para Discord aunque hacía falta: `too_long` (por su
+   * duración, el bitrate quedaría bajo el mínimo; no se leyó), `not_fitting` (el procesador no
+   * pudo dejarlo bajo el tope) o `failed` (la pasada falló; el original no queda como ilegible).
+   * Solo para el log.
+   */
+  onDiscordVideoMissing?: (
+    mediaId: string,
+    reason: "too_long" | "not_fitting" | "failed",
+    error?: unknown,
+  ) => void;
 };
 
 export type ProcessPostMediaResult =
@@ -75,6 +102,11 @@ export async function processPostMedia(
     .sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
   const counts = { processed: 0, existing: 0, failed: 0 };
   const failedMediaIds: string[] = [];
+  const discordLimits = deps.discordLimits ?? {
+    fileMaxBytes: DISCORD_FILE_MAX_BYTES,
+    videoMaxBytes: DISCORD_VIDEO_MAX_BYTES,
+  };
+  const forDiscord = postPublishesOn(post, "discord");
 
   /** Sube un derivado, lo registra y borra el objeto anterior si la clave cambió. */
   const save = async (upload: () => Promise<void>, derivative: NewDerivative) => {
@@ -141,6 +173,59 @@ export async function processPostMedia(
     }
   };
 
+  /**
+   * El video liviano para Discord (D8 de F9.5), solo del primer video del post (el único que usa
+   * Discord): si el post va a Discord, el más liviano entre `x_video` e `ig_reel` no cabe y no está
+   * ya armado. Se pide aparte (otra lectura del original) porque el peso de los demás se sabe recién
+   * después de armarlos; no se lee si por su duración ya se sabe que el bitrate quedaría bajo el
+   * mínimo legible. Si no se puede, o la pasada falla (salvo el apagado), no queda variante y
+   * Discord publica el texto solo. Devuelve si leyó el original.
+   */
+  const discordPass = async (
+    original: Media,
+    lightest: number | null,
+    durationS: number | null,
+  ): Promise<boolean> => {
+    const path = postVideoPath(postId, "discord_video", original.checksum, version);
+    if (!forDiscord || variantOf(all, original.id, "discord_video")?.storagePath === path) {
+      return false;
+    }
+    if (lightest === null || lightest <= discordLimits.fileMaxBytes) return false;
+    // Sin saber si tiene audio, se mira el caso más holgado (sin audio): solo se salta lo imposible.
+    if (
+      durationS !== null &&
+      discordVideoBitrateKbps({
+        durationS,
+        hasAudio: false,
+        maxBytes: discordLimits.videoMaxBytes,
+      }) === null
+    ) {
+      deps.onDiscordVideoMissing?.(original.id, "too_long");
+      return false;
+    }
+    try {
+      const stream = await deps.storage.getStream(
+        original.storagePath,
+        signal === undefined ? {} : { signal },
+      );
+      const result = await deps.processor.processVideo(
+        stream,
+        { reel: null, xVideo: false, discordVideo: { maxBytes: discordLimits.videoMaxBytes } },
+        signal,
+      );
+      if (result.discordVideo === null) {
+        deps.onDiscordVideoMissing?.(original.id, "not_fitting");
+      } else {
+        await saveVideo(original, "discord_video", result.discordVideo);
+      }
+    } catch (error) {
+      if (isAppError(error) && error.code === "MEDIA_ABORTED") throw error;
+      deps.onDiscordVideoMissing?.(original.id, "failed", error);
+    }
+    return true;
+  };
+  const firstVideoId = videosOf(all)[0]?.id ?? null;
+
   for (const original of originals) {
     if (signal?.aborted) {
       throw new AppError("MEDIA_ABORTED", "Se cortó el procesamiento de medios", {
@@ -149,6 +234,7 @@ export async function processPostMedia(
     }
     const current = (variant: ProcessedMediaVariant, path: string) =>
       variantOf(all, original.id, variant)?.storagePath === path;
+    let video: { worked: boolean; durationS: number | null; lightest: number | null };
     try {
       if (original.kind === "image") {
         const missing = POST_PHOTO_VARIANTS.filter(
@@ -173,40 +259,76 @@ export async function processPostMedia(
 
       // Un video ya medido y de menos de 3 s no da reel (como el de un aviso).
       const tooShort = original.durationS !== null && original.durationS < REEL_MIN_DURATION_S;
+      const reelPath = postVideoPath(postId, "ig_reel", original.checksum, version);
+      const xPath = postVideoPath(postId, "x_video", original.checksum, version);
       const thumbOk = current(
         "thumb",
         postVariantPath(postId, "thumb", original.checksum, version),
       );
-      const reelOk =
-        tooShort ||
-        current("ig_reel", postVideoPath(postId, "ig_reel", original.checksum, version));
-      const xOk = current("x_video", postVideoPath(postId, "x_video", original.checksum, version));
-      if (thumbOk && reelOk && xOk && original.durationS !== null) {
-        if (tooShort) await drop(variantOf(all, original.id, "ig_reel"));
-        counts.existing += 1;
-        continue;
+      const reelOk = tooShort || current("ig_reel", reelPath);
+      const xOk = current("x_video", xPath);
+      // El peso de los videos vigentes (`x_video` e `ig_reel`): el más liviano decide si hace falta
+      // el de Discord. Los que se arman en esta vuelta lo actualizan.
+      const sizes = new Map<VideoMediaVariant, number>();
+      for (const [variant, path] of [
+        ["ig_reel", reelPath],
+        ["x_video", xPath],
+      ] as const) {
+        const existing = variantOf(all, original.id, variant);
+        if (existing?.storagePath === path) sizes.set(variant, existing.bytes);
       }
-      const stream = await deps.storage.getStream(
-        original.storagePath,
-        signal === undefined ? {} : { signal },
-      );
-      const result = await deps.processor.processVideo(
-        stream,
-        { reel: reelOk ? null : { overlayPng: null }, xVideo: !xOk },
-        signal,
-      );
-      await deps.media.updateMeasurements(original.id, result.measurements);
-      if (!thumbOk) await saveImage(original, result.thumb);
-      const reel = result.reel;
-      if (reel !== null) await saveVideo(original, "ig_reel", reel);
-      else if (!reelOk) await drop(variantOf(all, original.id, "ig_reel"));
-      if (result.xVideo !== null) await saveVideo(original, "x_video", result.xVideo);
-      counts.processed += 1;
+      let worked = false;
+      let durationS = original.durationS;
+      if (thumbOk && reelOk && xOk && original.durationS !== null) {
+        if (tooShort) {
+          await drop(variantOf(all, original.id, "ig_reel"));
+          sizes.delete("ig_reel");
+        }
+      } else {
+        const stream = await deps.storage.getStream(
+          original.storagePath,
+          signal === undefined ? {} : { signal },
+        );
+        const result = await deps.processor.processVideo(
+          stream,
+          { reel: reelOk ? null : { overlayPng: null }, xVideo: !xOk },
+          signal,
+        );
+        await deps.media.updateMeasurements(original.id, result.measurements);
+        durationS = result.measurements.durationS;
+        if (!thumbOk) await saveImage(original, result.thumb);
+        const reel = result.reel;
+        if (reel !== null) {
+          await saveVideo(original, "ig_reel", reel);
+          sizes.set("ig_reel", reel.size);
+        } else if (!reelOk) {
+          await drop(variantOf(all, original.id, "ig_reel"));
+          sizes.delete("ig_reel");
+        }
+        if (result.xVideo !== null) {
+          await saveVideo(original, "x_video", result.xVideo);
+          sizes.set("x_video", result.xVideo.size);
+        }
+        worked = true;
+      }
+      video = {
+        worked,
+        durationS,
+        lightest: sizes.size === 0 ? null : Math.min(...sizes.values()),
+      };
     } catch (error) {
       if (!isDecodeFailed(error)) throw error;
       counts.failed += 1;
       failedMediaIds.push(original.id);
+      continue;
     }
+
+    // Aparte del resto: un fallo de esta pasada no hace ilegible al original.
+    const discordRead =
+      original.id === firstVideoId &&
+      (await discordPass(original, video.lightest, video.durationS));
+    if (video.worked || discordRead) counts.processed += 1;
+    else counts.existing += 1;
   }
   return { outcome: "processed", media: counts, failedMediaIds };
 }

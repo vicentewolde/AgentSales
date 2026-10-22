@@ -59,7 +59,9 @@ export const DISCORD_VIDEO_NOT_ATTACHED_NOTE =
 
 /**
  * Qué medios van adjuntos (spec F9 §4.5, D8): las imágenes siempre (si una no cabe, `validate` lo
- * rechaza); el video, solo si pesa hasta 20 MiB y la solicitud completa no pasa de su tope. Si no
+ * rechaza); el video, solo si pesa hasta 20 MiB y la solicitud completa no pasa de su tope. El video
+ * fijado es el liviano para Discord (`discord_video`, bajo 19 MiB, F9.5 D8) si `post.media` lo
+ * pudo armar; si no, el más liviano entre `x_video` e `ig_reel` (`postPublicationPlan`). Si no
  * cabe, no se adjunta y `videoLeftOut` lo dice: hoy no hay un enlace al video que se pueda publicar
  * sin exponer una URL firmada de larga vida (R2 no tiene un dominio público), así que se publica el
  * texto solo, con la nota en la bitácora (`DISCORD_VIDEO_NOT_ATTACHED_NOTE`).

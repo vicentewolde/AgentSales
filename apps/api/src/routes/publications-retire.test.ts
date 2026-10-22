@@ -90,3 +90,132 @@ describe("POST /publications/:id/retire con deleteRemote (F9-T19)", () => {
     expect(removed).toEqual([]);
   });
 });
+
+// F9.5-T09: en X, la API renueva el token que rota con la renovación que compone `createApp` (la del
+// refresco a pedido, `fakeXAuth`) bajo el candado de credenciales, y borra con el token nuevo.
+// TikTok responde que se borra a mano en la app (D9). X y TikTok son dobles.
+describe("POST /publications/:id/retire con deleteRemote en X y TikTok (F9.5-T09)", () => {
+  const X_POST_ID = "1850000000000000001";
+
+  async function xSetup(publishMode: PublishMode = "live") {
+    const t = await createPostPublicationScenario({
+      texts: [{ platform: "x", language: "es" }],
+      // Le quedan 5 minutos: por debajo de los 30 que pide `ensureRotatingAccessToken`.
+      accounts: [
+        {
+          platform: "x",
+          meta: {
+            mode: "api",
+            accessTokenExpiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+          },
+        },
+      ],
+    });
+    const started = await t.toPublishing(t.publicationOf("x"));
+    const publication = await t.publications.transition(
+      started.id,
+      { from: "publishing", to: "published", changes: { externalId: X_POST_ID } },
+      { actor: "system", payload: { mode: "live" } },
+    );
+    const removed: Array<{ ref: PublishedRef; token: string }> = [];
+    const app = adminApp(
+      testDeps({
+        brokers: t.repos.brokers,
+        posts: t.posts,
+        publications: t.publications,
+        platformAccounts: t.platformAccounts,
+        lock: t.lock,
+        postLock: t.postLock,
+        publishMode,
+        operationsFor: (platform) =>
+          platform === "x"
+            ? {
+                async remove(ref, ctx) {
+                  removed.push({ ref, token: await ctx.accessToken() });
+                },
+              }
+            : undefined,
+      }),
+    );
+    const retire = () =>
+      app.request(`/publications/${publication.id}/retire`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deleteRemote: true }),
+      });
+    return { t, publication, removed, retire };
+  }
+
+  it("en vivo: renueva el token por vencer, borra en X con el nuevo y la deja retirada", async () => {
+    const { t, publication, removed, retire } = await xSetup();
+
+    const response = await retire();
+
+    expect(response.status).toBe(200);
+    expect(publicationRetireResponseSchema.parse(await response.json())).toMatchObject({
+      publication: { id: publication.id, status: "unpublished" },
+    });
+    expect(removed).toEqual([
+      {
+        ref: { externalId: X_POST_ID, progress: null },
+        token: "refresh-post-prueba-access-refrescado-1",
+      },
+    ]);
+    expect(await t.platformAccounts.getCredentials(publication.platformAccountId)).toEqual({
+      accessToken: "refresh-post-prueba-access-refrescado-1",
+      refreshToken: "refresh-post-prueba-refrescado-1",
+    });
+  });
+
+  it("con la API en simulación es 409 PUBLISH_MODE_MISMATCH, sin renovar ni borrar", async () => {
+    const { t, publication, removed, retire } = await xSetup("dry-run");
+
+    const response = await retire();
+
+    expect(response.status).toBe(409);
+    expect(await codeOf(response)).toBe("PUBLISH_MODE_MISMATCH");
+    expect(removed).toEqual([]);
+    expect(await t.platformAccounts.getCredentials(publication.platformAccountId)).toEqual({
+      accessToken: POST_SCENARIO_TOKEN,
+      refreshToken: "refresh-post-prueba",
+    });
+  });
+
+  it("TikTok es 409 TIKTOK_DELETE_UNSUPPORTED: se borra a mano en la app", async () => {
+    const t = await createPostPublicationScenario({
+      kind: "video",
+      images: 0,
+      video: true,
+      texts: [{ platform: "tiktok", language: "es" }],
+    });
+    const started = await t.toPublishing(t.publicationOf("tiktok"));
+    const publication = await t.publications.transition(
+      started.id,
+      { from: "publishing", to: "published", changes: { externalId: "7430000000000000001" } },
+      { actor: "system", payload: { mode: "live" } },
+    );
+    const app = adminApp(
+      testDeps({
+        brokers: t.repos.brokers,
+        posts: t.posts,
+        publications: t.publications,
+        platformAccounts: t.platformAccounts,
+        lock: t.lock,
+        postLock: t.postLock,
+        publishMode: "live",
+      }),
+    );
+
+    const response = await app.request(`/publications/${publication.id}/retire`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deleteRemote: true }),
+    });
+
+    expect(response.status).toBe(409);
+    const body = errorBodySchema.parse(await response.json());
+    expect(body.error.code).toBe("TIKTOK_DELETE_UNSUPPORTED");
+    expect(body.error.message).toContain("bórralo a mano en la app de TikTok");
+    expect(t.current(publication.id)?.status).toBe("published");
+  });
+});
