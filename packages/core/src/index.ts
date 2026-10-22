@@ -6,6 +6,7 @@ export {
   inScope,
   scopedBrokerId,
 } from "./access.js";
+export { accountOwnedBy } from "./accounts/owner.js";
 export {
   type AttributeEntry,
   describeAttributes,

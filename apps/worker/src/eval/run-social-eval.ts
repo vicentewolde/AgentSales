@@ -17,6 +17,7 @@ import {
   type LLMProvider,
   llmCallCost,
   PLAN_PROMPT_VERSION,
+  PLAN_SIMILAR_TOPIC_THRESHOLD,
   type PlanDiscardCode,
   POST_TEXT_LIMITS,
   type PostKind,
@@ -27,8 +28,12 @@ import {
   roundUsd,
   SOCIAL_PROMPT_VERSION,
   socialTargets,
-  topicKey,
+  topicSimilarity,
 } from "@agentsales/core";
+
+/** La medida de parecido de temas vive en core desde F9.5 (`IDEA_TOO_SIMILAR`); aquí se reexporta. */
+export { topicSimilarity };
+
 import type { SocialEvalProfile } from "./social-profiles.js";
 
 // `pnpm eval:social` (spec F9-T22): el plan de ideas y los textos de algunas ideas sobre perfiles de
@@ -110,9 +115,17 @@ export type SocialEvalCounts = {
   ideasDiscarded: number;
   /** Las descartadas por cada motivo de `checkPlanIdeas`. */
   discardedByCode: Partial<Record<PlanDiscardCode, number>>;
-  /** Descartadas por repetir un tema reciente, uno descartado u otra idea del plan. */
+  /**
+   * Descartadas por repetir un tema reciente, uno descartado u otra idea del plan, o por parecerse
+   * en un 60 % o más a otra idea del plan (`IDEA_TOO_SIMILAR`, F9.5).
+   */
   repeated: number;
-  /** Aceptadas que se parecen a otro tema (advertencia: la verificación compara solo temas iguales). */
+  /** Descartadas porque la cadencia no les dejó una ranura libre (`NO_SLOT`, F9.5). */
+  noSlot: number;
+  /**
+   * Aceptadas que se parecen a un tema del historial (advertencia: el plan descarta las parecidas
+   * entre sí, no las parecidas a lo reciente, que solo compara iguales).
+   */
   similar: number;
   /** Cifras, nombres, menciones o enlaces fuera del perfil: en las ideas y en los textos. */
   outsideProfile: number;
@@ -181,59 +194,18 @@ const REPEATED_CODES: readonly PlanDiscardCode[] = [
   "REPEATED_TOPIC",
   "DISCARDED_TOPIC",
   "DUPLICATE_IN_PLAN",
+  "IDEA_TOO_SIMILAR",
 ];
 
-/** Similitud desde la que dos temas se informan como parecidos (palabras en común / todas). */
-export const SIMILAR_TOPIC_THRESHOLD = 0.6;
-
-/** Palabras de 4 letras o más que no distinguen un tema (plegadas: sin tildes ni mayúsculas). */
-const TOPIC_STOPWORDS = new Set([
-  "como",
-  "para",
-  "esta",
-  "este",
-  "estos",
-  "estas",
-  "sobre",
-  "desde",
-  "cuando",
-  "donde",
-  "porque",
-  "nuestro",
-  "nuestra",
-  "nuestros",
-  "nuestras",
-  "with",
-  "that",
-  "this",
-  "from",
-  "what",
-  "your",
-  "about",
-]);
-
-const topicWords = (topic: string): Set<string> =>
-  new Set(
-    topicKey(topic)
-      .toLowerCase()
-      .split(" ")
-      .filter((word) => word.length >= 4 && !TOPIC_STOPWORDS.has(word)),
-  );
-
-/** Cuánto se parecen dos temas: las palabras con peso en común sobre todas (de 0 a 1). */
-export function topicSimilarity(a: string, b: string): number {
-  const left = topicWords(a);
-  const right = topicWords(b);
-  if (left.size === 0 || right.size === 0) return 0;
-  let shared = 0;
-  for (const word of left) if (right.has(word)) shared += 1;
-  return shared / (left.size + right.size - shared);
-}
+/** Similitud desde la que dos temas se informan como parecidos: la misma del plan (core). */
+export const SIMILAR_TOPIC_THRESHOLD = PLAN_SIMILAR_TOPIC_THRESHOLD;
 
 /**
  * Las ideas aceptadas que se parecen (sin ser iguales: esas ya las descarta `checkPlanIdeas`) a un
- * tema del historial o a una idea anterior del mismo plan. Es una advertencia para leer a mano: la
- * verificación del plan solo compara temas iguales (`docs/04-formato-publicaciones.md`).
+ * tema del historial o a una idea anterior del mismo plan. Es una advertencia para leer a mano: con
+ * el historial, el plan solo compara temas iguales; entre ideas del mismo plan, desde F9.5 descarta
+ * las parecidas (`IDEA_TOO_SIMILAR`), así que ahí solo aparece si cambia el umbral
+ * (`docs/04-formato-publicaciones.md`).
  */
 export function similarTopics(
   accepted: readonly string[],
@@ -353,6 +325,7 @@ const emptyCounts = (): SocialEvalCounts => ({
   ideasDiscarded: 0,
   discardedByCode: {},
   repeated: 0,
+  noSlot: 0,
   similar: 0,
   outsideProfile: 0,
   tooLong: 0,
@@ -403,6 +376,7 @@ function countProfile(evaluation: Omit<SocialProfileEvaluation, "counts">, reque
     for (const { code } of evaluation.plan.discarded) {
       counts.discardedByCode[code] = (counts.discardedByCode[code] ?? 0) + 1;
       if (REPEATED_CODES.includes(code)) counts.repeated += 1;
+      if (code === "NO_SLOT") counts.noSlot += 1;
       if (code === "FACT_NOT_IN_PROFILE") counts.outsideProfile += 1;
       if (code === "MASS_MENTION") counts.massMentions += 1;
     }
@@ -615,7 +589,8 @@ const chileTime = (iso: string) => formatChileTime(new Date(iso));
 
 function countsLine(counts: SocialEvalCounts): string {
   return (
-    `repetidas ${counts.repeated} · fuera del perfil ${counts.outsideProfile} · ` +
+    `repetidas ${counts.repeated} · sin ranura ${counts.noSlot} · ` +
+    `fuera del perfil ${counts.outsideProfile} · ` +
     `largos ${counts.tooLong} · escapes ${counts.escapes} · menciones masivas ${counts.massMentions}` +
     ` · fallas ${counts.failures} | ⚠ parecidas ${counts.similar} · términos a evitar ${counts.avoided}` +
     ` · muletillas de IA ${counts.aiTells}`
