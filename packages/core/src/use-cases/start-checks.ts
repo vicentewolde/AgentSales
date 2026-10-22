@@ -11,7 +11,7 @@ import type { Publication } from "../publication.js";
 import { PUBLISH_LISTING_PLATFORMS } from "../publish/input.js";
 import { outcomeUnknownPending } from "../publish/outcome.js";
 import { requirePostPlatform } from "../social/post-networks.js";
-import { listingSubject, type PostSubject } from "../subject.js";
+import { listingSubject, type PostSubject, postSubject } from "../subject.js";
 import type { LockedSubject, SubjectLockedRepositories } from "../subject-lock.js";
 import {
   channelPublications,
@@ -19,6 +19,7 @@ import {
   type PublicationOpening,
   planPostPublications,
   planPublications,
+  postPublicationPlan,
   type SkippedPublication,
 } from "./open-publications.js";
 import {
@@ -78,6 +79,7 @@ export async function requireStartableOne(
     requirePostPlatform(post, publication.platform);
     await requireNoActiveRun(locked.repos, locked.subject);
     await requireApprovedAndConnected(locked.repos, publication);
+    await requirePostMedia(locked.repos, post, publication);
     requireCompatibleMode(publication, options.dryRun);
     return;
   }
@@ -133,6 +135,30 @@ async function requireApprovedAndConnected(
     );
   }
   return content;
+}
+
+/**
+ * Los medios del post siguen ahí (F9.5-T21): el reloj, publicar una publicación y programarla
+ * nunca intentan publicar un post sin los medios que su formato necesita, aunque la publicación
+ * se abriera cuando sí los tenía (el operador pudo borrarlos después). Si faltan,
+ * `CONTENT_NOT_READY` (no reintentable: una programada queda `failed` con ese código).
+ */
+async function requirePostMedia(
+  repos: Pick<PostLockedRepositories, "media">,
+  post: Post,
+  publication: Publication,
+): Promise<void> {
+  const media = await repos.media.listBySubject(postSubject(post.id));
+  // Lanza `CONTENT_NOT_READY` si, con lo que hay, el post no tiene lo que esa red pide.
+  postPublicationPlan(publication.platform, post.kind, media);
+  const present = new Set(media.map((item) => item.id));
+  if (publication.mediaIds.some((id) => !present.has(id))) {
+    throw new AppError(
+      "CONTENT_NOT_READY",
+      "Los medios de esta publicación ya no están en el post: súbelos o consíguelos de nuevo y descártala",
+      { details: { publicationId: publication.id, platform: publication.platform } },
+    );
+  }
 }
 
 const postNotFound = (postId: string) =>

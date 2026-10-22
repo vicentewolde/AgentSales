@@ -575,6 +575,11 @@ export const contentApproveResponseSchema = z.object({
   portalReadiness: portalReadinessSchema.nullable(),
   /** Solo Marketplace: lo que le falta al aviso (advertencia, como en Portal; F5-T08). */
   marketplaceReadiness: readinessSchema.nullable(),
+  /**
+   * Solo un post (F9.5-T21): el texto se aprobó, pero faltan los medios que pide la red o se están
+   * procesando, así que todavía no hay publicaciones. Opcional: un servidor anterior no lo manda.
+   */
+  mediaPending: z.boolean().optional(),
 });
 export type ContentApproveResponse = z.infer<typeof contentApproveResponseSchema>;
 

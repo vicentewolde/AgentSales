@@ -316,6 +316,8 @@ export function postRoutes(deps: PostRoutesDeps) {
             // Lo que le falta a un aviso para Portal o Marketplace: un post no lo tiene.
             portalReadiness: null,
             marketplaceReadiness: null,
+            // F9.5-T21: sin los medios (o procesándose) el texto se aprueba sin publicaciones.
+            mediaPending: result.mediaPending ?? false,
           };
           return c.json(body, 200);
         },
