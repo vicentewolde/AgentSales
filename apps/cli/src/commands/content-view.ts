@@ -119,7 +119,7 @@ export function renderContentMedia(content: ListingContentResponse, c: Colors): 
   return [
     `  Carrusel de Instagram: ${plural(content.carousel.length, "imagen", "imágenes")}` +
       ` · Fotos de Portal y Marketplace: ${content.photos.length}` +
-      ` · Reel: ${content.reel === null ? "no" : "sí"}`,
+      ` · Reel: ${content.reel === null ? "no" : content.reelFromPhotos ? "sí, armado con tus fotos" : "sí"}`,
     `  Última preparación: ${
       run === null
         ? "ninguna"
