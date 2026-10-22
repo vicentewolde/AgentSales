@@ -1,8 +1,7 @@
-import type { AgendaResponse, TrackingResponse } from "@agentsales/api/contracts";
+import type { TrackingResponse } from "@agentsales/api/contracts";
 import {
   AGENDA_KIND_TEXT,
   AGENDA_KINDS,
-  type AgendaAction,
   CLOSE_REASON_TEXT,
   formatChileTime,
   LISTING_PLATFORMS,
@@ -13,6 +12,11 @@ import {
 } from "@agentsales/core";
 import { useState } from "react";
 import { Link } from "react-router";
+import {
+  AGENDA_ACTION_TEXT,
+  type AgendaItem,
+  agendaItemWhen,
+} from "../components/agenda/agenda.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { PublicationMode } from "../components/publications/PublicationMode.js";
 import { safeExternalUrl } from "../components/publications/publications.js";
@@ -25,38 +29,8 @@ import { useBrokerFilter } from "../scope/broker-scope.js";
 // F6-T13 (spec F6 §4.9): la agenda arriba y la matriz abajo. Se relee cada 60 s solo con la
 // pestaña a la vista (ADR-0007).
 
-type AgendaItem = AgendaResponse["items"][number];
 type Row = TrackingResponse["rows"][number];
 type Cell = Row["cells"]["instagram"][number];
-
-/** Qué hacer con cada ítem, en el panel (la CLI muestra el comando). */
-const ACTION_TEXT: Readonly<Record<AgendaAction, string>> = {
-  publish: "Publícala desde Contenido",
-  reschedule: "Reprográmala",
-  requeue: "Retómala desde Contenido",
-  retry: "Reintenta desde Contenido",
-  retire: "Bórrala en la plataforma y márcala como retirada",
-  review: "Revisa y aprueba el texto en Contenido",
-  relist: "Republícala desde Contenido",
-  sync: "Usa Actualizar en Contenido para leer su estado",
-  // F9-T08 y T17: lo de los posts (en su página de Contenido) y las cuentas.
-  resolve: "Revisa la red y di si salió o no desde el post, en Contenido",
-  confirm: "Publícala a mano en la red y confirma con el enlace desde el post, en Contenido",
-  reconnect: "Vuelve a conectar la cuenta en Cuentas",
-  backup:
-    "En el Mac, corre pnpm db:backup en tu terminal; en el servidor lo hace el worker al encenderse y a las 13:00 (el error está en sus logs)",
-  none: "",
-};
-
-function itemWhen(item: AgendaItem): string | null {
-  if (item.at === null) return null;
-  if (item.kind === "expiring" || item.kind === "token_expiring") {
-    return item.expired
-      ? `venció el ${formatChileTime(item.at)}`
-      : `vence en ${item.daysLeft} ${item.daysLeft === 1 ? "día" : "días"}`;
-  }
-  return formatChileTime(item.at);
-}
 
 function AgendaEntry({
   item,
@@ -74,7 +48,7 @@ function AgendaEntry({
           <span className="ml-1 text-warning-800">· el último intento falló ({item.code})</span>
         )}
         {item.action !== "none" && (
-          <span className="block text-xs text-fg-muted">{ACTION_TEXT[item.action]}</span>
+          <span className="block text-xs text-fg-muted">{AGENDA_ACTION_TEXT[item.action]}</span>
         )}
       </li>
     );
@@ -83,7 +57,7 @@ function AgendaEntry({
     item.platform === null
       ? null
       : `${PLATFORM_TEXT[item.platform]}${item.format === null ? "" : ` ${publicationFormatText(item.platform, item.format, item.mediaCount)}`}`;
-  const when = itemWhen(item);
+  const when = agendaItemWhen(item);
   return (
     <li className="text-sm">
       {item.postId !== null ? (
@@ -121,7 +95,7 @@ function AgendaEntry({
         <span className="block text-xs text-fg-subtle">código {item.code}</span>
       )}
       {item.action !== "none" && (
-        <span className="block text-xs text-fg-muted">{ACTION_TEXT[item.action]}</span>
+        <span className="block text-xs text-fg-muted">{AGENDA_ACTION_TEXT[item.action]}</span>
       )}
     </li>
   );
@@ -323,7 +297,7 @@ export function TrackingPage() {
           />
         )}
         {tracking.isPending && <p className="mt-2 text-sm text-fg-muted">Cargando…</p>}
-        {tracking.data && <TrackingMatrix rows={tracking.data} publishMode={publishMode} />}
+        {tracking.data && <TrackingMatrix rows={tracking.data.rows} publishMode={publishMode} />}
       </section>
     </section>
   );

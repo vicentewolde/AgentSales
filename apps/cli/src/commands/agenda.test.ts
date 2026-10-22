@@ -134,6 +134,7 @@ describe("tracking con posts", () => {
       lastError: null,
       errorAdvice: null,
       manualTask: false,
+      publishedAt: null,
       updatedAt: new Date(),
     };
     const posts: TrackingResponse["posts"] = [

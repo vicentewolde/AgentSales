@@ -42,28 +42,27 @@ export function useAgenda(broker?: string) {
 }
 
 /**
- * `GET /tracking`. `staleTime` de 30 s: cada lectura firma una portada por fila, y volver a la
- * pestaña no debe repetirlo si recién se leyó.
+ * `GET /tracking`: las filas de avisos (`rows`) y de posts (`posts`). `staleTime` de 30 s: cada
+ * lectura firma una portada por fila, y volver a la pestaña (o pasar de Hoy a Seguimiento, que
+ * comparten la llave) no debe repetirlo si recién se leyó.
  */
 export function useTracking(archived: boolean, broker?: string) {
   const client = useApiClient();
   return useQuery({
     queryKey: trackingKeys.matrix(archived, broker),
-    queryFn: async ({ signal }): Promise<TrackingResponse["rows"]> =>
-      (
-        await unwrap(
-          client.tracking.$get(
-            {
-              query: {
-                ...(archived ? { archived: "1" as const } : {}),
-                ...(broker === undefined ? {} : { broker }),
-              },
+    queryFn: async ({ signal }): Promise<TrackingResponse> =>
+      unwrap(
+        client.tracking.$get(
+          {
+            query: {
+              ...(archived ? { archived: "1" as const } : {}),
+              ...(broker === undefined ? {} : { broker }),
             },
-            { init: { signal } },
-          ),
-          trackingResponseSchema,
-        )
-      ).rows,
+          },
+          { init: { signal } },
+        ),
+        trackingResponseSchema,
+      ),
     refetchInterval: TRACKING_REFETCH_MS,
     refetchIntervalInBackground: false,
     staleTime: TRACKING_REFETCH_MS / 2,
