@@ -47,8 +47,11 @@ const codeOf = (error: unknown) => (isAppError(error) ? error.code : "INTERNAL_E
 
 /**
  * Job `post.media`: arma las variantes que faltan de los medios de un post (`processPostMedia`,
- * core) con un procesador y un temporal propios del intento, que se borra al terminar. El log
- * lleva solo conteos, ids y códigos.
+ * core) con un procesador y un temporal propios del intento, que se borra al terminar: de una
+ * foto, `thumb` e `ig_4x5`; de un video, `thumb`, el reel sin texto y `x_video`; y, si el post va a
+ * Discord y el más liviano de su primer video pasa de 20 MiB, `discord_video` (F9.5 D8). Si ese no
+ * se puede o su pasada falla, queda un aviso en el log y el post sigue sin él (Discord publica el
+ * texto solo). El log lleva solo conteos, ids y códigos.
  */
 export function postMediaJob(deps: PostMediaJobDeps): Job {
   return defineJob({
@@ -85,6 +88,19 @@ export function postMediaJob(deps: PostMediaJobDeps): Job {
                 { objectPath, code: codeOf(error) },
                 "no se pudo borrar un archivo viejo de R2: queda sin uso",
               ),
+            onDiscordVideoMissing: (mediaId, reason, error) => {
+              if (reason === "failed") {
+                logger.warn(
+                  { mediaId, code: codeOf(error) },
+                  "no se pudo armar el video para Discord: se publicará el texto solo",
+                );
+              } else {
+                logger.info(
+                  { mediaId, reason },
+                  "el video no cabe en Discord ni a bitrate bajo: se publicará el texto solo",
+                );
+              }
+            },
           },
           { postId, signal: deps.signal },
         );

@@ -197,13 +197,16 @@ const postVideo = (media: readonly Media[]): Media | null => {
 };
 
 /**
- * El video de un post para Discord (spec F9 §4.5, D8; F9-T14): la variante más liviana del primer
- * video entre el video reducido de X (`x_video`, 720p) y el reel (`ig_reel`), para que quepa en los
- * 20 MiB por archivo de Discord. Si igual no cabe, el publisher no lo adjunta (`discord.md`).
+ * El video de un post para Discord (spec F9 §4.5, D8; F9-T14; F9.5 D8): el video liviano para
+ * Discord (`discord_video`, bajo 19 MiB) de su primer video si existe; si no, la variante más
+ * liviana entre el video reducido de X (`x_video`, 720p) y el reel (`ig_reel`), para que quepa en
+ * los 20 MiB por archivo de Discord. Si igual no cabe, el publisher no lo adjunta (`discord.md`).
  */
 const discordVideo = (media: readonly Media[]): Media | null => {
   const first = videosOf(media)[0];
   if (first === undefined) return null;
+  const light = variantOf(media, first.id, "discord_video");
+  if (light !== null) return light;
   const candidates = [variantOf(media, first.id, "x_video"), variantOf(media, first.id, "ig_reel")]
     .filter((variant): variant is Media => variant !== null)
     .sort((a, b) => a.bytes - b.bytes);
