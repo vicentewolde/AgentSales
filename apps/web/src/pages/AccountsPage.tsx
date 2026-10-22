@@ -129,6 +129,11 @@ function BrokerAccounts({
   const automation = data.connect.marketplace.automation;
   // Una marca (F9, ADR-0029) no tiene propiedades: sin Portal, Marketplace ni publicación automática.
   const listings = brokerHoldsListings(broker);
+  // Cada tipo ve las redes que le sirven (F9.5-T20): el corredor de propiedades, Instagram, Mercado
+  // Libre y Marketplace; la marca, Instagram, X, LinkedIn, Discord y TikTok. Una cuenta de una red de
+  // marca que ya estaba en un corredor se sigue viendo (para desconectarla), pero sin ofrecer conectar.
+  const brand = !listings;
+  const social = (state: ReturnType<typeof channelState>) => brand || state.shown.length > 0;
   const headingId = `corredor-${broker.id}`;
   return (
     <section aria-labelledby={headingId}>
@@ -203,75 +208,84 @@ function BrokerAccounts({
           </Channel>
         </>
       )}
-      <Channel
-        title="Discord"
-        empty="Sin webhook de Discord."
-        accounts={discord.shown}
-        now={now}
-        manage={manage}
-        marketplaceAutomation={automation}
-      >
-        {discord.offerConnect && (
-          <DiscordConnectBox broker={broker} reconnect={discord.reconnect} />
-        )}
-      </Channel>
-      <Channel
-        title="LinkedIn"
-        empty="Sin perfil de LinkedIn."
-        accounts={linkedin.shown}
-        now={now}
-        manage={manage}
-        connect={manage || connectLinkedIn}
-        marketplaceAutomation={automation}
-      >
-        {linkedin.offerConnect && (
-          <OAuthConnectBox
-            broker={broker}
-            network="linkedin"
-            configured={data.connect.linkedin.configured}
-            startUrl={data.connect.linkedin.startUrl}
-            reconnect={linkedin.reconnect}
-          />
-        )}
-      </Channel>
-      <Channel
-        title="X"
-        empty="Sin cuenta de X."
-        accounts={x.shown}
-        now={now}
-        manage={manage}
-        connect={manage || connectX}
-        marketplaceAutomation={automation}
-      >
-        {x.offerConnect && (
-          <OAuthConnectBox
-            broker={broker}
-            network="x"
-            configured={data.connect.x.configured}
-            startUrl={data.connect.x.startUrl}
-            reconnect={x.reconnect}
-          />
-        )}
-      </Channel>
-      <Channel
-        title="TikTok"
-        empty="Sin cuenta de TikTok."
-        accounts={tiktok.shown}
-        now={now}
-        manage={manage}
-        connect={manage || connectTikTok}
-        marketplaceAutomation={automation}
-      >
-        {tiktok.offerConnect && (
-          <OAuthConnectBox
-            broker={broker}
-            network="tiktok"
-            configured={data.connect.tiktok.configured}
-            startUrl={data.connect.tiktok.startUrl}
-            reconnect={tiktok.reconnect}
-          />
-        )}
-      </Channel>
+      {social(discord) && (
+        <Channel
+          title="Discord"
+          empty="Sin webhook de Discord."
+          accounts={discord.shown}
+          now={now}
+          manage={manage}
+          connect={brand && manage}
+          marketplaceAutomation={automation}
+        >
+          {discord.offerConnect && (
+            <DiscordConnectBox broker={broker} reconnect={discord.reconnect} />
+          )}
+        </Channel>
+      )}
+      {social(linkedin) && (
+        <Channel
+          title="LinkedIn"
+          empty="Sin perfil de LinkedIn."
+          accounts={linkedin.shown}
+          now={now}
+          manage={manage}
+          connect={brand && (manage || connectLinkedIn)}
+          marketplaceAutomation={automation}
+        >
+          {linkedin.offerConnect && (
+            <OAuthConnectBox
+              broker={broker}
+              network="linkedin"
+              configured={data.connect.linkedin.configured}
+              startUrl={data.connect.linkedin.startUrl}
+              reconnect={linkedin.reconnect}
+            />
+          )}
+        </Channel>
+      )}
+      {social(x) && (
+        <Channel
+          title="X"
+          empty="Sin cuenta de X."
+          accounts={x.shown}
+          now={now}
+          manage={manage}
+          connect={brand && (manage || connectX)}
+          marketplaceAutomation={automation}
+        >
+          {x.offerConnect && (
+            <OAuthConnectBox
+              broker={broker}
+              network="x"
+              configured={data.connect.x.configured}
+              startUrl={data.connect.x.startUrl}
+              reconnect={x.reconnect}
+            />
+          )}
+        </Channel>
+      )}
+      {social(tiktok) && (
+        <Channel
+          title="TikTok"
+          empty="Sin cuenta de TikTok."
+          accounts={tiktok.shown}
+          now={now}
+          manage={manage}
+          connect={brand && (manage || connectTikTok)}
+          marketplaceAutomation={automation}
+        >
+          {tiktok.offerConnect && (
+            <OAuthConnectBox
+              broker={broker}
+              network="tiktok"
+              configured={data.connect.tiktok.configured}
+              startUrl={data.connect.tiktok.startUrl}
+              reconnect={tiktok.reconnect}
+            />
+          )}
+        </Channel>
+      )}
     </section>
   );
 }
@@ -306,11 +320,12 @@ export function AccountsPage() {
         title="Cuentas"
         description={
           <>
-            Las cuentas de cada corredor o marca: Instagram, Mercado Libre y Facebook para las
-            propiedades, y Discord, LinkedIn, X y TikTok para los posts. Se renuevan solas mientras
-            el worker está encendido: Instagram dura 60 días; Mercado Libre se da de baja tras 4
-            meses sin renovarse; X y TikTok se renuevan al publicar. Facebook y Discord no vencen;
-            LinkedIn dura 60 días y se reconecta antes de que venza (la agenda avisa).
+            Las cuentas de cada corredor o marca: Instagram, Mercado Libre y Facebook para un
+            corredor de propiedades, e Instagram, X, LinkedIn, Discord y TikTok para una marca. Se
+            renuevan solas mientras el worker está encendido: Instagram dura 60 días; Mercado Libre
+            se da de baja tras 4 meses sin renovarse; X y TikTok se renuevan al publicar. Facebook y
+            Discord no vencen; LinkedIn dura 60 días y se reconecta antes de que venza (la agenda
+            avisa).
           </>
         }
       />

@@ -348,6 +348,13 @@ describe("panel: publicar", () => {
     const setup = await publicationSetup();
     const section = await setup.open();
 
+    // La vista previa lleva el nombre de la cuenta conectada, no «sin conectar» (F9.5-T20).
+    const preview = await within(section).findByRole("figure", {
+      name: "Vista previa de Instagram",
+    });
+    await within(preview).findAllByText("@muestra");
+    expect(preview.textContent).not.toContain("sin conectar");
+
     const publish = await within(section).findByRole("button", {
       name: "Publicar en Instagram (simulación)",
     });
