@@ -11,9 +11,10 @@ import {
   formatChileTime,
   groupByPlanWeek,
   ideaNeedsDraft,
-  PLAN_BRIEF_MAX,
   PLAN_DEFAULT_DAYS,
   PLAN_EMPTY_PROFILE_WARNING,
+  PLAN_GUIDANCE_IGNORED_WARNING,
+  PLAN_GUIDANCE_MAX,
   PLAN_RUN_STATUS_TEXT,
   PLATFORM_TEXT,
   planProfileIsEmpty,
@@ -66,7 +67,7 @@ function integerOption(option: string, text: string | undefined): number | undef
 function planHint(error: ApiCallError): string | undefined {
   const hints: Record<string, string> = {
     PLAN_RUN_NOT_FOUND: "Mira los planes de la marca con agentsales plan list",
-    PLAN_RUN_INVALID: `Días de 1 a 31, de 1 a 20 ideas, un inicio entre hoy y 60 días más (--start AAAA-MM-DD) y el pedido (--brief) hasta ${PLAN_BRIEF_MAX} caracteres`,
+    PLAN_RUN_INVALID: `Días de 1 a 31, de 1 a 20 ideas, un inicio entre hoy y 60 días más (--start AAAA-MM-DD) y el pedido (--guidance) hasta ${PLAN_GUIDANCE_MAX} caracteres`,
     POST_NO_PLATFORMS:
       "Conecta una cuenta de la marca (agentsales accounts) o define la cadencia de una red en su perfil (agentsales brand edit)",
     LLM_BUDGET_EXCEEDED:
@@ -155,7 +156,7 @@ export function renderPlanDetail(detail: PlanDetailResponse, brandSlug: string, 
     `${c.bold(`Plan ${plan.id}`)}  ${paintStatus(plan, c)} · ${brandSlug} · ${periodText(plan)}`,
   ];
   // El pedido del operador (F9.5-T23): guía temas y tono; los hechos salen del perfil.
-  if (plan.brief !== null) lines.push(`  Pedido: ${plan.brief.replace(/\n+/g, " · ")}`);
+  if (plan.guidance !== null) lines.push(`  Pedido: ${plan.guidance.replace(/\n+/g, " · ")}`);
   if (plan.error !== null) {
     lines.push(`  ${c.red(`${plan.error.code}: ${plan.error.message}`)}`);
     if (plan.errorAdvice !== null) lines.push(`  ${c.dim(`→ ${plan.errorAdvice}`)}`);
@@ -197,7 +198,7 @@ export type PlanRequestOptions = {
   platform?: string[];
   count?: string;
   start?: string;
-  brief?: string;
+  guidance?: string;
   wait?: boolean;
 };
 
@@ -223,7 +224,7 @@ async function warnIfEmptyProfile(deps: PlanDeps, brandId: string, slug: string)
 
 /**
  * `agentsales plan [--broker] [--days 14] [--platform …] [--count N] [--start AAAA-MM-DD]
- * [--brief "<texto>"] [--no-wait]`: pide un plan de ideas y lo espera como `prepare` (`RUN_WAIT`);
+ * [--guidance "<texto>"] [--no-wait]`: pide un plan de ideas y lo espera como `prepare` (`RUN_WAIT`);
  * al final, las ideas por semana con su id y el comando para aceptarlas o descartarlas. Sale con 1
  * si el plan falla. Con el perfil vacío, antes avisa (F9.5-T23).
  */
@@ -237,7 +238,7 @@ export function runPlanRequest(deps: PlanDeps, options: PlanRequestOptions = {})
       .map((option) => postPlatformOption(option));
     const brand = await brandOf(deps.client, options.broker);
     await warnIfEmptyProfile(deps, brand.id, brand.slug);
-    const { plan, reused } = await unwrap(
+    const { plan, reused, guidanceIgnored } = await unwrap(
       deps.client.plans.$post({
         json: {
           brokerId: brand.id,
@@ -245,14 +246,16 @@ export function runPlanRequest(deps: PlanDeps, options: PlanRequestOptions = {})
           ...(count === undefined ? {} : { count }),
           ...(platforms === undefined ? {} : { platforms: [...new Set(platforms)] }),
           ...(options.start === undefined ? {} : { startDay: options.start.trim() }),
-          ...(options.brief === undefined ? {} : { brief: options.brief }),
+          ...(options.guidance === undefined ? {} : { guidance: options.guidance }),
         },
       }),
       planRequestResponseSchema,
     ).catch((error: unknown) => {
       throw explained(error);
     });
-    if (reused) {
+    if (guidanceIgnored) {
+      deps.printError(c.yellow(`⚠ ${PLAN_GUIDANCE_IGNORED_WARNING}: sigo ese`));
+    } else if (reused) {
       deps.printError(c.yellow("La marca ya tenía un plan en curso: sigo ese"));
     }
     if (options.wait === false) {
@@ -356,8 +359,8 @@ export function register(program: Command, ctx: CliContext): void {
     .option("--count <n>", "cuántas ideas (por defecto, según la cadencia del perfil)")
     .option("--start <día>", "el primer día del período (AAAA-MM-DD, Chile; por defecto mañana)")
     .option(
-      "--brief <texto>",
-      `qué quieres que trate el plan, hasta ${PLAN_BRIEF_MAX} caracteres (temas y tono: los datos salen del perfil)`,
+      "--guidance <texto>",
+      `qué quieres que trate el plan, hasta ${PLAN_GUIDANCE_MAX} caracteres (temas y tono: los datos salen del perfil)`,
     )
     .option("--no-wait", "imprime el id del plan y sale sin esperar")
     .action((options: PlanRequestOptions) => exitWith(() => runPlanRequest(deps(), options)));

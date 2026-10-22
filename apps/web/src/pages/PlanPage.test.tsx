@@ -257,7 +257,7 @@ describe("panel: el plan que obedece (F9.5-T23)", () => {
 
     expect(await screen.findByText("Plan en cola…")).toBeTruthy();
     const [run] = await s.deps.planRuns.listByBroker(s.brand.id);
-    expect(run?.request).toMatchObject({ brief: "Solo ideas para principiantes" });
+    expect(run?.request).toMatchObject({ guidance: "Solo ideas para principiantes" });
     expect(screen.getByText("Tu pedido:").parentElement?.textContent).toBe(
       "Tu pedido: Solo ideas para principiantes",
     );
@@ -343,6 +343,40 @@ describe("panel: el plan que obedece (F9.5-T23)", () => {
     expect(Object.keys(saved?.cadence ?? {})).toEqual(["linkedin"]);
     // Ya no está vacío: el aviso se va.
     await waitFor(() => expect(screen.queryByText(/^Tu perfil está vacío/)).toBeNull());
+  });
+
+  it("con un plan en curso que tiene otro pedido, avisa que el pedido nuevo no se usó", async () => {
+    const s = await setup();
+    await requestPlanRun(
+      s.deps,
+      { id: "admin", role: "admin", brokerId: null },
+      { brokerId: s.brand.id, guidance: "Solo principiantes" },
+    );
+    s.signInAsBroker(s.brand.id);
+    s.renderApp("/plan");
+    const form = await screen.findByRole("region", { name: "Pedir un plan" });
+    fireEvent.change(within(form).getByLabelText(/^¿Qué quieres que trate este plan\?/), {
+      target: { value: "Evita hablar de precios" },
+    });
+    fireEvent.click(within(form).getByRole("button", { name: "Pedir el plan" }));
+    expect(
+      await screen.findByText(
+        "Ya había un plan en curso; tu pedido nuevo no se usó: te muestro ese.",
+      ),
+    ).toBeTruthy();
+    expect(await s.deps.planRuns.listByBroker(s.brand.id)).toHaveLength(1);
+  });
+
+  it("el contador del pedido describe el campo, sin anunciar cada tecla", async () => {
+    const s = await setup();
+    s.signInAsBroker(s.brand.id);
+    s.renderApp("/plan");
+    const form = await screen.findByRole("region", { name: "Pedir un plan" });
+    const field = within(form).getByLabelText(/^¿Qué quieres que trate este plan\?/);
+    const counter = within(form).getByText("0/500");
+    expect(field.getAttribute("aria-describedby")?.split(" ")).toContain(counter.id);
+    expect(counter.getAttribute("aria-live")).toBeNull();
+    expect(counter.getAttribute("role")).toBeNull();
   });
 
   it("al administrador, el aviso lo lleva a la ficha de la marca", async () => {

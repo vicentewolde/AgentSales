@@ -297,15 +297,18 @@ describe("requestPlanRun", () => {
     const t = await setup();
     const { run } = await requestPlanRun(t.requestDeps, ADMIN, {
       brokerId: t.broker.id,
-      brief: "  Lanzamiento del 3 de noviembre, evita hablar de precios  ",
+      guidance: "  Lanzamiento del 3 de noviembre, evita hablar de precios  ",
     });
     expect(run.request).toMatchObject({
-      brief: "Lanzamiento del 3 de noviembre, evita hablar de precios",
+      guidance: "Lanzamiento del 3 de noviembre, evita hablar de precios",
     });
     expect(
       codeOf(
         await caught(
-          requestPlanRun(t.requestDeps, ADMIN, { brokerId: t.broker.id, brief: "a".repeat(501) }),
+          requestPlanRun(t.requestDeps, ADMIN, {
+            brokerId: t.broker.id,
+            guidance: "a".repeat(501),
+          }),
         ),
       ),
     ).toBe("PLAN_RUN_INVALID");
@@ -314,9 +317,30 @@ describe("requestPlanRun", () => {
     const other = await setup();
     const blank = await requestPlanRun(other.requestDeps, ADMIN, {
       brokerId: other.broker.id,
-      brief: "   ",
+      guidance: "   ",
     });
-    expect(blank.run.request).toMatchObject({ brief: null });
+    expect(blank.run.request).toMatchObject({ guidance: null });
+  });
+
+  it("un plan en curso con otro pedido guardado se devuelve y avisa que el pedido nuevo no se usó (F9.5-T23)", async () => {
+    const t = await setup();
+    const ask = (guidance?: string) =>
+      requestPlanRun(t.requestDeps, ADMIN, {
+        brokerId: t.broker.id,
+        ...(guidance === undefined ? {} : { guidance }),
+      });
+    const first = await ask("Solo principiantes");
+    expect(first).toMatchObject({ reused: false, guidanceIgnored: false });
+    // Otro pedido: se devuelve el mismo plan y el pedido nuevo no se usó.
+    const other = await ask("Evita hablar de precios");
+    expect(other).toMatchObject({ reused: true, guidanceIgnored: true, run: { id: first.run.id } });
+    expect(other.run.request).toMatchObject({ guidance: "Solo principiantes" });
+    // El mismo pedido (con espacios de sobra) o ninguno: no hay nada que avisar.
+    expect(await ask("  Solo principiantes ")).toMatchObject({
+      reused: true,
+      guidanceIgnored: false,
+    });
+    expect(await ask()).toMatchObject({ reused: true, guidanceIgnored: false });
   });
 
   it("una marca sin redes (ni cuentas ni cadencia) es POST_NO_PLATFORMS", async () => {
@@ -421,7 +445,7 @@ describe("runPlan con el plan de ejemplo (fake)", () => {
 
   it("el pedido del operador llega al prompt y la idea de ejemplo lo refleja; no es fuente de hechos (F9.5-T23)", async () => {
     const t = await setup();
-    const { run } = await t.plan({ count: 3, brief: "solo ideas para principiantes" });
+    const { run } = await t.plan({ count: 3, guidance: "solo ideas para principiantes" });
     const [request] = (t.llm as ReturnType<typeof samplePlanProvider>).requests;
     expect(request?.prompt).toContain('"pedido_del_operador": "solo ideas para principiantes"');
     const ideas = await t.posts.list({ planRunId: run.id }, { kind: "all" });
@@ -430,7 +454,7 @@ describe("runPlan con el plan de ejemplo (fake)", () => {
     );
     // Con un cliente y una cifra que no están en el perfil, la idea que los trae se descarta.
     const u = await setup();
-    const invented = await u.plan({ count: 3, brief: "Falabella nos contrató y crecimos 40 %" });
+    const invented = await u.plan({ count: 3, guidance: "Falabella nos contrató y crecimos 40 %" });
     const report = planRunReportSchema.parse(invented.saved?.report);
     expect(report.discarded.map((item) => item.code)).toEqual(["FACT_NOT_IN_PROFILE"]);
     const saved = await u.posts.list({ planRunId: invented.run.id }, { kind: "all" });

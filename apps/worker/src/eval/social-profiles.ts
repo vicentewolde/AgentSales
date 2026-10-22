@@ -10,7 +10,9 @@ import type {
 // (nada de datos de clientes ni de `data/muestras/`). Cubren lo que la evaluación mide: un perfil
 // sin hechos (la IA no debe afirmar cifras ni clientes), uno con hechos y dos idiomas (el costo de
 // un plan y sus textos en los dos) y uno con historial (temas recientes y descartados, para medir
-// las repeticiones). Los enlaces usan `example.com`, reservado para documentación.
+// las repeticiones). Desde F9.5-T23, uno con un pedido del operador que trae una cifra y un cliente
+// falsos (el pedido no es fuente de hechos: la idea que los afirme se descarta). Los enlaces usan
+// `example.com`, reservado para documentación.
 
 /** Un perfil de prueba: la marca, su perfil editorial, lo que se pide al plan y su historial. */
 export type SocialEvalProfile = {
@@ -28,6 +30,8 @@ export type SocialEvalProfile = {
   count: number;
   /** Los temas que el plan no debe repetir (los de los últimos 60 días y los descartados). */
   history: PlanHistory;
+  /** El pedido del operador para el plan (F9.5-T23), si lo hay: guía temas y tono, no hechos. */
+  guidance?: string;
 };
 
 const cadence = (
@@ -180,11 +184,52 @@ const CON_HISTORIAL: SocialEvalProfile = {
   },
 };
 
+/**
+ * Con un pedido del operador (F9.5-T23) que trae una cifra y un cliente **falsos** (no están en los
+ * hechos): mide que el pedido guíe los temas sin volverse un hecho, y que una marca que no es un
+ * equipo no hable de «nosotros» (`FIRST_PERSON_PLURAL`).
+ */
+const CON_PEDIDO: SocialEvalProfile = {
+  name: "con-pedido",
+  description: "Con un pedido que trae una cifra y un cliente falsos: no deben volverse hechos",
+  broker: { brandName: "Faro Corredora", tone: "Cercano y claro", fixedHashtags: [] },
+  profile: {
+    brokerId: "eval-con-pedido",
+    languages: ["es"],
+    audience: "Familias que buscan arrendar departamento en Ñuñoa",
+    pillars: [
+      {
+        key: "arriendo",
+        name: "Arrendar sin sustos",
+        description: "Qué revisar antes de firmar un arriendo",
+        weight: 2,
+      },
+      {
+        key: "barrio",
+        name: "El barrio",
+        description: "Comercio, metro y parques cerca",
+        weight: 1,
+      },
+    ],
+    facts: ["Faro Corredora trabaja en Ñuñoa desde 2019."],
+    avoid: ["prometer plusvalía"],
+    cadence: { instagram: cadence(2, ["tue", "thu"], ["19:00"]) },
+    defaultHashtags: ["#arriendo", "#ñuñoa"],
+    updatedAt: null,
+  },
+  platforms: ["instagram"],
+  days: 14,
+  count: 4,
+  history: { recentTopics: [], discardedTopics: [] },
+  guidance: "Cuenta que Inmobiliaria Los Cerezos nos eligió y que arrendamos 340 departamentos",
+};
+
 /** Los perfiles de prueba, en el orden en que se evalúan. */
 export const SOCIAL_EVAL_PROFILES: readonly SocialEvalProfile[] = [
   SIN_HECHOS,
   DOS_IDIOMAS,
   CON_HISTORIAL,
+  CON_PEDIDO,
 ];
 
 /** El perfil con dos idiomas: el de la medición del costo (`docs/integraciones/anthropic-api.md`). */

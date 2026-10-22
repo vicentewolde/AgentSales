@@ -16,6 +16,7 @@ import {
   type PostPlatform,
 } from "../enums.js";
 import { AppError } from "../errors.js";
+import { hasHiddenChars } from "../hidden-chars.js";
 import { foldText } from "../listing-validator/normalizers.js";
 import type { Post } from "../post.js";
 import { hasMassMention, unsupportedFacts } from "./check.js";
@@ -30,6 +31,8 @@ import {
   weekOf,
 } from "./plan-slots.js";
 
+import { firstPersonPluralWords, profileSpeaksAsTeam } from "./voice.js";
+
 export {
   addDays,
   type PlanCadence,
@@ -37,6 +40,7 @@ export {
   weekdayOf,
   weekOf,
 } from "./plan-slots.js";
+export { firstPersonPluralWords, profileSpeaksAsTeam } from "./voice.js";
 
 // El plan de ideas de la IA (spec F9 §4.9, ADR-0030; desde F9.5, ADR-0034): el período, lo que ve
 // la IA, la forma de su respuesta, las verificaciones de cada idea y su ranura (`plan-slots.ts`), el
@@ -172,19 +176,14 @@ export function defaultPlanCount(
  * El largo máximo del pedido del operador para un plan (F9.5-T23): «¿Qué quieres que trate este
  * plan?». Corto a propósito: es una guía de temas y tono, no un brief con datos.
  */
-export const PLAN_BRIEF_MAX = 500;
-
-// Controles C0 y C1 (salvo el salto de línea), separadores de línea y párrafo Unicode y controles
-// bidireccionales: el pedido viaja al prompt de la IA y no debe esconder texto (como el perfil).
-// biome-ignore lint/suspicious/noControlCharactersInRegex: justamente los que se rechazan
-const BRIEF_CONTROL_CHARS = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e]/;
+export const PLAN_GUIDANCE_MAX = 500;
 
 /**
  * El pedido del operador como se guarda (F9.5-T23): sin espacios de sobra al inicio ni al final,
  * con los saltos de línea como `\n` y sin líneas vacías repetidas; vacío es `null`. Más de
- * `PLAN_BRIEF_MAX` caracteres, o con caracteres de control, es `PLAN_RUN_INVALID` (400).
+ * `PLAN_GUIDANCE_MAX` caracteres, o con caracteres de control, es `PLAN_RUN_INVALID` (400).
  */
-export function normalizePlanBrief(raw: string | null | undefined): string | null {
+export function normalizePlanGuidance(raw: string | null | undefined): string | null {
   if (raw === null || raw === undefined) return null;
   const text = raw
     .replace(/\r\n?/g, "\n")
@@ -192,11 +191,12 @@ export function normalizePlanBrief(raw: string | null | undefined): string | nul
     .replace(/\n{3,}/g, "\n\n")
     .trim();
   if (text === "") return null;
-  if (BRIEF_CONTROL_CHARS.test(text)) {
+  // La misma lista que el perfil (`hidden-chars.ts`), con los saltos de línea permitidos.
+  if (hasHiddenChars(text, { allowNewline: true })) {
     throw invalid("El pedido del plan tiene caracteres de control: escríbelo de nuevo");
   }
-  if (text.length > PLAN_BRIEF_MAX) {
-    throw invalid(`El pedido del plan va hasta ${PLAN_BRIEF_MAX} caracteres`, {
+  if (text.length > PLAN_GUIDANCE_MAX) {
+    throw invalid(`El pedido del plan va hasta ${PLAN_GUIDANCE_MAX} caracteres`, {
       length: text.length,
     });
   }
@@ -214,7 +214,7 @@ export const planRunRequestSchema = z.object({
    * El pedido del operador (F9.5-T23): una guía de temas y tono, **nunca una fuente de hechos**
    * (ADR-0030, punto 1). Los planes de antes no lo tienen.
    */
-  brief: z.string().max(PLAN_BRIEF_MAX).nullable().optional(),
+  guidance: z.string().max(PLAN_GUIDANCE_MAX).nullable().optional(),
 });
 export type PlanRunRequest = z.infer<typeof planRunRequestSchema>;
 
@@ -224,60 +224,19 @@ export type PlanRunRequest = z.infer<typeof planRunRequestSchema>;
  */
 export const PLAN_EMPTY_PROFILE_WARNING = "Tu perfil está vacío: las ideas saldrán genéricas";
 
+/**
+ * El aviso cuando se pide un plan con un pedido y la marca ya tenía uno en curso con otro pedido:
+ * se devuelve ese plan y el pedido nuevo no se usó (F9.5-T23, `guidanceIgnored`).
+ */
+export const PLAN_GUIDANCE_IGNORED_WARNING = "Ya había un plan en curso; tu pedido nuevo no se usó";
+
 /** `true` si el perfil de la marca no tiene temas (líneas) ni hechos (F9.5-T23). */
 export const planProfileIsEmpty = (
   profile: Pick<EditorialProfileView, "pillars" | "facts">,
 ): boolean => profile.pillars.length === 0 && profile.facts.length === 0;
 
-// --- La voz: «nosotros» solo si la marca es un equipo (F9.5-T23) ------------------------------
-
-/**
- * Las palabras de primera persona del plural que la verificación reconoce (plegadas: sin tildes ni
- * mayúsculas): pronombres y posesivos en español e inglés. Los verbos («aprendimos», «trabajamos»)
- * no se reconocen: confundirían «últimos» o «ramos»; quedan a cargo de la regla del prompt.
- */
-const FIRST_PERSON_PLURAL: ReadonlySet<string> = new Set([
-  "nosotros",
-  "nosotras",
-  "nuestro",
-  "nuestra",
-  "nuestros",
-  "nuestras",
-  "nos",
-  "we",
-  "our",
-  "ours",
-  "ourselves",
-]);
-
-/** Lo que dice, en un hecho del perfil, que la marca es un equipo. */
-const TEAM_WORDS: ReadonlySet<string> = new Set([
-  ...FIRST_PERSON_PLURAL,
-  "equipo",
-  "somos",
-  "team",
-]);
-
-const foldedWords = (text: string): string[] =>
-  foldText(text)
-    .toLowerCase()
-    .replace(/['’]/g, "")
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter((word) => word !== "");
-
-/**
- * `true` si un **hecho** del perfil dice que la marca es un equipo («Somos un equipo de 4
- * corredores», «Nuestra oficina…», «We are a team…»): solo entonces las ideas pueden hablar de
- * «nosotros». Se miran los hechos porque son lo que la IA puede afirmar (ADR-0030, punto 1).
- */
-export function profileSpeaksAsTeam(profile: Pick<EditorialProfileView, "facts">): boolean {
-  return profile.facts.some((fact) => foldedWords(fact).some((word) => TEAM_WORDS.has(word)));
-}
-
-/** Las palabras de primera persona del plural de un texto, sin repetir y como aparecen plegadas. */
-export function firstPersonPluralWords(text: string): string[] {
-  return [...new Set(foldedWords(text).filter((word) => FIRST_PERSON_PLURAL.has(word)))];
-}
+// La voz (F9.5-T23): `profileSpeaksAsTeam` y `firstPersonPluralWords` viven en `voice.ts`, que
+// también usan los textos de los posts (`buildSocialBrief`).
 
 // --- Lo que ve la IA --------------------------------------------------------------------------
 
@@ -470,7 +429,7 @@ export type PlanBrief = {
    * El pedido del operador (F9.5-T23): guía los temas y el tono, nunca es fuente de hechos (no
    * entra en `profileSources`); `null` si no pidió nada.
    */
-  operatorBrief: string | null;
+  guidance: string | null;
   /** Si un hecho del perfil dice que la marca es un equipo (`profileSpeaksAsTeam`). */
   speaksAsTeam: boolean;
 };
@@ -485,8 +444,8 @@ export function buildPlanBrief(params: {
   history: PlanHistory;
   /** Lo ya planificado en el período (`plannedSlots`); por defecto, nada. */
   planned?: readonly PlannedSlot[];
-  /** El pedido del operador (`plan_runs.request.brief`); por defecto, ninguno. */
-  operatorBrief?: string | null;
+  /** El pedido del operador (`plan_runs.request.guidance`); por defecto, ninguno. */
+  guidance?: string | null;
 }): PlanBrief {
   const { broker, profile, period } = params;
   const cadence: Partial<Record<PostPlatform, PlanCadence>> = {};
@@ -519,7 +478,7 @@ export function buildPlanBrief(params: {
     recentTopics: [...params.history.recentTopics],
     discardedTopics: [...params.history.discardedTopics],
     planned: (params.planned ?? []).map((slot) => ({ ...slot, platforms: [...slot.platforms] })),
-    operatorBrief: params.operatorBrief ?? null,
+    guidance: params.guidance ?? null,
     speaksAsTeam: profileSpeaksAsTeam(profile),
   };
 }
@@ -854,6 +813,13 @@ export function checkPlanIdeas(params: {
  * las descartadas con su motivo, las advertencias de la IA y la llamada. Es lo que leen T21 (API,
  * CLI y panel) y T22 (evaluación).
  */
+/** Una idea descartada en el reporte, con su código (`PLAN_DISCARD_CODES`). */
+const planDiscardedSchema = z.object({
+  topic: z.string(),
+  code: z.enum(PLAN_DISCARD_CODES),
+  message: z.string(),
+});
+
 export const planRunReportSchema = z.object({
   ideas: z.array(
     z.object({
@@ -866,9 +832,7 @@ export const planRunReportSchema = z.object({
       notes: z.array(z.string()),
     }),
   ),
-  discarded: z.array(
-    z.object({ topic: z.string(), code: z.enum(PLAN_DISCARD_CODES), message: z.string() }),
-  ),
+  discarded: z.array(planDiscardedSchema),
   warnings: z.array(z.string()),
   llm: z
     .object({
@@ -880,6 +844,27 @@ export const planRunReportSchema = z.object({
     .optional(),
 });
 export type PlanRunReport = z.infer<typeof planRunReportSchema>;
+
+/** El reporte con los descartes sin revisar: cada uno se lee aparte (`readPlanRunReport`). */
+const planRunReportReadSchema = planRunReportSchema.extend({ discarded: z.array(z.unknown()) });
+
+/**
+ * Lee un reporte guardado (`plan_runs.report`) con tolerancia (ADR-0034, seguimiento de
+ * F9.5-T23): cada descarte se valida por separado y el que no se lee (por ejemplo, con un código que
+ * esta versión no conoce, de una versión más nueva) se deja fuera, sin anular el reporte entero.
+ * Si lo demás no calza (las ideas, las advertencias), `null`, como antes.
+ */
+export function readPlanRunReport(raw: unknown): PlanRunReport | null {
+  const parsed = planRunReportReadSchema.safeParse(raw);
+  if (!parsed.success) return null;
+  return {
+    ...parsed.data,
+    discarded: parsed.data.discarded.flatMap((item) => {
+      const one = planDiscardedSchema.safeParse(item);
+      return one.success ? [one.data] : [];
+    }),
+  };
+}
 
 // --- Qué hacer si falla -----------------------------------------------------------------------
 

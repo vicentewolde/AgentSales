@@ -76,7 +76,7 @@ export function planBriefData(brief: PlanBrief): Record<string, unknown> {
     ideas_pedidas: brief.count,
     temas_recientes: brief.recentTopics,
     ideas_descartadas: brief.discardedTopics,
-    pedido_del_operador: brief.operatorBrief,
+    pedido_del_operador: brief.guidance,
     es_equipo: brief.speaksAsTeam,
   };
   return Object.fromEntries(

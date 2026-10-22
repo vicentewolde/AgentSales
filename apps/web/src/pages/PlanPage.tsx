@@ -6,8 +6,9 @@ import {
   ideaNeedsDraft,
   isAppError,
   isTerminalContentRun,
-  PLAN_BRIEF_MAX,
   PLAN_DEFAULT_DAYS,
+  PLAN_GUIDANCE_IGNORED_WARNING,
+  PLAN_GUIDANCE_MAX,
   PLAN_MAX_DAYS,
   PLAN_MAX_IDEAS,
   PLAN_RUN_STATUS_TEXT,
@@ -98,7 +99,7 @@ const checkedNetworks = (form: FormData, name: string): PostPlatform[] =>
     .flatMap((value) => POST_PLATFORMS.filter((platform) => platform === value));
 
 /** Ejemplos del pedido del operador (F9.5-T23), que se insertan con un clic. */
-const PLAN_BRIEF_EXAMPLES = [
+const PLAN_GUIDANCE_EXAMPLES = [
   "Lanzamiento del 3 de noviembre",
   "Solo ideas para principiantes",
   "Evita hablar de precios",
@@ -113,13 +114,13 @@ function RequestPlan({
   onRequested,
 }: {
   brandId: string;
-  onRequested: (planId: string, reused: boolean) => void;
+  onRequested: (planId: string, reused: "no" | "same" | "guidance-ignored") => void;
 }) {
   const ids = useId();
   const role = useRole();
   const request = useRequestPlan();
   const options = useBrandPlatforms(brandId);
-  const [brief, setBrief] = useState("");
+  const [guidance, setGuidance] = useState("");
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -131,9 +132,12 @@ function RequestPlan({
         days: Number(text("days") || PLAN_DEFAULT_DAYS),
         ...(platforms.length === 0 ? {} : { platforms }),
         ...(text("count") === "" ? {} : { count: Number(text("count")) }),
-        ...(brief.trim() === "" ? {} : { brief: brief.trim() }),
+        ...(guidance.trim() === "" ? {} : { guidance: guidance.trim() }),
       },
-      { onSuccess: ({ plan, reused }) => onRequested(plan.id, reused) },
+      {
+        onSuccess: ({ plan, reused, guidanceIgnored }) =>
+          onRequested(plan.id, guidanceIgnored ? "guidance-ignored" : reused ? "same" : "no"),
+      },
     );
   };
   return (
@@ -149,34 +153,35 @@ function RequestPlan({
       <EmptyProfileNotice brandId={brandId} />
       <form onSubmit={submit} className="mt-3 grid gap-3 md:grid-cols-2">
         <div className="md:col-span-2">
-          <label htmlFor={`${ids}-brief`} className="block text-sm font-medium text-fg">
+          <label htmlFor={`${ids}-guidance`} className="block text-sm font-medium text-fg">
             ¿Qué quieres que trate este plan? (opcional)
           </label>
-          <p id={`${ids}-brief-help`} className="mt-0.5 text-xs text-fg-subtle">
+          <p id={`${ids}-guidance-help`} className="mt-0.5 text-xs text-fg-subtle">
             Guía los temas y el tono de las ideas. No es fuente de datos: si traes una fecha, una
             cifra o un cliente, agrégalo a los hechos de tu perfil para que la IA pueda afirmarlo.
           </p>
           <Textarea
-            id={`${ids}-brief`}
-            name="brief"
-            aria-describedby={`${ids}-brief-help`}
+            id={`${ids}-guidance`}
+            name="guidance"
+            aria-describedby={`${ids}-guidance-help ${ids}-guidance-count`}
             rows={2}
-            maxLength={PLAN_BRIEF_MAX}
-            value={brief}
-            onChange={(event) => setBrief(event.target.value)}
+            maxLength={PLAN_GUIDANCE_MAX}
+            value={guidance}
+            onChange={(event) => setGuidance(event.target.value)}
             className="mt-1.5"
           />
           <div className="flex flex-wrap items-start justify-between gap-2">
             <Examples
               label="Ejemplos de pedido"
-              items={PLAN_BRIEF_EXAMPLES.map((example) => ({
+              items={PLAN_GUIDANCE_EXAMPLES.map((example) => ({
                 text: example,
-                used: lines(brief).includes(example),
-                onPick: () => setBrief((current) => addLine(current, example)),
+                used: lines(guidance).includes(example),
+                onPick: () => setGuidance((current) => addLine(current, example)),
               }))}
             />
-            <span className="mt-1.5 text-xs text-fg-subtle">
-              {brief.length}/{PLAN_BRIEF_MAX}
+            {/* En la descripción del campo y sin región viva: no se anuncia cada tecla. */}
+            <span id={`${ids}-guidance-count`} className="mt-1.5 text-xs text-fg-subtle">
+              {guidance.length}/{PLAN_GUIDANCE_MAX}
             </span>
           </div>
         </div>
@@ -516,10 +521,10 @@ function PlanView({ detail, brandId }: { detail: PlanDetailResponse; brandId: st
         Del {plan.firstDay} al {plan.lastDay} · {networksText(plan.platforms)} ·{" "}
         {PLAN_RUN_STATUS_TEXT[plan.status]}
       </p>
-      {plan.brief !== null && (
+      {plan.guidance !== null && (
         <p className="mt-1 whitespace-pre-wrap text-sm text-fg-muted">
           <span className="font-medium">Tu pedido: </span>
-          {plan.brief}
+          {plan.guidance}
         </p>
       )}
       <PlanStatus plan={plan} />
@@ -589,7 +594,7 @@ export function PlanPage() {
   const role = useRole();
   const brandId = usePlanBrandId();
   const [params, setParams] = useSearchParams();
-  const [reusedNote, setReusedNote] = useState(false);
+  const [reusedNote, setReusedNote] = useState<"no" | "same" | "guidance-ignored">("no");
   const plans = usePlans(
     role === "admin" ? brandId : undefined,
     role !== null && brandId !== undefined,
@@ -632,9 +637,11 @@ export function PlanPage() {
               select(id);
             }}
           />
-          {reusedNote && (
+          {reusedNote !== "no" && (
             <p role="status" className="mt-2 text-sm text-warning-800">
-              La marca ya tenía un plan en curso: te muestro ese.
+              {reusedNote === "guidance-ignored"
+                ? `${PLAN_GUIDANCE_IGNORED_WARNING}: te muestro ese.`
+                : "La marca ya tenía un plan en curso: te muestro ese."}
             </p>
           )}
           {plans.error && <ErrorAlert error={plans.error} onRetry={() => void plans.refetch()} />}

@@ -301,26 +301,26 @@ describe("/plans: el pedido del operador (F9.5-T23)", () => {
     const s = await setup();
     const requested = await s.broker("/plans", {
       method: "POST",
-      json: { platforms: ["linkedin"], count: 2, brief: "  solo ideas para principiantes " },
+      json: { platforms: ["linkedin"], count: 2, guidance: "  solo ideas para principiantes " },
     });
     expect(requested.status).toBe(202);
     const { plan } = planRequestResponseSchema.parse(await requested.json());
-    expect(plan.brief).toBe("solo ideas para principiantes");
+    expect(plan.guidance).toBe("solo ideas para principiantes");
     await s.work(plan.id);
     const detail = planDetailResponseSchema.parse(
       await (await s.broker(`/plans/${plan.id}`)).json(),
     );
-    expect(detail.plan.brief).toBe("solo ideas para principiantes");
+    expect(detail.plan.guidance).toBe("solo ideas para principiantes");
     expect(detail.ideas.map((idea) => idea.topic)).toContain(
       "Según tu pedido: solo ideas para principiantes",
     );
     const list = planListResponseSchema.parse(await (await s.broker("/plans")).json());
-    expect(list.plans[0]?.brief).toBe("solo ideas para principiantes");
+    expect(list.plans[0]?.guidance).toBe("solo ideas para principiantes");
   });
 
   it("un pedido de más de 500 caracteres es 400 PLAN_RUN_INVALID y no encola nada", async () => {
     const s = await setup();
-    const long = await s.broker("/plans", { method: "POST", json: { brief: "a".repeat(501) } });
+    const long = await s.broker("/plans", { method: "POST", json: { guidance: "a".repeat(501) } });
     expect(long.status).toBe(400);
     expect((await errorOf(long)).code).toBe("PLAN_RUN_INVALID");
     expect(s.queue.jobs).toEqual([]);

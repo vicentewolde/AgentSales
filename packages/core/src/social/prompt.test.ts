@@ -11,6 +11,7 @@ import {
   validateSocialDraft,
 } from "./draft.js";
 import { buildSocialPrompt, SOCIAL_PROMPT_VERSION, SOCIAL_SYSTEM_PROMPT } from "./prompt.js";
+import { firstPersonPluralWords } from "./voice.js";
 
 // El brief, el prompt y la salida de los textos de posts (spec F9 §4.4, ADR-0030).
 
@@ -88,6 +89,8 @@ describe("buildSocialBrief", () => {
       operatorBrief: "Contar el criterio. Enlace: https://agentpey.com/redes",
       kind: "image",
       xLinks: ["agentpey.com/redes"],
+      // F9.5-T23: ningún hecho dice que la marca es un equipo.
+      speaksAsTeam: false,
     });
   });
 
@@ -142,10 +145,39 @@ describe("buildSocialPrompt", () => {
   });
 
   it("tiene versión propia, distinta de la de avisos", () => {
-    expect(SOCIAL_PROMPT_VERSION).toBe("social-post-v2");
+    expect(SOCIAL_PROMPT_VERSION).toBe("social-post-v3");
     // v2 (F9.5-T05): el estilo de una persona, sin muletillas de IA y con hashtags medidos.
     expect(SOCIAL_SYSTEM_PROMPT).toContain("Sin clichés de marketing ni muletillas");
     expect(SOCIAL_SYSTEM_PROMPT).toContain("Instagram y TikTok: de 3 a 5");
+  });
+});
+
+describe("la voz plural en los textos (F9.5-T23)", () => {
+  it("sin un hecho que diga que la marca es un equipo, es_equipo va false y la regla lo pide", () => {
+    const solo = brief();
+    expect(solo.speaksAsTeam).toBe(false);
+    expect(buildSocialPrompt(solo).prompt).toContain('"es_equipo": false');
+    expect(SOCIAL_SYSTEM_PROMPT).toContain('si "es_equipo" es false');
+    expect(SOCIAL_SYSTEM_PROMPT).toContain("primera persona del plural");
+    // Ya no pide escribir «como alguien del equipo».
+    expect(SOCIAL_SYSTEM_PROMPT).not.toContain("alguien del equipo");
+  });
+
+  it("con un hecho de equipo, es_equipo va true", () => {
+    const team = buildSocialBrief({
+      post: POST,
+      profile: { ...PROFILE, facts: [...PROFILE.facts, "Somos un equipo de 3 personas"] },
+      broker: BROKER,
+      targets,
+    });
+    expect(team.speaksAsTeam).toBe(true);
+    expect(buildSocialPrompt(team).prompt).toContain('"es_equipo": true');
+  });
+
+  it("el borrador de ejemplo (fake) no habla de «nosotros»", () => {
+    for (const text of SAMPLE_SOCIAL_DRAFT.texts) {
+      expect([text.body, firstPersonPluralWords(text.body)]).toEqual([text.body, []]);
+    }
   });
 });
 

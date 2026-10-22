@@ -4,6 +4,7 @@ import { isPostPlatform, type Language, POST_PLATFORMS, type PostPlatform } from
 import type { PlatformAccount } from "../platform-account.js";
 import type { Post } from "../post.js";
 import { linkKey, linksIn } from "./networks.js";
+import { profileSpeaksAsTeam } from "./voice.js";
 
 // Lo que ve la IA de un post (spec F9 §4.3 y §4.4, ADR-0030 punto 1): el perfil editorial de su
 // marca, el tono y el tema; el brief del post **solo si lo escribió el operador**. Nunca datos de
@@ -71,6 +72,11 @@ export type SocialBrief = {
    * el post tiene la marca explícita (`xLinkAllowed`, F9-T16); sin ella, ninguno.
    */
   xLinks: string[];
+  /**
+   * Si un hecho del perfil dice que la marca es un equipo (`profileSpeaksAsTeam`, F9.5-T23): sin
+   * eso, los textos no hablan de «nosotros».
+   */
+  speaksAsTeam: boolean;
 };
 
 /** Hashtags sin repetir (sin mirar mayúsculas), en el orden en que llegan. */
@@ -123,5 +129,6 @@ export function buildSocialBrief(params: {
     kind: post.kind,
     // F9-T16: sin la marca del operador, la IA no pone enlaces en X (costarían US$0,20).
     xLinks: post.xLinkAllowed ? xLinksOf(post) : [],
+    speaksAsTeam: profileSpeaksAsTeam(profile),
   };
 }

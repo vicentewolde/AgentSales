@@ -218,7 +218,7 @@ async function propose(
     history: planHistory(recent, today),
     planned: plannedSlots(planned, period, request.platforms),
     // Guía los temas y el tono; no es fuente de hechos (`profileSources` no lo lleva, F9.5-T23).
-    operatorBrief: request.brief ?? null,
+    guidance: request.guidance ?? null,
   });
 
   const started = now();
