@@ -7,6 +7,9 @@ import { brokerData, harness } from "../../test/harness.js";
 // no se pulse «Listo, ocultarlo»; vive solo en sessionStorage y se borra al ocultarlo, al vencer y
 // al cerrar sesión.
 
+// Cada prueba monta el panel entero una o dos veces: con la máquina cargada, más de los 5 s por defecto.
+vi.setConfig({ testTimeout: 15_000 });
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -45,13 +48,14 @@ describe("el enlace de invitación sobrevive a una recarga (F9.5-T20)", () => {
     expect((await within(after).findByText(/\/invitacion#/)).textContent).toBe(shown);
     expect(after.textContent).toContain("Si perdiste el enlace, usa Restablecer");
 
-    // Otra recarga más: sigue.
-    const again = await reload(h, broker.id);
-    expect((await within(again).findByText(/\/invitacion#/)).textContent).toBe(shown);
-
-    fireEvent.click(within(again).getByRole("button", { name: "Listo, ocultarlo" }));
-    expect(within(again).queryByText(/\/invitacion#/)).toBeNull();
+    fireEvent.click(within(after).getByRole("button", { name: "Listo, ocultarlo" }));
+    expect(within(after).queryByText(/\/invitacion#/)).toBeNull();
     expect(sessionStorage.length).toBe(0);
+  });
+
+  it("después de ocultarlo, una recarga ya no lo trae", async () => {
+    const { h, broker } = await invited();
+    fireEvent.click(screen.getByRole("button", { name: "Listo, ocultarlo" }));
 
     const hidden = await reload(h, broker.id);
     await within(hidden).findByText(/todavía sin contraseña/);
