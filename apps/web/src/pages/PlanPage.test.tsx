@@ -100,7 +100,7 @@ describe("panel: Plan", () => {
     fireEvent.click(within(form).getByRole("checkbox", { name: "LinkedIn" }));
     fireEvent.click(within(form).getByRole("button", { name: "Pedir el plan" }));
 
-    expect(await screen.findByText("Plan en cola: esperando al worker…")).toBeTruthy();
+    expect(await screen.findByText("Plan en cola…")).toBeTruthy();
     expect(s.requests).toContain("POST /plans");
     const [run] = await s.deps.planRuns.listByBroker(s.brand.id);
     expect(run?.request).toMatchObject({ platforms: ["linkedin"], count: 2, days: 7 });

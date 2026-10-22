@@ -1,7 +1,9 @@
 import type { ContentView } from "@agentsales/api/contracts";
 import {
   type Platform,
+  POST_KIND_TEXT,
   POST_PLATFORMS,
+  POST_STATUS_TEXT,
   type PostKind,
   type PostPlatform,
   type PostStatus,
@@ -9,8 +11,8 @@ import {
 import { Badge } from "../ui/Badge.js";
 import type { BadgeTone } from "../ui/styles.js";
 
-// Los textos y colores de los posts en el panel (F9-T17). Los de la CLI viven en sus comandos; los
-// estados de las publicaciones y las redes, en core.
+// Los colores de los posts en el panel (F9-T17). Los textos de su estado y su tipo viven en core
+// (F9.5-T02: los comparte la CLI); aquí van con mayúscula inicial, como etiqueta.
 
 /** Si una red es de las que publican posts (`POST_PLATFORMS`): el contrato tipa `Platform`. */
 export const isPostPlatform = (platform: Platform): platform is PostPlatform =>
@@ -26,12 +28,19 @@ export type PostContentView = ContentView & { platform: PostPlatform };
 export const postContents = (contents: readonly ContentView[]): PostContentView[] =>
   contents.filter((content): content is PostContentView => isPostPlatform(content.platform));
 
-export const POST_STATUS_LABEL: Readonly<Record<PostStatus, string>> = {
-  idea: "Idea",
-  draft: "Borrador",
-  ready: "Listo",
-  archived: "Archivado",
-};
+/** «borrador» → «Borrador». */
+const capitalized = <K extends string>(
+  texts: Readonly<Record<K, string>>,
+): Readonly<Record<K, string>> =>
+  Object.fromEntries(
+    Object.entries<string>(texts).map(([key, text]) => [
+      key,
+      text.charAt(0).toUpperCase() + text.slice(1),
+    ]),
+  ) as Record<K, string>;
+
+export const POST_STATUS_LABEL: Readonly<Record<PostStatus, string>> =
+  capitalized(POST_STATUS_TEXT);
 
 export const POST_STATUS_TONE: Readonly<Record<PostStatus, BadgeTone>> = {
   idea: "accent",
@@ -40,12 +49,7 @@ export const POST_STATUS_TONE: Readonly<Record<PostStatus, BadgeTone>> = {
   archived: "muted",
 };
 
-export const POST_KIND_LABEL: Readonly<Record<PostKind, string>> = {
-  text: "Solo texto",
-  image: "Imagen",
-  carousel: "Carrusel",
-  video: "Video",
-};
+export const POST_KIND_LABEL: Readonly<Record<PostKind, string>> = capitalized(POST_KIND_TEXT);
 
 export function PostStatusBadge({ status }: { status: PostStatus }) {
   return <Badge tone={POST_STATUS_TONE[status]}>{POST_STATUS_LABEL[status]}</Badge>;

@@ -19,6 +19,7 @@ import { ErrorAlert } from "../ErrorAlert.js";
 import { Button } from "../ui/Button.js";
 import { PublicationItem } from "./PublicationItem.js";
 import {
+  hasSomethingToPublish,
   needsLiveConfirm,
   publishBlockedReason,
   publishButtonText,
@@ -40,8 +41,8 @@ const ACCOUNT_TEXT: Partial<Record<Platform, string>> = {
 /** La confirmación de publicar en vivo según el canal (Marketplace: quien publica es el operador, D3). */
 const liveConfirmText = (platform: Platform, channel: string) =>
   platform === "fb_marketplace"
-    ? "La API está en vivo: se abrirá Chromium con el formulario de Facebook Marketplace lleno de verdad; tú haces Siguiente y Publicar."
-    : `La API está en vivo: se publicará de verdad en ${channel}${platform === "portal_inmobiliario" ? " y usará un cupo de tu paquete" : ""}.`;
+    ? "El sistema está en vivo: se abrirá Chromium con el formulario de Facebook Marketplace lleno de verdad; tú haces Siguiente y Publicar."
+    : `El sistema está en vivo: se publicará de verdad en ${channel}${platform === "portal_inmobiliario" ? " y usará un cupo de tu paquete" : ""}.`;
 
 /**
  * Las publicaciones de un canal del aviso (spec F3 §4.9; Portal desde F4-T22): Publicar el canal
@@ -82,10 +83,7 @@ export function PublicationsPanel({
   const ofContent = publications.filter((publication) => publication.contentId === content?.id);
   // Hay algo que publicar si el texto está aprobado y no todas sus publicaciones salieron o están
   // saliendo (sin ninguna, nacen al publicar: la cuenta se conectó después de aprobar).
-  const publishable =
-    content?.status === "approved" &&
-    (ofContent.length === 0 ||
-      ofContent.some((p) => p.status === "approved" || p.status === "failed"));
+  const publishable = content !== undefined && hasSomethingToPublish([content], publications);
   // Una fallida que empezó en vivo bloquea el canal entero en simulación (`PUBLISH_MODE_LOCKED`).
   const lockedLive = ofContent
     .filter((p) => p.status === "failed")
@@ -99,7 +97,7 @@ export function PublicationsPanel({
         ? readinessPublishBlockedReason(content, readiness, "Marketplace")
         : null) ??
     (publishMode === undefined
-      ? "Todavía no se sabe si la API está en simulación o en vivo."
+      ? "Todavía no se sabe si el sistema está en simulación o en vivo."
       : (lockedLive ?? null));
   const channel = PLATFORM_TEXT[platform];
 
@@ -206,8 +204,8 @@ export function PublicationsPanel({
       )}
       {publish.data?.skipped.map((skipped) => (
         <p key={skipped.publicationId} className="mt-2 text-sm text-warning-800">
-          El {publicationFormatText(platform, skipped.format)} tiene una publicación activa de un
-          texto anterior: {retireVerb(platform)} o descártala para publicar el nuevo.
+          El {publicationFormatText(platform, skipped.format, null)} tiene una publicación activa de
+          un texto anterior: {retireVerb(platform)} o descártala para publicar el nuevo.
         </p>
       ))}
       {publish.data !== undefined && publish.data.stranded.length > 0 && (

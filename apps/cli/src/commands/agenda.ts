@@ -128,7 +128,7 @@ function itemLine(item: Item, c: Colors): string {
   const channel =
     item.platform === null
       ? null
-      : `${PLATFORM_TEXT[item.platform]}${item.format === null ? "" : ` ${publicationFormatText(item.platform, item.format)}`}`;
+      : `${PLATFORM_TEXT[item.platform]}${item.format === null ? "" : ` ${publicationFormatText(item.platform, item.format, item.mediaCount)}`}`;
   const when =
     item.at === null
       ? null
@@ -137,7 +137,9 @@ function itemLine(item: Item, c: Colors): string {
           ? `venció (${formatChileTime(item.at)})`
           : `vence en ${item.daysLeft} ${item.daysLeft === 1 ? "día" : "días"} (${formatChileTime(item.at)})`
         : formatChileTime(item.at);
-  const mode = item.dryRun === null ? null : item.dryRun ? "simulación" : c.red("en vivo");
+  // D4 del spec F9.5: el modo solo si ya está fijado (una aprobada usa el del servidor al publicar).
+  const mode =
+    item.dryRun === null || !item.modeFixed ? null : item.dryRun ? "simulación" : c.red("en vivo");
   // El título: el `id_propiedad`, el tema del post (marcado como post) o el nombre de la cuenta.
   const title = `${c.bold(item.title ?? item.externalRef ?? "—")}${item.postId === null ? "" : c.dim(" (post)")}`;
   const parts = [title, channel, when, mode].filter(Boolean);

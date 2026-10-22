@@ -7,7 +7,7 @@ import type { Listing } from "../listing.js";
 import type { PlatformAccount } from "../platform-account.js";
 import { portalExpiry } from "../portal/expiry.js";
 import type { Post } from "../post.js";
-import type { Publication } from "../publication.js";
+import { hasStartedLive, type Publication, publicationModeFixed } from "../publication.js";
 import { publicationErrorAdvice } from "../publish/error-advice.js";
 import { manualHandoffProgressSchema } from "../publish/outcome.js";
 import { scheduleState } from "../schedule.js";
@@ -106,6 +106,13 @@ export type AgendaItem = {
   at: Date | null;
   /** Si es en simulación (`null` si no es una publicación). */
   dryRun: boolean | null;
+  /**
+   * Si ese modo ya está fijado (`publicationModeFixed`, D4 del spec F9.5); si no, vale el del
+   * servidor. `true` si no es una publicación.
+   */
+  modeFixed: boolean;
+  /** Los medios fijos de la publicación (`null` si no es una publicación). */
+  mediaCount: number | null;
   /** El código del error (o de la última falla del respaldo). */
   code: string | null;
   /** Qué hacer con el error (`publicationErrorAdvice`); `null` si no es una falla. */
@@ -184,6 +191,8 @@ const NOT_A_PUBLICATION = {
   format: null,
   publicationId: null,
   dryRun: null,
+  modeFixed: true,
+  mediaCount: null,
   code: null,
   advice: null,
   daysLeft: null,
@@ -220,6 +229,12 @@ export function agendaItems(input: AgendaInput): AgendaItem[] {
       publicationId: publication.id,
       at: kindOf.at,
       dryRun: publication.dryRun,
+      modeFixed: publicationModeFixed({
+        status: publication.status,
+        attempts: publication.attempts,
+        startedLive: hasStartedLive(publication),
+      }),
+      mediaCount: publication.mediaIds.length,
       code: kindOf.extra?.code ?? null,
       advice: kindOf.extra?.advice ?? null,
       daysLeft: kindOf.extra?.daysLeft ?? null,

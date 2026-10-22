@@ -43,7 +43,7 @@ import {
 function runText(run: ContentRunView): string {
   switch (run.status) {
     case "queued":
-      return "Textos pedidos: esperando al worker…";
+      return "Textos pedidos: en cola…";
     case "running":
       return "La IA está redactando los textos…";
     case "succeeded":
@@ -424,6 +424,7 @@ export function PostDetailPage() {
               post={item}
               postId={item.id}
               contents={contents}
+              publications={publications}
               publishMode={publishMode}
               lockReason={lockReason}
             />

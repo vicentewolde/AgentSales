@@ -14,7 +14,6 @@ import {
   type PublishMode,
   postPublishesOn,
   publicationFormatText,
-  publicationModeText,
 } from "@agentsales/core";
 import { useId, useState } from "react";
 import { Link } from "react-router";
@@ -26,7 +25,13 @@ import {
   useSchedulePost,
 } from "../../queries/posts.js";
 import { ErrorAlert } from "../ErrorAlert.js";
-import { publishButtonText, safeExternalUrl } from "../publications/publications.js";
+import { PublicationMode } from "../publications/PublicationMode.js";
+import {
+  platformsToPublish,
+  publicationModeOf,
+  publishButtonText,
+  safeExternalUrl,
+} from "../publications/publications.js";
 import { ScheduleForm } from "../publications/ScheduleForm.js";
 import { PublicationStatusBadge } from "../StatusBadge.js";
 import { Button } from "../ui/Button.js";
@@ -96,15 +101,17 @@ function ScheduleResults({ result }: { result: PostScheduleResponse }) {
 }
 
 /**
- * Publicar y programar (spec F9 §4.10): un botón por red con texto aprobado (una red por pedido,
+ * Publicar y programar (spec F9 §4.10): un botón por red con algo por publicar (una red por pedido,
  * como la API; todos sus idiomas) y programar las redes elegidas a una hora de Chile. El modo lo
  * pone la API; en vivo se confirma antes. Una red sin cuenta conectada no se ofrece: su botón queda
- * desactivado con el motivo y el enlace a Cuentas, y no entra en programar.
+ * desactivado con el motivo y el enlace a Cuentas, y no entra en programar. Si todo salió o está
+ * saliendo, no hay botón Publicar (F9.5-T02).
  */
 export function PostPublishBar({
   postId,
   post,
   contents,
+  publications,
   publishMode,
   lockReason,
 }: {
@@ -112,6 +119,8 @@ export function PostPublishBar({
   /** Sus redes (`platforms`): las quitadas no se ofrecen (F9-T21); y su marca, por las cuentas. */
   post: Pick<PostJson, "platforms" | "brokerId">;
   contents: readonly ContentView[];
+  /** Las publicaciones del post: una red con todo publicado no tiene botón (`undefined`: cargando). */
+  publications?: readonly PublicationView[] | undefined;
   publishMode: PublishMode | undefined;
   lockReason: string | null;
 }) {
@@ -130,6 +139,10 @@ export function PostPublishBar({
   const [published, setPublished] = useState<string | null>(null);
   const selected = (chosen ?? ready).filter((platform) => ready.includes(platform));
   const unconnectedText = unconnected.map((platform) => PLATFORM_TEXT[platform]).join(", ");
+  const toPublish = platformsToPublish(platforms, contents, publications);
+  // Se programa lo que tiene algo por publicar y cuenta conectada.
+  const schedulable = ready.filter((platform) => toPublish.includes(platform));
+  const toSchedule = selected.filter((platform) => schedulable.includes(platform));
   if (platforms.length === 0) {
     return (
       <p className="text-sm text-fg-muted">
@@ -141,8 +154,14 @@ export function PostPublishBar({
   }
   return (
     <div className="space-y-3">
+      {toPublish.length === 0 && (
+        <p className="text-sm text-fg-muted">
+          Todo lo aprobado ya salió, está saliendo o está programado: míralo en Publicaciones, más
+          abajo.
+        </p>
+      )}
       <div className="flex flex-wrap gap-2">
-        {platforms.map((platform) => (
+        {toPublish.map((platform) => (
           <LiveConfirmButton
             key={platform}
             label={publishButtonText(platform, publishMode)}
@@ -168,12 +187,12 @@ export function PostPublishBar({
             }
           />
         ))}
-        {!scheduling && (
+        {!scheduling && toPublish.length > 0 && (
           <Button
             variant="secondary"
             size="sm"
-            disabled={lockReason !== null || ready.length === 0}
-            {...(lockReason === null && ready.length === 0
+            disabled={lockReason !== null || schedulable.length === 0}
+            {...(lockReason === null && schedulable.length === 0
               ? { title: "Ninguna red aprobada tiene cuenta conectada" }
               : {})}
             onClick={() => setScheduling(true)}
@@ -198,7 +217,7 @@ export function PostPublishBar({
         </p>
       )}
       {publish.error && <ErrorAlert error={publish.error} />}
-      {scheduling && ready.length > 0 && (
+      {scheduling && schedulable.length > 0 && (
         <ScheduleForm
           publishMode={publishMode}
           pending={schedule.isPending}
@@ -206,7 +225,7 @@ export function PostPublishBar({
           extra={
             <fieldset className="flex flex-wrap gap-x-5 gap-y-2">
               <legend className="mb-2 font-medium text-fg">Redes</legend>
-              {ready.map((platform) => (
+              {schedulable.map((platform) => (
                 <label
                   key={platform}
                   htmlFor={`${ids}-${platform}`}
@@ -230,8 +249,11 @@ export function PostPublishBar({
             </fieldset>
           }
           onSubmit={(at) => {
-            if (selected.length === 0) return;
-            schedule.mutate({ platforms: selected, at }, { onSuccess: () => setScheduling(false) });
+            if (toSchedule.length === 0) return;
+            schedule.mutate(
+              { platforms: toSchedule, at },
+              { onSuccess: () => setScheduling(false) },
+            );
           }}
           onCancel={() => setScheduling(false)}
         />
@@ -350,11 +372,13 @@ function PublicationRow({
       </div>
       <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
         <span className="text-fg-subtle">
-          {publicationFormatText(publication.platform, publication.format)}
+          {publicationFormatText(
+            publication.platform,
+            publication.format,
+            publication.mediaIds.length,
+          )}
         </span>
-        <span className={publication.dryRun ? "text-fg-subtle" : "font-semibold text-danger-700"}>
-          {publicationModeText(publication.dryRun)}
-        </span>
+        <PublicationMode publication={publicationModeOf(publication)} publishMode={publishMode} />
         {when !== null && (
           <span className="text-fg-muted tabular-nums">· {when} (hora de Chile)</span>
         )}

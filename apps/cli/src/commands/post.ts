@@ -31,6 +31,7 @@ import {
   LANGUAGE_TEXT,
   type Language,
   PLATFORM_TEXT,
+  POST_KIND_TEXT,
   POST_KINDS,
   POST_STATUSES,
   type PostKind,
@@ -87,13 +88,8 @@ export type PostDeps = WaitDeps &
     putFile?: PutFile;
   };
 
-/** El tipo de un post, como lo ve el operador. */
-export const POST_KIND_TEXT: Readonly<Record<PostKind, string>> = {
-  text: "texto",
-  image: "imagen",
-  carousel: "carrusel",
-  video: "video",
-};
+/** El tipo de un post: vive en core, junto a los demás textos (F9.5-T02). */
+export { POST_KIND_TEXT } from "@agentsales/core";
 
 /** El tope de un texto pasado con `--file` o por la entrada estándar (el de la API). */
 const TEXT_MAX_CHARS = 20_000;
@@ -378,7 +374,7 @@ export function renderPostPublications(
     publications.map((publication) => [
       publication.id,
       PLATFORM_TEXT[publication.platform],
-      publicationFormatText(publication.platform, publication.format),
+      publicationFormatText(publication.platform, publication.format, publication.mediaIds.length),
       publication.language,
       paintPublicationStatus(publication, c),
       publicationModeText(publication.dryRun),
@@ -1157,9 +1153,12 @@ export function runPostPublish(deps: PostDeps, id: string, options: PostPublishO
           `Publicando en ${PLATFORM_TEXT[platform]}: ${started.length} publicación(es)${result.requeued.length > 0 ? ` (${result.requeued.length} ya estaban en curso)` : ""}`,
         );
         for (const skipped of result.skipped) {
+          // La activa del texto anterior viene en `publications`: con sus medios, «imagen» o «carrusel».
+          const active = result.publications.find((p) => p.id === skipped.publicationId);
+          const media = active === undefined ? null : active.mediaIds.length;
           deps.printError(
             c.yellow(
-              `  ${publicationFormatText(platform, skipped.format)}: ya hay una publicación activa de un texto anterior (${skipped.publicationId}): descártala o retírala para publicar este`,
+              `  ${publicationFormatText(platform, skipped.format, media)}: ya hay una publicación activa de un texto anterior (${skipped.publicationId}): descártala o retírala para publicar este`,
             ),
           );
         }

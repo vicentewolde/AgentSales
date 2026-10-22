@@ -41,8 +41,8 @@ export function LiveConfirmButton({
       <div role="alert" className="rounded-lg border border-danger-200 bg-danger-50 p-3 text-sm">
         <p className="font-semibold text-danger-800">
           {asking === "live"
-            ? "La API está en vivo: esto publica de verdad en la red."
-            : "No se pudo saber si la API está en vivo: si lo está, esto publica de verdad."}
+            ? "El sistema está en vivo: esto publica de verdad en la red."
+            : "No se pudo saber si el sistema está en vivo: si lo está, esto publica de verdad."}
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
           <Button

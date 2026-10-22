@@ -1,39 +1,61 @@
 import { describe, expect, it } from "vitest";
+import { CONTENT_REEL_OUTCOMES } from "./content.js";
 import {
   BROKER_KINDS,
+  CLOSE_REASONS,
+  CONTENT_RUN_STAGES,
+  CONTENT_RUN_STATUSES,
+  CONTENT_STATUSES,
   IMPORT_RUN_STATUSES,
+  LANGUAGES,
   LISTING_STATUSES,
   OPERATIONS,
+  PLAN_RUN_STATUSES,
   PLATFORM_ACCOUNT_STATUSES,
   PLATFORMS,
+  POST_KINDS,
+  POST_STATUSES,
   PUBLICATION_FORMATS,
   PUBLICATION_STATUSES,
 } from "./enums.js";
 import { IMPORT_BROKER_OUTCOMES, IMPORT_ROW_OUTCOMES } from "./import-run.js";
 import {
+  AGENDA_KIND_TEXT,
   accountDisconnectText,
   BROKER_KIND_TEXT,
+  CLOSE_REASON_TEXT,
+  CONTENT_REEL_OUTCOME_TEXT,
+  CONTENT_RUN_STAGE_TEXT,
+  CONTENT_RUN_STATUS_TEXT,
+  CONTENT_STATUS_TEXT,
   IMPORT_BROKER_OUTCOME_TEXT,
   IMPORT_ROW_OUTCOME_TEXT,
   IMPORT_RUN_STATUS_TEXT,
+  LANGUAGE_TEXT,
   LISTING_STATUS_TEXT,
   manualConfirmCommands,
   manualWaitingText,
   marketplaceConnectCommand,
   mercadoLibreConnectCommands,
   OPERATION_TEXT,
+  PLAN_RUN_STATUS_TEXT,
   PLATFORM_ACCOUNT_STATUS_TEXT,
   PLATFORM_TEXT,
+  POST_KIND_TEXT,
+  POST_STATUS_TEXT,
   PUBLICATION_ACTOR_TEXT,
   PUBLICATION_FORMAT_TEXT,
   PUBLICATION_STATUS_TEXT,
   PUBLISH_ATTEMPT_RESULT_TEXT,
   publicationEventDetail,
+  publicationFormatPhrase,
   publicationFormatText,
   remoteStatusText,
+  SCHEDULE_REASON_TEXT,
   tokenStdinCommand,
 } from "./labels.js";
-import { PUBLICATION_ACTORS, PUBLISH_ATTEMPT_RESULTS } from "./publication.js";
+import { PUBLICATION_ACTORS, PUBLISH_ATTEMPT_RESULTS, SCHEDULE_REASONS } from "./publication.js";
+import { AGENDA_KINDS } from "./tracking/agenda.js";
 
 describe("textos para el operador", () => {
   it("cubren todos los valores de cada enum, sin repetirse", () => {
@@ -50,6 +72,18 @@ describe("textos para el operador", () => {
       [PUBLICATION_ACTORS, PUBLICATION_ACTOR_TEXT],
       [PLATFORMS, PLATFORM_TEXT],
       [BROKER_KINDS, BROKER_KIND_TEXT],
+      // F9.5-T02: todos los estados que ve el operador, también los de los posts y sus textos.
+      [CONTENT_STATUSES, CONTENT_STATUS_TEXT],
+      [CONTENT_RUN_STATUSES, CONTENT_RUN_STATUS_TEXT],
+      [CONTENT_RUN_STAGES, CONTENT_RUN_STAGE_TEXT],
+      [CONTENT_REEL_OUTCOMES, CONTENT_REEL_OUTCOME_TEXT],
+      [PLAN_RUN_STATUSES, PLAN_RUN_STATUS_TEXT],
+      [POST_STATUSES, POST_STATUS_TEXT],
+      [POST_KINDS, POST_KIND_TEXT],
+      [CLOSE_REASONS, CLOSE_REASON_TEXT],
+      [AGENDA_KINDS, AGENDA_KIND_TEXT],
+      [SCHEDULE_REASONS, SCHEDULE_REASON_TEXT],
+      [LANGUAGES, LANGUAGE_TEXT],
     ] as const) {
       const labels = values.map((value) => (text as Record<string, string>)[value]);
       expect(labels.every((label) => typeof label === "string" && label.length > 0)).toBe(true);
@@ -103,15 +137,45 @@ describe("textos para el operador", () => {
   });
 });
 
-describe("publicationFormatText (F4-T20)", () => {
+describe("publicationFormatText (F4-T20, F9.5-T02)", () => {
   it("en Portal el formato es el aviso; en Instagram, carrusel o reel", () => {
-    expect(publicationFormatText("portal_inmobiliario", "post")).toBe("aviso");
-    expect(publicationFormatText("fb_marketplace", "post")).toBe("aviso");
-    expect(publicationFormatText("instagram", "post")).toBe("carrusel");
-    expect(publicationFormatText("instagram", "reel")).toBe("reel");
+    expect(publicationFormatText("portal_inmobiliario", "post", 5)).toBe("aviso");
+    expect(publicationFormatText("fb_marketplace", "post", 1)).toBe("aviso");
+    expect(publicationFormatText("instagram", "post", 4)).toBe("carrusel");
+    expect(publicationFormatText("instagram", "reel", 1)).toBe("reel");
     // F9-T08: las redes del contenido de marca.
-    expect(publicationFormatText("linkedin", "post")).toBe("post");
-    expect(publicationFormatText("x", "post")).toBe("post");
+    expect(publicationFormatText("linkedin", "post", 1)).toBe("post");
+    expect(publicationFormatText("x", "post", 3)).toBe("post");
+  });
+
+  it("un post de Instagram con un solo medio es una imagen, no un carrusel", () => {
+    expect(publicationFormatText("instagram", "post", 1)).toBe("imagen");
+    expect(publicationFormatText("instagram", "post", 2)).toBe("carrusel");
+    // Sin saber cuántos medios lleva (un formato saltado, otro servidor), el carrusel de un aviso.
+    expect(publicationFormatText("instagram", "post", null)).toBe("carrusel");
+  });
+
+  it("publicationFormatPhrase: el artículo concuerda con el formato (la imagen, el carrusel)", () => {
+    expect(publicationFormatPhrase("instagram", "post", 1)).toEqual({
+      name: "imagen",
+      el: "la",
+      del: "de la",
+      o: "a",
+    });
+    for (const [platform, format, count, name] of [
+      ["instagram", "post", 3, "carrusel"],
+      ["instagram", "reel", 1, "reel"],
+      ["portal_inmobiliario", "post", 1, "aviso"],
+      ["fb_marketplace", "post", 5, "aviso"],
+      ["linkedin", "post", 1, "post"],
+    ] as const) {
+      expect(publicationFormatPhrase(platform, format, count)).toEqual({
+        name,
+        el: "el",
+        del: "del",
+        o: "o",
+      });
+    }
   });
 });
 

@@ -98,7 +98,7 @@ describe("panel: detalle de un post", () => {
     expect(screen.getByText("Todavía no hay textos: pídelos a la IA.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Pedir los textos a la IA" }));
     await waitFor(() => expect(s.requests).toContain(`POST /posts/${s.post.id}/draft`));
-    expect(await screen.findByText("Textos pedidos: esperando al worker…")).toBeTruthy();
+    expect(await screen.findByText("Textos pedidos: en cola…")).toBeTruthy();
   });
 
   it("una pestaña por red e idioma; editar muestra el conteo ponderado de X y guarda", async () => {
@@ -146,6 +146,14 @@ describe("panel: detalle de un post", () => {
     await waitFor(() => expect(s.requests).toContain(`POST /posts/${s.post.id}/publish`));
     expect(await within(list).findByText("publicando")).toBeTruthy();
     expect(screen.getByText(/Discord: 1 publicación\(es\) en curso/)).toBeTruthy();
+    // F9.5-T02: ya no queda nada por publicar, así que no hay botón Publicar (ni Programar).
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /Publicar en Discord/ })).toBeNull(),
+    );
+    expect(screen.queryByRole("button", { name: "Programar…" })).toBeNull();
+    expect(
+      screen.getByText(/Todo lo aprobado ya salió, está saliendo o está programado/),
+    ).toBeTruthy();
   });
 
   it("sin cuenta en la red aprobada no ofrece publicar ni programar: dice el motivo y enlaza a Cuentas", async () => {

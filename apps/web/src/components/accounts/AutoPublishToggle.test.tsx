@@ -16,7 +16,7 @@ describe("auto_publish en Cuentas y el aviso en vivo", () => {
     const toggle = await screen.findByRole("checkbox", { name: /Publicación automática/ });
     fireEvent.click(toggle);
     expect((await screen.findByText(/publicará sin tu revisión/)).textContent).toContain(
-      "La API está en vivo",
+      "El sistema está en vivo",
     );
     fireEvent.click(screen.getByRole("button", { name: "Sí, activar" }));
 
