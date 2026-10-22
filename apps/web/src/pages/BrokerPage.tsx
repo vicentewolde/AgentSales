@@ -9,12 +9,13 @@ import { OneTimeLink } from "../components/brokers/OneTimeLink.js";
 import { SpendLine } from "../components/brokers/SpendLine.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { EditorialProfileSection } from "../components/posts/EditorialProfileForm.js";
+import { Button } from "../components/ui/Button.js";
+import { Input } from "../components/ui/Field.js";
+import { PageHeader } from "../components/ui/PageHeader.js";
 import { useBrokerDetail, useUpdateBroker } from "../queries/brokers.js";
 import { useUsage } from "../queries/usage.js";
 import { useInviteUser, useResetUser, useSetUserDisabled, useUsers } from "../queries/users.js";
 import { useCan, useRole } from "../scope/broker-scope.js";
-
-const fieldClass = "mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm";
 
 /** Los usuarios del corredor: invitar, restablecer, desactivar y reactivar (el enlace, una vez). */
 function BrokerUsers({ brokerId }: { brokerId: string }) {
@@ -73,7 +74,7 @@ function BrokerUsers({ brokerId }: { brokerId: string }) {
         />
       )}
       {mine.length === 0 && users.data && (
-        <p className="mt-1 text-sm text-slate-600">Todavía no tiene usuario.</p>
+        <p className="mt-1 text-sm text-fg-muted">Todavía no tiene usuario.</p>
       )}
       <ul className="mt-2 space-y-2 text-sm">
         {mine.map((user) => (
@@ -81,23 +82,23 @@ function BrokerUsers({ brokerId }: { brokerId: string }) {
             <span>
               {user.name} · {user.email} · {userStateText(user)}
             </span>
-            <button
-              type="button"
+            <Button
+              variant="link"
               disabled={reset.isPending}
               aria-label={`Restablecer a ${user.email}`}
               onClick={() => {
                 startAction();
                 reset.mutate(user.id, { onSuccess: (created) => showLink(created, reset) });
               }}
-              className="underline"
             >
               Restablecer
-            </button>
+            </Button>
             {confirmingDisable === user.id ? (
               <span role="alert" className="flex flex-wrap items-center gap-2">
                 ¿Desactivar a {user.email}? Se cierran sus sesiones.
-                <button
-                  type="button"
+                <Button
+                  variant="danger"
+                  size="sm"
                   disabled={toggle.isPending}
                   onClick={() => {
                     startAction();
@@ -106,18 +107,16 @@ function BrokerUsers({ brokerId }: { brokerId: string }) {
                       { onSettled: () => setConfirmingDisable(null) },
                     );
                   }}
-                  className="rounded-md bg-red-700 px-2 py-1 font-medium text-white"
                 >
                   Sí, desactivar
-                </button>
-                {/* biome-ignore lint/a11y/noAutofocus: el foco va a la opción segura al abrir la confirmación */}
-                <button type="button" autoFocus onClick={stopConfirming} className="underline">
+                </Button>
+                <Button variant="link" autoFocus onClick={stopConfirming}>
                   Cancelar
-                </button>
+                </Button>
               </span>
             ) : (
-              <button
-                type="button"
+              <Button
+                variant="link"
                 disabled={toggle.isPending}
                 aria-label={`${user.disabled ? "Reactivar" : "Desactivar"} a ${user.email}`}
                 onClick={() => {
@@ -128,10 +127,9 @@ function BrokerUsers({ brokerId }: { brokerId: string }) {
                   startAction();
                   toggle.mutate({ id: user.id, disabled: false });
                 }}
-                className="underline"
               >
                 {user.disabled ? "Reactivar" : "Desactivar"}
-              </button>
+              </Button>
             )}
           </li>
         ))}
@@ -141,29 +139,25 @@ function BrokerUsers({ brokerId }: { brokerId: string }) {
           <label htmlFor={`${id}-email`} className="text-sm font-medium">
             Correo
           </label>
-          <input
+          <Input
             ref={emailInput}
             id={`${id}-email`}
             name="email"
             type="email"
             required
-            className={fieldClass}
+            className="mt-1"
           />
         </div>
         <div>
           <label htmlFor={`${id}-name`} className="text-sm font-medium">
             Nombre
           </label>
-          <input id={`${id}-name`} name="name" required className={fieldClass} />
+          <Input id={`${id}-name`} name="name" required className="mt-1" />
         </div>
         <div className="self-end">
-          <button
-            type="submit"
-            disabled={invite.isPending}
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-          >
+          <Button type="submit" disabled={invite.isPending}>
             {invite.isPending ? "Invitando…" : "Invitar"}
-          </button>
+          </Button>
         </div>
       </form>
       {error && <ErrorAlert error={error} />}
@@ -180,22 +174,27 @@ export function BrokerPage() {
   const update = useUpdateBroker(id);
   const usage = useUsage(admin);
   // Mientras no se sabe el rol, nada de la vista del administrador (ni sus pedidos).
-  if (role === null) return <p className="text-slate-600">Cargando…</p>;
-  if (!admin) return <p className="text-slate-600">Esto lo hace el administrador.</p>;
+  if (role === null) return <p className="text-fg-muted">Cargando…</p>;
+  if (!admin) return <p className="text-fg-muted">Esto lo hace el administrador.</p>;
   if (detail.error)
     return <ErrorAlert error={detail.error} onRetry={() => void detail.refetch()} />;
-  if (detail.data === undefined) return <p className="text-slate-600">Cargando…</p>;
+  if (detail.data === undefined) return <p className="text-fg-muted">Cargando…</p>;
   const { broker, onboarding } = detail.data;
   return (
     <div>
-      <p className="text-sm">
-        <Link to="/corredores" className="underline">
+      <p className="mb-2">
+        <Link to="/corredores" className="text-sm font-medium text-fg-muted hover:text-fg">
           ← Corredores
         </Link>
       </p>
-      <h1 className="mt-2 text-2xl font-semibold tracking-tight">
-        {broker.brandName} <span className="text-base text-slate-500">({broker.slug})</span>
-      </h1>
+      <PageHeader
+        title={
+          <>
+            {broker.brandName}{" "}
+            <span className="text-base font-normal text-fg-subtle">({broker.slug})</span>
+          </>
+        }
+      />
       <SpendLine usage={usage.data} brokerId={broker.id} />
       <OnboardingList steps={onboarding} kind={broker.kind} />
       <section aria-label="Marca" className="mt-6">
@@ -209,7 +208,7 @@ export function BrokerPage() {
           error={update.error}
           onSubmit={(values) => update.mutate(values)}
         />
-        <p role="status" className="mt-2 text-sm text-green-800">
+        <p role="status" className="mt-2 text-sm text-success-800">
           {update.isSuccess && "Guardado."}
         </p>
       </section>

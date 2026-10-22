@@ -105,11 +105,11 @@ const ADVICE: Readonly<Record<string, string>> = {
   UF_SOURCE_AUTH_INVALID: "El Banco Central no acepta BCCH_API_TOKEN: renuévalo en .env.",
   UF_VALUE_MISSING: "El Banco Central todavía no publica la UF de hoy: reintenta más tarde.",
   UF_VALUE_SUSPICIOUS: "El valor de la UF de hoy se ve raro: reintenta más tarde.",
-  // Resultados inciertos.
+  // Resultados inciertos: desde F9.5-T04a, en `outcome_unknown` (Salió / No salió, sin reintento).
   IG_PUBLISH_OUTCOME_UNKNOWN:
-    "No se sabe si salió: revisa el perfil de Instagram antes de reintentar (podría duplicarse).",
+    "Mira el perfil de Instagram. Si salió, dilo con «Salió» (con el enlace, si lo tienes; o publications resolve <id> --published --url-stdin); si no, con «No salió» (o --not-published) y reintenta.",
   ML_PUBLISH_OUTCOME_UNKNOWN:
-    "No se sabe si se creó el aviso: revisa tus publicaciones en Mercado Libre antes de reintentar.",
+    "Busca el aviso en tus publicaciones de Mercado Libre; si hay más de uno, cierra a mano los que sobren. Si quedó uno, dilo con «Salió» y su enlace o su número MLC (o publications resolve <id> --published --url-stdin); si no quedó ninguno, con «No salió» (o --not-published) y reintenta.",
   // F9 (ADR-0029 punto 8): el estado `outcome_unknown`; no se reintenta, se resuelve.
   OUTCOME_UNKNOWN:
     "Revisa la cuenta en la red: si salió, márcala como publicada (con el enlace); si no, márcala como no publicada y reintenta.",

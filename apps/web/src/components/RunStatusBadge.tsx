@@ -1,19 +1,13 @@
 import { IMPORT_RUN_STATUS_TEXT, type ImportRunStatus } from "@agentsales/core";
-
-const TONE: Readonly<Record<ImportRunStatus, string>> = {
-  awaiting_upload: "bg-slate-100 text-slate-700",
-  queued: "bg-amber-100 text-amber-800",
-  running: "bg-sky-100 text-sky-800",
-  succeeded: "bg-emerald-100 text-emerald-800",
-  failed: "bg-red-100 text-red-800",
-};
+import { IMPORT_RUN_STATUS_TONE } from "../labels.js";
+import { Badge } from "./ui/Badge.js";
 
 /** Estado de una carga, con "simulación" si es `--dry-run`. */
 export function RunStatusBadge({ status, dryRun }: { status: ImportRunStatus; dryRun: boolean }) {
   return (
-    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${TONE[status]}`}>
+    <Badge tone={IMPORT_RUN_STATUS_TONE[status]}>
       {IMPORT_RUN_STATUS_TEXT[status]}
       {dryRun ? " (simulación)" : ""}
-    </span>
+    </Badge>
   );
 }

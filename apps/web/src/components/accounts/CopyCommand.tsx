@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Button } from "../ui/Button.js";
 
 type CopyState = "idle" | "copied" | "failed";
 
@@ -15,16 +16,16 @@ export function CopyCommand({ command, label }: { command: string; label: string
   };
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2">
-      <code className="rounded bg-white px-2 py-1 text-xs break-all">{command}</code>
-      <button
-        type="button"
+      <code className="rounded bg-surface px-2 py-1 text-xs break-all">{command}</code>
+      <Button
+        variant="link"
         onClick={() => void copyCommand()}
         aria-label={label}
-        className="text-xs underline"
+        className="text-xs"
       >
         Copiar
-      </button>
-      <span role="status" className="text-xs text-slate-600">
+      </Button>
+      <span role="status" className="text-xs text-fg-muted">
         {copy === "copied" && "Copiado"}
         {copy === "failed" && "No se pudo copiar: selecciónalo a mano"}
       </span>

@@ -6,9 +6,9 @@ import { useApiClient, useUploadDeps } from "../../api/context.js";
 import { type PostUploadProgress, uploadPostMedia } from "../../api/post-upload.js";
 import { mediaProcessing, postKeys } from "../../queries/posts.js";
 import { ErrorAlert } from "../ErrorAlert.js";
-
-const SECONDARY =
-  "rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-100 disabled:opacity-50";
+import { Button } from "../ui/Button.js";
+import { Card } from "../ui/Card.js";
+import { FILE_INPUT } from "../ui/styles.js";
 
 /** Lo que acepta el selector: las extensiones de core (la API vuelve a revisar). */
 const ACCEPT = Object.keys(POST_MEDIA_TYPES)
@@ -89,27 +89,24 @@ export function PostMedia({
 
   const uploading = progress !== null;
   return (
-    <section aria-label="Medios" className="mt-6">
-      <h2 className="text-lg font-semibold">Fotos y videos ({media.length})</h2>
+    <Card as="section" aria-label="Medios" title={`Fotos y videos (${media.length})`}>
       {media.length === 0 ? (
-        <p className="mt-1 text-sm text-slate-600">
-          Sin medios: un post de solo texto no los necesita.
-        </p>
+        <p className="text-sm text-fg-muted">Sin medios: un post de solo texto no los necesita.</p>
       ) : (
-        <ul className="mt-2 flex flex-wrap gap-3">
+        <ul className="flex flex-wrap gap-3">
           {media.map((item, index) => (
-            <li key={item.id} className="w-28 text-xs text-slate-600">
+            <li key={item.id} className="w-28 text-xs text-fg-muted tabular-nums">
               {item.thumbUrl !== null ? (
                 <img
                   src={item.thumbUrl}
                   alt={`${item.kind === "video" ? "Video" : "Foto"} ${index + 1}`}
-                  className="h-28 w-28 rounded border border-slate-200 object-cover"
+                  className="h-28 w-28 rounded-lg border border-line object-cover"
                 />
               ) : (
                 <span
                   role="img"
                   aria-label={`${item.kind === "video" ? "Video" : "Foto"} ${index + 1}`}
-                  className="flex h-28 w-28 items-center justify-center rounded border border-slate-200 bg-slate-100"
+                  className="flex h-28 w-28 items-center justify-center rounded-lg border border-line bg-slate-100"
                 >
                   {item.kind === "video" ? "video" : "foto"}
                 </span>
@@ -120,20 +117,20 @@ export function PostMedia({
                   : ""}
                 {mb(item.bytes)}
               </span>
-              {mediaProcessing(item) && <span className="block text-amber-800">procesando…</span>}
+              {mediaProcessing(item) && <span className="block text-warning-800">procesando…</span>}
             </li>
           ))}
         </ul>
       )}
       {waiting > 0 && (
-        <p role="status" className="mt-2 text-sm text-slate-700">
+        <p role="status" className="mt-3 text-sm text-fg-muted">
           {waiting === 1
             ? "Un archivo grande se está revisando en el servidor: aparece aquí en unos minutos."
             : `${waiting} archivos grandes se están revisando en el servidor: aparecen aquí en unos minutos.`}
         </p>
       )}
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <label htmlFor={id} className="text-sm font-medium text-slate-700">
+      <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-line pt-4">
+        <label htmlFor={id} className="text-sm font-medium text-fg">
           Subir fotos o videos
         </label>
         <input
@@ -144,25 +141,25 @@ export function PostMedia({
           accept={ACCEPT}
           disabled={uploading || lockReason !== null}
           onChange={(event) => void upload([...(event.target.files ?? [])])}
-          className="text-sm"
+          className={FILE_INPUT}
         />
-        {lockReason !== null && <span className="text-xs text-amber-800">{lockReason}</span>}
+        {lockReason !== null && <span className="text-xs text-warning-800">{lockReason}</span>}
       </div>
-      <p className="mt-1 text-xs text-slate-500">
+      <p className="mt-1.5 text-xs text-fg-subtle">
         JPG, PNG, WebP, HEIC, MP4 o MOV; hasta {POST_UPLOAD.maxMediaPerPost} por post.
       </p>
       {progress !== null && (
-        <div className="mt-2 text-sm" role="status">
+        <div className="mt-3 space-y-2 text-sm" role="status">
           <progress
             aria-label="Avance de la subida"
             max={Math.max(progress.totalBytes, 1)}
             value={progress.sentBytes}
-            className="w-64"
+            className="w-64 max-w-full"
           />
-          <p className="text-slate-700">{progressText(progress)}</p>
-          <button type="button" className={SECONDARY} onClick={() => abort.current?.abort()}>
+          <p className="text-fg-muted tabular-nums">{progressText(progress)}</p>
+          <Button variant="secondary" size="sm" onClick={() => abort.current?.abort()}>
             Cancelar
-          </button>
+          </Button>
         </div>
       )}
       {error !== null && (
@@ -171,6 +168,6 @@ export function PostMedia({
           {...(failed === null ? {} : { onRetry: () => void upload(failed) })}
         />
       )}
-    </section>
+    </Card>
   );
 }

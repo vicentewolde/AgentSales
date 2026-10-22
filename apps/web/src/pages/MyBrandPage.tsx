@@ -4,6 +4,7 @@ import { OnboardingList } from "../components/brokers/OnboardingList.js";
 import { SpendLine } from "../components/brokers/SpendLine.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { EditorialProfileSection } from "../components/posts/EditorialProfileForm.js";
+import { PageHeader } from "../components/ui/PageHeader.js";
 import { useMe } from "../queries/auth.js";
 import { useBrokerDetail, useUpdateBroker } from "../queries/brokers.js";
 import { useUsage } from "../queries/usage.js";
@@ -20,15 +21,15 @@ export function MyBrandPage() {
   const update = useUpdateBroker(brokerId ?? "");
   const usage = useUsage();
   if (me.data !== undefined && brokerId === undefined) {
-    return <p className="text-slate-600">Tu usuario no tiene corredor: es del administrador.</p>;
+    return <p className="text-fg-muted">Tu usuario no tiene corredor: es del administrador.</p>;
   }
   if (detail.error)
     return <ErrorAlert error={detail.error} onRetry={() => void detail.refetch()} />;
-  if (detail.data === undefined) return <p className="text-slate-600">Cargando…</p>;
+  if (detail.data === undefined) return <p className="text-fg-muted">Cargando…</p>;
   const { broker, onboarding } = detail.data;
   return (
     <div>
-      <h1 className="text-2xl font-semibold tracking-tight">Mi marca</h1>
+      <PageHeader title="Mi marca" />
       <SpendLine usage={usage.data} brokerId={broker.id} />
       <OnboardingList steps={onboarding} kind={broker.kind} />
       <section aria-label="Marca" className="mt-6">
@@ -41,7 +42,7 @@ export function MyBrandPage() {
           error={update.error}
           onSubmit={(values) => update.mutate(values)}
         />
-        <p role="status" className="mt-2 text-sm text-green-800">
+        <p role="status" className="mt-2 text-sm text-success-800">
           {update.isSuccess && "Guardado."}
         </p>
       </section>

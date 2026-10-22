@@ -2,6 +2,7 @@ import type { Broker, PublishMode } from "@agentsales/core";
 import { useState } from "react";
 import { useSetAutoPublish } from "../../queries/brokers.js";
 import { ErrorAlert } from "../ErrorAlert.js";
+import { Button } from "../ui/Button.js";
 
 // F6-T13 (spec F6 §4.10): la publicación automática de un corredor.
 
@@ -35,16 +36,16 @@ export function AutoPublishToggle({
           }}
         />
         Publicación automática
-        <span className="text-slate-500">
+        <span className="text-fg-subtle">
           (al preparar los textos, se aprueba lo que no tiene errores y se publica solo)
         </span>
       </label>
       {confirming && (
         <div
           role="alert"
-          className={`mt-2 rounded-md border p-2 ${live ? "border-red-300 bg-red-50" : "border-slate-300 bg-slate-50"}`}
+          className={`mt-2 rounded-md border p-2 ${live ? "border-danger-200 bg-danger-50" : "border-line-strong bg-slate-50"}`}
         >
-          <p className={live ? "font-semibold text-red-800" : "text-slate-800"}>
+          <p className={live ? "font-semibold text-danger-800" : "text-fg"}>
             {publishMode === "live"
               ? "La API está en vivo: publicará sin tu revisión en Instagram y Portal (Marketplace queda como recordatorio)."
               : publishMode === undefined
@@ -52,9 +53,9 @@ export function AutoPublishToggle({
                 : "En simulación no publica nada de verdad; en vivo publicará sin tu revisión."}
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="rounded-md bg-red-700 px-3 py-1.5 font-medium text-white disabled:opacity-50"
+            <Button
+              variant="danger"
+              size="sm"
               disabled={set.isPending}
               onClick={() =>
                 set.mutate(
@@ -64,11 +65,10 @@ export function AutoPublishToggle({
               }
             >
               Sí, activar
-            </button>
-            {/* biome-ignore lint/a11y/noAutofocus: el foco va a la opción segura al abrir la confirmación */}
-            <button type="button" autoFocus className="underline" onClick={cancel}>
+            </Button>
+            <Button variant="link" autoFocus onClick={cancel}>
               Cancelar
-            </button>
+            </Button>
           </div>
         </div>
       )}

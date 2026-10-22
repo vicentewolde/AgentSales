@@ -139,6 +139,51 @@ describe("publishPublication en X: costo y tope de gasto", () => {
     expect(x.sends).toEqual([]);
   });
 
+  it("dos publicaciones a la vez de la misma cuenta no pasan las dos el tope (F9.5-T08)", async () => {
+    const t = await createPostPublicationScenario({
+      texts: [
+        { platform: "x", language: "es" },
+        { platform: "x", language: "en" },
+      ],
+    });
+    const accountId = t.accounts.get("x") ?? "";
+    // Cabe un post de US$0,015, no dos.
+    await setXSpendLimit(t, { accountId, spendLimitUsd: 0.02 });
+    const x = createSendOncePublisher("x", { now: () => NOW });
+    const es = await t.toPublishing(t.publicationOf("x", "es"));
+    const en = await t.toPublishing(t.publicationOf("x", "en"));
+    const deps = t.publishDeps({ x }, { now: () => NOW });
+    const results = await Promise.allSettled([
+      publishPublication(deps, { publicationId: es.id, isLastAttempt: false }),
+      publishPublication(deps, { publicationId: en.id, isLastAttempt: false }),
+    ]);
+    const statuses = [t.current(es.id)?.status, t.current(en.id)?.status].sort();
+    expect(statuses).toEqual(["failed", "published"]);
+    const rejected = results.find((result) => result.status === "rejected");
+    expect(isAppError(rejected?.reason) && rejected.reason.code).toBe("X_SPEND_LIMIT_REACHED");
+    expect(x.sends).toHaveLength(1);
+  });
+
+  it("un reintento de la misma publicación no cuenta su propia reserva dos veces", async () => {
+    const t = await createPostPublicationScenario({ texts: [{ platform: "x", language: "es" }] });
+    const accountId = t.accounts.get("x") ?? "";
+    await setXSpendLimit(t, { accountId, spendLimitUsd: 0.015 });
+    const pub = await t.toPublishing(t.publicationOf("x"));
+    // Un intento anterior ya reservó su costo y quedó en `publishing` (el reintento de la cola).
+    const first = await t.publications.reserveCostUsd(pub.id, accountId, 0.015, {
+      limitUsd: 0.015,
+      since: new Date("2026-10-01T03:00:00Z"),
+    });
+    expect(first.costUsd).toBeCloseTo(0.015, 10);
+    const x = createSendOncePublisher("x", { now: () => NOW });
+    const result = await publishPublication(t.publishDeps({ x }, { now: () => NOW }), {
+      publicationId: pub.id,
+      isLastAttempt: false,
+    });
+    expect(result.outcome).toBe("published");
+    expect(t.current(pub.id)?.costUsd).toBeCloseTo(0.015, 10);
+  });
+
   it("el tope es del mes de Chile y solo de lo publicado en vivo", async () => {
     const t = await createPostPublicationScenario({
       texts: [
