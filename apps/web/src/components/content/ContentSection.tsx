@@ -30,11 +30,14 @@ export function ContentSection({
   listingId,
   listingStatus,
   listingPrice = null,
+  brokerId,
 }: {
   listingId: string;
   listingStatus: ListingStatus;
-  /** El precio del aviso como en la planilla, para el plan B de Marketplace. */
+  /** El precio del aviso como en la planilla, para la vista previa y el plan B de Marketplace. */
   listingPrice?: ListingPrice | null;
+  /** El corredor del aviso: el nombre de su cuenta en la vista previa (F9.5-T07). */
+  brokerId?: string;
 }) {
   const content = useListingContent(listingId);
   const request = useRequestContentRun(listingId);
@@ -201,6 +204,7 @@ export function ContentSection({
         ) : (
           <Preview
             content={content.data}
+            brokerId={brokerId}
             listingId={listingId}
             lockReason={lockReason}
             onReload={() => void content.refetch()}

@@ -248,6 +248,22 @@ Todo lo anterior se puede hacer en el panel, en **Contenido** (el menú de la iz
 - **Calendario** (F9-T18, en el menú): la semana o el mes con lo programado y lo ya publicado, posts y propiedades juntos, en hora de Chile. Desde ahí cambias la hora de una publicación programada (la misma confirmación en vivo de siempre); lo aprobado sin programar, lo que se está publicando y lo fallido siguen en **Seguimiento**.
 - **El perfil editorial** se edita en **Mi marca** (o, siendo administrador, en la página de cada corredor), con los mismos campos que `brand edit`. Si algo no sirve, el error aparece en rojo junto al campo y no se guarda nada.
 
+### La vista previa por red (F9.5-T07)
+
+Cada texto, el de un post (en su pestaña de red e idioma) y el de una propiedad (en **Contenido**: Instagram, Portal y Marketplace), trae una **vista previa con la forma de la red**: la foto o el video, el nombre de la cuenta y el texto **tal como se envía y cortado donde la red lo corta**. No lleva logos ni marcas de las redes: es una aproximación para revisar, no una captura.
+
+- **Instagram:** la imagen, el carrusel (deslízalo; arriba dice en cuál vas, `1/4`, y abajo los puntos) o el reel vertical; el nombre de la cuenta conectada (`@usuario`) y el caption con los hashtags, cortado como Instagram (unos 125 caracteres o dos líneas) con «… más».
+- **X:** el texto entero con los hashtags (X no lo corta: el contador dice si pasa de 280) y hasta 4 imágenes en grilla, o el video.
+- **LinkedIn:** el texto cortado como LinkedIn (unos 210 caracteres o tres líneas) con «…ver más», y la imagen o las imágenes. Los caracteres que LinkedIn exige escapar se ven normales, como los lee la gente.
+- **Discord:** el mensaje del webhook (su nombre, con la etiqueta APP), el texto **sin hashtags** (en Discord no se envían) y los adjuntos. `@everyone` y `@here` se ven como los escribiste, pero al enviar se neutralizan (no avisan a todo el canal), y la revisión no deja aprobar un texto que los tenga.
+- **TikTok:** el video vertical. **TikTok no recibe el texto:** el video llega como borrador a la bandeja de la app y ahí pegas el texto que aparece debajo, «Texto para pegar en la app».
+- **Portal Inmobiliario:** las fotos (la portada grande y las demás en miniatura), el título, el precio como en la planilla (`UF 5.800`) y la descripción entera.
+- **Marketplace:** las fotos, el título (con el aviso de que el formulario de Facebook no tiene título: solo lo usa el plan B), el precio en pesos como en el plan B, con la UF usada (si está en UF y todavía no se convirtió, lo dice) y la descripción entera.
+
+**Los medios de un post** son los que publicará la red: las fotos y el video en su orden, con la versión de esa red; uno que todavía no la tiene dice «procesando…». Si la red rechazaría el post por sus medios, la vista previa lo avisa arriba: un carrusel de Instagram con menos de 2 imágenes, o TikTok en un post que no es de video.
+
+**Al editar**, la vista previa cambia mientras escribes, antes de guardar; cuando el borrador ya es distinto del texto guardado, lo dice arriba («con tu borrador, sin guardar»). Si cancelas, vuelve al texto guardado. Si la cuenta de la red no está conectada, aparece «tu cuenta» en vez del nombre.
+
 ## Pedir a la IA un plan de ideas (F9)
 
 Si no sabes qué publicar, la IA te propone **ideas con fecha** para las próximas semanas, con el perfil editorial de la marca (sus líneas, sus hechos y su cadencia). **Una idea no se publica sola:** tú decides cuáles aceptar; al aceptar una, la IA redacta sus textos, y después los revisas, apruebas y programas como cualquier post. Cada plan gasta IA de la marca (entra a su tope del mes), aunque descartes todo.

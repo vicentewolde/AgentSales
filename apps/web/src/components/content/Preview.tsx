@@ -5,37 +5,34 @@ import type {
   PortalReadinessView,
 } from "@agentsales/api/contracts";
 import {
+  formatListingPrice,
   LISTING_PLATFORMS,
   type ListingPlatform,
   PLATFORM_TEXT,
   publicationFormatText,
 } from "@agentsales/core";
 import { type KeyboardEvent, useRef, useState } from "react";
+import { useAccountName } from "../preview/account-name.js";
+import { InstagramPostPreview, InstagramReelPreview } from "../preview/InstagramPreview.js";
+import { PortalPreview } from "../preview/PortalPreview.js";
+import { draftDiffers, type PreviewImage, type PreviewText } from "../preview/preview.js";
 import { PublicationsPanel } from "../publications/PublicationsPanel.js";
 import { portalIssuesHint, ReadinessIssueList } from "../ReadinessIssueList.js";
-import { Button } from "../ui/Button.js";
 import { ApprovableText, type EditContext } from "./ApprovableText.js";
-import { captionPreview } from "./caption.js";
 import { MarketplacePanel } from "./MarketplacePanel.js";
 
-/** El caption de Instagram con "ver más", como en la app: primero solo el comienzo. */
-function Caption({ content }: { content: ContentView }) {
-  const [expanded, setExpanded] = useState(false);
-  const { full, preview } = captionPreview(content);
-  return (
-    <section aria-label="Caption de Instagram" className="mt-3 text-sm">
-      <p className="whitespace-pre-line">{preview !== null && !expanded ? preview : full}</p>
-      {preview !== null && (
-        <Button
-          variant="link"
-          onClick={() => setExpanded((value) => !value)}
-          className="mt-1 text-sm"
-        >
-          {expanded ? "ver menos" : "ver más"}
-        </Button>
-      )}
-    </section>
-  );
+/** Las fotos de un aviso como las usa la vista previa. */
+const previewImages = (media: readonly ContentMedia[]): PreviewImage[] =>
+  media.map((item) => ({ id: item.id, src: item.url }));
+
+/**
+ * El texto que muestra la vista previa: el borrador del editor mientras se edita (F9.5-T07), si no
+ * el guardado. `draft` dice si el borrador ya difiere del guardado (la leyenda «sin guardar»).
+ */
+function useShownText(content: ContentView | undefined) {
+  const [draft, setDraft] = useState<PreviewText | null>(null);
+  const text: PreviewText | null = draft ?? content ?? null;
+  return { text, draft: draftDiffers(draft, content ?? null), onDraft: setDraft };
 }
 
 function InstagramPanel({
@@ -43,62 +40,48 @@ function InstagramPanel({
   carousel,
   reel,
   edit,
+  brokerId,
 }: {
   content: ContentView | undefined;
   carousel: ContentMedia[];
   reel: ContentMedia | null;
   edit: EditContext;
+  brokerId: string | undefined;
 }) {
+  const accountName = useAccountName(brokerId, "instagram");
+  const { text, draft, onDraft } = useShownText(content);
   return (
     <div className="grid gap-6 md:grid-cols-2">
-      <div>
+      <div className="min-w-0 space-y-4">
         <h3 className="text-sm font-semibold text-fg first-letter:uppercase">
           {/* Una sola imagen sale como imagen suelta, no como carrusel (F9.5-T02). */}
           {publicationFormatText("instagram", "post", carousel.length)} ({carousel.length})
         </h3>
-        {carousel.length === 0 ? (
-          <p className="mt-2 text-sm text-fg-subtle">Sin imágenes todavía.</p>
-        ) : (
-          <ul
-            aria-label="Carrusel de Instagram"
-            // Desplazable también con el teclado (flechas, una vez enfocado).
-            // biome-ignore lint/a11y/noNoninteractiveTabindex: una lista que se desplaza debe poder enfocarse.
-            tabIndex={0}
-            className="mt-2 flex snap-x snap-mandatory gap-2 overflow-x-auto pb-2"
-          >
-            {carousel.map((item, index) => (
-              <li key={item.id} className="w-64 flex-none snap-start">
-                <img
-                  src={item.url}
-                  alt={`Imagen ${index + 1} de ${carousel.length} del carrusel`}
-                  loading="lazy"
-                  className="aspect-[4/5] w-full rounded-md bg-slate-100 object-cover"
-                />
-              </li>
-            ))}
-          </ul>
-        )}
-        <h3 className="mt-4 text-sm font-semibold text-fg">Reel</h3>
+        <InstagramPostPreview
+          label="Vista previa de Instagram"
+          accountName={accountName}
+          images={previewImages(carousel)}
+          text={text}
+          draft={draft}
+        />
+        <h3 className="text-sm font-semibold text-fg">Reel</h3>
         {reel === null ? (
-          <p className="mt-2 text-sm text-fg-subtle">Sin reel (la propiedad no tiene video).</p>
+          <p className="text-sm text-fg-subtle">Sin reel (la propiedad no tiene video).</p>
         ) : (
-          // biome-ignore lint/a11y/useMediaCaption: el texto del reel va dibujado en el video.
-          <video
-            src={reel.url}
-            controls
-            preload="metadata"
-            aria-label="Reel de Instagram"
-            className="mt-2 aspect-[9/16] w-48 rounded-md bg-black"
+          <InstagramReelPreview
+            label="Vista previa del reel de Instagram"
+            accountName={accountName}
+            video={{ id: reel.id, src: reel.url, poster: null }}
+            text={text}
+            draft={draft}
           />
         )}
       </div>
-      <div>
+      <div className="min-w-0">
         {content === undefined ? (
           <p className="text-sm text-fg-subtle">Sin texto todavía.</p>
         ) : (
-          <ApprovableText content={content} edit={edit}>
-            <Caption content={content} />
-          </ApprovableText>
+          <ApprovableText content={content} edit={edit} onDraft={onDraft} />
         )}
         <PublicationsPanel
           platform="instagram"
@@ -152,30 +135,24 @@ function ListingPanel({
   portalReadiness: PortalReadinessView;
 }) {
   const portal = platform === "portal_inmobiliario";
+  const { text, draft, onDraft } = useShownText(content);
   return (
     <div>
       {portal && <PortalReadiness readiness={portalReadiness} />}
       {content === undefined ? (
         <p className="text-sm text-fg-subtle">Sin texto todavía.</p>
       ) : (
-        <ApprovableText content={content} edit={edit}>
-          <h3 className="mt-2 text-lg font-semibold">{content.title}</h3>
-          <p className="mt-2 whitespace-pre-line text-sm">{content.body}</p>
-        </ApprovableText>
+        <ApprovableText content={content} edit={edit} onDraft={onDraft} />
       )}
-      <h3 className="mt-4 text-sm font-semibold text-fg">Fotos ({photos.length})</h3>
-      <ul className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
-        {photos.map((item, index) => (
-          <li key={item.id}>
-            <img
-              src={item.url}
-              alt={`Foto ${index + 1} para ${PLATFORM_TEXT[platform]}`}
-              loading="lazy"
-              className="aspect-[4/3] w-full rounded-md bg-slate-100 object-cover"
-            />
-          </li>
-        ))}
-      </ul>
+      <h3 className="mt-4 mb-2 text-sm font-semibold text-fg">Fotos ({photos.length})</h3>
+      <PortalPreview
+        label={`Vista previa de ${PLATFORM_TEXT[platform]}`}
+        title={text?.title ?? null}
+        price={edit.listingPrice === null ? null : formatListingPrice(edit.listingPrice)}
+        photos={previewImages(photos)}
+        description={text?.body ?? null}
+        draft={draft}
+      />
       {portal && (
         <PublicationsPanel
           platform={platform}
@@ -196,7 +173,15 @@ function ListingPanel({
  * Pestañas por canal: lo que se publicaría en cada uno. Siguen el patrón de pestañas de ARIA: solo
  * la activa se enfoca con Tab, y las flechas, Inicio y Fin cambian de pestaña.
  */
-export function Preview({ content, ...edit }: { content: ListingContentResponse } & EditContext) {
+export function Preview({
+  content,
+  brokerId,
+  ...edit
+}: {
+  content: ListingContentResponse;
+  /** El corredor del aviso: el nombre de su cuenta de Instagram en la vista previa. */
+  brokerId?: string | undefined;
+} & EditContext) {
   const [platform, setPlatform] = useState<ListingPlatform>("instagram");
   const tabs = useRef(new Map<ListingPlatform, HTMLButtonElement>());
   const textOf = (target: ListingPlatform) =>
@@ -279,6 +264,7 @@ export function Preview({ content, ...edit }: { content: ListingContentResponse 
               carousel={content.carousel}
               reel={content.reel}
               edit={edit}
+              brokerId={brokerId}
             />
           ) : target === "fb_marketplace" ? (
             <MarketplacePanel
