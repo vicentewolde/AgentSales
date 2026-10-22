@@ -46,8 +46,16 @@ export type HarnessOptions = {
   deps?: Partial<AppDeps>;
   /** Se llama antes de cada petición: lanzar simula una falla de red. */
   beforeRequest?: (url: string, method: string) => void;
-  /** Se llama con la respuesta de la API: la API ya hizo el cambio (simula un corte después). */
-  afterResponse?: (url: string, method: string, response: Response) => Response;
+  /**
+   * Se llama con la respuesta de la API: la API ya hizo el cambio (simula un corte después), o
+   * simula un servidor de otra versión que cambia la respuesta (F9.5-T11, `rewriteJson`).
+   */
+  afterResponse?: (url: string, method: string, response: Response) => Response | Promise<Response>;
+  /**
+   * La versión de la CLI del cliente (F9.5-T11): con ella, compara la del servidor. Sin ella, no
+   * compara (la API de prueba es `0.0.1`).
+   */
+  cliVersion?: string;
   /** Sin la sesión del administrador por defecto (F7-T06: probar `login` y lo que pasa sin sesión). */
   anonymous?: boolean;
 };
@@ -158,9 +166,12 @@ export function harness(options: HarnessOptions = {}) {
     requests.push(`${method} ${routePathOf(new URL(url).pathname)}`);
     options.beforeRequest?.(url, method);
     const response = await app.request(url, init);
-    return options.afterResponse?.(url, method, response) ?? response;
+    return (await options.afterResponse?.(url, method, response)) ?? response;
   };
-  const client = createApiClient(localServerUrl(PORT), { fetch: fetchApp });
+  const client = createApiClient(localServerUrl(PORT), {
+    fetch: fetchApp,
+    version: options.cliVersion,
+  });
   const own = <T>(name: keyof AppDeps, repository: T): T => {
     if (options.deps?.[name] !== undefined) {
       throw new Error(`harness: ${name} vino en options.deps; usa el del test`);
@@ -235,6 +246,21 @@ export function harness(options: HarnessOptions = {}) {
     /** Los planes de ideas de la API (F9-T21): el test los corre como el worker (`runPlan`). */
     planRuns,
   };
+}
+
+/**
+ * Un servidor de otra versión (F9.5-T11): la misma respuesta (estado y cabeceras) con su JSON
+ * cambiado por `change`, por ejemplo con un valor de enum que esta CLI no conoce.
+ */
+export async function rewriteJson(
+  response: Response,
+  change: (body: Record<string, unknown>) => void,
+): Promise<Response> {
+  const body = (await response.json()) as Record<string, unknown>;
+  change(body);
+  const headers = new Headers(response.headers);
+  headers.delete("content-length");
+  return new Response(JSON.stringify(body), { status: response.status, headers });
 }
 
 /**

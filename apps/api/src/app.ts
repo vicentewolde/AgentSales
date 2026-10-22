@@ -241,6 +241,24 @@ export type AppDeps = {
 /** Un middleware que no hace nada (un límite que no se configuró). */
 const passThrough: MiddlewareHandler<AppEnv> = (_c, next) => next();
 
+/**
+ * La versión de AgentSales en cada respuesta de la API (spec F9.5 §4.2, ADR-0011): la CLI la
+ * compara con la suya y avisa si difieren. La CLI tiene su copia del nombre (`api-client.ts`), para
+ * no cargar la API; sus pruebas contra la API en proceso confirman que calzan.
+ */
+export const VERSION_HEADER = "X-AgentSales-Version";
+
+/**
+ * Pone la cabecera después de responder, así también la llevan los errores (`onError`), los 404 y
+ * los rechazos de los guardias. `version` se leyó una vez al arrancar (`readApiVersion`).
+ */
+const versionHeader =
+  (version: string): MiddlewareHandler<AppEnv> =>
+  async (c, next) => {
+    await next();
+    c.header(VERSION_HEADER, version);
+  };
+
 /** Arma la API con sus dependencias inyectadas. Las rutas van encadenadas para el cliente `hc`. */
 export function createApp(input: AppDeps) {
   // Los eventos de la bitácora escritos por la API llevan el usuario del pedido (spec F7 §4.3).
@@ -303,6 +321,7 @@ export function createApp(input: AppDeps) {
     broker: ownedBy(async (id) => id, notFound("BROKER_NOT_FOUND", "No existe el corredor")),
   };
   const app = new Hono<AppEnv>()
+    .use(versionHeader(deps.version))
     .use(requestLogger(deps.logger))
     .use(hostGuard(deps.access.allowedHosts))
     .use(deps.rateLimit === null ? passThrough : rateLimitByIp(deps.rateLimit))

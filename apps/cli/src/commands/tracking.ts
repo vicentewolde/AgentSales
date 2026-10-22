@@ -46,7 +46,7 @@ function cellText(platform: Platform, publication: Cell, c: Colors): string {
   ].filter(Boolean);
   // Un post con dos idiomas tiene una publicación por idioma: se dice cuál es la inglesa.
   const language = publication.language === "es" ? "" : ` [${publication.language}]`;
-  return `${publicationFormatText(platform, publication.format)}${language} ${PUBLICATION_STATUS_TEXT[publication.status]}${notes.length === 0 ? "" : ` (${notes.join(", ")})`}`;
+  return `${publicationFormatText(platform, publication.format)}${language} ${PUBLICATION_STATUS_TEXT[publication.status] ?? publication.status}${notes.length === 0 ? "" : ` (${notes.join(", ")})`}`;
 }
 
 export function renderTracking(rows: readonly Row[], c: Colors): string {
@@ -55,7 +55,7 @@ export function renderTracking(rows: readonly Row[], c: Colors): string {
     ["Propiedad", "Estado", "Instagram", "Portal", "Marketplace"],
     rows.map((row) => [
       row.listing.externalRef,
-      `${LISTING_STATUS_TEXT[row.listing.status]}${row.listing.closeReason === null ? "" : ` (${CLOSE_REASON_TEXT[row.listing.closeReason]})`}`,
+      `${LISTING_STATUS_TEXT[row.listing.status] ?? row.listing.status}${row.listing.closeReason === null ? "" : ` (${CLOSE_REASON_TEXT[row.listing.closeReason] ?? row.listing.closeReason})`}`,
       ...LISTING_PLATFORMS.map((platform) => {
         const cell = row.cells[platform];
         return cell.length === 0
@@ -70,10 +70,10 @@ export function renderTracking(rows: readonly Row[], c: Colors): string {
 /** Los posts (F9-T08): el tema como título, su estado y una columna por red. */
 export function renderTrackingPosts(posts: readonly PostRow[], c: Colors): string {
   return renderTable(
-    ["Post", "Estado", ...POST_PLATFORMS.map((platform) => PLATFORM_TEXT[platform])],
+    ["Post", "Estado", ...POST_PLATFORMS.map((platform) => PLATFORM_TEXT[platform] ?? platform)],
     posts.map((row) => [
       row.post.topic,
-      POST_STATUS_TEXT[row.post.status],
+      POST_STATUS_TEXT[row.post.status] ?? row.post.status,
       ...POST_PLATFORMS.map((platform) => {
         const cell = row.cells[platform];
         return cell.length === 0

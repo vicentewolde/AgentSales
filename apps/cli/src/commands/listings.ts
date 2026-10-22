@@ -46,10 +46,12 @@ export function runListings(deps: ListingsDeps, options: ListingsOptions = {}) {
           listing.externalRef,
           brokers.get(listing.brokerId)?.slug ?? "—",
           listing.propertyType ?? "—",
-          listing.operation === null ? "—" : OPERATION_TEXT[listing.operation],
+          listing.operation === null
+            ? "—"
+            : (OPERATION_TEXT[listing.operation] ?? listing.operation),
           listing.comuna ?? "—",
           formatListingPrice(listing),
-          LISTING_STATUS_TEXT[listing.status],
+          LISTING_STATUS_TEXT[listing.status] ?? listing.status,
           listing.coverUrl === null ? c.yellow("no") : "sí",
         ]),
         c,

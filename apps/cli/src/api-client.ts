@@ -3,6 +3,7 @@ import { errorBodySchema, type ReadinessIssueView } from "@agentsales/api/contra
 import { type HealthReport, healthReportSchema } from "@agentsales/core";
 import { hc } from "hono/client";
 import type { z } from "zod";
+import { noticeOnce } from "./notices.js";
 import { isLocalServer } from "./server.js";
 
 /** Mayor que el peor caso de `/health` (25 s con Neon despertando). */
@@ -81,9 +82,39 @@ export type ApiClientOptions = {
   timeoutMs?: number;
   /** El token de `agentsales login` (spec F7 §4.10): va como `Authorization: Bearer`. */
   token?: string | undefined;
+  /**
+   * La versión de esta CLI (spec F9.5 §4.2): si la del servidor (`X-AgentSales-Version`) es otra,
+   * avisa una vez por comando en stderr, sin fallar. Sin ella, no compara (los tests).
+   */
+  version?: string | undefined;
   /** Solo para tests: la app en proceso (`app.request`), sin red. */
   fetch?: Fetch;
 };
+
+/**
+ * La cabecera con la versión del servidor. Es la misma de `apps/api/src/app.ts` (`VERSION_HEADER`):
+ * la CLI no importa valores de la API, y sus pruebas contra la API en proceso confirman que calzan.
+ */
+export const VERSION_HEADER = "X-AgentSales-Version";
+
+/** Una versión como la escribe `package.json` (`0.1.0`, `1.2.0-beta.1`); otra cosa no se muestra. */
+const VERSION_PATTERN = /^[0-9A-Za-z.+-]{1,40}$/;
+
+/**
+ * Avisa una vez por comando si el servidor es de otra versión (spec F9.5 §4.2). Un servidor sin la
+ * cabecera (uno anterior a F9.5, u otro servicio) no se compara: si es otro servicio, ya lo dice
+ * `UNEXPECTED_RESPONSE`.
+ */
+function checkServerVersion(cliVersion: string | undefined, response: Response): void {
+  if (cliVersion === undefined) return;
+  const server = response.headers.get(VERSION_HEADER)?.trim();
+  if (server === undefined || server === "" || server === cliVersion) return;
+  const shown = VERSION_PATTERN.test(server) ? server : "de otra versión";
+  noticeOnce(
+    "version",
+    `La CLI es ${cliVersion} y el servidor ${shown}: actualiza la que esté atrás`,
+  );
+}
 
 const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
@@ -115,9 +146,10 @@ export function createApiClient(server: string, options: ApiClientOptions = {}) 
     fetch: async (input: string | URL | Request, init?: RequestInit) => {
       const timeout = AbortSignal.timeout(timeoutMs);
       const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
+      let response: Response;
       try {
         // Sin seguir redirecciones: el token nunca sigue a otro servidor.
-        return await send(input, { ...withJsonType(init), signal, redirect: "error" });
+        response = await send(input, { ...withJsonType(init), signal, redirect: "error" });
       } catch (error) {
         // Uno que ya explica la CLI (una dirección inválida, `invalidServerClient`) pasa tal cual.
         if (error instanceof ApiCallError) throw error;
@@ -125,6 +157,8 @@ export function createApiClient(server: string, options: ApiClientOptions = {}) 
         failure.remote = remote;
         throw failure;
       }
+      checkServerVersion(options.version, response);
+      return response;
     },
   });
 }
@@ -154,10 +188,80 @@ function fromRemote(res: ApiResponse): boolean {
   }
 }
 
+type Path = readonly PropertyKey[];
+
+/** El valor en `path` dentro de un JSON leído (objetos y arreglos), o `found: false`. */
+function valueAt(root: unknown, path: Path): { found: boolean; value: unknown } {
+  let current = root;
+  for (const key of path) {
+    if (typeof current !== "object" || current === null || !Object.hasOwn(current, key)) {
+      return { found: false, value: undefined };
+    }
+    current = (current as Record<PropertyKey, unknown>)[key];
+  }
+  return { found: true, value: current };
+}
+
+/** Cambia el valor en `path` (que ya existe); `false` si no está. */
+function replaceAt(root: unknown, path: Path, value: unknown): boolean {
+  const key = path.at(-1);
+  if (key === undefined) return false;
+  const parent = valueAt(root, path.slice(0, -1));
+  if (!parent.found || typeof parent.value !== "object" || parent.value === null) return false;
+  if (!Object.hasOwn(parent.value, key)) return false;
+  (parent.value as Record<PropertyKey, unknown>)[key] = value;
+  return true;
+}
+
+/** Cuántos valores nuevos se nombran en el aviso: el resto se muestra igual, sin nombrarse. */
+const NEW_VALUES_SHOWN = 5;
+
+/**
+ * Un valor de enum que esta CLI no conoce (spec F9.5 §4.2, B5): un servidor más nuevo agregó un
+ * estado, una variante o un código. Si **todos** los errores de validación son `invalid_value`
+ * (zod 4: un `z.enum` o un `z.literal`) sobre un texto que sí llegó, el cuerpo se acepta con ese
+ * texto tal como vino; cualquier otro error (un campo que falta, un tipo distinto, una unión sin
+ * opción) devuelve `null` y sigue siendo `UNEXPECTED_RESPONSE`.
+ *
+ * El cuerpo no se devuelve crudo: se valida otra vez con un valor conocido en cada lugar (así las
+ * fechas se convierten y los valores por defecto se ponen, como siempre) y después se repone el
+ * valor que llegó. Las etiquetas de la CLI caen al valor (`TEXT[v] ?? v`).
+ */
+function withNewEnumValues<S extends z.ZodType>(
+  schema: S,
+  body: unknown,
+  issues: readonly z.core.$ZodIssue[],
+): { data: z.output<S>; values: string[] } | null {
+  if (issues.length === 0) return null;
+  const found: { path: Path; value: string; known: unknown }[] = [];
+  for (const issue of issues) {
+    if (issue.code !== "invalid_value" || issue.values.length === 0) return null;
+    const original = valueAt(body, issue.path);
+    // Un campo que falta o que no es texto no es un valor nuevo: es otra forma.
+    if (!original.found || typeof original.value !== "string") return null;
+    found.push({ path: issue.path, value: original.value, known: issue.values[0] });
+  }
+  const patched: unknown = structuredClone(body);
+  for (const item of found) {
+    if (!replaceAt(patched, item.path, item.known)) return null;
+  }
+  const reparsed = schema.safeParse(patched);
+  if (!reparsed.success) return null;
+  const data: unknown = reparsed.data;
+  for (const item of found) {
+    if (!replaceAt(data, item.path, item.value)) return null;
+  }
+  return {
+    data: reparsed.data,
+    values: [...new Set(found.map((item) => item.value))].slice(0, NEW_VALUES_SHOWN),
+  };
+}
+
 /**
  * Lee la respuesta: un error de la API (`ErrorBody`) se lanza como `CODE: mensaje`, y una
  * respuesta exitosa se valida con su esquema de `@agentsales/api/contracts`, porque viene de la
- * red (quizás de otro servicio en el mismo puerto).
+ * red (quizás de otro servicio en el mismo puerto). Un valor de enum que esta CLI no conoce se
+ * acepta y se avisa una vez (`withNewEnumValues`, spec F9.5 §4.2).
  */
 export async function unwrap<S extends z.ZodType>(
   response: ApiResponse | Promise<ApiResponse>,
@@ -192,6 +296,14 @@ export async function unwrap<S extends z.ZodType>(
   }
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
+    const tolerated = withNewEnumValues(schema, body, parsed.error.issues);
+    if (tolerated !== null) {
+      noticeOnce(
+        "new-values",
+        `El servidor envió valores que esta CLI no conoce (${tolerated.values.join(", ")}): se muestran tal como llegan; actualiza la CLI`,
+      );
+      return tolerated.data;
+    }
     const failure = new ApiCallError(
       fromRemote(res)
         ? "respuesta inesperada: ¿esa dirección es la de AgentSales, o es de otra versión?"

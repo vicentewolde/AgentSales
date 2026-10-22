@@ -69,7 +69,7 @@ function notReady(error: ApiCallError, platform: Platform): CliError {
     issues.length === 0
       ? (error.apiMessage ?? error.message)
       : [
-          `Falta información para publicar en ${PLATFORM_TEXT[platform]}:`,
+          `Falta información para publicar en ${PLATFORM_TEXT[platform] ?? platform}:`,
           ...issues.map(readinessIssueLine),
         ].join("\n");
   return new CliError(
@@ -168,7 +168,7 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
             ? " Se abre una ventana de Chromium con el formulario lleno; tú haces Siguiente y Publicar."
             : "";
       const confirmed = await deps.confirm(
-        `La API está en vivo (PUBLISH_MODE=live): ¿publicar ${trimmed} de verdad en ${PLATFORM_TEXT[platform]}?${extra}`,
+        `La API está en vivo (PUBLISH_MODE=live): ¿publicar ${trimmed} de verdad en ${PLATFORM_TEXT[platform] ?? platform}?${extra}`,
       );
       if (!confirmed) {
         deps.printError(c.yellow("No se publicó nada: confirma en la terminal o usa --yes"));
@@ -191,7 +191,7 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
         ? "modo mixto"
         : publicationModeText(targets[0]?.dryRun ?? publishMode !== "live");
     deps.print(
-      `Publicando ${trimmed} en ${PLATFORM_TEXT[platform]} (${mode}): ` +
+      `Publicando ${trimmed} en ${PLATFORM_TEXT[platform] ?? platform} (${mode}): ` +
         targets
           .map((publication) => publicationFormatText(platform, publication.format))
           .join(", "),
@@ -247,7 +247,7 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
         wait.publications
           .map(
             (p) =>
-              `${publicationFormatText(p.platform, p.format)}: ${PUBLICATION_STATUS_TEXT[p.status]}`,
+              `${publicationFormatText(p.platform, p.format)}: ${PUBLICATION_STATUS_TEXT[p.status] ?? p.status}`,
           )
           .join(" · "),
       // Nadie tocó las que empezaron ahora (las publicaciones no tienen `queued`). Es una heurística:

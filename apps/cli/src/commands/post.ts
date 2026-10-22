@@ -115,7 +115,7 @@ function postIdOf(id: string): string {
 
 /** `discord · español`: la red y el idioma de un texto o una publicación. */
 const textName = (item: { platform: PostPlatform | string; language: Language }) =>
-  `${PLATFORM_TEXT[item.platform as PostPlatform] ?? item.platform} · ${LANGUAGE_TEXT[item.language]}`;
+  `${PLATFORM_TEXT[item.platform as PostPlatform] ?? item.platform} · ${LANGUAGE_TEXT[item.language] ?? item.language}`;
 
 /** Lo que cuesta un enlace en X (`x.md` §2, spec F9 §4.12), con los montos de core. */
 const X_LINK_COST_TEXT = `${formatXUsd(X_LINK_POST_COST_USD)} en vez de ${formatXUsd(X_POST_COST_USD)}`;
@@ -253,7 +253,7 @@ export function runPostCreate(deps: PostDeps, topic: string, options: PostCreate
       postResponseSchema,
     );
     deps.print(
-      `${c.green("✓")} Post ${post.id} creado en ${brand.slug}: "${post.topic}" (${POST_STATUS_TEXT[post.status]}, ${POST_KIND_TEXT[post.kind]})`,
+      `${c.green("✓")} Post ${post.id} creado en ${brand.slug}: "${post.topic}" (${POST_STATUS_TEXT[post.status] ?? post.status}, ${POST_KIND_TEXT[post.kind] ?? post.kind})`,
     );
     deps.print(
       c.dim(
@@ -315,8 +315,8 @@ export function runPostList(deps: PostDeps, options: PostListOptions = {}) {
         posts.map((post) => [
           post.id,
           brokers.get(post.brokerId)?.slug ?? post.brokerId,
-          POST_STATUS_TEXT[post.status],
-          POST_KIND_TEXT[post.kind],
+          POST_STATUS_TEXT[post.status] ?? post.status,
+          POST_KIND_TEXT[post.kind] ?? post.kind,
           post.plannedAt === null ? c.dim("—") : formatChileTime(post.plannedAt),
           post.topic,
         ]),
@@ -331,7 +331,7 @@ export function runPostList(deps: PostDeps, options: PostListOptions = {}) {
 export function renderPostContent(content: ContentView, c: Colors): string {
   const lines = [
     `${c.bold(textName(content))}  ${c.dim(
-      `${CONTENT_STATUS_TEXT[content.status]} · ${content.promptVersion} · ${formatChileTime(content.updatedAt)}`,
+      `${CONTENT_STATUS_TEXT[content.status] ?? content.status} · ${content.promptVersion} · ${formatChileTime(content.updatedAt)}`,
     )}`,
     ...content.body.split("\n").map((line) => (line === "" ? "" : `  ${line}`)),
   ];
@@ -377,7 +377,7 @@ export function renderPostPublications(
     ["ID", "RED", "FORMATO", "IDIOMA", "ESTADO", "MODO", "HORA (CHILE)", "ENLACE O ERROR"],
     publications.map((publication) => [
       publication.id,
-      PLATFORM_TEXT[publication.platform],
+      PLATFORM_TEXT[publication.platform] ?? publication.platform,
       publicationFormatText(publication.platform, publication.format),
       publication.language,
       paintPublicationStatus(publication, c),
@@ -407,7 +407,7 @@ export function renderPostPublications(
 export function renderPostDetail(detail: PostDetailResponse, brandSlug: string, c: Colors): string {
   const { post, media, contents, latestRun, publications } = detail;
   const lines = [
-    `${c.bold(post.topic)}  ${c.dim(`${POST_STATUS_TEXT[post.status]} · ${POST_KIND_TEXT[post.kind]} · ${brandSlug}`)}`,
+    `${c.bold(post.topic)}  ${c.dim(`${POST_STATUS_TEXT[post.status] ?? post.status} · ${POST_KIND_TEXT[post.kind] ?? post.kind} · ${brandSlug}`)}`,
     `  Id: ${post.id}`,
     `  Fecha planificada: ${post.plannedAt === null ? "sin fecha" : `${formatChileTime(post.plannedAt)} (hora de Chile)`}`,
   ];
@@ -415,7 +415,7 @@ export function renderPostDetail(detail: PostDetailResponse, brandSlug: string, 
     `  Redes: ${
       post.platforms === null
         ? "todas las de la marca"
-        : post.platforms.map((platform) => PLATFORM_TEXT[platform]).join(", ")
+        : post.platforms.map((platform) => PLATFORM_TEXT[platform] ?? platform).join(", ")
     }`,
   );
   if (post.pillar !== null) lines.push(`  Línea: ${post.pillar}`);
@@ -475,7 +475,7 @@ export function renderPostDetail(detail: PostDetailResponse, brandSlug: string, 
     if (!postPublishesOn(post, content.platform)) {
       lines.push(
         c.yellow(
-          `  ${PLATFORM_TEXT[content.platform]} ya no está entre las redes del post: este texto no se publica ni se programa`,
+          `  ${PLATFORM_TEXT[content.platform] ?? content.platform} ya no está entre las redes del post: este texto no se publica ni se programa`,
         ),
       );
     }
@@ -484,7 +484,7 @@ export function renderPostDetail(detail: PostDetailResponse, brandSlug: string, 
   if (missing.length > 0) {
     lines.push(
       c.yellow(
-        `  Falta el texto de ${missing.map((platform) => PLATFORM_TEXT[platform]).join(", ")}: pídelo con agentsales post draft ${post.id}`,
+        `  Falta el texto de ${missing.map((platform) => PLATFORM_TEXT[platform] ?? platform).join(", ")}: pídelo con agentsales post draft ${post.id}`,
       ),
       "",
     );
@@ -740,7 +740,9 @@ async function waitForDraft(
     deps.print("");
     deps.print(c.bold("Revisión"));
     for (const content of contents) {
-      deps.print(`  ${textName(content)}: ${CONTENT_STATUS_TEXT[content.status]}`);
+      deps.print(
+        `  ${textName(content)}: ${CONTENT_STATUS_TEXT[content.status] ?? content.status}`,
+      );
       deps.print(renderChecks(content, c, "    ").join("\n"));
     }
   } catch {
@@ -778,8 +780,8 @@ async function textTarget(
     throw new CliError(
       only === undefined ? "CONTENT_NOT_FOUND" : "LANGUAGE_REQUIRED",
       only === undefined
-        ? `El post no tiene texto de ${PLATFORM_TEXT[platform]}`
-        : `${PLATFORM_TEXT[platform]} tiene textos en ${languages.join(" y ")}: indica cuál con --language`,
+        ? `El post no tiene texto de ${PLATFORM_TEXT[platform] ?? platform}`
+        : `${PLATFORM_TEXT[platform] ?? platform} tiene textos en ${languages.join(" y ")}: indica cuál con --language`,
       only === undefined ? `Pide los textos con agentsales post draft ${postId}` : undefined,
     );
   }
@@ -880,7 +882,7 @@ export function runPostEdit(deps: PostDeps, id: string, options: PostEditOptions
         throw explained(error, postId);
       });
       const summary = [
-        `redes: ${post.platforms === null ? "todas las de la marca" : post.platforms.map((platform) => PLATFORM_TEXT[platform]).join(", ")}`,
+        `redes: ${post.platforms === null ? "todas las de la marca" : post.platforms.map((platform) => PLATFORM_TEXT[platform] ?? platform).join(", ")}`,
         `fecha: ${post.plannedAt === null ? "sin fecha" : `${formatChileTime(post.plannedAt)} (Chile)`}`,
         ...(changes.brief === undefined
           ? []
@@ -988,7 +990,9 @@ export function runPostApprove(deps: PostDeps, id: string, options: PostApproveO
         !skippedExcluded.includes(item),
     );
     if (skippedExcluded.length > 0) {
-      const names = [...new Set(skippedExcluded.map((item) => PLATFORM_TEXT[item.platform]))];
+      const names = [
+        ...new Set(skippedExcluded.map((item) => PLATFORM_TEXT[item.platform] ?? item.platform)),
+      ];
       deps.printError(
         c.dim(
           `  Sin aprobar: ${names.join(", ")} ya no está entre las redes del post (agrégala con agentsales post edit ${postId} --platforms <redes>)`,
@@ -1077,7 +1081,7 @@ export function runPostApprove(deps: PostDeps, id: string, options: PostApproveO
       deps.print(
         c.dim(
           withAccount.size === 0 && missing.length > 0
-            ? `→ Conecta la cuenta de ${missing.map((platform) => PLATFORM_TEXT[platform]).join(", ")} (agentsales accounts); después publícalo con agentsales post publish ${postId} o prográmalo con agentsales post schedule ${postId}`
+            ? `→ Conecta la cuenta de ${missing.map((platform) => PLATFORM_TEXT[platform] ?? platform).join(", ")} (agentsales accounts); después publícalo con agentsales post publish ${postId} o prográmalo con agentsales post schedule ${postId}`
             : `→ Publica con agentsales post publish ${postId}, o prográmalo con agentsales post schedule ${postId} --at "AAAA-MM-DD HH:MM"`,
         ),
       );
@@ -1127,14 +1131,14 @@ export function runPostPublish(deps: PostDeps, id: string, options: PostPublishO
       if (platforms.length === 0) {
         throw new CliError(
           "POST_PLATFORM_EXCLUDED",
-          `Los textos aprobados son de redes que ya no están en el post (${approved.map((platform) => PLATFORM_TEXT[platform]).join(", ")})`,
+          `Los textos aprobados son de redes que ya no están en el post (${approved.map((platform) => PLATFORM_TEXT[platform] ?? platform).join(", ")})`,
           `Agrégalas con agentsales post edit ${postId} --platforms <redes>, o aprueba el texto de otra red`,
         );
       }
     }
     const { publishMode } = await unwrap(deps.client.health.$get(), healthReportSchema);
     if (publishMode === "live" && !options.yes) {
-      const names = platforms.map((platform) => PLATFORM_TEXT[platform]).join(", ");
+      const names = platforms.map((platform) => PLATFORM_TEXT[platform] ?? platform).join(", ");
       const confirmed = await deps.confirm(
         `La API está en vivo (PUBLISH_MODE=live): ¿publicar el post de verdad en ${names}?`,
       );
@@ -1154,7 +1158,7 @@ export function runPostPublish(deps: PostDeps, id: string, options: PostPublishO
         const started = [...result.started, ...result.requeued];
         targets.push(...started);
         deps.print(
-          `Publicando en ${PLATFORM_TEXT[platform]}: ${started.length} publicación(es)${result.requeued.length > 0 ? ` (${result.requeued.length} ya estaban en curso)` : ""}`,
+          `Publicando en ${PLATFORM_TEXT[platform] ?? platform}: ${started.length} publicación(es)${result.requeued.length > 0 ? ` (${result.requeued.length} ya estaban en curso)` : ""}`,
         );
         for (const skipped of result.skipped) {
           deps.printError(
@@ -1172,7 +1176,9 @@ export function runPostPublish(deps: PostDeps, id: string, options: PostPublishO
         }
       } catch (error) {
         failed += 1;
-        deps.printError(`${c.red("✗")} ${PLATFORM_TEXT[platform]}: ${reasonOf(error, postId)}`);
+        deps.printError(
+          `${c.red("✗")} ${PLATFORM_TEXT[platform] ?? platform}: ${reasonOf(error, postId)}`,
+        );
       }
     }
     if (targets.length === 0) return 1;
@@ -1207,7 +1213,7 @@ export function runPostPublish(deps: PostDeps, id: string, options: PostPublishO
         wait.publications
           .map(
             (p) =>
-              `${PLATFORM_TEXT[p.platform]} [${p.language}]: ${PUBLICATION_STATUS_TEXT[p.status]}`,
+              `${PLATFORM_TEXT[p.platform] ?? p.platform} [${p.language}]: ${PUBLICATION_STATUS_TEXT[p.status] ?? p.status}`,
           )
           .join(" · "),
       isQueued: (wait) =>
@@ -1262,7 +1268,8 @@ export function runPostSchedule(deps: PostDeps, id: string, options: PostSchedul
       throw explained(error, postId);
     });
     for (const row of results) {
-      const name = row.platform === null ? "El post" : PLATFORM_TEXT[row.platform];
+      const name =
+        row.platform === null ? "El post" : (PLATFORM_TEXT[row.platform] ?? row.platform);
       if (row.outcome === "scheduled") {
         const publications = row.publications ?? [];
         const languages = publications.map((p) => p.language).join(", ");
@@ -1303,7 +1310,9 @@ export function runPostAccept(deps: PostDeps, id: string, options: PostAcceptOpt
     ).catch((error: unknown) => {
       throw explained(error, postId);
     });
-    deps.print(`${c.green("✓")} Idea aceptada: "${post.topic}" (${POST_STATUS_TEXT[post.status]})`);
+    deps.print(
+      `${c.green("✓")} Idea aceptada: "${post.topic}" (${POST_STATUS_TEXT[post.status] ?? post.status})`,
+    );
     if (options.wait === true) {
       if (reused)
         deps.printError(c.yellow("Ya había textos en preparación para este post: sigo esos"));

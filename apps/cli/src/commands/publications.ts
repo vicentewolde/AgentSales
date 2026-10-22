@@ -227,7 +227,7 @@ export function runRetirePublication(
       current.status === "published" &&
       // Los que no se cierran desde AgentSales (Instagram y Marketplace) se borran a mano.
       !OPERATION_PLATFORMS.has(current.platform);
-    const platform = PLATFORM_TEXT[current.platform];
+    const platform = PLATFORM_TEXT[current.platform] ?? current.platform;
     const where = current.externalUrl === null ? "" : ` (${current.externalUrl})`;
     // Hoy solo LinkedIn borra por la API: en otra red se dice antes de preguntar.
     if (options.delete && current.platform !== "linkedin") {
@@ -443,7 +443,7 @@ export function runResolvePublication(deps: ConfirmDeps, id: string, options: Re
     ).catch((error: unknown) => {
       throw explainedResolve(error);
     });
-    const name = `${publicationName(publication)} (${LANGUAGE_TEXT[publication.language]})`;
+    const name = `${publicationName(publication)} (${LANGUAGE_TEXT[publication.language] ?? publication.language})`;
     if (!changed) {
       deps.print(`${c.green("✓")} ${name} ya estaba así: sin cambios`);
       return 0;

@@ -137,7 +137,7 @@ export function runSchedule(deps: ScheduleDeps, refs: readonly string[], options
       scheduleResponseSchema,
     );
     for (const row of results) {
-      const name = `${refOf.get(row.listingId) ?? row.listingId}${row.platform === null ? "" : ` ${PLATFORM_TEXT[row.platform as Platform]}`}`;
+      const name = `${refOf.get(row.listingId) ?? row.listingId}${row.platform === null ? "" : ` ${PLATFORM_TEXT[row.platform as Platform] ?? row.platform}`}`;
       if (row.outcome === "scheduled") {
         const mode =
           row.publications?.[0] === undefined
