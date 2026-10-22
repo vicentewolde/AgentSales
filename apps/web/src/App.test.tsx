@@ -19,7 +19,10 @@ const healthy: HealthReport = {
 };
 
 /** El panel con `/health` respondido por `health` (los demás endpoints, por la API en proceso). */
-function renderWithHealth(health: () => Promise<HealthReport> | HealthReport, initialPath = "/") {
+function renderWithHealth(
+  health: () => Promise<HealthReport> | HealthReport,
+  initialPath = "/estado",
+) {
   const h = harness({
     intercept: (_method, path) =>
       path === "/health"
@@ -86,7 +89,7 @@ describe("panel: Estado del sistema", () => {
   });
 
   it("con la API real en proceso también funciona (contrato de /health)", async () => {
-    harness().renderApp("/");
+    harness().renderApp("/estado");
 
     await screen.findByRole("region", { name: "Base de datos" });
     expect(screen.getByText(/Estado general:/).textContent).toContain("ok");
@@ -124,7 +127,7 @@ describe("panel: Estado del sistema", () => {
         return calls === 1 ? new Response("Bad Gateway", { status: 502 }) : Response.json(healthy);
       },
     });
-    h.renderApp("/");
+    h.renderApp("/estado");
 
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("La API no responde (HTTP 502)");
@@ -137,11 +140,18 @@ describe("panel: Estado del sistema", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("Propiedades y Seguimiento quedan habilitadas", () => {
+  it("Propiedades y Seguimiento quedan habilitadas", async () => {
     renderWithHealth(() => healthy);
 
     const menu = screen.getByRole("navigation", { name: "Menú principal" });
-    expect(within(menu).getByRole("link", { name: "Estado" })).toBeTruthy();
+    // F9.5-T03 (D11): «Hoy» es la primera entrada y lleva a `/`; «Estado», a `/estado`.
+    const links = within(menu).getAllByRole("link");
+    expect(links[0]?.textContent).toBe("Hoy");
+    expect(links[0]?.getAttribute("href")).toBe("/");
+    // «Estado» es del administrador: aparece cuando se sabe quién es.
+    expect((await within(menu).findByRole("link", { name: "Estado" })).getAttribute("href")).toBe(
+      "/estado",
+    );
     expect(within(menu).getByRole("link", { name: "Propiedades" }).getAttribute("href")).toBe(
       "/propiedades",
     );
@@ -169,7 +179,7 @@ describe("sondeo de /health (Neon, ADR-0007)", () => {
   }
 
   it("la página Estado consulta cada 30 s", async () => {
-    expect(await healthCallsAfter("/", HEALTH_REFETCH_MS * 2 + 100)).toBe(3);
+    expect(await healthCallsAfter("/estado", HEALTH_REFETCH_MS * 2 + 100)).toBe(3);
   });
 
   it("fuera de Estado el banner no sondea: una sola consulta", async () => {
