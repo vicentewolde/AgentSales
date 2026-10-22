@@ -107,6 +107,7 @@ export function InstagramPostPreview({
               text={caption.full}
               short={caption.preview}
               more="más"
+              subject="el caption"
               lead={<strong className="font-semibold">{accountName} </strong>}
             />
           </section>

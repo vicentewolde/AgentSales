@@ -2,8 +2,8 @@ import { Gallery, PreviewFrame } from "./parts.js";
 import type { PreviewImage } from "./preview.js";
 
 /**
- * Un aviso de Facebook Marketplace: las fotos (las mismas de Portal), el título, el precio al mes
- * en pesos y la descripción del vendedor entera. El formulario de Marketplace no tiene campo de
+ * Un aviso de Facebook Marketplace: las fotos (las mismas de Portal), el título, el precio (en pesos
+ * como el plan B, `marketplacePreviewPrice`) y la descripción del vendedor entera. El formulario de Marketplace no tiene campo de
  * título (docs/04): el título se muestra con esa advertencia, porque no se escribe en Facebook.
  */
 export function MarketplacePreview({

@@ -53,12 +53,14 @@ export function Avatar({ name, className }: { name: string; className?: string }
  * Un texto cortado donde lo corta la red (`short`, de `cutText`; `null` si cabe entero), con el
  * botón que lo despliega (`more`, «más» o «ver más») pegado al final, como en la red. `lead` va
  * antes del texto (el nombre de la cuenta en Instagram) y `separator` entre los puntos suspensivos y
- * el botón.
+ * el botón. El botón dice si el texto está desplegado (`aria-expanded`) y, para el lector de
+ * pantalla, qué despliega (`subject`: «el caption», «el texto de la publicación»).
  */
 export function MoreText({
   text,
   short,
   more,
+  subject,
   separator = " ",
   lead,
   className,
@@ -66,6 +68,7 @@ export function MoreText({
   text: string;
   short: string | null;
   more: string;
+  subject: string;
   separator?: string;
   lead?: ReactNode;
   className?: string;
@@ -81,6 +84,10 @@ export function MoreText({
           {collapsed ? separator : " "}
           <button
             type="button"
+            aria-expanded={!collapsed}
+            aria-label={
+              collapsed ? `${more}: mostrar ${subject} completo` : `ver menos: acortar ${subject}`
+            }
             onClick={() => setExpanded((value) => !value)}
             className="font-medium text-fg-subtle hover:text-fg hover:underline"
           >
@@ -92,7 +99,10 @@ export function MoreText({
   );
 }
 
-/** Una foto, o un recuadro gris si todavía no tiene imagen (un medio que se procesa). */
+/**
+ * Una foto, o un recuadro gris si todavía no tiene imagen. Si le falta la versión que publica la
+ * red (`processing`), su miniatura atenuada con «procesando…».
+ */
 export function PreviewPhoto({
   image,
   alt,
@@ -102,6 +112,25 @@ export function PreviewPhoto({
   alt: string;
   className?: string;
 }) {
+  if (image.processing === true) {
+    return (
+      <span
+        role="img"
+        aria-label={`${alt}, procesando…`}
+        className={cx("relative block overflow-hidden bg-slate-100", className)}
+      >
+        {image.src !== null && (
+          <img src={image.src} alt="" className="size-full object-cover opacity-40" />
+        )}
+        <span
+          aria-hidden="true"
+          className="absolute inset-0 flex items-center justify-center text-xs font-medium text-fg-muted"
+        >
+          procesando…
+        </span>
+      </span>
+    );
+  }
   if (image.src === null) {
     return (
       <span
@@ -154,15 +183,29 @@ export function PreviewVideoBox({
           className="size-full object-cover"
         />
       ) : (
-        <span role="img" aria-label={label} className="block size-full">
+        <span
+          role="img"
+          aria-label={video.processing === true ? `${label}, procesando…` : label}
+          className="block size-full"
+        >
           {video.poster !== null && (
-            <img src={video.poster} alt="" className="size-full object-cover opacity-90" />
+            <img
+              src={video.poster}
+              alt=""
+              className={cx(
+                "size-full object-cover",
+                video.processing === true ? "opacity-40" : "opacity-90",
+              )}
+            />
           )}
           <span
             aria-hidden="true"
-            className="absolute inset-0 flex items-center justify-center text-3xl text-white/90"
+            className={cx(
+              "absolute inset-0 flex items-center justify-center text-white/90",
+              video.processing === true ? "text-sm font-medium" : "text-3xl",
+            )}
           >
-            ▶
+            {video.processing === true ? "procesando…" : "▶"}
           </span>
         </span>
       )}

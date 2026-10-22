@@ -6,7 +6,7 @@ import type {
 } from "@agentsales/api/contracts";
 import { useState } from "react";
 import { MarketplacePreview } from "../preview/MarketplacePreview.js";
-import type { PreviewText } from "../preview/preview.js";
+import { draftDiffers, type PreviewText } from "../preview/preview.js";
 import { PublicationsPanel } from "../publications/PublicationsPanel.js";
 import { safeExternalUrl } from "../publications/publications.js";
 import { marketplaceIssuesHint, ReadinessIssueList } from "../ReadinessIssueList.js";
@@ -205,7 +205,7 @@ export function MarketplacePanel({
         price={marketplacePreviewPrice(publications, edit.listingPrice)}
         photos={photos.map((item) => ({ id: item.id, src: item.url }))}
         description={text?.body ?? null}
-        draft={draft !== null}
+        draft={draftDiffers(draft, content ?? null)}
       />
       <PublicationsPanel
         platform={MARKETPLACE}

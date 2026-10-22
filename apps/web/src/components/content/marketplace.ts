@@ -25,23 +25,17 @@ const convertedPrice = (publications: readonly PricedPublication[]) =>
     .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0]?.manual;
 
 /**
- * El precio en la vista previa de Marketplace (F9.5-T07): al mes en pesos, como lo ve la gente.
- * Convertido por un intento (como el plan B), o el de la planilla; si está en UF y nada lo
- * convirtió, la UF con el aviso de que se publica en pesos (el panel no consulta la UF). `null`
- * sin precio.
+ * El precio en la vista previa de Marketplace (F9.5-T07). Convertido por un intento, el mismo
+ * texto del plan B y de la CLI (`marketplacePriceText`: en pesos con la UF usada), para que no
+ * difieran; si no, el de la planilla y, si está en UF y nada lo convirtió, con el aviso de que se
+ * publica en pesos (el panel no consulta la UF). `null` sin precio.
  */
 export function marketplacePreviewPrice(
   publications: readonly PricedPublication[],
   listing: ListingPrice | null,
 ): string | null {
   const converted = convertedPrice(publications);
-  if (converted != null) {
-    return formatListingPrice({
-      priceAmount: converted.priceClp,
-      priceCurrency: "CLP",
-      operation: "rent",
-    });
-  }
+  if (converted != null) return marketplacePriceText(converted);
   if (listing === null) return null;
   const price = formatListingPrice(listing);
   return listing.priceCurrency === "UF" ? `${price} (se publica en pesos)` : price;

@@ -45,9 +45,12 @@ describe("planBPrice (spec F5 §4.12)", () => {
 });
 
 describe("marketplacePreviewPrice (F9.5-T07)", () => {
-  it("convertido por un intento activo: al mes en pesos, sin la UF usada", () => {
+  it("convertido por un intento activo: en pesos con la UF usada, como el plan B", () => {
     expect(marketplacePreviewPrice([publication("awaiting_manual_confirm")], uf)).toBe(
-      "$238.559.452/mes",
+      planBPrice([publication("awaiting_manual_confirm")], uf),
+    );
+    expect(marketplacePreviewPrice([publication("awaiting_manual_confirm")], uf)).toBe(
+      "$238.559.452 (UF del 2026-10-10: $41.130,94)",
     );
   });
 

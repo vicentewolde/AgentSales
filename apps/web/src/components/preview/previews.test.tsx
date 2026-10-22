@@ -24,7 +24,7 @@ const item = (id: string, kind: "image" | "video"): PostMediaItem => ({
   width: null,
   height: null,
   durationS: null,
-  variants: [],
+  variants: kind === "image" ? ["thumb", "ig_4x5"] : ["thumb", "ig_reel", "x_video"],
 });
 
 const images = ["i1", "i2", "i3", "i4", "i5"].map((id) => item(id, "image"));
@@ -67,7 +67,9 @@ describe("vista previa por red", () => {
     const caption = within(figure).getByRole("region", { name: "Caption de Instagram" });
     // 125 caracteres visibles y «… más»; los hashtags quedan para después.
     expect(caption.textContent).toBe(`@marca ${LONG.slice(0, 125).trimEnd()}… más`);
-    fireEvent.click(within(caption).getByRole("button", { name: "más" }));
+    const more = within(caption).getByRole("button", { name: "más: mostrar el caption completo" });
+    expect(more.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(more);
     expect(caption.textContent).toBe(`@marca ${LONG}\n\n#equipo ver menos`);
   });
 
@@ -80,8 +82,8 @@ describe("vista previa por red", () => {
     expect(within(reel).getByRole("img", { name: "Reel de Instagram" })).toBeTruthy();
     expect(within(reel).getByText("Hola")).toBeTruthy();
     cleanup();
-    const text = preview("instagram", "text", { body: "Hola", hashtags: [] });
-    expect(within(text).getByText("Instagram necesita una imagen o un video.")).toBeTruthy();
+    preview("instagram", "text", { body: "Hola", hashtags: [] });
+    expect(screen.getByRole("note").textContent).toBe("Instagram necesita una imagen o un video.");
   });
 
   it("X: el texto entero con los hashtags y hasta 4 imágenes en grilla", () => {
@@ -96,10 +98,16 @@ describe("vista previa por red", () => {
 
   it("LinkedIn: el texto cortado con «…ver más» y las imágenes, con +N si son más de 4", () => {
     const figure = preview("linkedin", "carousel", { body: LONG, hashtags: ["#equipo"] });
-    const text = within(figure).getByRole("button", { name: "ver más" }).parentElement;
+    const more = within(figure).getByRole("button", { name: "ver más: mostrar el texto completo" });
+    const text = more.parentElement;
     expect(text?.textContent).toBe(`${LONG.slice(0, 210).trimEnd()}…ver más`);
-    fireEvent.click(within(figure).getByRole("button", { name: "ver más" }));
+    fireEvent.click(more);
     expect(text?.textContent).toBe(`${LONG}\n\n#equipo ver menos`);
+    expect(
+      within(figure)
+        .getByRole("button", { name: "ver menos: acortar el texto" })
+        .getAttribute("aria-expanded"),
+    ).toBe("true");
     expect(within(figure).getAllByRole("img")).toHaveLength(4);
     expect(within(figure).getByText("+1")).toBeTruthy();
   });
@@ -135,7 +143,28 @@ describe("vista previa por red", () => {
     expect(within(figure).getByText("Un día en la oficina #equipo")).toBeTruthy();
     cleanup();
     const noVideo = preview("tiktok", "video", { body: "Hola", hashtags: [] }, images);
-    expect(within(noVideo).getByText("TikTok publica solo video: súbelo al post.")).toBeTruthy();
+    expect(within(noVideo).getByText("Sin video todavía.")).toBeTruthy();
+    expect(screen.queryByRole("note")).toBeNull();
+    cleanup();
+    // Un post de imágenes en TikTok: el publisher lo rechazaría, y se avisa.
+    const image = preview("tiktok", "image", { body: "Hola", hashtags: [] });
+    expect(screen.getByRole("note").textContent).toBe(
+      "TikTok publica solo video: cambia el tipo del post y súbelo.",
+    );
+    expect(within(image).queryByRole("img")).toBeNull();
+  });
+
+  it("un medio sin la versión de la red dice «procesando…»; un carrusel de 1 se avisa", () => {
+    const pending = { ...item("p1", "image"), variants: ["thumb" as const] };
+    const figure = preview("instagram", "carousel", { body: "Hola", hashtags: [] }, [pending]);
+    expect(within(figure).getByRole("img", { name: "Imagen del post, procesando…" })).toBeTruthy();
+    expect(screen.getByRole("note").textContent).toBe(
+      "Un carrusel lleva de 2 a 10 imágenes y este post tiene 1.",
+    );
+    cleanup();
+    const reelOnly = { ...item("v2", "video"), variants: ["thumb" as const, "ig_reel" as const] };
+    const x = preview("x", "video", { body: "Mira", hashtags: [] }, [reelOnly]);
+    expect(within(x).getByRole("img", { name: "Video del post en X, procesando…" })).toBeTruthy();
   });
 
   it("el borrador sin guardar se dice en la leyenda", () => {

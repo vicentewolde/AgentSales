@@ -152,7 +152,9 @@ describe("panel: sección Contenido", () => {
     const caption = () => within(section).getByRole("region", { name: "Caption de Instagram" });
     // Como Instagram (F9.5-T07): el comienzo del caption y «… más».
     expect(caption().textContent).toMatch(/… más$/);
-    fireEvent.click(within(section).getByRole("button", { name: "más" }));
+    fireEvent.click(
+      within(section).getByRole("button", { name: "más: mostrar el caption completo" }),
+    );
     expect(caption().textContent).toContain("#");
     expect(
       within(
@@ -433,9 +435,9 @@ describe("panel: edición de textos", () => {
     const preview = () =>
       within(t.section).getByRole("figure", { name: "Vista previa de Portal Inmobiliario" });
     const saved = within(preview()).getByRole("heading").textContent ?? "";
-    // Con el editor abierto, la vista previa ya es la del borrador (todavía igual al guardado).
+    // Con el editor abierto y sin cambios, el borrador es igual al guardado: no hay leyenda.
     expect(saved).toMatch(/en venta .* en Ñuñoa/);
-    expect(preview().textContent).toContain("con tu borrador, sin guardar");
+    expect(preview().textContent).not.toContain("sin guardar");
 
     fireEvent.change(within(t.form).getByLabelText("Título"), {
       target: { value: "Casa con patio en Ñuñoa" },
@@ -449,6 +451,13 @@ describe("panel: edición de textos", () => {
     expect(within(preview()).getByText("Texto del borrador.")).toBeTruthy();
     expect(preview().textContent).toContain("con tu borrador, sin guardar");
     expect(t.requests.filter((request) => request.startsWith("PATCH"))).toEqual([]);
+
+    // Si el borrador vuelve a ser igual al guardado, la leyenda se va.
+    fireEvent.change(within(t.form).getByLabelText("Título"), { target: { value: saved } });
+    fireEvent.change(within(t.form).getByLabelText("Descripción"), {
+      target: { value: (await t.contents.listCurrent(listingSubject(t.listing.id)))[1]?.body },
+    });
+    expect(preview().textContent).not.toContain("sin guardar");
 
     fireEvent.click(within(t.form).getByRole("button", { name: "Cancelar" }));
     expect(within(preview()).getByRole("heading").textContent).toBe(saved);
@@ -466,8 +475,17 @@ describe("panel: edición de textos", () => {
     const caption = () => within(t.section).getByRole("region", { name: "Caption de Instagram" });
     // "Casa nueva con patio", una línea en blanco y "#nunoa": Instagram muestra dos líneas.
     expect(caption().textContent).toBe("tu cuenta Casa nueva con patio… más");
-    fireEvent.click(within(caption()).getByRole("button", { name: "más" }));
+    const more = within(caption()).getByRole("button", {
+      name: "más: mostrar el caption completo",
+    });
+    expect(more.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(more);
     expect(caption().textContent).toBe("tu cuenta Casa nueva con patio\n\n#nunoa ver menos");
+    expect(
+      within(caption())
+        .getByRole("button", { name: "ver menos: acortar el caption" })
+        .getAttribute("aria-expanded"),
+    ).toBe("true");
   });
 
   it("edita y guarda: queda editado a mano y la revisión llega con la respuesta", async () => {

@@ -15,7 +15,7 @@ import { type KeyboardEvent, useRef, useState } from "react";
 import { useAccountName } from "../preview/account-name.js";
 import { InstagramPostPreview, InstagramReelPreview } from "../preview/InstagramPreview.js";
 import { PortalPreview } from "../preview/PortalPreview.js";
-import type { PreviewImage, PreviewText } from "../preview/preview.js";
+import { draftDiffers, type PreviewImage, type PreviewText } from "../preview/preview.js";
 import { PublicationsPanel } from "../publications/PublicationsPanel.js";
 import { portalIssuesHint, ReadinessIssueList } from "../ReadinessIssueList.js";
 import { ApprovableText, type EditContext } from "./ApprovableText.js";
@@ -27,12 +27,12 @@ const previewImages = (media: readonly ContentMedia[]): PreviewImage[] =>
 
 /**
  * El texto que muestra la vista previa: el borrador del editor mientras se edita (F9.5-T07), si no
- * el guardado. `draft` dice cuál es.
+ * el guardado. `draft` dice si el borrador ya difiere del guardado (la leyenda «sin guardar»).
  */
 function useShownText(content: ContentView | undefined) {
   const [draft, setDraft] = useState<PreviewText | null>(null);
   const text: PreviewText | null = draft ?? content ?? null;
-  return { text, draft: draft !== null, onDraft: setDraft };
+  return { text, draft: draftDiffers(draft, content ?? null), onDraft: setDraft };
 }
 
 function InstagramPanel({

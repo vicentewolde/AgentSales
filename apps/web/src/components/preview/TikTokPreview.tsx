@@ -23,7 +23,7 @@ export function TikTokPreview({
     <PreviewFrame label={label} network="TikTok" draft={draft}>
       {video === null ? (
         <p className="flex aspect-[9/16] w-52 items-center justify-center rounded-lg bg-slate-100 p-4 text-center text-sm text-fg-subtle">
-          TikTok publica solo video: súbelo al post.
+          Sin video todavía.
         </p>
       ) : (
         <PreviewVideoBox

@@ -253,12 +253,14 @@ Cada texto, el de un post (en su pestaña de red e idioma) y el de una propiedad
 - **Instagram:** la imagen, el carrusel (deslízalo; arriba dice en cuál vas, `1/4`, y abajo los puntos) o el reel vertical; el nombre de la cuenta conectada (`@usuario`) y el caption con los hashtags, cortado como Instagram (unos 125 caracteres o dos líneas) con «… más».
 - **X:** el texto entero con los hashtags (X no lo corta: el contador dice si pasa de 280) y hasta 4 imágenes en grilla, o el video.
 - **LinkedIn:** el texto cortado como LinkedIn (unos 210 caracteres o tres líneas) con «…ver más», y la imagen o las imágenes. Los caracteres que LinkedIn exige escapar se ven normales, como los lee la gente.
-- **Discord:** el mensaje del webhook (su nombre, con la etiqueta APP), el texto **sin hashtags** (en Discord no se envían) y los adjuntos.
+- **Discord:** el mensaje del webhook (su nombre, con la etiqueta APP), el texto **sin hashtags** (en Discord no se envían) y los adjuntos. `@everyone` y `@here` se ven como los escribiste, pero al enviar se neutralizan (no avisan a todo el canal), y la revisión no deja aprobar un texto que los tenga.
 - **TikTok:** el video vertical. **TikTok no recibe el texto:** el video llega como borrador a la bandeja de la app y ahí pegas el texto que aparece debajo, «Texto para pegar en la app».
 - **Portal Inmobiliario:** las fotos (la portada grande y las demás en miniatura), el título, el precio como en la planilla (`UF 5.800`) y la descripción entera.
-- **Marketplace:** las fotos, el título (con el aviso de que el formulario de Facebook no tiene título: solo lo usa el plan B), el precio al mes en pesos (si está en UF y todavía no se convirtió, lo dice) y la descripción entera.
+- **Marketplace:** las fotos, el título (con el aviso de que el formulario de Facebook no tiene título: solo lo usa el plan B), el precio en pesos como en el plan B, con la UF usada (si está en UF y todavía no se convirtió, lo dice) y la descripción entera.
 
-**Al editar**, la vista previa cambia mientras escribes, antes de guardar, y lo dice arriba («con tu borrador, sin guardar»). Si cancelas, vuelve al texto guardado. Si la cuenta de la red no está conectada, aparece «tu cuenta» en vez del nombre.
+**Los medios de un post** son los que publicará la red: las fotos y el video en su orden, con la versión de esa red; uno que todavía no la tiene dice «procesando…». Si la red rechazaría el post por sus medios, la vista previa lo avisa arriba: un carrusel de Instagram con menos de 2 imágenes, o TikTok en un post que no es de video.
+
+**Al editar**, la vista previa cambia mientras escribes, antes de guardar; cuando el borrador ya es distinto del texto guardado, lo dice arriba («con tu borrador, sin guardar»). Si cancelas, vuelve al texto guardado. Si la cuenta de la red no está conectada, aparece «tu cuenta» en vez del nombre.
 
 ## Pedir a la IA un plan de ideas (F9)
 

@@ -91,10 +91,11 @@ function Editor({
 
   // La vista previa sigue al borrador mientras se escribe (F9.5-T07): cada cambio se avisa con el
   // texto como lo guardaría la API, y al cerrar el editor la vista previa vuelve al guardado.
+  // Lo que el editor no toca (el título en Instagram, los hashtags en los demás) va como está.
   const draftOf = (next: { title: string; body: string; hashtags: string }): PreviewText => ({
-    title: instagram ? null : next.title.trim(),
+    title: instagram ? content.title : next.title.trim(),
     body: next.body.trim(),
-    hashtags: instagram ? parseHashtags(next.hashtags) : [],
+    hashtags: instagram ? parseHashtags(next.hashtags) : content.hashtags,
   });
   const onDraftRef = useRef(onDraft);
   onDraftRef.current = onDraft;

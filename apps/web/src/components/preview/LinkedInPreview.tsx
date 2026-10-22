@@ -35,6 +35,7 @@ export function LinkedInPreview({
           text={text}
           short={cutText(text, LINKEDIN_CUT)}
           more="ver más"
+          subject="el texto"
           separator=""
           className="px-3 py-2 text-sm text-fg"
         />

@@ -21,7 +21,7 @@ import { parseHashtags } from "../content/editor.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 import { useAccountName } from "../preview/account-name.js";
 import { PostPreview } from "../preview/PostPreview.js";
-import type { PreviewText } from "../preview/preview.js";
+import { draftDiffers, type PreviewText } from "../preview/preview.js";
 import { editBlockedReason, unapproveBlockedReason } from "../publications/publications.js";
 import { Button } from "../ui/Button.js";
 import { Field, Input, Textarea } from "../ui/Field.js";
@@ -95,7 +95,7 @@ function Editor({
   const [hashtags, setHashtags] = useState(content.hashtags.join(" "));
   const save = useEditPostContent(postId);
   const draftOf = (next: { body: string; hashtags: string }): PreviewText => ({
-    title: null,
+    title: content.title,
     body: next.body.trim(),
     hashtags: parseHashtags(next.hashtags),
   });
@@ -260,7 +260,7 @@ function TextTab({
         media={media}
         text={draft ?? content}
         accountName={accountName}
-        draft={draft !== null}
+        draft={draftDiffers(draft, content)}
       />
       <Checks content={content} />
       {approval.error && <ErrorAlert error={approval.error} />}
