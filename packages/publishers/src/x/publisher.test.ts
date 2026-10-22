@@ -13,7 +13,13 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import { errorText, usePlatformServer } from "../../test/msw-server.js";
 import { createXApi } from "./api.js";
-import { createXPublisher, validateXInput, type XPublishNote, xCostNote } from "./publisher.js";
+import {
+  createXPublisher,
+  openXMedia,
+  validateXInput,
+  type XPublishNote,
+  xCostNote,
+} from "./publisher.js";
 
 // F9-T16: contratos del publisher de X con msw. Ninguna petición sale a X ni a R2: una sin handler
 // falla el test (`usePlatformServer`). Los cuerpos de error imitan los de `x.md` §7 (los textos
@@ -715,5 +721,97 @@ describe("createXApi: uploadVideo con un flujo (F9.5-T08)", () => {
     expect(state.closed).toBe(true);
     // Se dejó de leer en la primera parte rechazada.
     expect(pulled).toBe(1);
+  });
+});
+
+describe("openXMedia y el video tras un 401 (F9.5-T08): cierre del flujo", () => {
+  it("un 401 a medio subir el video vuelve a abrirlo de R2 y lo sube entero con el token nuevo", async () => {
+    const MB = 1024 * 1024;
+    let downloads = 0;
+    server.use(
+      http.get(`${R2}/*`, () => {
+        downloads += 1;
+        return new HttpResponse(new Uint8Array(9 * MB).fill(3), {
+          status: 200,
+          headers: { "content-length": String(9 * MB) },
+        });
+      }),
+      http.post(`${API}/2/media/upload/initialize`, () =>
+        HttpResponse.json({ data: { id: "777", expires_after_secs: 86400 } }),
+      ),
+    );
+    const appends: string[] = [];
+    server.use(
+      http.post(`${API}/2/media/upload/777/append`, async ({ request }) => {
+        const form = await request.formData();
+        const fresh = request.headers.get("authorization") === `Bearer ${NEW_TOKEN}`;
+        appends.push(`${fresh ? "nuevo" : "viejo"}:${String(form.get("segment_index"))}`);
+        return fresh ? new HttpResponse(null, { status: 204 }) : problem(401);
+      }),
+      http.post(`${API}/2/media/upload/777/finalize`, () =>
+        HttpResponse.json({ data: { id: "777" } }),
+      ),
+    );
+    fakeCreate();
+    const provider = tokens();
+    const result = await createXPublisher({ api: api() }).publish(
+      input({ media: [video(9 * MB)] }),
+      context(null, { accessToken: provider.provider }),
+    );
+    expect(result.externalId).toBe("1850000000000000001");
+    expect(downloads).toBe(2);
+    expect(appends).toEqual(["viejo:0", "nuevo:0", "nuevo:1", "nuevo:2"]);
+    expect(provider.calls).toEqual([{}, { rejectedToken: TOKEN }]);
+  });
+
+  it("si quien llama corta a mitad de la lectura, el siguiente trozo es X_ABORTED", async () => {
+    server.use(
+      http.get(`${R2}/*`, () => {
+        let sent = false;
+        const body = new ReadableStream<Uint8Array>({
+          pull(controller) {
+            if (sent) return new Promise<void>(() => undefined);
+            sent = true;
+            controller.enqueue(new Uint8Array(1024).fill(5));
+            return undefined;
+          },
+        });
+        return new HttpResponse(body, {
+          status: 200,
+          headers: { "content-length": String(4096) },
+        });
+      }),
+    );
+    const caller = new AbortController();
+    const opened = await openXMedia(video(4096), { signal: caller.signal });
+    expect(opened.totalBytes).toBe(4096);
+    const iterator = opened.chunks[Symbol.asyncIterator]();
+    expect((await iterator.next()).value?.byteLength).toBe(1024);
+    const pending = iterator.next();
+    caller.abort();
+    await expect(pending).rejects.toMatchObject({ code: "X_ABORTED" });
+    // Ya cerrado: no vuelve a leer.
+    expect(await iterator.next()).toEqual({ done: true, value: undefined });
+  });
+
+  it("una respuesta que no es 2xx falla sin leer el cuerpo y sin la URL en el error", async () => {
+    server.use(http.get(`${R2}/*`, () => new HttpResponse("no está", { status: 404 })));
+    const error = await openXMedia(video(4096)).catch((caught: unknown) => caught);
+    expect(error).toMatchObject({
+      code: "X_MEDIA_UNAVAILABLE",
+      retriable: true,
+      details: { mediaId: "vid-1", reason: "http_404" },
+    });
+    expect(JSON.stringify(error)).not.toContain("Signature");
+  });
+
+  it("un aborto antes de abrir no llama a R2", async () => {
+    const caller = new AbortController();
+    caller.abort();
+    const error = await openXMedia(video(4096), { signal: caller.signal }).catch(
+      (caught: unknown) => caught,
+    );
+    expect(error).toMatchObject({ code: "X_ABORTED" });
+    expect(await recorded()).toEqual([]);
   });
 });

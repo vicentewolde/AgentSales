@@ -254,7 +254,9 @@ export interface PublicationRepository {
    * la suma de `cost_usd` de sus publicaciones en `live` (no `dry_run`) que pudieron cobrar
    * (`COST_COUNTED_STATUSES`: publicando, publicadas, pausadas, retiradas o con resultado dudoso;
    * nunca las fallidas ni las canceladas), por `published_at` o, sin ella, `updated_at`. Sin
-   * contar `excludePublicationId` (la del intento en curso).
+   * contar `excludePublicationId` (la del intento en curso). Solo de lectura (mostrar el gasto):
+   * para decidir si un post cabe bajo el tope, `reserveCostUsd` (F9.5-T08), que suma y anota con
+   * el candado de la cuenta.
    */
   sumCostUsdSince(
     platformAccountId: string,
