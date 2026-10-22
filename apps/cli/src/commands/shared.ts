@@ -6,7 +6,10 @@ import {
   LANGUAGES,
   type Language,
   type ListingPlatform,
+  MUSIC_TRACK_IDS,
+  type MusicTrackId,
   manualConfirmCommands,
+  musicTrackOf,
   PLATFORM_SHORT_NAMES,
   type Platform,
   type PlatformShortName,
@@ -187,4 +190,24 @@ export async function withConfirmation<T>(
     }
     return call(true);
   }
+}
+
+/** Lo que se escribe para «sin música» (`listing music`, `post edit --music`). */
+export const NO_MUSIC_WORD = "ninguna";
+
+/**
+ * La pista que escribió el operador: un id del catálogo, o `ninguna` (sin música). Otra cosa es
+ * `MUSIC_TRACK_INVALID`, con la lista de pistas (F9.5-T19).
+ */
+export function parseMusicTrack(value: string): MusicTrackId | null {
+  const word = value.trim().toLowerCase();
+  if (word === NO_MUSIC_WORD) return null;
+  const track = musicTrackOf(word);
+  if (track === null) {
+    throw new CliError(
+      "MUSIC_TRACK_INVALID",
+      `No existe la pista «${value.trim()}». Elige una de: ${MUSIC_TRACK_IDS.join(", ")}, o ${NO_MUSIC_WORD}`,
+    );
+  }
+  return track.id;
 }

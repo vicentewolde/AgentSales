@@ -691,7 +691,12 @@ describe("aceptar, descartar y editar ideas", () => {
     const { run } = await t.plan({ count: 1 });
     const [ideaPost] = await t.posts.list({ planRunId: run.id }, { kind: "all" });
     const edited = await updatePost(
-      { posts: t.posts, postLock: t.postLock, editorialProfiles: t.editorialProfiles },
+      {
+        posts: t.posts,
+        postLock: t.postLock,
+        editorialProfiles: t.editorialProfiles,
+        queue: createInMemoryJobQueue(),
+      },
       ADMIN,
       ideaPost?.id ?? "",
       { brief: "Contar cómo elegimos las redes", plannedAt: new Date("2026-10-29T12:00:00Z") },
@@ -773,7 +778,12 @@ describe("las redes de una idea aceptada (decisión del operador, F9-T20)", () =
     const t = await setup();
     const { run } = await t.plan({ count: 1 });
     const [ideaPost] = await t.posts.list({ planRunId: run.id }, { kind: "all" });
-    const deps = { posts: t.posts, postLock: t.postLock, editorialProfiles: t.editorialProfiles };
+    const deps = {
+      posts: t.posts,
+      postLock: t.postLock,
+      editorialProfiles: t.editorialProfiles,
+      queue: createInMemoryJobQueue(),
+    };
     const edited = await updatePost(deps, ADMIN, ideaPost?.id ?? "", {
       platforms: ["LinkedIn", "x", "x"],
     });

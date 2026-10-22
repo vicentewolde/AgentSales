@@ -148,6 +148,8 @@ export function createInMemoryListingRepository(
   const times = new Map<string, { createdAt: Date; updatedAt: Date }>();
   // El motivo de cierre, aparte por lo mismo (ADR-0019).
   const closeReasons = new Map<string, CloseReason | null>();
+  /** La música del reel (F9.5-T19): fuera de lo que escribe la importación, como en la base. */
+  const musicTracks = new Map<string, string | null>();
   let clock = Date.UTC(2026, 0, 1);
   const tick = () => {
     clock += 1000;
@@ -163,6 +165,7 @@ export function createInMemoryListingRepository(
     return {
       ...rest,
       closeReason: closeReasons.get(listing.id) ?? null,
+      musicTrackId: musicTracks.get(listing.id) ?? null,
       createdAt: time.createdAt,
       updatedAt: time.updatedAt,
     };
@@ -204,6 +207,13 @@ export function createInMemoryListingRepository(
       stored.set(id, updated);
       touch(id);
       return record(updated);
+    },
+    async setMusicTrack(id, musicTrackId) {
+      const current = stored.get(id);
+      if (current === undefined) return null;
+      musicTracks.set(id, musicTrackId);
+      touch(id);
+      return entity(current);
     },
     async promoteToReady(id) {
       const current = stored.get(id);

@@ -52,6 +52,8 @@ async function setup(
     broker?: Partial<Broker>;
     ownName?: LLMProvider["name"];
     apiLlm?: ScriptedLlmResponse[] | null;
+    /** F9.5-T19: ffmpeg no puede leer la pista de música. */
+    musicFails?: boolean;
   } = {},
 ) {
   const media = createInMemoryMediaRepository();
@@ -128,6 +130,7 @@ async function setup(
       kind === "image"
         ? { width: options.photoWidth ?? 2000, height: 1500, durationS: null }
         : { width: 1920, height: 1080, durationS: options.videoDurationS ?? 30 },
+    ...(options.musicFails === undefined ? {} : { musicFails: options.musicFails }),
   });
   const deps: PrepareContentDeps = {
     contentRuns: contentRepos.contentRuns,
@@ -377,6 +380,7 @@ describe("prepareContent · reel con fotos (F9.5-T18)", () => {
         photos: 3,
         mimes: ["image/jpeg", "image/jpeg", "image/jpeg"],
         overlay: true,
+        music: null,
       },
     ]);
     expect((await t.contentRepos.contentRuns.get(runId))?.report?.reel).toBe("created");
@@ -513,6 +517,126 @@ describe("prepareContent · reel con fotos (F9.5-T18)", () => {
     );
     expect(variantsOf(await t.derivatives(), "ig_reel")).toEqual([]);
     expect(t.storage.objects.has(oldReel?.storagePath ?? "")).toBe(false);
+  });
+});
+
+describe("prepareContent · música del reel (F9.5-T19)", () => {
+  const upload = (t: Awaited<ReturnType<typeof setup>>, id: string, body: string) =>
+    t.storage.put(`assets/musica/${id}.mp3`, text(body), "audio/mpeg");
+  const reelOf = async (t: Awaited<ReturnType<typeof setup>>) =>
+    variantsOf(await t.derivatives(), "ig_reel")[0];
+  const lastVideoCall = (t: Awaited<ReturnType<typeof setup>>) =>
+    t.processor.calls.filter((call) => call.kind === "video" && call.reel).at(-1);
+
+  it("elegir una pista rehace el reel con ella; quitarla vuelve a la clave de antes", async () => {
+    const t = await setup();
+    await upload(t, "calm-piano", "PIANO");
+    await upload(t, "up-in-the-sky", "CIELO");
+    await t.prepare(await t.newRun(false));
+    const plain = await reelOf(t);
+    expect(lastVideoCall(t)).toMatchObject({ music: null });
+
+    await t.listings.setMusicTrack(t.listingId, "calm-piano");
+    const withMusic = await t.newRun(false);
+    await t.prepare(withMusic);
+    const piano = await reelOf(t);
+    expect((await t.contentRepos.contentRuns.get(withMusic))?.report).toMatchObject({
+      reel: "created",
+      warnings: [],
+    });
+    expect(piano?.storagePath).not.toBe(plain?.storagePath);
+    expect(lastVideoCall(t)).toMatchObject({ music: "PIANO" });
+    // El reel sin música se reemplazó y se borró de R2.
+    expect(t.storage.objects.has(plain?.storagePath ?? "")).toBe(false);
+
+    // Sin cambios, no se rehace.
+    const same = await t.newRun(false);
+    await t.prepare(same);
+    expect((await t.contentRepos.contentRuns.get(same))?.report?.reel).toBe("existing");
+
+    await t.listings.setMusicTrack(t.listingId, "up-in-the-sky");
+    await t.prepare(await t.newRun(false));
+    expect(lastVideoCall(t)).toMatchObject({ music: "CIELO" });
+    expect((await reelOf(t))?.storagePath).not.toBe(piano?.storagePath);
+
+    // «Sin música»: la misma clave que antes de elegir una pista (como antes de F9.5-T19).
+    await t.listings.setMusicTrack(t.listingId, null);
+    await t.prepare(await t.newRun(false));
+    expect((await reelOf(t))?.storagePath).toBe(plain?.storagePath);
+    expect(lastVideoCall(t)).toMatchObject({ music: null });
+  });
+
+  it("el reel con fotos también lleva la música elegida", async () => {
+    const t = await setup({ originals: PHOTOS });
+    await upload(t, "serenade-guitar", "GUITARRA");
+    await t.prepare(await t.newRun(false));
+    const plain = await reelOf(t);
+    await t.listings.setMusicTrack(t.listingId, "serenade-guitar");
+    await t.prepare(await t.newRun(false));
+    const reel = await reelOf(t);
+    expect(reel?.storagePath).toMatch(/\/processed\/ig_reel\/photos-[^/]+\.mp4$/);
+    expect(reel?.storagePath).not.toBe(plain?.storagePath);
+    expect(t.processor.calls.filter((call) => call.kind === "photoReel").at(-1)).toMatchObject({
+      music: "GUITARRA",
+    });
+  });
+
+  it("una pista que no está en R2: el reel sale sin música (la clave de siempre) y se avisa", async () => {
+    const t = await setup();
+    await t.prepare(await t.newRun(false));
+    const plain = await reelOf(t);
+    await t.listings.setMusicTrack(t.listingId, "calm-piano");
+    const runId = await t.newRun(false);
+    await t.prepare(runId);
+    const run = await t.contentRepos.contentRuns.get(runId);
+    expect(run?.status).toBe("succeeded");
+    expect(run?.report).toMatchObject({ reel: "existing" });
+    expect(run?.report?.warnings).toEqual([
+      expect.stringContaining("«Calm Piano 1 (Vaporware)» todavía no está subida"),
+    ]);
+    expect((await reelOf(t))?.storagePath).toBe(plain?.storagePath);
+
+    // Cuando el operador la sube, la siguiente preparación rehace el reel con ella.
+    await upload(t, "calm-piano", "PIANO");
+    const after = await t.newRun(false);
+    await t.prepare(after);
+    expect((await t.contentRepos.contentRuns.get(after))?.report).toMatchObject({
+      reel: "created",
+      warnings: [],
+    });
+  });
+
+  it("si ffmpeg no puede mezclar la pista, el reel sale sin música, con la clave sin música y un aviso", async () => {
+    for (const originals of [undefined, PHOTOS]) {
+      const t = await setup({
+        musicFails: true,
+        ...(originals === undefined ? {} : { originals }),
+      });
+      await upload(t, "calm-piano", "PIANO-DAÑADO");
+      await t.prepare(await t.newRun(false));
+      const plain = await reelOf(t);
+      await t.listings.setMusicTrack(t.listingId, "calm-piano");
+      const runId = await t.newRun(false);
+      await t.prepare(runId);
+      const run = await t.contentRepos.contentRuns.get(runId);
+      expect(run?.status).toBe("succeeded");
+      expect(run?.report?.warnings).toEqual([
+        expect.stringContaining("no se pudo mezclar (el archivo no se lee)"),
+      ]);
+      // La misma clave que sin música: la próxima corrida lo vuelve a intentar con la pista.
+      expect((await reelOf(t))?.storagePath).toBe(plain?.storagePath);
+    }
+  });
+
+  it("una pista que ya no está en el catálogo: sin música y con aviso", async () => {
+    const t = await setup();
+    await t.listings.setMusicTrack(t.listingId, "pista-retirada");
+    const runId = await t.newRun(false);
+    await t.prepare(runId);
+    expect((await t.contentRepos.contentRuns.get(runId))?.report?.warnings).toEqual([
+      expect.stringContaining("ya no está en la biblioteca"),
+    ]);
+    expect(lastVideoCall(t)).toMatchObject({ music: null });
   });
 });
 

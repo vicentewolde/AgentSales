@@ -12,7 +12,8 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "check": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/check.ts"
+    "check": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/check.ts",
+    "music:upload": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/music-upload.ts"
   },
   "dependencies": {
     "@agentsales/config": "workspace:*",

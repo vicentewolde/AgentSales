@@ -180,6 +180,42 @@ describe("panel: sección Contenido", () => {
     expect(within(reel).getByLabelText("Reel de Instagram")).toBeTruthy();
   });
 
+  it("la música del reel (F9.5-T19): elegirla, escucharla, una sin subir avisa y «Sin música» la quita", async () => {
+    const t = await setup();
+    await t.storage.put("assets/musica/calm-piano.mp3", new Uint8Array([1, 2, 3]), "audio/mpeg");
+    const section = await t.open();
+    const select = within(section).getByRole("combobox", {
+      name: "Música del reel",
+    }) as HTMLSelectElement;
+    expect(select.value).toBe("");
+    await within(section).findByRole("option", { name: "Calm Piano 1 (Vaporware) · Tranquila" });
+    expect(
+      within(section).getByRole("option", {
+        name: "Sunny Side Up · Alegre (todavía no está subida)",
+      }),
+    ).toBeTruthy();
+
+    fireEvent.change(select, { target: { value: "calm-piano" } });
+    await waitFor(async () =>
+      expect((await t.listings.get(t.listing.id))?.musicTrackId).toBe("calm-piano"),
+    );
+    await waitFor(() => expect(select.value).toBe("calm-piano"));
+    const audio = within(section).getByLabelText("Escuchar Calm Piano 1 (Vaporware)");
+    expect(audio.getAttribute("src")).toContain("assets/musica/calm-piano.mp3");
+    expect(within(section).getByText(/toca «Rehacer imágenes» para armar el reel/)).toBeTruthy();
+
+    fireEvent.change(select, { target: { value: "sunny-side-up" } });
+    expect(await within(section).findByText(/todavía no está subida a la biblioteca/)).toBeTruthy();
+    await waitFor(async () =>
+      expect((await t.listings.get(t.listing.id))?.musicTrackId).toBe("sunny-side-up"),
+    );
+
+    fireEvent.change(select, { target: { value: "" } });
+    await waitFor(async () =>
+      expect((await t.listings.get(t.listing.id))?.musicTrackId).toBeNull(),
+    );
+  });
+
   it("la vista previa por canal: la cuenta de Instagram, las páginas del carrusel, el precio y la galería (F9.5-T07)", async () => {
     const t = await setup({ video: true });
     await t.platformAccounts.upsertConnected({

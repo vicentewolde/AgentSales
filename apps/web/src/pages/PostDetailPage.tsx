@@ -19,6 +19,7 @@ import { ErrorAlert } from "../components/ErrorAlert.js";
 import { useBrandPlatforms } from "../components/posts/brand-platforms.js";
 import { POST_KIND_LABEL, PostStatusBadge } from "../components/posts/labels.js";
 import { PostMedia } from "../components/posts/PostMedia.js";
+import { PostMusic } from "../components/posts/PostMusic.js";
 import { PostPublications, PostPublishBar } from "../components/posts/PostPublishing.js";
 import { PostTexts } from "../components/posts/PostTexts.js";
 import { XLinkControl } from "../components/posts/XLinkControl.js";
@@ -409,6 +410,11 @@ export function PostDetailPage() {
             media={media}
             lockReason={archived ? "El post está archivado." : null}
             waiting={uploadsInReview}
+          />
+          <PostMusic
+            post={item}
+            media={media}
+            lockReason={archived ? "El post está archivado." : null}
           />
         </div>
 

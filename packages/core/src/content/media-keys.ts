@@ -75,12 +75,20 @@ export function renderInput(
   return canonicalJson({ templates: templatesVersion, data: slideKeyInput(data) });
 }
 
-/** El texto del reel, con las versiones de las plantillas y del procesador. */
+/**
+ * El texto del reel, con las versiones de las plantillas y del procesador y, si lleva, el id de su
+ * música (F9.5-T19). Sin música no hay campo `music`: las claves de los reels de antes no cambian.
+ */
 export function reelTextInput(
   data: ReelOverlayData,
-  versions: { templates: string; processor: string },
+  versions: { templates: string; processor: string; music?: string },
 ): string {
-  return canonicalJson({ ...versions, data: slideKeyInput(data) });
+  const { music, ...rest } = versions;
+  return canonicalJson({
+    ...rest,
+    ...(music === undefined ? {} : { music }),
+    data: slideKeyInput(data),
+  });
 }
 
 // ── Posts (spec F9 §4.5, F9-T10) ─────────────────────────────────────────────
@@ -112,14 +120,17 @@ export function postVariantPath(
 }
 
 /**
- * Un video derivado de un original de un post: el reel (sin texto encima) o el video para X. Lleva
- * la versión del procesador, como las variantes JPEG: cambiarla los regenera.
+ * Un video derivado de un original de un post: el reel (sin texto encima), el video para X o el de
+ * Discord. Lleva la versión del procesador, como las variantes JPEG: cambiarla los regenera. Con
+ * música (F9.5-T19), también el id de la pista; sin ella, la clave de siempre.
  */
 export function postVideoPath(
   postId: string,
   variant: VideoMediaVariant,
   originalSha256: string,
   processorVersion: string,
+  musicTrackId: string | null = null,
 ): string {
-  return `${postObjectsPrefix(postId)}processed/${variant}/${originalSha256}-v${processorVersion}.mp4`;
+  const music = musicTrackId === null ? "" : `-m-${musicTrackId}`;
+  return `${postObjectsPrefix(postId)}processed/${variant}/${originalSha256}-v${processorVersion}${music}.mp4`;
 }

@@ -30,6 +30,9 @@ import {
   isTerminalContentRun,
   LANGUAGE_TEXT,
   type Language,
+  MUSIC_TRACK_IDS,
+  type MusicTrackId,
+  musicTrackText,
   PLATFORM_TEXT,
   POST_KIND_TEXT,
   POST_KINDS,
@@ -69,6 +72,7 @@ import {
   languageOption,
   manualConfirmHint,
   POST_PLATFORM_OPTION_NAMES,
+  parseMusicTrack,
   platformShortName,
   postPlatformOption,
 } from "./shared.js";
@@ -415,6 +419,10 @@ export function renderPostDetail(detail: PostDetailResponse, brandSlug: string, 
     }`,
   );
   if (post.pillar !== null) lines.push(`  Tema: ${post.pillar}`);
+  // F9.5-T19: la música de sus videos (solo si tiene alguno o ya se eligió).
+  if (post.musicTrackId !== null || media.some((item) => item.kind === "video")) {
+    lines.push(`  Música de los videos: ${musicTrackText(post.musicTrackId)}`);
+  }
   // F9-T16: la marca del operador que permite un enlace en X (sin ella, un texto con enlace no se aprueba).
   if (postPublishesOn(post, "x") || contents.some((content) => content.platform === "x")) {
     lines.push(
@@ -797,6 +805,8 @@ export type PostEditOptions = {
   brief?: string;
   /** La marca que permite un enlace en X (`--x-link` / `--no-x-link`), F9-T16. */
   xLink?: boolean;
+  /** La música de sus videos (`--music <pista|ninguna>`), F9.5-T19. */
+  music?: string;
 };
 
 /** `--platforms x,linkedin` → esas redes; `todas` → `null` (todas las de la marca). */
@@ -822,6 +832,7 @@ function postChangesOf(options: PostEditOptions) {
     plannedAt?: Date | null;
     brief?: string | null;
     xLinkAllowed?: boolean;
+    musicTrackId?: MusicTrackId | null;
   } = {};
   if (options.platforms !== undefined) changes.platforms = platformsOption(options.platforms);
   if (options.date !== undefined) {
@@ -833,6 +844,7 @@ function postChangesOf(options: PostEditOptions) {
     changes.brief = options.brief.trim() === "" ? null : options.brief;
   }
   if (options.xLink !== undefined) changes.xLinkAllowed = options.xLink;
+  if (options.music !== undefined) changes.musicTrackId = parseMusicTrack(options.music);
   return Object.keys(changes).length === 0 ? null : changes;
 }
 
@@ -890,6 +902,9 @@ export function runPostEdit(deps: PostDeps, id: string, options: PostEditOptions
                 ? `enlace en X: permitido, cuesta ${X_LINK_COST_TEXT}`
                 : "enlace en X: no permitido",
             ]),
+        ...(changes.musicTrackId === undefined
+          ? []
+          : [`música: ${musicTrackText(post.musicTrackId)} (los videos se rehacen solos)`]),
       ];
       deps.print(`${c.green("✓")} Post ${post.id} actualizado (${summary.join(" · ")})`);
       if (!editsText) {
@@ -1423,7 +1438,7 @@ export function register(program: Command, ctx: CliContext): void {
   post
     .command("edit")
     .description(
-      "Cambia el texto de una red e idioma (desde --file o la entrada estándar), o las redes, la fecha, el brief o el enlace en X del post",
+      "Cambia el texto de una red e idioma (desde --file o la entrada estándar), o las redes, la fecha, el brief, el enlace en X o la música del post",
     )
     .argument("<id>", "id del post")
     .option("--platform <red>", `la red del texto: ${networks}`)
@@ -1441,6 +1456,7 @@ export function register(program: Command, ctx: CliContext): void {
       `permite un enlace en el texto de X (cuesta ${X_LINK_COST_TEXT}; el enlace también va en el brief)`,
     )
     .option("--no-x-link", "quita el permiso del enlace en X")
+    .option("--music <pista>", `la música de sus videos: ${MUSIC_TRACK_IDS.join(", ")} o ninguna`)
     .action((id: string, options: PostEditOptions) =>
       exitWith(() => runPostEdit(deps(), id, options)),
     );

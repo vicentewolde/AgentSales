@@ -205,6 +205,7 @@ describe("las redes del post al aprobar y al quitarlas (F9-T21)", () => {
       posts: t.repos.posts,
       postLock: t.postLock,
       editorialProfiles: createInMemoryEditorialProfileRepository(),
+      queue: createInMemoryJobQueue(),
     };
     const error = await updatePost(deps, ADMIN, t.post.id, { platforms: ["linkedin"] }).then(
       () => null,

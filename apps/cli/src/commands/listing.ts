@@ -1,6 +1,7 @@
 import {
   type ListingDetailResponse,
   listingDetailResponseSchema,
+  listingResponseSchema,
   listingStatusResponseSchema,
 } from "@agentsales/api/contracts";
 import {
@@ -10,6 +11,8 @@ import {
   formatListingPrice,
   LISTING_STATUS_TEXT,
   type ListingAction,
+  MUSIC_TRACK_IDS,
+  musicTrackText,
   OPERATION_TEXT,
   PUBLICATION_STATUS_TEXT,
 } from "@agentsales/core";
@@ -18,7 +21,13 @@ import { type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith, type Terminal } from "../context.js";
 import { CliError, formatBytes, guarded, type Io } from "../output.js";
 import { publicationName } from "./publication-view.js";
-import { fetchBrokers, resolveListingId, withConfirmation } from "./shared.js";
+import {
+  fetchBrokers,
+  NO_MUSIC_WORD,
+  parseMusicTrack,
+  resolveListingId,
+  withConfirmation,
+} from "./shared.js";
 
 export type ListingDeps = Io & { client: ApiClient };
 
@@ -54,6 +63,7 @@ export function renderListingDetail(
       listing.showExactAddress ? "" : c.dim(" (no se publica la dirección exacta)")
     }`,
   ];
+  lines.push(`  Música del reel: ${musicTrackText(listing.musicTrackId)}`);
   if (listing.highlights) lines.push(`  Destacados: ${listing.highlights}`);
   if (listing.internalNotes) {
     lines.push(`  Notas internas ${c.dim("(no se publican)")}: ${listing.internalNotes}`);
@@ -183,6 +193,35 @@ export function runListingAction(
   });
 }
 
+/**
+ * `agentsales listing music <propiedad> <pista|ninguna>` (F9.5-T19): la música del reel. No rehace
+ * el reel: lo hace la siguiente preparación, que la CLI sugiere (`prepare --no-texts`).
+ */
+export function runListingMusic(
+  deps: ListingDeps,
+  ref: string,
+  value: string,
+  options: { broker?: string } = {},
+) {
+  const c = deps.colors;
+  return guarded(deps, async () => {
+    const musicTrackId = parseMusicTrack(value);
+    const brokers = await fetchBrokers(deps.client);
+    const id = await resolveListingId(deps.client, ref.trim(), brokers, options.broker);
+    const { listing } = await unwrap(
+      deps.client.listings[":id"].$patch({ param: { id }, json: { musicTrackId } }),
+      listingResponseSchema,
+    );
+    deps.print(
+      `${c.green("✓")} ${listing.externalRef}: música del reel → ${musicTrackText(listing.musicTrackId)}`,
+    );
+    deps.print(
+      c.dim(`  Para rehacer el reel: agentsales prepare ${listing.externalRef} --no-texts`),
+    );
+    return 0;
+  });
+}
+
 export function register(program: Command, ctx: CliContext): void {
   const listing = program
     .command("listing")
@@ -220,6 +259,22 @@ export function register(program: Command, ctx: CliContext): void {
         ),
       );
   }
+  listing
+    .command("music")
+    .description("Elige la música del reel de la propiedad (o ninguna); se aplica al preparar")
+    .argument("<propiedad>", "id_propiedad del Excel, o el id del aviso")
+    .argument("<pista>", `${MUSIC_TRACK_IDS.join(", ")} o ${NO_MUSIC_WORD}`)
+    .option("--broker <slug>", "corredor, si el id_propiedad está en más de uno")
+    .action((ref: string, value: string, _options: { broker?: string }, command: Command) =>
+      exitWith(() =>
+        runListingMusic(
+          { ...ctx, client: ctx.api() },
+          ref,
+          value,
+          command.optsWithGlobals<{ broker?: string }>(),
+        ),
+      ),
+    );
   listing
     .command("close")
     .description(

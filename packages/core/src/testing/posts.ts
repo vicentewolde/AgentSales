@@ -73,6 +73,7 @@ export function createInMemoryPostRepository(): InMemoryPostRepository {
         xLinkAllowed: input.xLinkAllowed ?? false,
         platforms:
           input.platforms === undefined || input.platforms === null ? null : [...input.platforms],
+        musicTrackId: null,
         createdAt: now,
         updatedAt: now,
       });

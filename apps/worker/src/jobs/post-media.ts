@@ -114,6 +114,8 @@ export function postMediaJob(deps: PostMediaJobDeps): Job {
             "medios del post que no se pudieron leer (formato no válido o archivo dañado)",
           );
         }
+        // F9.5-T19: la música elegida no se pudo usar (los videos quedaron sin música).
+        for (const warning of result.warnings) logger.warn(warning);
         logger.info({ media: result.media }, "medios del post procesados");
       } finally {
         await dir

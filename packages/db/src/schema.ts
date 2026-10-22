@@ -357,6 +357,11 @@ export const listings = pgTable(
     internalNotes: text("internal_notes"),
     source: listingSourceEnum("source").notNull(),
     sourceHash: text("source_hash").notNull(),
+    /**
+     * La música del reel (F9.5-T19): un id del catálogo de core (`MUSIC_TRACK_IDS`), validado en
+     * core como `posts.platforms`; `null` = sin música (por defecto).
+     */
+    musicTrackId: text("music_track_id"),
     ...timestamps,
   },
   (t) => [unique().on(t.brokerId, t.externalRef)],
@@ -445,6 +450,8 @@ export const posts = pgTable(
      * `POST_PLATFORMS` de core, como `editorial_profiles.languages`.
      */
     platforms: text("platforms").array(),
+    /** La música de sus videos (F9.5-T19), como `listings.music_track_id`; `null` = sin música. */
+    musicTrackId: text("music_track_id"),
     ...timestamps,
   },
   (t) => [

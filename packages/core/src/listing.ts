@@ -35,6 +35,11 @@ export const listingSchema = z.object({
   internalNotes: z.string().nullable(),
   attributes: z.record(z.string(), z.unknown()),
   source: z.enum(LISTING_SOURCES),
+  /**
+   * La música del reel (F9.5-T19): un id del catálogo (`MUSIC_TRACK_IDS`) o `null`, sin música (por
+   * defecto). Es texto en la base: un id que se saque del catálogo deja el reel sin música.
+   */
+  musicTrackId: z.string().nullable(),
   createdAt: z.date(),
   updatedAt: z.date(),
 });

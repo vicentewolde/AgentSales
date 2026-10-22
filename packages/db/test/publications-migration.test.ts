@@ -1,13 +1,8 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
-import { drizzle } from "drizzle-orm/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { SchemaDatabase } from "../src/client.js";
 import { MIGRATIONS_FOLDER } from "../src/migrations.js";
-import { createListingRepository } from "../src/repositories/listings.js";
-import * as schema from "../src/schema.js";
-import { newListing } from "./import-repositories.contract.js";
 import { createTestDatabase, type TestDatabase } from "./pglite.js";
 
 // Migración 0006 (F3-T01, ADR-0014): estados sin `draft` ni `pending_approval`, `format` y un
@@ -30,15 +25,23 @@ async function applyFile(client: PGlite, file: string): Promise<void> {
  * Un aviso con su corredor, una cuenta de Instagram y un texto: lo que una publicación referencia.
  * Cada llamada usa un corredor propio, así los tests no comparten filas.
  */
-async function seed(db: SchemaDatabase, client: PGlite, slug: string) {
-  // A mano: el repositorio de hoy pide columnas de migraciones posteriores (0009).
+async function seed(client: PGlite, slug: string) {
+  // A mano: los repositorios de hoy piden columnas de migraciones posteriores (0009 en
+  // `brokers`; desde F9.5-T19, `listings.music_track_id`).
   const broker = await client.query<{ id: string }>(
     `INSERT INTO brokers (slug, name, brand_name, primary_color, secondary_color)
      VALUES ($1, 'Persona Inventada', 'Marca Inventada', '#112233', '#445566') RETURNING id`,
     [slug],
   );
   const brokerId = broker.rows[0]?.id ?? "";
-  const listingId = (await createListingRepository(db).create(newListing(brokerId, "P-0006"))).id;
+  const listing = await client.query<{ id: string }>(
+    `INSERT INTO listings (broker_id, external_ref, category, operation, property_type, region,
+           comuna, address, price_amount, price_currency, attributes, source, source_hash)
+         VALUES ($1, $2, 'real_estate', 'sale', 'Departamento', 'Metropolitana', 'Ñuñoa',
+           'Calle Inventada 123', 5800, 'UF', '{"dormitorios": 3}', 'xlsx', 'hash-1') RETURNING id`,
+    [brokerId, "P-0006"],
+  );
+  const listingId = listing.rows[0]?.id ?? "";
   const account = await client.query<{ id: string }>(
     `INSERT INTO platform_accounts (broker_id, platform, external_account_id, display_name, status)
      VALUES ($1, 'instagram', $2, '@muestra', 'connected') RETURNING id`,
@@ -75,7 +78,7 @@ describe("migración 0006: publicaciones por formato", () => {
   /** Datos nuevos por test: ninguno depende de lo que dejó otro. */
   const fresh = () => {
     seeds += 1;
-    return seed(database.db, client, `pub-0006-${seeds}`);
+    return seed(client, `pub-0006-${seeds}`);
   };
 
   const insert = (
@@ -157,8 +160,7 @@ describe("migración 0006 sobre una tabla con filas", () => {
       expect(index).toBeGreaterThan(0);
       for (const file of files.slice(0, index)) await applyFile(client, file);
 
-      const db = drizzle(client, { schema }) as unknown as SchemaDatabase;
-      const ids = await seed(db, client, "pub-0006-filas");
+      const ids = await seed(client, "pub-0006-filas");
       await client.query(
         `INSERT INTO publications (listing_id, platform_account_id, platform, content_id, status,
            dry_run)

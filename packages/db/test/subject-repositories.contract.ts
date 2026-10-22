@@ -130,12 +130,17 @@ export function subjectRepositoriesContract(
           createdBy: null,
           rationale: null,
           xLinkAllowed: false,
+          musicTrackId: null,
         });
         expect(await repos.posts.get(post.id)).toEqual(post);
         // La marca del enlace en X (F9-T16).
         const marked = await repos.posts.update(post.id, { xLinkAllowed: true });
         expect(marked.xLinkAllowed).toBe(true);
         await repos.posts.update(post.id, { xLinkAllowed: false });
+        // La música de sus videos (F9.5-T19): se fija y se quita sin tocar lo demás.
+        const withMusic = await repos.posts.update(post.id, { musicTrackId: "calm-piano" });
+        expect(withMusic).toMatchObject({ musicTrackId: "calm-piano", topic: "Bastidores" });
+        expect((await repos.posts.update(post.id, { musicTrackId: null })).musicTrackId).toBeNull();
         expect(await repos.posts.get(repos.missingId)).toBeNull();
       });
 

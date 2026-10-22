@@ -99,6 +99,7 @@ export function contentListingFixture(overrides: Partial<Listing> = {}): Listing
       _extra: { comision: "2% más IVA" },
     },
     source: "xlsx",
+    musicTrackId: null,
     createdAt: new Date("2026-10-01T12:00:00Z"),
     updatedAt: new Date("2026-10-01T12:00:00Z"),
     ...overrides,
