@@ -21,7 +21,7 @@ function hintFor(error: Error): string | null {
   if (code === "QUEUE_UNAVAILABLE")
     return "La cola de trabajos no responde: vuelve a intentar en un momento (en el Mac, revisa que pnpm dev esté corriendo); lo que quedó en curso se retoma solo.";
   if (code === "PUBLISH_MODE_MISMATCH")
-    return "La publicación y el sistema no están en el mismo modo (simulación o en vivo): no se cambió nada. Se puede hacer cuando el sistema esté en ese modo.";
+    return "La publicación y el sistema no están en el mismo modo (simulación o en vivo). No se cambió nada. Para hacerlo, el sistema tiene que estar en el modo de esta publicación.";
   if (code === "PORTAL_NOT_READY")
     return portalIssuesHint(error instanceof ApiError ? (error.issues ?? []) : []);
   if (code === "MARKETPLACE_NOT_READY")

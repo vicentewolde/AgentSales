@@ -72,9 +72,9 @@ describe("la agenda", () => {
       `${AGENDA_KIND_TEXT.backup} (1)`,
     ]);
     const failed = screen.getByRole("region", { name: AGENDA_KIND_TEXT.failed });
-    // F9.5-T02: el consejo dice qué hacer; el código técnico no se muestra si hay consejo.
+    // F9.5-T02: el consejo dice qué hacer; el código va aparte, como dato secundario.
     expect(failed.textContent).toContain("Reconecta");
-    expect(failed.textContent).not.toContain("IG_AUTH_INVALID");
+    expect(failed.textContent).toContain("código IG_AUTH_INVALID");
     const backup = screen.getByRole("region", { name: AGENDA_KIND_TEXT.backup });
     expect(backup.textContent).toContain("nunca");
     expect(backup.textContent).toContain("más de 48 h");
@@ -228,9 +228,9 @@ describe("la matriz", () => {
     expect(row.textContent).toContain("tarea a mano");
     expect(row.textContent).toContain("atrasada");
     expect(row.textContent).toContain("vence en 3 d");
-    // F9.5-T02: el motivo legible, no el código.
+    // F9.5-T02: el motivo legible y, aparte, el código.
     expect(row.textContent).toContain("Facebook cerró la ventana");
-    expect(row.textContent).not.toContain("MARKETPLACE_X");
+    expect(row.textContent).toContain("código MARKETPLACE_X");
     // Un enlace que no es `https` no se vuelve enlace.
     expect(within(row).queryByRole("link", { name: "Ver" })).toBeNull();
   });

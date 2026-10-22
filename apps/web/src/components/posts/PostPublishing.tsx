@@ -132,6 +132,9 @@ export function PostPublishBar({
   const selected = (chosen ?? ready).filter((platform) => ready.includes(platform));
   const unconnectedText = unconnected.map((platform) => PLATFORM_TEXT[platform]).join(", ");
   const toPublish = platformsToPublish(platforms, contents, publications);
+  // Se programa lo que tiene algo por publicar y cuenta conectada.
+  const schedulable = ready.filter((platform) => toPublish.includes(platform));
+  const toSchedule = selected.filter((platform) => schedulable.includes(platform));
   if (platforms.length === 0) {
     return (
       <p className="text-sm text-fg-muted">
@@ -145,7 +148,8 @@ export function PostPublishBar({
     <div className="space-y-3">
       {toPublish.length === 0 && (
         <p className="text-sm text-fg-muted">
-          Todo lo aprobado ya salió o está saliendo: míralo en Publicaciones, más abajo.
+          Todo lo aprobado ya salió, está saliendo o está programado: míralo en Publicaciones, más
+          abajo.
         </p>
       )}
       <div className="flex flex-wrap gap-2">
@@ -179,8 +183,8 @@ export function PostPublishBar({
           <Button
             variant="secondary"
             size="sm"
-            disabled={lockReason !== null || ready.length === 0}
-            {...(lockReason === null && ready.length === 0
+            disabled={lockReason !== null || schedulable.length === 0}
+            {...(lockReason === null && schedulable.length === 0
               ? { title: "Ninguna red aprobada tiene cuenta conectada" }
               : {})}
             onClick={() => setScheduling(true)}
@@ -205,7 +209,7 @@ export function PostPublishBar({
         </p>
       )}
       {publish.error && <ErrorAlert error={publish.error} />}
-      {scheduling && ready.length > 0 && (
+      {scheduling && schedulable.length > 0 && (
         <ScheduleForm
           publishMode={publishMode}
           pending={schedule.isPending}
@@ -213,7 +217,7 @@ export function PostPublishBar({
           extra={
             <fieldset className="flex flex-wrap gap-x-5 gap-y-2">
               <legend className="mb-2 font-medium text-fg">Redes</legend>
-              {ready.map((platform) => (
+              {schedulable.map((platform) => (
                 <label
                   key={platform}
                   htmlFor={`${ids}-${platform}`}
@@ -237,8 +241,11 @@ export function PostPublishBar({
             </fieldset>
           }
           onSubmit={(at) => {
-            if (selected.length === 0) return;
-            schedule.mutate({ platforms: selected, at }, { onSuccess: () => setScheduling(false) });
+            if (toSchedule.length === 0) return;
+            schedule.mutate(
+              { platforms: toSchedule, at },
+              { onSuccess: () => setScheduling(false) },
+            );
           }}
           onCancel={() => setScheduling(false)}
         />

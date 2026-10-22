@@ -196,6 +196,29 @@ export function publicationFormatText(
 }
 
 /**
+ * El formato con su artículo (F9.5-T02): «la imagen», «de la imagen», «retirada»; «el carrusel»,
+ * «del reel», «el aviso», «el post». `o` es la terminación que concuerda («retirad${o}», «otr${o}»).
+ * Lo usan las frases del panel y de la CLI que nombran la publicación por su formato.
+ */
+export type PublicationFormatPhrase = {
+  name: string;
+  el: "el" | "la";
+  del: "del" | "de la";
+  o: "o" | "a";
+};
+
+export function publicationFormatPhrase(
+  platform: Platform,
+  format: PublicationFormat,
+  mediaCount: number | null,
+): PublicationFormatPhrase {
+  const name = publicationFormatText(platform, format, mediaCount);
+  return name === "imagen"
+    ? { name, el: "la", del: "de la", o: "a" }
+    : { name, el: "el", del: "del", o: "o" };
+}
+
+/**
  * El modo de un intento de publicación (`publications.dry_run`, D11 del spec F3). Qué modo mostrar
  * en el panel según el estado: `shownPublicationMode` (D4 del spec F9.5).
  */
