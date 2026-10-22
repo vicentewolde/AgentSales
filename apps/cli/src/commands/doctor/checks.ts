@@ -1,8 +1,10 @@
 import {
   type HealthReport,
   hasLlmPrice,
+  nextWorkerWindowText,
   type PublishMode,
   workerStatusText,
+  workerWindowsText,
 } from "@agentsales/core";
 import { canDumpServer, parsePgToolVersion, parseServerVersion } from "@agentsales/db/backup";
 import {
@@ -624,8 +626,21 @@ export function checkWorker(report: HealthReport | null, remote: boolean): Check
       ? {}
       : {
           hint: remote
-            ? "Enciéndelo en el servidor si lo necesitas (docs/10-despliegue.md); apágalo al terminar la demo"
+            ? "Con el horario activado se enciende solo en la próxima ventana; para encenderlo ya: GitHub → Actions → «Encender el worker» → Run workflow (docs/10-despliegue.md, paso 8)"
             : "Arráncalo con pnpm dev si lo necesitas",
         }),
+  };
+}
+
+/**
+ * El horario del worker en el servidor (F9.5-T24, ADR-0037): sus ventanas y la próxima, en hora de
+ * Chile. Es informativo: el horario lo enciende el workflow `worker-schedule.yml` (si el operador lo
+ * activó) y el worker se apaga solo sin nada que hacer.
+ */
+export function checkWorkerSchedule(now: Date): CheckItem {
+  return {
+    name: "Horario del worker",
+    level: "ok",
+    detail: `próxima ventana ${nextWorkerWindowText(now)} (cada día a las ${workerWindowsText()}, hora de Chile)`,
   };
 }

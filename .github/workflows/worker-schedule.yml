@@ -1,0 +1,128 @@
+# Encender el worker según el horario (F9.5-T24, ADR-0037). El worker se apaga solo cuando no tiene
+# nada que hacer (`WORKER_IDLE_EXIT_MINUTES`); este flujo lo vuelve a encender unos minutos antes de
+# cada ventana de publicación, y a pedido ("Run workflow": encender ahora). Solo enciende la máquina
+# del worker de la instancia principal: nunca despliega, apaga ni cambia nada más.
+#
+# El token de Fly lo crea y lo guarda el operador (docs/10-despliegue.md, paso 8): vive en el
+# Environment `worker-schedule` de GitHub, que solo acepta la rama `main`. **Sin ese secreto este
+# flujo no hace nada**: avisa y termina sin error (el horario queda escrito, pero apagado).
+#
+# Las ventanas, en hora de Chile, se cambian aquí en dos lugares que deben calzar: `WORKER_WINDOWS`
+# y los `cron` de abajo. Las mismas horas están en `WORKER_WINDOWS` de
+# `packages/core/src/worker-schedule.ts` (la agenda y `doctor` dicen la próxima con ellas); un test
+# del worker (`apps/worker/src/worker-schedule-workflow.test.ts`) falla si no calzan.
+name: Encender el worker
+
+on:
+  schedule:
+    # GitHub lee el cron en UTC y Chile cambia de horario (UTC−3 en verano, UTC−4 en invierno): cada
+    # ventana va dos veces, 10 min antes en cada horario, y el paso "¿Toca encenderlo?" deja pasar
+    # solo la que cae cerca de la ventana en la hora de Chile de ese día. GitHub puede atrasar un
+    # cron varios minutos (nunca lo adelanta); por eso se pide 10 min antes y en el minuto 50.
+    - cron: "50 11 * * *" # 08:50 en Chile con UTC−3 (ventana de las 09:00)
+    - cron: "50 12 * * *" # 08:50 en Chile con UTC−4 (ventana de las 09:00)
+    - cron: "50 19 * * *" # 16:50 en Chile con UTC−3 (ventana de las 17:00)
+    - cron: "50 20 * * *" # 16:50 en Chile con UTC−4 (ventana de las 17:00)
+  workflow_dispatch:
+
+# No lee el repositorio ni escribe nada en GitHub.
+permissions: {}
+
+# Un encendido a la vez; uno nuevo espera al que está en curso.
+concurrency:
+  group: worker-schedule
+  cancel-in-progress: false
+
+env:
+  # La app de Fly de la instancia principal (`app` de fly.toml).
+  FLY_APP: agentsales
+  # Las ventanas, en hora de Chile (HH:MM, separadas por un espacio).
+  WORKER_WINDOWS: "09:00 17:00"
+  # Cuánto antes y después de una ventana vale encender (minutos): absorbe el atraso de GitHub y
+  # deja fuera el cron del otro horario (que cae una hora antes o después).
+  EARLIEST_MINUTES: "30"
+  LATEST_MINUTES: "45"
+
+jobs:
+  start:
+    name: start
+    runs-on: ubuntu-latest
+    environment: worker-schedule
+    timeout-minutes: 10
+    steps:
+      - name: Solo desde main
+        if: github.ref != 'refs/heads/main'
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          echo "::error::El worker se enciende solo desde main (pediste $REF)."
+          exit 1
+
+      - name: ¿Toca encenderlo?
+        id: gate
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "Encender ahora (pedido a mano)."
+            echo "go=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          now="$(TZ=America/Santiago date +%H:%M)"
+          minutes() { echo $((10#${1%%:*} * 60 + 10#${1##*:})); }
+          now_min="$(minutes "$now")"
+          go=false
+          for window in $WORKER_WINDOWS; do
+            delta=$((now_min - $(minutes "$window")))
+            if [ "$delta" -ge "-$EARLIEST_MINUTES" ] && [ "$delta" -lt "$LATEST_MINUTES" ]; then
+              echo "Son las $now en Chile: toca la ventana de las $window."
+              go=true
+            fi
+          done
+          if [ "$go" = false ]; then
+            echo "Son las $now en Chile: ninguna ventana ($WORKER_WINDOWS) está cerca; este cron es el del otro horario."
+          fi
+          echo "go=$go" >> "$GITHUB_OUTPUT"
+
+      - name: El token de Fly
+        id: token
+        if: steps.gate.outputs.go == 'true'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_WORKER_START_TOKEN }}
+        run: |
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "::warning::Falta el secreto FLY_WORKER_START_TOKEN en el Environment worker-schedule de GitHub: el horario no está activado y no se enciende nada (docs/10-despliegue.md, paso 8)."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.token.outputs.ready == 'true'
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
+        with:
+          version: 0.4.118
+
+      # Las máquinas del grupo `worker` (sin guardar su id: un despliegue podría cambiarlo). Una
+      # encendida se deja como está.
+      - name: Encender el worker
+        if: steps.token.outputs.ready == 'true'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_WORKER_START_TOKEN }}
+        run: |
+          machines="$(flyctl machine list -a "$FLY_APP" --json)"
+          workers="$(printf '%s' "$machines" | jq -r '.[] | select(.config.metadata.fly_process_group == "worker") | "\(.id) \(.state)"')"
+          if [ -z "$workers" ]; then
+            echo "::error::No hay una máquina del worker en la app $FLY_APP (fly machine list -a $FLY_APP)."
+            exit 1
+          fi
+          while read -r id state; do
+            case "$state" in
+              started | starting)
+                echo "El worker $id ya está encendido ($state)."
+                ;;
+              *)
+                echo "Encendiendo el worker $id (estaba $state)."
+                flyctl machine start "$id" -a "$FLY_APP"
+                ;;
+            esac
+          done <<< "$workers"

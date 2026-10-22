@@ -408,6 +408,9 @@ export function createApp(input: AppDeps) {
         ...(deps.healthDetails?.backupStatus === undefined
           ? {}
           : { backupStatus: deps.healthDetails.backupStatus }),
+        ...(deps.healthDetails?.workerHeartbeats === undefined
+          ? {}
+          : { workerHeartbeats: deps.healthDetails.workerHeartbeats }),
       }),
     )
     .route("/usage", usageRoutes(deps))

@@ -29,6 +29,7 @@ import {
   checkServices,
   checkUfSource,
   checkWorker,
+  checkWorkerSchedule,
   type Level,
   type RunCommand,
 } from "./checks.js";
@@ -63,7 +64,8 @@ async function runRemoteDoctor(deps: DoctorDeps, server: ServerResolution): Prom
   const environment = checkEnvironment(report, true);
   const autoPublish = checkAutoPublish(report);
   const llmKey = checkLlmKey(report);
-  const backup = checkBackup(report, (deps.now ?? (() => new Date()))());
+  const now = (deps.now ?? (() => new Date()))();
+  const backup = checkBackup(report, now);
   const worker = checkWorker(report, true);
   const adminTotp = checkAdminTotp(report);
   const withoutHint = ({ hint: _hint, ...item }: CheckItem): CheckItem => item;
@@ -77,7 +79,7 @@ async function runRemoteDoctor(deps: DoctorDeps, server: ServerResolution): Prom
       ? [{ ...llmKey, hint: "agrega ANTHROPIC_API_KEY a los secretos del servidor" }]
       : []),
     ...services.items,
-    ...(worker ? [worker] : []),
+    ...(worker ? [worker, checkWorkerSchedule(now)] : []),
     ...(adminTotp ? [adminTotp] : []),
     // El respaldo del servidor (F8-T13: va al bucket de respaldos en R2) no se arregla con
     // `pnpm db:backup` del Mac: el consejo es el del servidor.

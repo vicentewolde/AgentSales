@@ -25,6 +25,9 @@ import {
   TRACKING_WINDOW_MS,
   trackingPostRow,
   trackingRow,
+  type WorkerHeartbeat,
+  type WorkerStatus,
+  workerStatusOf,
 } from "@agentsales/core";
 import { type Context, Hono } from "hono";
 import type { AppEnv } from "../auth.js";
@@ -53,6 +56,11 @@ export type TrackingRoutesDeps = {
   platformAccounts: Pick<PlatformAccountRepository, "listByBroker" | "list">;
   /** El estado del respaldo (`readBackupStatus`); sin él la agenda no lo informa. */
   backupStatus?: () => Promise<BackupStatus | null>;
+  /**
+   * Los latidos más recientes del worker (los de `/health`, F8-T12): con ellos la agenda del
+   * administrador avisa si el worker está apagado y hay algo por vencer (F9.5-T24).
+   */
+  workerHeartbeats?: () => Promise<WorkerHeartbeat[]>;
   now?: () => Date;
 };
 
@@ -173,6 +181,14 @@ export function trackingRoutes(deps: TrackingRoutesDeps) {
         deps.backupStatus === undefined || scope.kind !== "all"
           ? undefined
           : await deps.backupStatus().catch(() => null);
+      // El worker también (F9.5-T24): encenderlo es del administrador; si no se pudo leer, sin aviso.
+      const worker: WorkerStatus | null | undefined =
+        deps.workerHeartbeats === undefined || scope.kind !== "all"
+          ? undefined
+          : await deps
+              .workerHeartbeats()
+              .then((processes) => workerStatusOf(processes, at))
+              .catch(() => null);
       const body: AgendaResponse = {
         items: agendaItems({
           listings,
@@ -182,6 +198,7 @@ export function trackingRoutes(deps: TrackingRoutesDeps) {
           autoPublishBrokerIds,
           pendingReviews: await pendingReviews(deps, listings, brokers),
           ...(backup === undefined ? {} : { backup }),
+          ...(worker === undefined ? {} : { worker }),
           now: at,
         }),
       };

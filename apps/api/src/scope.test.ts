@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { type BrokerData, listingSubject, type NewListing, postSubject } from "@agentsales/core";
+import {
+  type BrokerData,
+  listingSubject,
+  type NewListing,
+  postSubject,
+  type WorkerHeartbeat,
+} from "@agentsales/core";
 import { describe, expect, it } from "vitest";
 import { ROUTE_ACCESS } from "./access.js";
 import { createApp } from "./app.js";
@@ -115,7 +121,7 @@ async function ownedBy(deps: ReturnType<typeof testDeps>, slug: string) {
   return { broker, listing, run, content, account, publication, importRun, post, plan };
 }
 
-async function setup() {
+async function setup(options: { workerHeartbeats?: () => Promise<WorkerHeartbeat[]> } = {}) {
   const auth = testAuth();
   const deps = testDeps({
     access: { allowedHosts: ["localhost"], allowedOrigins: [ORIGIN] },
@@ -126,6 +132,9 @@ async function setup() {
         lastFailureAt: null,
         lastFailureCode: null,
       }),
+      ...(options.workerHeartbeats === undefined
+        ? {}
+        : { workerHeartbeats: options.workerHeartbeats }),
     },
   });
   deps.auth = { ...auth, brokers: deps.brokers };
@@ -360,6 +369,30 @@ describe("las listas sin nada ajeno", () => {
     expect(adminAgenda.items.some((item) => item.kind === "backup")).toBe(true);
   });
 
+  it("el worker apagado con algo por vencer: lo ve el administrador, no el corredor (F9.5-T24)", async () => {
+    // Apagado en orden hace una hora.
+    const s = await setup({
+      workerHeartbeats: async () => [
+        {
+          processId: "worker-1",
+          startedAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
+          beatAt: new Date(Date.now() - 60 * 60 * 1000),
+          stoppedAt: new Date(Date.now() - 60 * 60 * 1000),
+        },
+      ],
+    });
+    // Venció hace 5 min: sale en cuanto se encienda el worker.
+    const due = await scheduledPostPublication(s.deps, s.mine, new Date(Date.now() - 5 * 60_000));
+
+    type AgendaBody = { items: { kind: string; action: string; publicationId: string | null }[] };
+    const admin = (await (await s.admin("/agenda")).json()) as AgendaBody;
+    expect(admin.items.filter((item) => item.kind === "worker_off")).toEqual([
+      expect.objectContaining({ action: "start_worker", publicationId: due.id }),
+    ]);
+    const broker = (await (await s.broker("/agenda")).json()) as AgendaBody;
+    expect(broker.items.some((item) => item.kind === "worker_off")).toBe(false);
+  });
+
   it("los posts y las cuentas de otro corredor no aparecen en su agenda ni en su seguimiento (F9-T08)", async () => {
     const s = await setup();
     const mine = await scheduledPostPublication(s.deps, s.mine);
@@ -454,6 +487,7 @@ describe("el calendario solo con lo suyo (F9-T18)", () => {
 async function scheduledPostPublication(
   deps: Awaited<ReturnType<typeof setup>>["deps"],
   owned: Awaited<ReturnType<typeof ownedBy>>,
+  scheduledAt = new Date(Date.now() + 60 * 60 * 1000),
 ) {
   const run = await deps.contentRuns.create({ postId: owned.post.id, texts: true });
   await deps.contentRuns.markRunning(run.id);
@@ -490,7 +524,7 @@ async function scheduledPostPublication(
       {
         from: "approved",
         to: "scheduled",
-        changes: { dryRun: true, scheduledAt: new Date(Date.now() + 60 * 60 * 1000) },
+        changes: { dryRun: true, scheduledAt },
       },
       { actor: "system" },
     );

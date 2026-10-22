@@ -781,6 +781,35 @@ describe("runDoctor · un servidor remoto", () => {
     expect(text).not.toContain(".env");
   });
 
+  it("dice la próxima ventana del horario del worker y, apagado, cómo encenderlo ya (F9.5-T24)", async () => {
+    const report = await runDoctor(
+      deps({
+        server,
+        fetchHealth: async () => ({
+          ...healthy,
+          environment: "production",
+          worker: {
+            running: false,
+            startedAt: "2026-10-15T12:00:00.000Z",
+            lastBeatAt: "2026-10-15T12:20:00.000Z",
+          },
+        }),
+      }),
+    );
+    // NOW es 2026-10-15 16:00 en Chile.
+    expect(report.items.find((item) => item.name === "Horario del worker")).toMatchObject({
+      level: "ok",
+      detail: "próxima ventana 2026-10-15 17:00 (cada día a las 09:00 y 17:00, hora de Chile)",
+    });
+    const worker = report.items.find((item) => item.name === "Worker");
+    expect(worker).toMatchObject({ level: "warn", detail: "apagado desde 2026-10-15 09:20" });
+    expect(worker?.hint).toContain("«Encender el worker»");
+    expect(worker?.hint).not.toContain("pnpm dev");
+    // En el Mac no hay horario.
+    const local = await runDoctor(deps());
+    expect(local.items.some((item) => item.name === "Horario del worker")).toBe(false);
+  });
+
   it("un respaldo atrasado del servidor aconseja mirar el worker, no pnpm db:backup (F8-T13)", async () => {
     const report = await runDoctor(
       deps({

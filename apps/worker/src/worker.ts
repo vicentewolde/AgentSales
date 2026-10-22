@@ -68,6 +68,7 @@ import {
   marketplaceTmpRootOf,
 } from "./content-tmp.js";
 import { type Heartbeat, startHeartbeat, workerProcessId } from "./heartbeat.js";
+import { countPendingJobs, createIdleProbe, type IdleExit, startIdleExit } from "./idle-exit.js";
 import { failAbandonedPlanRuns, requeueQueuedPlanRuns } from "./jobs/content-plan.js";
 import {
   failAbandonedContentRuns,
@@ -505,6 +506,8 @@ const queue = jobQueueFromBoss(boss);
 let shuttingDown = false;
 /** El latido (F8-T12): empieza cuando los jobs quedan registrados. */
 let heartbeat: Heartbeat | null = null;
+/** El apagado solo sin trabajo (F9.5-T24, ADR-0037): con el worker listo y `WORKER_IDLE_EXIT_MINUTES`. */
+let idleExit: IdleExit | null = null;
 const heartbeatErrors = createErrorThrottle(logger, "no se pudo anotar el latido del worker");
 
 async function shutdown(signal: string): Promise<void> {
@@ -512,6 +515,7 @@ async function shutdown(signal: string): Promise<void> {
     return;
   }
   shuttingDown = true;
+  idleExit?.stop();
   bossErrors.dispose();
   dbErrors.dispose();
   heartbeatErrors.dispose();
@@ -813,9 +817,32 @@ try {
       },
       "worker listo",
     );
-    logger.warn(
-      "Mientras el worker corre, Neon no se suspende y consume CU-horas: apágalo al terminar (ADR-0007).",
-    );
+    // Sin trabajo ni nada por vencer en ese margen, se apaga solo (exit 0) hasta la próxima
+    // ventana del horario, que lo vuelve a encender (`worker-schedule.yml`, ADR-0037).
+    idleExit = shuttingDown
+      ? null
+      : startIdleExit({
+          idleMinutes: env.WORKER_IDLE_EXIT_MINUTES,
+          probe: createIdleProbe({
+            pendingJobs: (withinMs) => countPendingJobs(boss.getDb(), withinMs),
+            publications,
+            ...(marketplaceAutomation
+              ? { openMarketplaceWindows: () => marketplaceWindows.size() }
+              : {}),
+          }),
+          onIdle: () => void shutdown("idle"),
+          logger,
+        });
+    if (idleExit === null) {
+      logger.warn(
+        "Mientras el worker corre, Neon no se suspende y consume CU-horas: apágalo al terminar (ADR-0007).",
+      );
+    } else {
+      logger.info(
+        { idleMinutes: env.WORKER_IDLE_EXIT_MINUTES },
+        "el worker se apaga solo cuando no tiene trabajo ni nada por vencer en ese margen",
+      );
+    }
   }
 } catch (error) {
   if (shuttingDown) {

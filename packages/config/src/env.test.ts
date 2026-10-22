@@ -382,6 +382,32 @@ describe("loadEnv", () => {
     });
   });
 
+  describe("El worker se apaga solo (F9.5-T24)", () => {
+    it("por defecto (o vacía) nunca se apaga: 0", () => {
+      expect(loadEnv(validSource).WORKER_IDLE_EXIT_MINUTES).toBe(0);
+      expect(
+        loadEnv({ ...validSource, WORKER_IDLE_EXIT_MINUTES: "" }).WORKER_IDLE_EXIT_MINUTES,
+      ).toBe(0);
+    });
+
+    it("acepta los minutos", () => {
+      expect(
+        loadEnv({ ...validSource, WORKER_IDLE_EXIT_MINUTES: "10" }).WORKER_IDLE_EXIT_MINUTES,
+      ).toBe(10);
+    });
+
+    it.each(["-1", "diez", "1441", "2.5"])("rechaza %s", (value) => {
+      const error = envErrorOf({ ...validSource, WORKER_IDLE_EXIT_MINUTES: value });
+
+      expect(error.issues).toEqual([
+        {
+          variable: "WORKER_IDLE_EXIT_MINUTES",
+          message: "debe ser un número entero de minutos entre 0 (nunca) y 1440",
+        },
+      ]);
+    });
+  });
+
   describe("Respaldo local (F6-T14)", () => {
     it("por defecto: la carpeta fuera del proyecto y sin PG_BIN_DIR", () => {
       const env = loadEnv(validSource);
