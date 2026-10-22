@@ -288,11 +288,12 @@ export type RemoteStatus = Omit<RemoteState, "checkedAt">;
  *   plataforma (ADR-0016: nunca sube fotos, crea ni cambia estados; lo llama `withDryRun`);
  *   `pause`, `resume` y `close` cambian el estado de lo publicado (`close` es irreversible y
  *   reemplaza el `unpublish` de ADR-0014), y `getStatus` lo lee.
- * - `remove` (F9-T19; LinkedIn con una cuenta en modo `api`): borra lo publicado. Es idempotente
- *   (lo que ya no existe cuenta como borrado), así que retirar se puede repetir sin `sendOnce`.
- *   Lo llama `retirePublication` solo con la publicación y la API en `live`.
- *   Recibe solo el token guardado: una red con token que rota (`ROTATING_TOKEN_PLATFORMS`: X,
- *   TikTok) no lo implementa hasta que retirar use `ensureRotatingAccessToken`.
+ * - `remove` (F9-T19; LinkedIn y, desde F9.5-T09, X, con una cuenta en modo `api`): borra lo
+ *   publicado. Es idempotente (lo que ya no existe cuenta como borrado), así que retirar se puede
+ *   repetir sin `sendOnce`. Lo llama `retirePublication` solo con la publicación y la API en
+ *   `live`. Su `ctx.accessToken` es el guardado o, en una red con token que rota (X), el de
+ *   `ensureRotatingAccessToken` (acepta `rejectedToken` para pedir otro tras un 401). TikTok no
+ *   tiene cómo borrar por la API (D9 de F9.5): retirar lo rechaza antes de buscar `remove`.
  */
 export interface Publisher {
   readonly platform: Platform;
@@ -307,7 +308,7 @@ export interface Publisher {
   resume?(ref: PublishedRef, ctx: PlatformContext): Promise<RemoteStatus>;
   close?(ref: PublishedRef, ctx: PlatformContext): Promise<RemoteStatus>;
   getStatus?(ref: PublishedRef, ctx: PlatformContext): Promise<RemoteStatus>;
-  /** Borra lo publicado, idempotente (F9-T19, LinkedIn). */
+  /** Borra lo publicado, idempotente (F9-T19, LinkedIn; F9.5-T09, X). */
   remove?(ref: PublishedRef, ctx: PlatformContext): Promise<void>;
   /** Portal (ADR-0020): actualiza un aviso publicado o pausado. Nunca cambia fotos ni categoría. */
   update?(

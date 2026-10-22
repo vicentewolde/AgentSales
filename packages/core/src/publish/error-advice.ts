@@ -227,6 +227,9 @@ const ADVICE: Readonly<Record<string, string>> = {
   // Retirar un post (F9-T19).
   RETIRE_DELETE_UNSUPPORTED:
     "Bórrala a mano en la red y márcala como retirada con publications retire <id> (sin --delete).",
+  // F9.5-T09 (D9): TikTok no tiene cómo borrar un video por la API.
+  TIKTOK_DELETE_UNSUPPORTED:
+    "Bórralo a mano en la app de TikTok y después márcalo como retirado con publications retire <id> (sin --delete).",
   // La vuelta del OAuth con un corredor que no existe o no es del usuario (F9-T19).
   BROKER_NOT_FOUND:
     "El corredor del enlace no existe o no es tuyo: vuelve a conectar desde Cuentas, en el corredor correcto.",

@@ -19,6 +19,7 @@ import {
   manualConfirmCommands,
   OPERATION_PLATFORMS,
   PLATFORM_TEXT,
+  type Platform,
   publicationModeText,
 } from "@agentsales/core";
 import type { Command } from "commander";
@@ -92,6 +93,14 @@ function explained(error: unknown, publicationId: string): unknown {
       error.code,
       error.apiMessage ?? error.message,
       `Reconecta la cuenta (agentsales accounts) y repite, o bórrala a mano en la red y corre: agentsales publications retire ${publicationId}`,
+    );
+  }
+  // F9.5-T09 (D9): TikTok no tiene cómo borrar por la API; se borra en la app.
+  if (error.code === "TIKTOK_DELETE_UNSUPPORTED") {
+    return new CliError(
+      error.code,
+      error.apiMessage ?? error.message,
+      `Bórralo a mano en la app de TikTok y corre: agentsales publications retire ${publicationId}`,
     );
   }
   // F9-T19: borrar por la API no se pudo; se borra a mano y se confirma sin --delete.
@@ -201,12 +210,16 @@ export function runCancelPublication(deps: PublicationsDeps, id: string) {
 
 export type RetireOptions = { yes?: boolean; delete?: boolean };
 
+/** Las redes en que `--delete` borra por la API (F9-T19, LinkedIn; F9.5-T09, X). */
+const DELETABLE_PLATFORMS: ReadonlySet<Platform> = new Set(["linkedin", "x"]);
+
 /**
  * `agentsales publications retire <id> [--yes]` (spec F3 §4.3 y D8, F5 §4.3): Instagram y
  * Marketplace no dejan borrar desde AgentSales, así que una publicada en vivo se borra a mano y
  * aquí se confirma; en simulación no hay nada que borrar. Lee la publicación antes para saber su modo.
- * F9-T19, `--delete`: la borra AgentSales por la API (LinkedIn con la cuenta en modo `api`, con la
- * API en vivo); pregunta antes (es definitivo) salvo con `--yes`.
+ * F9-T19, `--delete`: la borra AgentSales por la API (LinkedIn y, desde F9.5-T09, X, con la cuenta
+ * en modo `api` y la API en vivo); pregunta antes (es definitivo) salvo con `--yes`. En TikTok (D9)
+ * dice, sin preguntar ni llamar, que se borra a mano en la app.
  */
 export function runRetirePublication(
   deps: PublicationsDeps,
@@ -229,11 +242,19 @@ export function runRetirePublication(
       !OPERATION_PLATFORMS.has(current.platform);
     const platform = PLATFORM_TEXT[current.platform];
     const where = current.externalUrl === null ? "" : ` (${current.externalUrl})`;
-    // Hoy solo LinkedIn borra por la API: en otra red se dice antes de preguntar.
-    if (options.delete && current.platform !== "linkedin") {
+    // Hoy LinkedIn y X borran por la API: en otra red se dice antes de preguntar. TikTok no tiene
+    // cómo borrar por la API (D9 de F9.5).
+    if (options.delete && current.platform === "tiktok") {
+      throw new CliError(
+        "TIKTOK_DELETE_UNSUPPORTED",
+        "TikTok no deja borrar un video por la API",
+        `Bórralo a mano en la app de TikTok y corre: agentsales publications retire ${publicationId}`,
+      );
+    }
+    if (options.delete && !DELETABLE_PLATFORMS.has(current.platform)) {
       throw new CliError(
         "RETIRE_DELETE_UNSUPPORTED",
-        `AgentSales no borra en ${platform}: solo un post de LinkedIn con la cuenta en modo api`,
+        `AgentSales no borra en ${platform}: solo un post de LinkedIn o de X con la cuenta en modo api`,
         `Bórrala a mano en ${platform} y corre: agentsales publications retire ${publicationId}`,
       );
     }
@@ -249,7 +270,7 @@ export function runRetirePublication(
             options.delete
               ? "No se borró nada"
               : `No se marcó como retirada: bórrala primero en ${platform} y confirma (o usa --yes)${
-                  current.platform === "linkedin"
+                  DELETABLE_PLATFORMS.has(current.platform)
                     ? "; con la cuenta en modo api, AgentSales la borra con --delete"
                     : ""
                 }`,
@@ -830,12 +851,12 @@ export function register(program: Command, ctx: CliContext): void {
   publications
     .command("retire")
     .description(
-      "Marca como retirada una publicación (en vivo, después de borrarla a mano en la red; un post de LinkedIn en modo api lo borra AgentSales con --delete)",
+      "Marca como retirada una publicación (en vivo, después de borrarla a mano en la red; un post de LinkedIn o X en modo api lo borra AgentSales con --delete)",
     )
     .argument("<id>", "id de la publicación (agentsales publications <propiedad>)")
     .option(
       "--delete",
-      "LinkedIn con la cuenta en modo api: AgentSales borra el post en LinkedIn (solo en vivo; pregunta antes)",
+      "LinkedIn o X con la cuenta en modo api: AgentSales borra el post en la red (solo en vivo; pregunta antes; TikTok se borra a mano en la app)",
     )
     .option("--yes", "no pregunta (si ya la borraste a mano, o antes de borrar con --delete)")
     .action((id: string, options: RetireOptions) =>

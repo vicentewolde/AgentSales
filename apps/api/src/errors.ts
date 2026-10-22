@@ -52,6 +52,8 @@ const CONFLICTS = new Set([
   // F9-T19: borrar por la API al retirar no se puede (la red, el modo de la cuenta o el enlace).
   "RETIRE_DELETE_UNSUPPORTED",
   "LINKEDIN_DELETE_UNSUPPORTED",
+  // F9.5-T09 (D9): TikTok no tiene cómo borrar por la API.
+  "TIKTOK_DELETE_UNSUPPORTED",
   "OPERATION_NOT_SUPPORTED",
   // F9-T15: el modo `manual`/`api` es solo de las redes de contenido de marca.
   "ACCOUNT_MODE_NOT_SUPPORTED",

@@ -113,6 +113,8 @@ const F9_CONNECT_AND_RETIRE = [
   "X_APP_CREDENTIALS_INVALID",
   "LINKEDIN_DELETE_UNSUPPORTED",
   "RETIRE_DELETE_UNSUPPORTED",
+  // F9.5-T09 (D9).
+  "TIKTOK_DELETE_UNSUPPORTED",
 ];
 
 // Raros o de programación: el genérico basta (reintentar o descartar).
@@ -144,6 +146,12 @@ describe("publicationErrorAdvice", () => {
 
   it.each(GENERIC_ON_PURPOSE)("%s cae a propósito en el genérico", (code) => {
     expect(publicationErrorAdvice(code)).toBe(GENERIC_ERROR_ADVICE);
+  });
+
+  it("TIKTOK_DELETE_UNSUPPORTED dice que se borra a mano en la app y se retira sin --delete (D9)", () => {
+    const advice = publicationErrorAdvice("TIKTOK_DELETE_UNSUPPORTED");
+    expect(advice).toContain("a mano en la app de TikTok");
+    expect(advice).toContain("publications retire <id> (sin --delete)");
   });
 
   it("un código desconocido da el genérico", () => {
