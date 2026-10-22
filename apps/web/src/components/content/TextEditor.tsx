@@ -14,7 +14,7 @@ function CounterText({ counter, id }: { counter: Counter; id: string }) {
   return (
     <p
       id={id}
-      className={`mt-1 text-xs ${counter.over ? "font-semibold text-red-700" : "text-slate-500"}`}
+      className={`mt-1 text-xs ${counter.over ? "font-semibold text-danger-700" : "text-fg-muted"}`}
     >
       {counter.length} / {counter.max} caracteres
       {counter.over ? ` · se pasa por ${counter.length - counter.max}` : ""}
