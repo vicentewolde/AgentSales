@@ -122,9 +122,9 @@ function Help({ id, children }: { id?: string; children: ReactNode }) {
 
 /**
  * Ejemplos que se insertan con un clic (F9.5-T17). Uno ya insertado queda desactivado para no
- * repetirlo.
+ * repetirlo. Lo usa también el asistente de 4 preguntas del plan (F9.5-T23).
  */
-function Examples({
+export function Examples({
   label,
   items,
 }: {
@@ -300,11 +300,23 @@ function CadenceEditor({
   );
 }
 
-/** El formulario, ya con el perfil cargado (se monta de nuevo si cambia de marca). */
-function ProfileForm({ brokerId, profile }: { brokerId: string; profile: EditorialProfileJson }) {
+/**
+ * El formulario, ya con el perfil cargado (se monta de nuevo si cambia de marca). Con `initial`,
+ * empieza con ese borrador en vez del perfil guardado (el asistente del plan, F9.5-T23): nada se
+ * guarda hasta apretar «Guardar el perfil».
+ */
+export function ProfileForm({
+  brokerId,
+  profile,
+  initial,
+}: {
+  brokerId: string;
+  profile: EditorialProfileJson;
+  initial?: Draft;
+}) {
   const ids = useId();
   const save = useSaveEditorialProfile(brokerId);
-  const [draft, setDraft] = useState<Draft>(() => draftOf(profile));
+  const [draft, setDraft] = useState<Draft>(() => initial ?? draftOf(profile));
   const [local, setLocal] = useState<Issue[]>([]);
   const issues = local.length > 0 ? local : issuesOf(save.error);
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => {
