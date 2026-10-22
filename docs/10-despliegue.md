@@ -13,6 +13,7 @@ Guía paso a paso para poner AgentSales en internet, en `https://agentsales.agen
   - **`worker`**: prepara, publica y corre lo programado. **No se apaga solo**: lo enciendes y lo apagas tú (paso 8).
 - **Modo demo (D1):** las máquinas se encienden los días de demo y se apagan después. Cuesta unos US$ 0,56 por día encendido, más centavos por el disco de las máquinas apagadas. Con el worker apagado, Neon se duerme y no gasta su cupo gratis.
 - **Simulación (D9):** el servidor corre con `PUBLISH_MODE=dry-run` (en `fly.toml`). Pasarlo a `live` es una decisión tuya, que pides en el chat.
+- **Dos llaves (F9.5-T22, ADR-0036):** el servidor en `live` solo **permite** publicar de verdad. Cada marca, además, tiene su propio interruptor (`brokers live <slug> on|off`, o en su ficha del panel) y solo las marcas propias del operador pueden encenderse. Una publicación sale de verdad solo con las dos llaves abiertas; si falta cualquiera, es simulación. Todas las marcas nacen apagadas y el seed no enciende ninguna. Encender o apagar una marca, igual que cambiar `PUBLISH_MODE`, lo decides tú, en el chat.
 - **Las migraciones** se aplican solas en cada despliegue, antes de reemplazar nada. Si fallan, el despliegue se detiene y queda la versión anterior.
 - **Una sola instancia por ahora (D19 de F9):** esta guía es la de la instancia de hoy (`principal`). Cuando haga falta otra del mismo código, con sus propios datos y cuentas, sigue "Una segunda instancia", al final.
 - **Lo que no corre en el servidor:** el formulario automático de Marketplace (D4: en producción, Marketplace es a mano para todos; el worker no registra su publisher ni el job `marketplace.profile`, y `BROWSER_PROFILES_DIR` no va en el entorno: si está en tu `.env.production`, quítala, porque `loadEnv` la rechaza con `NODE_ENV=production`) y la CLI de Claude (la IA va por la API de Anthropic).
@@ -184,6 +185,14 @@ La API se apaga sola sin tráfico. **El worker hay que apagarlo a mano al termin
 
 El servidor corre en simulación (`PUBLISH_MODE = "dry-run"` en `fly.toml`). Para publicar de verdad durante una demo, **tú** cambias el modo de las dos máquinas, la API y el worker, que deben quedar iguales (si no, publicar da `PUBLISH_MODE_MISMATCH`). Es una decisión tuya, por esa vez, y la dices en el chat.
 
+**Desde F9.5-T22 ese cambio es la primera de dos llaves** (ADR-0036): después de pasar el servidor a `live`, solo publican de verdad las marcas encendidas. Con el servidor en `live` y ninguna marca encendida, todo sigue saliendo en simulación. La segunda llave se abre por marca, con tu instrucción en el chat:
+
+```bash
+pnpm -s cli brokers live <slug> on --confirm <slug>
+```
+
+`--yes` no basta para encender: repites el identificador de la marca con `--confirm`. En el panel, la ficha del corredor (**Corredores**) tiene el interruptor «Modo en vivo» y pide escribir el identificador. Para apagar: `pnpm -s cli brokers live <slug> off`. `pnpm -s cli status` y `doctor` dicen el modo del servidor y qué marcas están encendidas; el banner del panel dice el modo de la marca elegida. Para dejar una marca encendida y el servidor apagado (por ejemplo, entre demos) no hay que apagarla: con el servidor en `dry-run`, todo es simulación.
+
 1. Pasar a vivo (cada comando reinicia esa máquina, unos segundos):
    ```bash
    fly machine update <id_api> -a agentsales --env PUBLISH_MODE=live --yes
@@ -193,7 +202,7 @@ El servidor corre en simulación (`PUBLISH_MODE = "dry-run"` en `fly.toml`). Par
    ```
 2. Comprobar: `pnpm -s cli status` dice `PUBLISH_MODE: live`, y el panel muestra la franja roja «En vivo».
 3. **Al terminar, volver a simulación** con los mismos dos comandos y `PUBLISH_MODE=dry-run`, y comprobar de nuevo. Antes, mira en **Hoy** o en `pnpm -s cli agenda` que no quede nada programado en vivo: lo programado en vivo sale en vivo a su hora aunque después vuelvas a simulación (desprográmalo con `pnpm -s cli unschedule <id>`).
-4. Un despliegue nuevo deja las dos máquinas otra vez en `dry-run` (el valor de `fly.toml`).
+4. Un despliegue nuevo deja las dos máquinas otra vez en `dry-run` (el valor de `fly.toml`). Las marcas encendidas quedan encendidas (es un dato de la base), pero sin el servidor en `live` no publican de verdad.
 
 NO VERIFICADO: que `fly machine update --env` conserve el resto del entorno y los secretos de la máquina (así lo describe Fly). Compruébalo con `pnpm -s cli status` y `pnpm -s cli doctor` después del primer cambio, en el ensayo del jueves.
 
@@ -215,6 +224,8 @@ Volver atrás **no deshace migraciones** ni cambios de secretos. Por eso las mig
 **Ojo con los valores nuevos de F9 (migración `0014`).** La migración solo agrega (las redes `x`, `linkedin`, `discord` y `tiktok`, el estado `outcome_unknown` y la columna `brokers.kind`), así que volver a una versión anterior a F9 funciona **mientras ninguna fila use esos valores**. En cuanto exista una cuenta, un texto o una publicación de X, LinkedIn, Discord o TikTok, o una publicación que haya pasado por `outcome_unknown`, el código viejo no sabe leer esa fila: valida lo que lee y responde un error (`PLATFORM_ACCOUNT_ROW_INVALID`, `CONTENT_ROW_INVALID`, `PUBLICATION_ROW_INVALID` o `PUBLICATION_EVENT_ROW_INVALID`) en las pantallas y los trabajos que la tocan. Una marca (`kind = brand`) no da error, pero el código viejo no conoce la columna y la trata como un corredor más (le muestra Propiedades e Importar y deja activar su publicación automática). Antes de volver atrás a una versión sin F9, pásale a Claude qué versión quieres y te dirá qué filas revisar; lo normal es arreglar hacia adelante con una versión nueva.
 
 **Y con los posts (migración `0015`).** La `0015` suma las tablas de los posts (`posts`, `plan_runs`, `post_uploads`, `editorial_profiles`) y deja nulo `listing_id` en textos, corridas y publicaciones, con un `CHECK` de un solo sujeto. Mientras no exista ningún post con texto, corrida, medio o publicación, la versión anterior a F9 sigue funcionando. Apenas exista uno, el código viejo falla al leer esa fila (`listing_id` nulo → `CONTENT_ROW_INVALID`, `CONTENT_RUN_ROW_INVALID` o `PUBLICATION_ROW_INVALID`) en las pantallas y los trabajos que la tocan, y un trabajo que lista todas las corridas en cola o las publicaciones que vencen se detiene en ella. **Las migraciones `0016` a `0018` (F9-T16, T17 y T20)** solo agregan: `posts.x_link_allowed`, el valor `uploaded` de `post_upload_status`, `posts.platforms` y el índice único de un plan activo por marca. Una versión que no las conoce ignora las columnas nuevas, pero falla al leer una subida en `uploaded` (`POST_UPLOAD_ROW_INVALID`) en lo que la toque, como la limpieza de cada hora, mientras exista.
+
+**La `0020` (F9.5-T22, el modo en vivo por marca)** solo agrega `brokers.live_enabled` (booleano, `false` por defecto): una versión anterior la ignora y no hay nada que deshacer. **Pero `v1.5.0` y las anteriores no conocen esa llave**: con el servidor en `PUBLISH_MODE=live`, publicarían de verdad en **todas** las marcas, estén o no encendidas. **Antes de volver atrás a `v1.5.0` (o anterior), pon `PUBLISH_MODE=dry-run` en las dos máquinas** (API y worker) y comprueba con `pnpm -s cli status`; desprograma además lo programado en vivo (`pnpm -s cli agenda`), porque el código viejo lo publicaría a su hora.
 
 **La `0019` (F9.5-T19, la música de los reels)** solo agrega `listings.music_track_id` y `posts.music_track_id` (texto nulo): una versión anterior las ignora y no hay nada que deshacer al volver atrás. Las pistas viven en R2 (`assets/musica/`), fuera de la base: se suben una vez por bucket con `pnpm music:upload <carpeta>` (con `ENV_FILE=.env.production`, el de producción; `docs/integraciones/musica-reels.md`).
 
