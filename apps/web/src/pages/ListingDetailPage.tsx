@@ -164,6 +164,7 @@ function DetailView({ detail }: { detail: Detail }) {
         listingStatus={listing.status}
         listingPrice={listing}
         brokerId={listing.brokerId}
+        musicTrackId={listing.musicTrackId}
       />
     </>
   );

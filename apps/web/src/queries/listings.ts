@@ -2,8 +2,10 @@ import {
   type ListingDetailResponse,
   type ListingQuery,
   type ListingStatusBody,
+  type ListingUpdateBody,
   listingDetailResponseSchema,
   listingListResponseSchema,
+  listingResponseSchema,
   listingStatusResponseSchema,
 } from "@agentsales/api/contracts";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -94,6 +96,32 @@ export function useChangeListingStatus(id: string) {
         queryClient.invalidateQueries({ queryKey: publicationKeys.all }),
         queryClient.invalidateQueries({ queryKey: trackingKeys.all }),
       ]);
+    },
+  });
+}
+
+/**
+ * `PATCH /listings/:id` (F9.5-T19): la música del reel. Como al cambiar el estado, el detalle toma
+ * la propiedad nueva sin volver a pedir las URLs de la galería. El reel se rehace al preparar.
+ */
+export function useSetListingMusic(id: string) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (musicTrackId: ListingUpdateBody["musicTrackId"]) =>
+      (
+        await unwrap(
+          client.listings[":id"].$patch({ param: { id }, json: { musicTrackId } }),
+          listingResponseSchema,
+        )
+      ).listing,
+    onSuccess: (listing) => {
+      const key = listingKeys.detail(id);
+      queryClient.setQueryData<ListingDetailResponse>(
+        key,
+        (current) => (current ? { ...current, listing } : current),
+        { updatedAt: queryClient.getQueryState(key)?.dataUpdatedAt },
+      );
     },
   });
 }

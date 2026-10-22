@@ -10,8 +10,10 @@ import { useState } from "react";
 import { ApiError } from "../../api/client.js";
 import { useContentRun, useListingContent, useRequestContentRun } from "../../queries/content.js";
 import { useHealth } from "../../queries/health.js";
+import { useSetListingMusic } from "../../queries/listings.js";
 import { useListingPublications } from "../../queries/publications.js";
 import { ErrorAlert } from "../ErrorAlert.js";
+import { MusicPicker } from "../music/MusicPicker.js";
 import { prepareBlockedReason } from "../publications/publications.js";
 import { Button } from "../ui/Button.js";
 import type { ListingPrice } from "./marketplace.js";
@@ -31,6 +33,7 @@ export function ContentSection({
   listingStatus,
   listingPrice = null,
   brokerId,
+  musicTrackId = null,
 }: {
   listingId: string;
   listingStatus: ListingStatus;
@@ -38,9 +41,12 @@ export function ContentSection({
   listingPrice?: ListingPrice | null;
   /** El corredor del aviso: el nombre de su cuenta en la vista previa (F9.5-T07). */
   brokerId?: string;
+  /** La música del reel (F9.5-T19): `null`, sin música. */
+  musicTrackId?: string | null;
 }) {
   const content = useListingContent(listingId);
   const request = useRequestContentRun(listingId);
+  const music = useSetListingMusic(listingId);
   // F3-T18: las publicaciones del aviso (aprobar, publicar y los bloqueos) y el modo de la API.
   const publications = useListingPublications(listingId);
   const health = useHealth();
@@ -125,6 +131,18 @@ export function ContentSection({
       {canPrepareContent(listingStatus) && pendingReason !== null && (
         <p className="mt-2 text-sm text-fg-muted">{pendingReason}</p>
       )}
+      <MusicPicker
+        label="Música del reel"
+        value={music.isPending ? (music.variables ?? null) : musicTrackId}
+        onChange={(id) => music.mutate(id)}
+        saving={music.isPending}
+        error={music.error}
+        after={
+          preparable
+            ? "Al cambiarla, toca «Rehacer imágenes» para armar el reel con ella (tus textos no cambian)."
+            : "Se usa la próxima vez que prepares el contenido."
+        }
+      />
       {publications.error && (
         <ErrorAlert
           error={publications.error}
