@@ -1065,6 +1065,11 @@ export const trackingPublicationSchema = z.object({
   /** Como en la vista de una publicación: qué hacer con el último error. */
   errorAdvice: z.string().nullable(),
   manualTask: z.boolean(),
+  /**
+   * Cuándo salió (F9.5-T03, la portada); `null` si no salió. Con `default(null)`: una CLI o un
+   * panel nuevos aceptan la respuesta de un servidor que todavía no lo manda.
+   */
+  publishedAt: z.coerce.date().nullable().default(null),
   updatedAt: z.coerce.date(),
 });
 export const trackingRowSchema = z.object({

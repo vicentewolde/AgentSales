@@ -204,6 +204,73 @@ describe("GET /tracking y GET /agenda", () => {
     expect((await app.request("/tracking?broker=nadie")).status).toBe(404);
   });
 
+  it("cada celda trae cuándo salió (`publishedAt`, F9.5-T03); `null` si no salió", async () => {
+    const { t, app } = await setup();
+    const reel = t.byFormat("reel")?.id ?? "";
+    const at = new Date("2026-10-21T15:30:00.000Z");
+    await t.publications.transition(
+      reel,
+      { from: "approved", to: "publishing", changes: { dryRun: true } },
+      { actor: "system" },
+    );
+    await t.publications.transition(
+      reel,
+      {
+        from: "publishing",
+        to: "published",
+        changes: { externalId: `dry-run:${reel}`, publishedAt: at },
+      },
+      { actor: "system" },
+    );
+
+    const response = await app.request("/tracking");
+
+    const raw = (await response.json()) as {
+      rows: { cells: { instagram: { format: string; publishedAt: unknown }[] } }[];
+    };
+    expect(raw.rows[0]?.cells.instagram.map((p) => [p.format, p.publishedAt])).toEqual([
+      ["post", null],
+      ["reel", at.toISOString()],
+    ]);
+    const { rows } = trackingResponseSchema.parse(raw);
+    expect(rows[0]?.cells.instagram[1]?.publishedAt).toEqual(at);
+  });
+
+  it("una respuesta sin `publishedAt` (un servidor anterior) se lee como `null`", () => {
+    const cell = {
+      id: "p",
+      format: "post",
+      language: "es",
+      status: "approved",
+      dryRun: true,
+      externalUrl: null,
+      scheduledAt: null,
+      schedule: null,
+      expiry: null,
+      lastError: null,
+      errorAdvice: null,
+      manualTask: false,
+      updatedAt: "2026-10-21T15:30:00.000Z",
+    };
+    const parsed = trackingResponseSchema.parse({
+      rows: [],
+      posts: [
+        {
+          post: {
+            id: "post-1",
+            brokerId: "b",
+            topic: "Tema",
+            status: "ready",
+            kind: "text",
+            plannedAt: null,
+          },
+          cells: { instagram: [], x: [cell], linkedin: [], discord: [], tiktok: [] },
+        },
+      ],
+    });
+    expect(parsed.posts[0]?.cells.x[0]?.publishedAt).toBeNull();
+  });
+
   it("la matriz no muestra las archivadas salvo ?archived=1", async () => {
     const { t, app } = await setup();
     t.listings.setStatus(t.listingId, "archived");
