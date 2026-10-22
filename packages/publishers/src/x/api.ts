@@ -1,4 +1,4 @@
-import type { AbortSignalLike } from "@agentsales/core";
+import { type AbortSignalLike, isAppError } from "@agentsales/core";
 import { z } from "zod";
 import {
   X_API_ORIGIN,
@@ -11,8 +11,9 @@ import { X_ERRORS } from "./errors.js";
 import { type XCallOptions, xRequest } from "./http.js";
 
 // La API de X para publicar (spec F9 §4.6, F9-T16; `x.md` §4.1 y §5.1): crear un post y subir sus
-// medios con la API v2 (`/2/media/upload`; el video, por partes). Siempre con el token de usuario
-// de OAuth 2.0 (`Bearer`). Ningún error lleva el token, el texto ni los bytes.
+// medios con la API v2 (`/2/media/upload`; el video, por partes); desde F9.5-T09, borrar un post
+// al retirarlo (`x.md` §4.3). Siempre con el token de usuario de OAuth 2.0 (`Bearer`). Ningún error
+// lleva el token, el texto ni los bytes.
 
 /** Una imagen ya en memoria (se bajó de R2 antes de subirla; hasta 5 MB). */
 export type XUploadFile = { mediaId: string; mime: string; bytes: Uint8Array };
@@ -58,6 +59,12 @@ export interface XApiClient {
     file: XUploadStream,
     options?: XCallOptions,
   ): Promise<XUploadedMedia>;
+  /**
+   * F9.5-T09: `DELETE /2/tweets/:id` (`x.md` §4.3), solo un post del usuario del token. Idempotente:
+   * un 404 (ya no existe) cuenta como borrado. Un 2xx que no dice `deleted: true` es
+   * `X_UNEXPECTED_RESPONSE` (no se da por borrado). El costo no está verificado (`x.md` §2.1).
+   */
+  deletePost(accessToken: string, postId: string, options?: XCallOptions): Promise<void>;
 }
 
 export type XApiOptions = {
@@ -77,6 +84,12 @@ const idSchema = z
   .transform(String);
 
 const createPostSchema = z.looseObject({ data: z.looseObject({ id: idSchema }) });
+
+const deletePostSchema = z.looseObject({ data: z.looseObject({ deleted: z.literal(true) }) });
+
+/** Si un error es el 404 de X: lo que se quería borrar ya no existe. */
+const isNotFound = (error: unknown) =>
+  isAppError(error) && (error.details as { httpStatus?: unknown } | undefined)?.httpStatus === 404;
 
 const processingSchema = z
   .looseObject({
@@ -309,6 +322,25 @@ export function createXApi(options: XApiOptions = {}): XApiClient {
         id: xMediaId,
         expiresAt: expiry(finalized.expires_after_secs == null ? init : finalized),
       };
+    },
+
+    async deletePost(token, postId, { signal } = {}) {
+      let body: unknown;
+      try {
+        body = await xRequest(
+          "deletePost",
+          new URL(`/2/tweets/${encodeURIComponent(postId)}`, origin),
+          { method: "DELETE", authorization: bearer(token) },
+          call(signal, timeoutMs),
+        );
+      } catch (error) {
+        // Borrar es idempotente: uno que ya no existe ya está borrado.
+        if (isNotFound(error)) return;
+        throw error;
+      }
+      if (!deletePostSchema.safeParse(body).success) {
+        throw X_ERRORS.unexpectedResponse("deletePost");
+      }
     },
   };
 }

@@ -24,4 +24,13 @@ describe("createApiOperations (F4-T19)", () => {
     expect(linkedin?.pause).toBeUndefined();
     expect(linkedin?.close).toBeUndefined();
   });
+
+  it("X solo borra un post al retirarlo (F9.5-T09); TikTok no tiene operaciones (D9)", () => {
+    const operationsFor = createApiOperations();
+    const x = operationsFor("x");
+    expect(x?.remove).toBeTypeOf("function");
+    expect(x?.pause).toBeUndefined();
+    expect(x?.close).toBeUndefined();
+    expect(operationsFor("tiktok")).toBeUndefined();
+  });
 });
