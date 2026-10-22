@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import type { UserLinkResponse } from "@agentsales/api/contracts";
+import { INVITATION_TTL_MS } from "@agentsales/core";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { invitationMailto, OneTimeLink } from "./OneTimeLink.js";
@@ -53,7 +54,7 @@ describe("enviar el enlace por correo", () => {
         "",
         "https://panel.ejemplo.cl/invitacion#token-de-prueba&otra=cosa",
         "",
-        "El enlace sirve una sola vez y vence en 72 horas. Si vence, pídeme uno nuevo.",
+        `El enlace sirve una sola vez y vence en ${INVITATION_TTL_MS / 3_600_000} horas. Si vence, pídeme uno nuevo.`,
       ].join("\n"),
     );
   });
@@ -64,6 +65,31 @@ describe("enviar el enlace por correo", () => {
     expect(mailto).not.toContain("#");
     expect(mailto).not.toContain(" ");
     expect(mailto).toContain(encodeURIComponent(link.invitationUrl));
+  });
+
+  it("hostil: un correo o un nombre con campos de más no agregan destinatarios ni cabeceras", () => {
+    const cases: [string, string][] = [
+      ["a?cc=x@b.cl", "Ana"],
+      ["ana&bcc=x@y.cl", "Ana"],
+      ["ana@ejemplo.cl", "Ana\r\nBcc: x@y.cl"],
+    ];
+    for (const [email, name] of cases) {
+      const mailto = invitationMailto(
+        { ...link, user: { ...link.user, email, name } },
+        "invitation",
+      );
+      expect(mailto).not.toMatch(/[\r\n]/);
+      // `parse` exige que el mailto tenga solo subject y body.
+      const mail = parse(mailto);
+      expect(mail.to).toBe(email);
+      expect(mail.body).not.toMatch(/\r/);
+      expect(mail.body.split("\n")[0]).toBe(`Hola ${name.replace(/\s+/g, " ")}:`);
+    }
+  });
+
+  it("sin nombre, saluda con «Hola:»", () => {
+    const mail = parse(invitationMailto({ ...link, user: { ...link.user, name: "  " } }, "reset"));
+    expect(mail.body.startsWith("Hola:\n")).toBe(true);
   });
 
   it("restablecer: el mismo asunto y un mensaje de contraseña nueva", () => {
@@ -77,7 +103,10 @@ describe("enviar el enlace por correo", () => {
   it("el botón es un enlace al mailto, junto a copiar y ocultar", () => {
     const onDone = vi.fn();
     render(<OneTimeLink link={link} kind="invitation" onDone={onDone} />);
-    const send = screen.getByRole("link", { name: "Enviar por correo" });
+    const send = screen.getByRole("link", {
+      name: "Enviar por correo: abre tu programa de correo",
+    });
+    expect(send.textContent).toBe("Enviar por correo");
     expect(send.getAttribute("href")).toBe(invitationMailto(link, "invitation"));
     expect(screen.getByRole("button", { name: "Copiar el enlace" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Listo, ocultarlo" }));

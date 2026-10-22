@@ -63,18 +63,22 @@ export function InvitationPage() {
   if (checkSession && me.isPending) {
     return (
       <AuthShell title={TITLE}>
-        <p className="text-sm text-fg-muted">Cargando…</p>
+        <p role="status" className="text-sm text-fg-muted">
+          Cargando…
+        </p>
       </AuthShell>
     );
   }
   if (checkSession && me.data !== undefined) {
     const who = me.data.name === "" ? me.data.email : `${me.data.name} (${me.data.email})`;
+    const keep =
+      me.data.role === "admin" ? "Para seguir como administrador" : "Para seguir con tu sesión";
     return (
       <AuthShell title={TITLE}>
         <div className="space-y-4">
           <Alert tone="warning" role="alert" title="Ya hay una sesión abierta en este navegador">
-            Tienes abierta la sesión de {who}. Si sigues, se cierra. Para seguir como administrador,
-            abre este enlace en una ventana privada.
+            Tienes abierta la sesión de {who}. Si sigues, se cierra. {keep}, abre este enlace en una
+            ventana privada.
           </Alert>
           {logout.error && <ErrorAlert error={logout.error} />}
           <Button

@@ -3,7 +3,7 @@ import { TEST_ADMIN } from "@agentsales/api/testing";
 import { inviteUser, type User } from "@agentsales/core";
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { harness } from "../../test/harness.js";
+import { brokerData, harness } from "../../test/harness.js";
 import { returnPathOf } from "./LoginPage.js";
 
 // F7-T07 (spec F7 §4.11): entrar, la invitación, salir y la vuelta a la página donde estaba, sobre
@@ -174,6 +174,22 @@ describe("la invitación", () => {
     fireEvent.click(screen.getByRole("button", { name: "Guardar y entrar" }));
     expect(await screen.findByRole("heading", { level: 1, name: "Hoy" })).toBeTruthy();
     expect(await screen.findByText("nueva@ejemplo.cl")).toBeTruthy();
+  });
+
+  it("con la sesión de un corredor, el aviso no habla del administrador", async () => {
+    const h = harness({ session: "none" });
+    const { token } = await invite(h);
+    const broker = await h.brokers.create(brokerData("con-sesion"));
+    const user = h.signInAsBroker(broker.id);
+    h.renderApp(`/invitacion#${token}`);
+
+    const warning = await screen.findByText(/Tienes abierta la sesión de/);
+    expect(warning.textContent).toContain(user.email);
+    expect(warning.textContent).toContain(
+      "Para seguir con tu sesión, abre este enlace en una ventana privada.",
+    );
+    expect(warning.textContent).not.toContain("administrador");
+    expect(screen.queryByLabelText("Contraseña")).toBeNull();
   });
 
   it("un enlace usado o sin token lo explica", async () => {
