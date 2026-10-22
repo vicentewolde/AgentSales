@@ -36,7 +36,7 @@ Contexto:
    - `docs/ESTADO.md`: fase siguiente, tabla de progreso reiniciada y siguiente paso `/fase-plan N+1`.
    - `README.md`: actualiza la sección de puesta en marcha si cambió.
 
-7. **Tag.** Los cambios del cierre entran a `main` por PR (la rama está protegida y exige el check `check` de la CI). Después del merge, desde `main` actualizado, propón los comandos y ejecútalos solo con permiso, con la versión del roadmap (F0 → `v0.0.1`, F1 → `v0.1.0`, …):
+7. **Tag.** Los cambios del cierre entran a `main` por PR (la rama está protegida y exige el check `check` de la CI). Sube la versión del `package.json` raíz a la del tag en el mismo PR del cierre (es la que la API manda en `X-AgentSales-Version` y la CLI compara con la suya, ADR-0011). Después del merge, desde `main` actualizado, propón los comandos y ejecútalos solo con permiso, con la versión del roadmap (F0 → `v0.0.1`, F1 → `v0.1.0`, …):
    ```bash
    git tag -a vX.Y.Z -m "FN · <nombre>"
    git push origin vX.Y.Z

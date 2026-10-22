@@ -7,6 +7,7 @@ import { apiPort, loadEnvironment } from "./env.js";
 import type { Io } from "./output.js";
 import { clientTarget, localServerUrl, resolveServer, type ServerResolution } from "./server.js";
 import { createFileSessionStore, type SessionStore } from "./session.js";
+import { readCliVersion } from "./version.js";
 
 /** Lo que la CLI pide a la terminal: confirmar, leer la entrada estándar y abrir un enlace. */
 export type Terminal = {
@@ -175,8 +176,10 @@ export function createContext(): CliContext {
       session: session.read(),
       localPort: localPort(),
     });
+  // La versión de esta CLI, leída una vez: si el servidor es de otra, se avisa (spec F9.5 §4.2).
+  const version = readCliVersion();
   const apiFor = (url: string, token?: string) =>
-    createApiClient(url, token === undefined ? {} : { token });
+    createApiClient(url, token === undefined ? { version } : { token, version });
   const clientFrom = (target: ReturnType<typeof clientTarget>) =>
     target.ok ? apiFor(target.url, target.token) : invalidServerClient(target.error.message);
   return {

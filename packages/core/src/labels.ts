@@ -192,7 +192,8 @@ export function publicationFormatText(
   if (platform === "portal_inmobiliario" || platform === "fb_marketplace") return "aviso";
   if (platform !== "instagram") return "post";
   if (format === "post" && mediaCount === 1) return "imagen";
-  return PUBLICATION_FORMAT_TEXT[format];
+  // Un formato que este código no conoce (un servidor más nuevo, F9.5-T11) se muestra tal cual.
+  return PUBLICATION_FORMAT_TEXT[format] ?? format;
 }
 
 /**

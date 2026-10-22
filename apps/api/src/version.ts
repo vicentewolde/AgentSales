@@ -1,22 +1,9 @@
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { readProductVersion } from "@agentsales/config";
 
-/** Versión del `package.json` de la API; sube desde este archivo (funciona en `src/` y `dist/`). */
+/**
+ * La versión de la API: la de AgentSales, del `package.json` raíz (spec F9.5 §4.2). `server.ts` la
+ * lee una vez al arrancar; va en `/health` y en la cabecera `X-AgentSales-Version`.
+ */
 export function readApiVersion(): string {
-  let dir = dirname(fileURLToPath(import.meta.url));
-  while (!existsSync(join(dir, "package.json"))) {
-    const parent = dirname(dir);
-    if (parent === dir) {
-      return "0.0.0";
-    }
-    dir = parent;
-  }
-  const pkg: unknown = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
-  return typeof pkg === "object" &&
-    pkg !== null &&
-    "version" in pkg &&
-    typeof pkg.version === "string"
-    ? pkg.version
-    : "0.0.0";
+  return readProductVersion();
 }

@@ -166,7 +166,9 @@ export function runLogin(deps: LoginDeps, options: { email?: string; api?: strin
         .catch(() => undefined);
     }
     const where = isLocalServer(target.url) ? "" : ` en ${target.url}`;
-    deps.print(`${c.green("✓")} Entraste como ${user.email} (${ROLE_TEXT[user.role]})${where}`);
+    deps.print(
+      `${c.green("✓")} Entraste como ${user.email} (${ROLE_TEXT[user.role] ?? user.role})${where}`,
+    );
     deps.print(
       c.dim(
         target.save
@@ -224,7 +226,7 @@ export function runWhoami(deps: Io & { client: ApiClient; target?: ServerTarget 
     }
     const { user } = await unwrap(deps.client.auth.me.$get(), meResponseSchema);
     const broker = user.broker === null ? "" : ` · corredor ${user.broker.slug}`;
-    deps.print(`${user.name} <${user.email}> · ${ROLE_TEXT[user.role]}${broker}`);
+    deps.print(`${user.name} <${user.email}> · ${ROLE_TEXT[user.role] ?? user.role}${broker}`);
     return 0;
   });
 }

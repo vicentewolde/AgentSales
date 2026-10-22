@@ -134,7 +134,9 @@ export function runImport(deps: ImportDeps, xlsx: string, options: ImportOptions
     if (broker !== undefined && broker !== options.broker) {
       deps.print(c.dim(`Corredor: ${broker}`));
     }
-    deps.print(`Carga ${run.id} (${run.input.xlsxFile}): ${IMPORT_RUN_STATUS_TEXT[run.status]}…`);
+    deps.print(
+      `Carga ${run.id} (${run.input.xlsxFile}): ${IMPORT_RUN_STATUS_TEXT[run.status] ?? run.status}…`,
+    );
     const done = await waitForRun(deps, {
       run,
       fetch: async () =>
@@ -145,7 +147,7 @@ export function runImport(deps: ImportDeps, xlsx: string, options: ImportOptions
           )
         ).importRun,
       isTerminal: (current) => isTerminalImportRun(current.status),
-      progress: (current) => IMPORT_RUN_STATUS_TEXT[current.status],
+      progress: (current) => IMPORT_RUN_STATUS_TEXT[current.status] ?? current.status,
       laterCommand: `agentsales imports ${run.id}`,
       noun: "la carga",
     });

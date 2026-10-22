@@ -33,7 +33,9 @@ export function renderListingDetail(
     listing.externalRef,
     [
       listing.propertyType ?? "Propiedad",
-      listing.operation === null ? null : `en ${OPERATION_TEXT[listing.operation].toLowerCase()}`,
+      listing.operation === null
+        ? null
+        : `en ${(OPERATION_TEXT[listing.operation] ?? listing.operation).toLowerCase()}`,
     ]
       .filter(Boolean)
       .join(" "),
@@ -46,7 +48,7 @@ export function renderListingDetail(
     .join(", ");
   const lines = [
     c.bold(title),
-    `  Estado: ${LISTING_STATUS_TEXT[listing.status]} (${listing.status}) · Corredor: ${brokers.get(listing.brokerId)?.slug ?? "—"}`,
+    `  Estado: ${LISTING_STATUS_TEXT[listing.status] ?? listing.status} (${listing.status}) · Corredor: ${brokers.get(listing.brokerId)?.slug ?? "—"}`,
     `  Precio: ${formatListingPrice(listing)}`,
     `  Dirección: ${address || "—"}${
       listing.showExactAddress ? "" : c.dim(" (no se publica la dirección exacta)")
@@ -161,11 +163,11 @@ export function runListingAction(
     if (result === null) return 1;
     const { listing, changed, manualTasks } = result;
     deps.print(
-      `${c.green("✓")} ${listing.externalRef} ${ACTION_DONE[action]}: ${LISTING_STATUS_TEXT[listing.status]}`,
+      `${c.green("✓")} ${listing.externalRef} ${ACTION_DONE[action]}: ${LISTING_STATUS_TEXT[listing.status] ?? listing.status}`,
     );
     for (const publication of changed) {
       deps.print(
-        `  ${publicationName(publication)}: ${PUBLICATION_STATUS_TEXT[publication.status]}`,
+        `  ${publicationName(publication)}: ${PUBLICATION_STATUS_TEXT[publication.status] ?? publication.status}`,
       );
     }
     if (manualTasks.length > 0) {

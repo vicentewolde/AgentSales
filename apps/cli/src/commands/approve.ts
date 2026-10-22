@@ -80,7 +80,7 @@ export function runApprove(deps: ApproveDeps, ref: string, options: ApproveOptio
         "CONTENT_NOT_FOUND",
         platform === undefined
           ? `${trimmed} todavía no tiene textos`
-          : `${trimmed} no tiene texto de ${PLATFORM_TEXT[platform]}`,
+          : `${trimmed} no tiene texto de ${PLATFORM_TEXT[platform] ?? platform}`,
         `Prepáralos con agentsales prepare ${trimmed}`,
       );
     }
@@ -88,7 +88,7 @@ export function runApprove(deps: ApproveDeps, ref: string, options: ApproveOptio
     let failed = 0;
     let done = 0;
     for (const content of channel) {
-      const name = PLATFORM_TEXT[content.platform];
+      const name = PLATFORM_TEXT[content.platform] ?? content.platform;
       // Sin --platform, con --undo, solo los aprobados. Los errores de la revisión los decide la API
       // (`CONTENT_HAS_ERRORS`), y se informan con qué hacer, sin cortar los demás canales.
       if (platform === undefined && options.undo && content.status !== "approved") continue;

@@ -128,7 +128,7 @@ function itemLine(item: Item, c: Colors): string {
   const channel =
     item.platform === null
       ? null
-      : `${PLATFORM_TEXT[item.platform]}${item.format === null ? "" : ` ${publicationFormatText(item.platform, item.format, item.mediaCount)}`}`;
+      : `${PLATFORM_TEXT[item.platform] ?? item.platform}${item.format === null ? "" : ` ${publicationFormatText(item.platform, item.format, item.mediaCount)}`}`;
   const when =
     item.at === null
       ? null
@@ -156,7 +156,7 @@ export function renderAgenda(items: readonly Item[], c: Colors): string {
   for (const kind of AGENDA_KINDS) {
     const group = items.filter((item) => item.kind === kind);
     if (group.length === 0) continue;
-    lines.push("", c.bold(`${AGENDA_KIND_TEXT[kind]} (${group.length})`));
+    lines.push("", c.bold(`${AGENDA_KIND_TEXT[kind] ?? kind} (${group.length})`));
     for (const item of group) {
       lines.push(itemLine(item, c));
       for (const command of agendaCommands(item)) lines.push(c.dim(`    → ${command}`));

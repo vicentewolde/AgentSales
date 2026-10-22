@@ -49,3 +49,4 @@ export {
   TOTP_PERIOD_SECONDS,
   totpStepOf,
 } from "./totp.js";
+export { readProductVersion } from "./version.js";
