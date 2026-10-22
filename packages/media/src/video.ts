@@ -368,17 +368,22 @@ export async function encodeReelFromPhotos(
   }
   await options.ensureTools(signal);
   const id = randomUUID();
-  const framePaths = photos.map((_, index) => join(options.workDir, `${id}-foto-${index}.jpg`));
+  // Cada foto con la ruta de su cuadro en el temporal.
+  const frames = photos.map((photo, index) => ({
+    photo,
+    path: join(options.workDir, `${id}-foto-${index}.jpg`),
+  }));
+  const framePaths = frames.map((frame) => frame.path);
   const overlayPath = overlayPng === null ? null : join(options.workDir, `${id}-texto.png`);
   const reelPath = join(options.workDir, `${id}-reel.mp4`);
   const durationS = photos.length * slideS;
   const threads = threadsOf(options);
   const imageOptions = { ...options, ensureFfmpeg: options.ensureTools };
   try {
-    for (const [index, photo] of photos.entries()) {
+    for (const { photo, path } of frames) {
       throwIfAborted(signal);
       const source = await decodableSource(await photo.read(), photo.mime, imageOptions, signal);
-      await writeFile(framePaths[index] as string, await photoReelFrame(source));
+      await writeFile(path, await photoReelFrame(source));
     }
     if (overlayPath !== null && overlayPng !== null) await writeFile(overlayPath, overlayPng);
     // Cada cuadro dura su parte más el fundido hacia la siguiente; el último, solo su parte. Un

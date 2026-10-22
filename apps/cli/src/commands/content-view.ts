@@ -113,13 +113,20 @@ export function renderContent(content: ContentView, c: Colors): string {
   return lines.join("\n");
 }
 
+/** Si hay reel y, desde F9.5-T18, si se armó con las fotos (la propiedad no tiene video). */
+function reelText(content: ListingContentResponse): string {
+  if (content.reel === null) return "no";
+  if (content.reelFromPhotos) return "sí, armado con tus fotos";
+  return "sí";
+}
+
 /** Los medios por canal y la última corrida, en una línea cada uno (cabecera de `content`). */
 export function renderContentMedia(content: ListingContentResponse, c: Colors): string {
   const run = content.latestRun;
   return [
     `  Carrusel de Instagram: ${plural(content.carousel.length, "imagen", "imágenes")}` +
       ` · Fotos de Portal y Marketplace: ${content.photos.length}` +
-      ` · Reel: ${content.reel === null ? "no" : content.reelFromPhotos ? "sí, armado con tus fotos" : "sí"}`,
+      ` · Reel: ${reelText(content)}`,
     `  Última preparación: ${
       run === null
         ? "ninguna"

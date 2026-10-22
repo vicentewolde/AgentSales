@@ -75,7 +75,8 @@ export type ReelPhotoInput = { mime: string; read: () => Promise<Uint8Array> };
 
 /**
  * Lo que se pide del reel armado con fotos: `overlayPng` es el texto que va encima los primeros
- * 2 s, como en el reel de un video (o `null`, sin texto). La música (F9.5-T19) se agregará aquí.
+ * 2 s, como en el reel de un video (o `null`, sin texto). La música (F9.5-T19) se agregará aquí
+ * como `music` (opcional: sin ella, la pista silenciosa de hoy).
  */
 export type PhotoReelOptions = { overlayPng: Uint8Array | null };
 

@@ -494,7 +494,11 @@ async function reelStage(state: Run): Promise<void> {
   state.report.reel = "none";
 }
 
-/** El texto del reel y su hash (con las versiones de las plantillas y del procesador). */
+/**
+ * El texto del reel y su hash (con las versiones de las plantillas y del procesador). Es la parte
+ * de la clave que comparten el reel de un video y el de fotos: la música (F9.5-T19) sumará aquí el
+ * id de la pista, omitido sin música para no cambiar las claves de los reels ya armados.
+ */
 function reelText(state: Run) {
   const { deps, ctx } = state;
   const overlay = reelOverlayData(ctx.brief);
