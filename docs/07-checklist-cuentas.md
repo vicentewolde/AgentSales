@@ -182,3 +182,8 @@ La cuenta nace **a mano** (D5). Nada de esto lo hace Claude.
 - [ ] Conectar en el servidor: el botón **Conectar TikTok**, o `pnpm -s cli accounts connect tiktok --broker <slug>`, dejando marcado el permiso de subir videos.
 - [ ] **S6:** autorizar tu cuenta, subir un video de R2 y ver el borrador en la bandeja de la app; anotar si el refresh token rota. Si una cuenta personal no puede autorizar, probar una Creator o Business; si el borrador no llega sin auditoría, TikTok pasa al piloto. Resultado en `docs/integraciones/tiktok.md` §0.
 - [ ] (Después) **La revisión de Production** con el video demo y el texto de la revisión. Al aprobarse, el par del `.env` y de Fly pasa a ser el de Production.
+
+## F9.5 · Imágenes para posts sin fotos (ADR-0038)
+Sin estas claves, «Conseguir imagen» ofrece solo las tarjetas de la marca (gratis).
+- [ ] **Pixabay:** crea una cuenta en pixabay.com y copia tu clave de API (pixabay.com/api/docs, con la sesión iniciada). Va en `.env` y, para el servidor, en `.env.production` y los secretos de Fly (`docs/10-despliegue.md`, paso 2). Gratis.
+- [ ] **Google AI Studio (imágenes con IA):** en aistudio.google.com, crea una clave de API de Gemini en un proyecto con facturación (Nano Banana 2.1 cobra unos US$0,034 por imagen). Pon un tope de gasto en Google Cloud además del de AgentSales (US$2 al mes por marca). Va en `.env`, `.env.production` y los secretos de Fly. Es un pago: lo haces tú.
