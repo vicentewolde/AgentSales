@@ -338,14 +338,16 @@ describe("checkPostContent: medios", () => {
 
   it("X admite hasta 4 imágenes", () => {
     expect(codes("x", "Fotos.", withMedia("carousel", 4))).toEqual([]);
-    expect(codes("x", "Fotos.", withMedia("carousel", 5))).toEqual(["MEDIA_REQUIREMENT"]);
+    expect(codes("x", "Fotos.", withMedia("carousel", 5))).toEqual(["MEDIA_NOT_SUPPORTED"]);
     expect(codes("instagram", "Fotos.", withMedia("carousel", 5))).toEqual([]);
   });
 
   it("Instagram necesita imagen o video, y TikTok solo video", () => {
-    expect(codes("instagram", "Solo texto.", withMedia("text", 0))).toEqual(["MEDIA_REQUIREMENT"]);
+    expect(codes("instagram", "Solo texto.", withMedia("text", 0))).toEqual([
+      "MEDIA_NOT_SUPPORTED",
+    ]);
     expect(codes("linkedin", "Solo texto.", withMedia("text", 0))).toEqual([]);
-    expect(codes("tiktok", "Fotos.", withMedia("image", 1))).toEqual(["MEDIA_REQUIREMENT"]);
+    expect(codes("tiktok", "Fotos.", withMedia("image", 1))).toEqual(["MEDIA_NOT_SUPPORTED"]);
     expect(codes("tiktok", "Video.", withMedia("video", 0, 1))).toEqual([]);
   });
 
@@ -353,7 +355,9 @@ describe("checkPostContent: medios", () => {
     expect(codes("instagram", "Fotos.", withMedia("carousel", 1))).toEqual(["MEDIA_REQUIREMENT"]);
     expect(codes("instagram", "Fotos.", withMedia("carousel", 2))).toEqual([]);
     expect(codes("instagram", "Fotos.", withMedia("carousel", 10))).toEqual([]);
-    expect(codes("instagram", "Fotos.", withMedia("carousel", 11))).toEqual(["MEDIA_REQUIREMENT"]);
+    expect(codes("instagram", "Fotos.", withMedia("carousel", 11))).toEqual([
+      "MEDIA_NOT_SUPPORTED",
+    ]);
     expect(codes("instagram", "Foto.", withMedia("image", 1))).toEqual([]);
     // Fuera de Instagram, el carrusel no tiene ese mínimo.
     expect(codes("linkedin", "Fotos.", withMedia("carousel", 1))).toEqual([]);
@@ -375,8 +379,51 @@ describe("checkPostContent: medios", () => {
     expect(codes("instagram", "Fotos.", withMedia("carousel", 3))).toEqual([]);
   });
 
-  it("un post de imágenes sin imágenes no se aprueba", () => {
-    expect(codes("linkedin", "Fotos.", withMedia("image", 0))).toEqual(["MEDIA_REQUIREMENT"]);
+  it("un post de imágenes sin imágenes avisa «Falta la imagen» y se puede aprobar (F9.5-T21)", () => {
+    const checks = checkPostContent(
+      "linkedin",
+      { body: "Fotos.", hashtags: [] },
+      withMedia("image", 0),
+    );
+    expect(checks.map((item) => [item.code, item.severity])).toEqual([
+      ["MEDIA_REQUIREMENT", "warning"],
+    ]);
+    expect(checks[0]?.message).toMatch(/^Falta la imagen: /);
+    expect(hasContentErrors(checks)).toBe(false);
+  });
+
+  it("lo que falta se dice por tipo: imagen, imágenes del carrusel o video (F9.5-T21)", () => {
+    const message = (platform: PostPlatform, kind: PostKind, images: number, videos = 0) =>
+      checkPostContent(
+        platform,
+        { body: "Texto.", hashtags: [] },
+        withMedia(kind, images, videos),
+      )[0]?.message;
+    expect(message("instagram", "image", 0)).toMatch(/^Falta la imagen: /);
+    expect(message("instagram", "carousel", 0)).toMatch(/^Faltan las imágenes del carrusel: /);
+    expect(message("instagram", "carousel", 1)).toMatch(
+      /^Faltan las imágenes del carrusel: Instagram pide de 2 a 10 y este tiene 1/,
+    );
+    expect(message("instagram", "video", 0)).toMatch(/^Falta el video: /);
+    // Un carrusel con una sola imagen falta, pero no es un error: el texto se aprueba.
+    expect(
+      hasContentErrors(
+        checkPostContent("instagram", { body: "Fotos.", hashtags: [] }, withMedia("carousel", 1)),
+      ),
+    ).toBe(false);
+  });
+
+  it("un error real sigue siendo error aunque también falten los medios", () => {
+    const checks = checkPostContent(
+      "x",
+      { body: "a".repeat(400), hashtags: [] },
+      withMedia("image", 0),
+    );
+    expect(checks.map((item) => [item.code, item.severity])).toEqual([
+      ["TOO_LONG", "error"],
+      ["MEDIA_REQUIREMENT", "warning"],
+    ]);
+    expect(hasContentErrors(checks)).toBe(true);
   });
 });
 

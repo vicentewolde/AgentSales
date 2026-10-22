@@ -115,7 +115,7 @@ async function setup(options: Setup = {}) {
       tokenExpiresAt: null,
       meta: {},
       credentials:
-        platform === "x"
+        platform === "x" || platform === "tiktok"
           ? { accessToken: "token-prueba", refreshToken: "refresh-prueba" }
           : { accessToken: "token-prueba" },
     });
@@ -624,5 +624,72 @@ describe("draftPost · las redes que sirven al post (F9-T20)", () => {
     expect(codeOf(error)).toBe("POST_NO_PLATFORMS");
     expect(t.llm.requests).toEqual([]);
     expect((await t.contentRuns.get(run.id))?.error?.code).toBe("POST_NO_PLATFORMS");
+  });
+});
+
+describe("draftPost · un post sin medios todavía (F9.5-T21)", () => {
+  it("un carrusel sin imágenes redacta el texto para Instagram; la falta es solo una advertencia y el texto se aprueba", async () => {
+    const t = await setup({
+      kind: "carousel",
+      accounts: ["instagram"],
+      llm: [{ data: answer([{ platform: "instagram", language: "es" }]) }],
+    });
+    const { run } = await t.request();
+
+    const result = await draftPost(t.deps, { contentRunId: run.id, isLastAttempt: false });
+
+    expect(result).toMatchObject({ outcome: "succeeded" });
+    const texts = await t.current();
+    expect(texts.map((item) => [item.platform, item.status])).toEqual([["instagram", "draft"]]);
+    const saved = await t.contentRuns.get(run.id);
+    expect(saved?.report).toMatchObject({
+      postChecks: [{ platform: "instagram", language: "es", codes: ["MEDIA_REQUIREMENT"] }],
+    });
+    const approved = await approveContent(t.approveDeps, {
+      contentId: texts[0]?.id ?? "",
+      actor: "operator",
+    });
+    expect(approved.content.status).toBe("approved");
+    expect(approved.created).toEqual([]);
+  });
+
+  it("un video sin video redacta para Instagram y TikTok, y uno de imágenes no pierde ninguna red por no tener archivos", async () => {
+    const video = await setup({
+      kind: "video",
+      accounts: ["instagram", "tiktok"],
+      llm: [
+        {
+          data: answer([
+            { platform: "instagram", language: "es" },
+            { platform: "tiktok", language: "es" },
+          ]),
+        },
+      ],
+    });
+    const { run } = await video.request();
+    await draftPost(video.deps, { contentRunId: run.id, isLastAttempt: false });
+    expect((await video.current()).map((item) => item.platform).sort()).toEqual([
+      "instagram",
+      "tiktok",
+    ]);
+
+    const image = await setup({
+      kind: "image",
+      accounts: ["instagram", "linkedin"],
+      llm: [
+        {
+          data: answer([
+            { platform: "instagram", language: "es" },
+            { platform: "linkedin", language: "es" },
+          ]),
+        },
+      ],
+    });
+    const { run: imageRun } = await image.request();
+    await draftPost(image.deps, { contentRunId: imageRun.id, isLastAttempt: false });
+    expect((await image.current()).map((item) => item.platform).sort()).toEqual([
+      "instagram",
+      "linkedin",
+    ]);
   });
 });
