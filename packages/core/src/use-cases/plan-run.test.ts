@@ -73,14 +73,15 @@ function samplePlanProvider(): LLMProvider & { requests: LLMRequest[] } {
   };
 }
 
-/** Una idea como la entrega la IA (la cadencia de LinkedIn: martes y jueves a las 09:00). */
+/**
+ * Una idea como la entrega la IA, sin fecha ni hora (ADR-0034): el código la agenda en la cadencia
+ * de LinkedIn (martes y jueves a las 09:00).
+ */
 const idea = (tema: string, overrides: Record<string, unknown> = {}) => ({
   tema,
   linea: "producto",
   redes: ["linkedin"],
   formato: "text",
-  fecha: "2026-10-22",
-  hora: "09:00",
   porque: "La línea Producto pesa más.",
   ...overrides,
 });
@@ -458,15 +459,16 @@ describe("runPlan con el plan de ejemplo (fake)", () => {
 });
 
 describe("runPlan con respuestas guionadas", () => {
-  it("una idea fuera del período se descarta y queda en el reporte; las demás se guardan", async () => {
+  it("el código agenda las ideas en la cadencia (la fecha de la IA se ignora); una que no pasa queda en el reporte", async () => {
     const t = await setup({
       llm: [
         {
           data: {
             ideas: [
               idea("Cómo decidimos qué construir"),
-              idea("Fuera del período", { fecha: "2026-11-10" }),
-              idea("Lo que viene", { linea: "bastidores", fecha: "2026-10-27" }),
+              idea("Solo para TikTok", { redes: ["tiktok"] }),
+              // Una fecha fuera del período que mande la IA igual no cuenta (ADR-0034).
+              idea("Lo que viene", { linea: "bastidores", fecha: "2026-11-10", hora: "23:00" }),
             ],
             warnings: ["Faltan hechos para proponer mejor"],
           },
@@ -480,7 +482,7 @@ describe("runPlan con respuestas guionadas", () => {
       ["Lo que viene", "bastidores", "2026-10-27T12:00:00.000Z"],
     ]);
     expect(saved?.report).toMatchObject({
-      discarded: [{ topic: "Fuera del período", code: "OUT_OF_PERIOD" }],
+      discarded: [{ topic: "Solo para TikTok", code: "PLATFORM_NOT_REQUESTED" }],
       warnings: ["Faltan hechos para proponer mejor"],
     });
   });
@@ -725,7 +727,7 @@ describe("las redes de una idea aceptada (decisión del operador, F9-T20)", () =
       llm: [
         {
           data: {
-            ideas: [idea("Solo para X", { redes: ["x"], fecha: "2026-10-23" })],
+            ideas: [idea("Solo para X", { redes: ["x"] })],
             warnings: [],
           },
         },
@@ -906,14 +908,9 @@ describe("un plan activo por marca y la lista de planes (F9-T20)", () => {
       { planRunId: run.id, isLastAttempt: false },
     );
     expect(result.outcome).toBe("succeeded");
+    // Desde F9.5 (ADR-0034) la IA no ve lo planificado: las fechas las pone el código.
     const prompt = (t.llm as ReturnType<typeof samplePlanProvider>).requests[0]?.prompt ?? "";
-    const data = JSON.parse(prompt.slice(prompt.indexOf("{"), prompt.lastIndexOf("}") + 1)) as {
-      ya_planificados: { fecha: string; redes: string[] }[];
-    };
-    expect(data.ya_planificados).toEqual([
-      { fecha: "2026-10-19", redes: ["linkedin"] },
-      { fecha: "2026-10-20", redes: ["linkedin"] },
-    ]);
+    expect(prompt).not.toContain("ya_planificados");
     // Ninguna idea de LinkedIn cae en esa semana.
     const ideas = await t.posts.list({ planRunId: run.id }, { kind: "all" });
     expect(ideas.length).toBeGreaterThan(0);

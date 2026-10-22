@@ -153,6 +153,8 @@ describe("httpStatusFor", () => {
     ["MARKETPLACE_URL_REQUIRED", 400],
     // F9-T06: el resultado dudoso, el enlace de una publicación a mano y la app de X o TikTok.
     ["OUTCOME_UNKNOWN_PENDING", 409],
+    // F9.5-T04a: el aviso de Portal ya es de otra publicación.
+    ["PORTAL_ITEM_IN_USE", 409],
     // F9-T11: una marca sin redes para el post; revisar un texto de post sin el perfil (cableado).
     ["POST_NO_PLATFORMS", 409],
     ["POST_REVIEW_UNAVAILABLE", 500],

@@ -352,6 +352,167 @@ describe("POST /publications/:id/sync", () => {
   });
 });
 
+describe("POST /publications/:id/resolve en Portal (F9.5-T04a)", () => {
+  const SELLER_CONTACT = { contact: null, email: null, countryCode2: "56", phone2: "911112222" };
+
+  /** Una publicación de Portal en vivo con resultado dudoso: `POST /items` sin respuesta. */
+  async function doubtful(
+    t: PublicationScenario,
+    progress: unknown = {
+      pictureIds: ["1-MLC_PIC"],
+      sellerContact: SELLER_CONTACT,
+      createRequestedAt: "2026-10-22T12:00:00.000Z",
+    },
+  ): Promise<Publication> {
+    const [started] = (
+      await publishListing(t.deps, {
+        listingId: t.listingId,
+        platform: PORTAL,
+        dryRun: false,
+        actor: "cli",
+      })
+    ).started;
+    if (started === undefined) throw new Error("falta la publicación");
+    await t.publications.saveProgress(started.id, progress);
+    return t.publications.transition(
+      started.id,
+      {
+        from: "publishing",
+        to: "outcome_unknown",
+        changes: {
+          lastError: { code: "ML_PUBLISH_OUTCOME_UNKNOWN", message: "x", retriable: false },
+        },
+      },
+      { actor: "system" },
+    );
+  }
+
+  it("en vivo, «salió» sin enlace ni id es 400 PUBLISHED_URL_REQUIRED, sin cambiar nada ni encolar", async () => {
+    const { t, post, errorOf } = await setup();
+    const publication = await doubtful(t);
+
+    const response = await post(`/publications/${publication.id}/resolve`, {
+      outcome: "published",
+    });
+
+    expect(response.status).toBe(400);
+    expect((await errorOf(response)).code).toBe("PUBLISHED_URL_REQUIRED");
+    expect(t.publications.all().find((p) => p.id === publication.id)?.status).toBe(
+      "outcome_unknown",
+    );
+    expect(t.queue.jobs.filter((job) => job.name === "publication.sync")).toEqual([]);
+  });
+
+  it("«salió» con el enlace guarda el MLC…, encola el sync y deja pausar con el contacto guardado", async () => {
+    const sent: Array<{ id: string; contact: unknown }> = [];
+    const item = (id: string, status: string) => ({
+      id,
+      permalink: null,
+      status,
+      subStatus: [],
+      startTime: null,
+      stopTime: "2027-04-07T12:00:00.000-03:00",
+      expirationTime: null,
+      lastUpdated: null,
+      tags: [],
+      listingSource: null,
+      sellerCustomField: null,
+      categoryId: null,
+      pictureIds: [],
+      parentItemId: null,
+      warnings: [],
+    });
+    // Las operaciones reales: exigen que el progreso sea del mismo ítem y traiga el contacto.
+    const real = createPortalOperations({
+      items: {
+        get: async (_token, id) => item(id, "active"),
+        setStatus: async (_token, id, status, contact) => {
+          sent.push({ id, contact });
+          return item(id, status);
+        },
+        getLastModeration: async () => null,
+      },
+    });
+    const { t, post } = await setup({ operations: real });
+    const publication = await doubtful(t);
+
+    const response = await post(`/publications/${publication.id}/resolve`, {
+      outcome: "published",
+      url: "https://departamento.mercadolibre.cl/MLC-1234567890-depto-_JM?tracking=1",
+    });
+
+    expect(response.status).toBe(200);
+    expect((await response.json()) as unknown).toMatchObject({
+      changed: true,
+      publication: {
+        status: "published",
+        externalUrl: "https://departamento.mercadolibre.cl/MLC-1234567890-depto-_JM",
+      },
+    });
+    expect(t.publications.all().find((p) => p.id === publication.id)).toMatchObject({
+      externalId: ITEM_ID,
+      progress: { itemId: ITEM_ID },
+    });
+    expect(t.queue.jobs).toContainEqual({
+      name: "publication.sync",
+      data: { publicationId: publication.id },
+      options: { singletonKey: publication.id },
+    });
+
+    const paused = await post(`/publications/${publication.id}/pause`);
+    expect(paused.status).toBe(200);
+    expect(sent).toEqual([{ id: ITEM_ID, contact: SELLER_CONTACT }]);
+  });
+
+  it("un relist resuelto sin el contacto guardado: el sync se pide, y pausar es 409 PORTAL_PROGRESS_UNUSABLE sin llamar", async () => {
+    const refuse = async (): Promise<never> => {
+      throw new Error("no se llama a Mercado Libre");
+    };
+    const real = createPortalOperations({
+      items: { get: refuse, setStatus: refuse, getLastModeration: refuse },
+    });
+    const { t, post, errorOf } = await setup({ operations: real });
+    // Lo que deja un `relist` sin respuesta: la hora del pedido, sin fotos ni contacto.
+    const publication = await doubtful(t, {
+      pictureIds: [],
+      relistRequestedAt: "2026-10-22T12:00:00.000Z",
+    });
+
+    const resolved = await post(`/publications/${publication.id}/resolve`, {
+      outcome: "published",
+      url: ITEM_ID,
+    });
+    expect(resolved.status).toBe(200);
+    expect(t.queue.jobs.map((job) => job.name)).toContain("publication.sync");
+
+    const paused = await post(`/publications/${publication.id}/pause`);
+    const body = await errorOf(paused);
+    expect([paused.status, body.code]).toEqual([409, "PORTAL_PROGRESS_UNUSABLE"]);
+  });
+
+  it("si el sync no se puede encolar, «salió» igual responde 200", async () => {
+    const { t, post } = await setup({
+      queue: () => ({
+        enqueue: async () => {
+          throw new AppError("QUEUE_UNAVAILABLE", "la cola no responde", { retriable: true });
+        },
+      }),
+    });
+    const publication = await doubtful(t);
+
+    const response = await post(`/publications/${publication.id}/resolve`, {
+      outcome: "published",
+      url: "MLC1234567890",
+    });
+
+    expect(response.status).toBe(200);
+    expect(t.publications.all().find((p) => p.id === publication.id)).toMatchObject({
+      status: "published",
+      externalId: ITEM_ID,
+    });
+  });
+});
+
 describe("publicar y aprobar Portal", () => {
   /** Le quita el WhatsApp al corredor (Portal lo exige). */
   async function withoutWhatsapp(t: PublicationScenario) {

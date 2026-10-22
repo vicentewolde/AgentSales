@@ -278,7 +278,9 @@ export type RemoteStatus = Omit<RemoteState, "checkedAt">;
  *   reintentable) y el intento deja la publicación en `outcome_unknown`. Un envío que falla sin
  *   certeza también es `OUTCOME_UNKNOWN`. Las redes sin idempotencia propia (Discord, LinkedIn, X
  *   y TikTok) usan `sendOnce` (`publish/outcome.ts`), que hace las dos cosas; Instagram y Portal tienen la suya
- *   (el contenedor y la marca del ítem, F3 y F4) y no cambian.
+ *   (el contenedor y la marca del ítem, F3 y F4) y, cuando no aclara si salió, lanzan su propio
+ *   código (`IG_PUBLISH_OUTCOME_UNKNOWN`, `ML_PUBLISH_OUTCOME_UNKNOWN`), que desde F9.5-T04a
+ *   también está en `OUTCOME_UNKNOWN_CODES` y deja la publicación en `outcome_unknown`.
  * - Una cuenta en modo `manual` (ADR-0029 punto 9) nunca llega a `publish`: el intento deja el
  *   texto y los medios listos sin llamar a la red; de ella solo se usa `validate`.
  * - `manualConfirm` (Marketplace, ADR-0017): `publish` deja el formulario listo y devuelve

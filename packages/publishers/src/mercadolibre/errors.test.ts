@@ -302,3 +302,29 @@ describe("itemCreationOutcome", () => {
     expect(itemCreationOutcome(error)).toBe("unknown");
   });
 });
+
+describe("MERCADOLIBRE_ERRORS.publishOutcomeUnknown (F9.5-T04a: queda en outcome_unknown)", () => {
+  it("pide decir si salió, con el enlace o el número MLC, sin «descarta»", () => {
+    const none = MERCADOLIBRE_ERRORS.publishOutcomeUnknown("none");
+    expect(none).toMatchObject({
+      code: "ML_PUBLISH_OUTCOME_UNKNOWN",
+      retriable: false,
+      details: { found: "none" },
+    });
+    expect(none.message).toContain("di si salió");
+    expect(none.message).toContain("MLC");
+    expect(none.message).not.toMatch(/descart/i);
+  });
+
+  it("con más de uno, pide cerrar a mano los sobrantes antes de decir que no salió", () => {
+    const many = MERCADOLIBRE_ERRORS.publishOutcomeUnknown("many");
+    expect(many).toMatchObject({ code: "ML_PUBLISH_OUTCOME_UNKNOWN", details: { found: "many" } });
+    expect(many.message).toContain("cierra a mano los que sobren");
+    expect(many.message).toContain("di que salió");
+    expect(many.message).toContain("di que no salió");
+    expect(many.message.indexOf("cierra a mano")).toBeLessThan(
+      many.message.indexOf("di que no salió"),
+    );
+    expect(many.message).not.toMatch(/descart/i);
+  });
+});
