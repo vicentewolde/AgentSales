@@ -12,11 +12,12 @@ import { type FormEvent, useId, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { POST_KIND_LABEL, POST_STATUS_LABEL, PostStatusBadge } from "../components/posts/labels.js";
+import { Button } from "../components/ui/Button.js";
+import { Input, Select, Textarea } from "../components/ui/Field.js";
+import { PageHeader } from "../components/ui/PageHeader.js";
 import { useBrokers } from "../queries/brokers.js";
 import { useCreatePost, usePosts } from "../queries/posts.js";
 import { useBrokerFilter, useRole } from "../scope/broker-scope.js";
-
-const FIELD = "mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm";
 
 const oneOf = <T extends string>(values: readonly T[], value: string | null): T | undefined =>
   values.find((candidate) => candidate === value);
@@ -74,14 +75,14 @@ function CreatePost({ scopedBrokerId }: { scopedBrokerId: string | undefined }) 
   return (
     <section
       aria-label="Nuevo post"
-      className="mt-6 rounded-lg border border-slate-200 bg-white p-4"
+      className="mt-6 rounded-xl border border-line bg-surface p-4 shadow-xs"
     >
       <h2 className="text-lg font-semibold">Nuevo post</h2>
       <form onSubmit={submit} className="mt-2 grid gap-3 md:grid-cols-2">
         {pickBroker && (
           <label className="block text-sm font-medium text-slate-700 md:col-span-2">
             Marca
-            <select name="brokerId" defaultValue="" className={FIELD}>
+            <Select name="brokerId" defaultValue="" className="mt-1">
               <option value="" disabled>
                 Elige una marca o corredor
               </option>
@@ -90,44 +91,43 @@ function CreatePost({ scopedBrokerId }: { scopedBrokerId: string | undefined }) 
                   {broker.brandName}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
         )}
         <label className="block text-sm font-medium text-slate-700 md:col-span-2">
           Tema
-          <input name="topic" required maxLength={200} className={FIELD} />
+          <Input name="topic" required maxLength={200} className="mt-1" />
         </label>
         <label className="block text-sm font-medium text-slate-700 md:col-span-2">
           Brief (lo que tú sabes; la IA puede afirmar lo que escribas aquí)
-          <textarea name="brief" rows={3} className={FIELD} />
+          <Textarea name="brief" rows={3} className="mt-1" />
         </label>
         <label className="block text-sm font-medium text-slate-700">
           Tipo
-          <select name="kind" defaultValue="text" className={FIELD}>
+          <Select name="kind" defaultValue="text" className="mt-1">
             {POST_KINDS.map((kind) => (
               <option key={kind} value={kind}>
                 {POST_KIND_LABEL[kind]}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label htmlFor={`${ids}-planned`} className="block text-sm font-medium text-slate-700">
           Fecha planeada (Chile, opcional)
-          <input id={`${ids}-planned`} name="plannedAt" type="datetime-local" className={FIELD} />
+          <Input id={`${ids}-planned`} name="plannedAt" type="datetime-local" className="mt-1" />
         </label>
         <div className="md:col-span-2">
-          <button
+          <Button
             type="submit"
             // Mientras no se sabe quién es, no se sabe si hay que elegir la marca.
             disabled={create.isPending || role === null}
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
             {create.isPending ? "Creando…" : "Crear post"}
-          </button>
+          </Button>
         </div>
       </form>
       {problem !== null && (
-        <p role="alert" className="mt-2 text-sm text-red-700">
+        <p role="alert" className="mt-2 text-sm text-danger-700">
           {problem}
         </p>
       )}
@@ -138,14 +138,17 @@ function CreatePost({ scopedBrokerId }: { scopedBrokerId: string | undefined }) 
 
 function PostRow({ post, brand }: { post: PostJson; brand: string | null }) {
   return (
-    <li className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-slate-200 bg-white p-3">
-      <Link to={`/contenido/${post.id}`} className="font-semibold underline">
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-line bg-surface p-3 shadow-xs">
+      <Link
+        to={`/contenido/${post.id}`}
+        className="font-semibold text-fg underline-offset-2 hover:text-brand-700 hover:underline"
+      >
         {post.topic}
       </Link>
       <PostStatusBadge status={post.status} />
-      <span className="text-sm text-slate-600">{POST_KIND_LABEL[post.kind]}</span>
-      {brand !== null && <span className="text-sm text-slate-500">{brand}</span>}
-      <span className="text-sm text-slate-500">
+      <span className="text-sm text-fg-muted">{POST_KIND_LABEL[post.kind]}</span>
+      {brand !== null && <span className="text-sm text-fg-subtle">{brand}</span>}
+      <span className="text-sm text-fg-subtle">
         {post.plannedAt === null ? "sin fecha" : `para el ${formatChileTime(post.plannedAt)}`}
       </span>
     </li>
@@ -173,15 +176,18 @@ export function PostsPage() {
       : null;
   return (
     <div>
-      <h1 className="text-2xl font-semibold tracking-tight">Contenido</h1>
-      <p className="mt-1 text-sm text-slate-600">
-        Los posts de la marca: textos por red e idioma, medios, publicar y programar.
-      </p>
+      <PageHeader
+        title="Contenido"
+        description={
+          <>Los posts de la marca: textos por red e idioma, medios, publicar y programar.</>
+        }
+      />
       <div className="mt-4 flex flex-col gap-1">
-        <label htmlFor={filterId} className="text-xs font-medium text-slate-600">
+        <label htmlFor={filterId} className="text-xs font-medium text-fg-muted">
           Estado
         </label>
-        <select
+        <Select
+          width="auto"
           id={filterId}
           value={status ?? ""}
           onChange={(event) => {
@@ -190,7 +196,7 @@ export function PostsPage() {
             else next.set("estado", event.target.value);
             setParams(next, { replace: true });
           }}
-          className="w-fit rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm"
+          className="w-fit"
         >
           <option value="">Todos (sin archivados)</option>
           {POST_STATUSES.map((value: PostStatus) => (
@@ -198,15 +204,13 @@ export function PostsPage() {
               {POST_STATUS_LABEL[value]}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
       {posts.error && <ErrorAlert error={posts.error} onRetry={() => void posts.refetch()} />}
-      {posts.data === undefined && !posts.error && <p className="mt-4 text-slate-600">Cargando…</p>}
+      {posts.data === undefined && !posts.error && <p className="mt-4 text-fg-muted">Cargando…</p>}
       {posts.data !== undefined &&
         (shown.length === 0 ? (
-          <p className="mt-4 text-slate-600">
-            No hay posts {status ? "en ese estado" : "todavía"}.
-          </p>
+          <p className="mt-4 text-fg-muted">No hay posts {status ? "en ese estado" : "todavía"}.</p>
         ) : (
           <ul aria-label="Posts" className="mt-4 space-y-2">
             {shown.map((post) => (

@@ -5,6 +5,7 @@ import { ErrorAlert } from "../components/ErrorAlert.js";
 import { ImportReport } from "../components/ImportReport.js";
 import { PollStoppedAlert } from "../components/PollStoppedAlert.js";
 import { RunStatusBadge } from "../components/RunStatusBadge.js";
+import { PageHeader } from "../components/ui/PageHeader.js";
 import { useImportRun } from "../queries/imports.js";
 import { stuckInQueue as isStuckInQueue } from "../queries/run-poll.js";
 
@@ -25,10 +26,10 @@ export function ImportRunPage() {
 
   return (
     <section className="mx-auto max-w-4xl">
-      <Link to="/importar" className="text-sm text-slate-600 underline">
+      <Link to="/importar" className="text-sm font-medium text-fg-muted hover:text-fg">
         ← Importar
       </Link>
-      {run.isPending && <p className="mt-3 text-slate-600">Cargando la carga…</p>}
+      {run.isPending && <p className="mt-3 text-fg-muted">Cargando la carga…</p>}
       {notFound && (
         <p role="alert" className="mt-3 text-slate-700">
           Esta carga no existe.
@@ -44,16 +45,20 @@ export function ImportRunPage() {
       )}
       {data && (
         <>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight">{data.input.xlsxFile}</h1>
-            <RunStatusBadge status={data.status} dryRun={data.dryRun} />
+          <div className="mt-3">
+            <PageHeader
+              title={data.input.xlsxFile}
+              meta={<RunStatusBadge status={data.status} dryRun={data.dryRun} />}
+              description={
+                <>
+                  {data.input.mediaFile ? `Medios: ${data.input.mediaFile}` : "Sin medios"}
+                  {data.input.broker ? ` · Corredor: ${data.input.broker}` : ""}
+                </>
+              }
+            />
           </div>
-          <p className="mt-1 text-sm text-slate-600">
-            {data.input.mediaFile ? `Medios: ${data.input.mediaFile}` : "Sin medios"}
-            {data.input.broker ? ` · Corredor: ${data.input.broker}` : ""}
-          </p>
           {data.dryRun && (
-            <p className="mt-2 text-sm text-amber-700">
+            <p className="mt-2 text-sm text-warning-700">
               Simulación: muestra lo que pasaría, sin guardar nada.
             </p>
           )}
@@ -69,7 +74,7 @@ export function ImportRunPage() {
             )}
           </div>
           {stuckInQueue && !stopped && (
-            <p role="alert" className="mt-2 text-sm text-amber-800">
+            <p role="alert" className="mt-2 text-sm text-warning-800">
               {RUN_QUEUED_WARNING_TEXT}
             </p>
           )}

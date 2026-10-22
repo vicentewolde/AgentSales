@@ -15,6 +15,7 @@ import { Link } from "react-router";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { safeExternalUrl } from "../components/publications/publications.js";
 import { PublicationStatusBadge, StatusBadge } from "../components/StatusBadge.js";
+import { PageHeader } from "../components/ui/PageHeader.js";
 import { useAgenda, useTracking } from "../queries/tracking.js";
 import { useBrokerFilter } from "../scope/broker-scope.js";
 
@@ -59,12 +60,12 @@ function AgendaEntry({ item }: { item: AgendaItem }) {
     return (
       <li className="text-sm">
         Último respaldo: {item.at === null ? "nunca" : formatChileTime(item.at)}
-        {item.stale && <span className="ml-1 text-amber-800">(más de 48 h)</span>}
+        {item.stale && <span className="ml-1 text-warning-800">(más de 48 h)</span>}
         {item.code !== null && (
-          <span className="ml-1 text-amber-800">· el último intento falló ({item.code})</span>
+          <span className="ml-1 text-warning-800">· el último intento falló ({item.code})</span>
         )}
         {item.action !== "none" && (
-          <span className="block text-xs text-slate-600">{ACTION_TEXT[item.action]}</span>
+          <span className="block text-xs text-fg-muted">{ACTION_TEXT[item.action]}</span>
         )}
       </li>
     );
@@ -78,30 +79,36 @@ function AgendaEntry({ item }: { item: AgendaItem }) {
     <li className="text-sm">
       {item.postId !== null ? (
         // Un post, con su tema: su página de Contenido (F9-T17).
-        <Link to={`/contenido/${item.postId}`} className="font-semibold underline">
+        <Link
+          to={`/contenido/${item.postId}`}
+          className="font-semibold text-fg underline-offset-2 hover:text-brand-700 hover:underline"
+        >
           {item.title ?? item.externalRef}
-          <span className="font-normal text-slate-500"> (post)</span>
+          <span className="font-normal text-fg-subtle"> (post)</span>
         </Link>
       ) : item.listingId === null ? (
         // Una cuenta (con su nombre): sin página propia.
         <span className="font-semibold">{item.title ?? item.externalRef}</span>
       ) : (
-        <Link to={`/propiedades/${item.listingId}`} className="font-semibold underline">
+        <Link
+          to={`/propiedades/${item.listingId}`}
+          className="font-semibold text-fg underline-offset-2 hover:text-brand-700 hover:underline"
+        >
           {item.externalRef}
         </Link>
       )}
       {channel && <> · {channel}</>}
       {when && <> · {when}</>}
       {item.dryRun !== null && (
-        <span className={item.dryRun ? "text-slate-500" : "font-semibold text-red-700"}>
+        <span className={item.dryRun ? "text-fg-subtle" : "font-semibold text-danger-700"}>
           {" "}
           · {item.dryRun ? "simulación" : "en vivo"}
         </span>
       )}
-      {item.code !== null && <span className="block text-red-700">{item.code}</span>}
+      {item.code !== null && <span className="block text-danger-700">{item.code}</span>}
       {item.advice !== null && <span className="block text-slate-700">{item.advice}</span>}
       {item.action !== "none" && (
-        <span className="block text-xs text-slate-600">{ACTION_TEXT[item.action]}</span>
+        <span className="block text-xs text-fg-muted">{ACTION_TEXT[item.action]}</span>
       )}
     </li>
   );
@@ -113,7 +120,7 @@ export function Agenda({ items }: { items: readonly AgendaItem[] }) {
     kind,
     items: items.filter((item) => item.kind === kind),
   })).filter((group) => group.items.length > 0);
-  if (groups.length === 0) return <p className="mt-2 text-sm text-slate-600">Nada pendiente.</p>;
+  if (groups.length === 0) return <p className="mt-2 text-sm text-fg-muted">Nada pendiente.</p>;
   return (
     <div className="mt-2 space-y-4">
       {groups.map((group) => (
@@ -150,16 +157,16 @@ function CellPublication({ platform, publication }: { platform: Platform; public
     <li>
       {publicationFormatText(platform, publication.format)}{" "}
       <PublicationStatusBadge status={publication.status} />
-      {!publication.dryRun && <span className="ml-1 text-xs font-semibold text-red-700">vivo</span>}
-      {notes.length > 0 && (
-        <span className="block text-xs text-slate-600">{notes.join(" · ")}</span>
+      {!publication.dryRun && (
+        <span className="ml-1 text-xs font-semibold text-danger-700">vivo</span>
       )}
+      {notes.length > 0 && <span className="block text-xs text-fg-muted">{notes.join(" · ")}</span>}
       {safeExternalUrl(publication.externalUrl) !== null && (
         <a
           href={safeExternalUrl(publication.externalUrl) ?? undefined}
           target="_blank"
           rel="noreferrer"
-          className="block text-xs text-sky-700 underline"
+          className="block text-xs text-info-700 underline"
         >
           Ver
         </a>
@@ -170,17 +177,15 @@ function CellPublication({ platform, publication }: { platform: Platform; public
 
 /** La matriz: una fila por propiedad, una columna por plataforma. */
 export function TrackingMatrix({ rows }: { rows: readonly Row[] }) {
-  if (rows.length === 0) return <p className="mt-2 text-sm text-slate-600">Sin propiedades.</p>;
+  if (rows.length === 0) return <p className="mt-2 text-sm text-fg-muted">Sin propiedades.</p>;
   return (
-    <div className="mt-2 overflow-x-auto">
-      <table className="min-w-full border-collapse text-left text-sm">
+    <div className="mt-2 overflow-x-auto rounded-xl border border-line bg-surface shadow-xs">
+      <table className="ui-table">
         <thead>
-          <tr className="border-b border-slate-200 text-slate-600">
-            <th scope="col" className="py-2 pr-3">
-              Propiedad
-            </th>
+          <tr>
+            <th scope="col">Propiedad</th>
             {LISTING_PLATFORMS.map((platform) => (
-              <th key={platform} scope="col" className="py-2 pr-3">
+              <th key={platform} scope="col">
                 {PLATFORM_TEXT[platform]}
               </th>
             ))}
@@ -188,24 +193,27 @@ export function TrackingMatrix({ rows }: { rows: readonly Row[] }) {
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.listing.id} className="border-b border-slate-100 align-top">
-              <th scope="row" className="py-2 pr-3 font-normal">
-                <Link to={`/propiedades/${row.listing.id}`} className="font-semibold underline">
+            <tr key={row.listing.id}>
+              <th scope="row" className="font-normal">
+                <Link
+                  to={`/propiedades/${row.listing.id}`}
+                  className="font-semibold text-fg underline-offset-2 hover:text-brand-700 hover:underline"
+                >
                   {row.listing.externalRef}
                 </Link>
                 <span className="block">
                   <StatusBadge status={row.listing.status} />
                   {row.listing.closeReason !== null && (
-                    <span className="ml-1 text-xs text-slate-600">
+                    <span className="ml-1 text-xs text-fg-muted">
                       {CLOSE_REASON_TEXT[row.listing.closeReason]}
                     </span>
                   )}
                 </span>
               </th>
               {LISTING_PLATFORMS.map((platform) => (
-                <td key={platform} className="py-2 pr-3">
+                <td key={platform}>
                   {row.cells[platform].length === 0 ? (
-                    <span className="text-slate-400">—</span>
+                    <span className="text-fg-subtle">—</span>
                   ) : (
                     <ul className="space-y-1">
                       {row.cells[platform].map((publication) => (
@@ -235,7 +243,7 @@ export function TrackingPage() {
   const tracking = useTracking(archived, broker);
   return (
     <section className="mx-auto max-w-6xl">
-      <h1 className="text-2xl font-semibold tracking-tight">Seguimiento</h1>
+      <PageHeader title="Seguimiento" />
 
       <section aria-labelledby="agenda-titulo" className="mt-4">
         <h2 id="agenda-titulo" className="text-lg font-semibold">
@@ -248,7 +256,7 @@ export function TrackingPage() {
             retrying={agenda.isFetching}
           />
         )}
-        {agenda.isPending && <p className="mt-2 text-sm text-slate-600">Cargando la agenda…</p>}
+        {agenda.isPending && <p className="mt-2 text-sm text-fg-muted">Cargando la agenda…</p>}
         {agenda.data && <Agenda items={agenda.data} />}
       </section>
 
@@ -273,7 +281,7 @@ export function TrackingPage() {
             retrying={tracking.isFetching}
           />
         )}
-        {tracking.isPending && <p className="mt-2 text-sm text-slate-600">Cargando…</p>}
+        {tracking.isPending && <p className="mt-2 text-sm text-fg-muted">Cargando…</p>}
         {tracking.data && <TrackingMatrix rows={tracking.data} />}
       </section>
     </section>

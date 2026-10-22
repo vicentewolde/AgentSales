@@ -8,6 +8,7 @@ import { mediaProcessing, postKeys } from "../../queries/posts.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 import { Button } from "../ui/Button.js";
 import { Card } from "../ui/Card.js";
+import { FILE_INPUT } from "../ui/styles.js";
 
 /** Lo que acepta el selector: las extensiones de core (la API vuelve a revisar). */
 const ACCEPT = Object.keys(POST_MEDIA_TYPES)
@@ -140,7 +141,7 @@ export function PostMedia({
           accept={ACCEPT}
           disabled={uploading || lockReason !== null}
           onChange={(event) => void upload([...(event.target.files ?? [])])}
-          className="text-sm text-fg-muted file:mr-3 file:rounded-lg file:border file:border-line-strong file:bg-surface file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-fg hover:file:bg-slate-50"
+          className={FILE_INPUT}
         />
         {lockReason !== null && <span className="text-xs text-warning-800">{lockReason}</span>}
       </div>

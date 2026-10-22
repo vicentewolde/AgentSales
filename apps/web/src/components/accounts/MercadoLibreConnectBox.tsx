@@ -2,6 +2,7 @@ import { type Broker, mercadoLibreConnectCommands } from "@agentsales/core";
 import { goTo } from "../../navigation.js";
 import { useMercadoLibreAuthorizeUrl } from "../../queries/accounts.js";
 import { ErrorAlert } from "../ErrorAlert.js";
+import { Button } from "../ui/Button.js";
 import { CopyCommand } from "./CopyCommand.js";
 
 /**
@@ -28,9 +29,9 @@ export function MercadoLibreConnectBox({
   const authorize = useMercadoLibreAuthorizeUrl();
   if (!configured) {
     return (
-      <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
+      <div className="mt-3 rounded-lg border border-warning-200 bg-warning-50 p-3 text-sm">
         <p className="font-medium">{label}</p>
-        <p className="mt-1 text-amber-800">
+        <p className="mt-1 text-warning-800">
           A la API le faltan ML_APP_ID y ML_CLIENT_SECRET en el .env: agrégalos y reiníciala para
           conectar Mercado Libre.
         </p>
@@ -43,16 +44,15 @@ export function MercadoLibreConnectBox({
     const go = () => authorize.mutate(broker.slug, { onSuccess: goTo });
     return (
       <div className="mt-3 text-sm">
-        <button
-          type="button"
+        <Button
+          size="sm"
           disabled={authorize.isPending}
           onClick={go}
           aria-label={`${label} de ${broker.brandName}`}
-          className="rounded-md bg-slate-900 px-3 py-1.5 font-medium text-white disabled:opacity-50"
         >
           {authorize.isPending ? "Abriendo Mercado Libre…" : label}
-        </button>
-        <p className="mt-1 text-slate-600">
+        </Button>
+        <p className="mt-1 text-fg-muted">
           Se abre Mercado Libre: entra con la cuenta administradora y autoriza (vale 10 min).
         </p>
         {authorize.error && <ErrorAlert error={authorize.error} />}
@@ -61,12 +61,12 @@ export function MercadoLibreConnectBox({
   }
   const { authorize: authorizeCommand, paste } = mercadoLibreConnectCommands(broker.slug);
   return (
-    <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+    <div className="mt-3 rounded-lg border border-line bg-slate-50 p-3 text-sm">
       <p className="font-medium">{label}</p>
-      <p className="mt-1 text-slate-600">
+      <p className="mt-1 text-fg-muted">
         Se conecta desde la terminal, en dos pasos (con la API corriendo):
       </p>
-      <ol className="mt-1 list-decimal space-y-2 pl-5 text-slate-600">
+      <ol className="mt-1 list-decimal space-y-2 pl-5 text-fg-muted">
         <li>
           Corre este comando: abre el enlace de Mercado Libre. Autoriza con la cuenta
           administradora.

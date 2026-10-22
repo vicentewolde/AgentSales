@@ -375,7 +375,7 @@ export function PostDetailPage() {
           : {})}
       />
       {item.brief !== null && (
-        <div className="mb-6 rounded-lg border border-line bg-surface px-4 py-3">
+        <div className="mb-6 rounded-xl border border-line bg-surface shadow-xs px-4 py-3">
           <p className="text-xs font-medium text-fg-subtle">Brief</p>
           <p className="mt-1 whitespace-pre-wrap text-sm text-fg">{item.brief}</p>
         </div>

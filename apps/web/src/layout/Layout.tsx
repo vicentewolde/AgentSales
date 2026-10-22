@@ -93,7 +93,7 @@ function MenuEntry({ item }: { item: MenuItem }) {
           <Icon
             className={cx(
               "size-5 shrink-0",
-              isActive ? "text-brand-600" : "text-slate-400 group-hover:text-fg-muted",
+              isActive ? "text-brand-600" : "text-fg-subtle group-hover:text-fg-muted",
             )}
           />
           {item.label}

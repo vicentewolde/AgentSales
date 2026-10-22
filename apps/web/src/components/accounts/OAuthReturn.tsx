@@ -1,5 +1,6 @@
 import { OAUTH_PROVIDERS, type OAuthProvider } from "@agentsales/api/contracts";
 import { useSearchParams } from "react-router";
+import { Button } from "../ui/Button.js";
 import { oauthErrorText, PROVIDER_NAME } from "./accounts.js";
 
 /**
@@ -20,15 +21,15 @@ export function OAuthReturn() {
     <div
       role={ok ? "status" : "alert"}
       className={`mt-4 flex items-start justify-between gap-4 rounded-lg border p-4 ${
-        ok ? "border-emerald-300 bg-emerald-50" : "border-red-300 bg-red-50"
+        ok ? "border-success-200 bg-success-50" : "border-danger-200 bg-danger-50"
       }`}
     >
-      <p className={ok ? "text-emerald-800" : "text-red-800"}>
+      <p className={ok ? "text-success-800" : "text-danger-800"}>
         {ok ? `Cuenta de ${PROVIDER_NAME[provider]} conectada.` : oauthErrorText(error, provider)}
       </p>
-      <button type="button" onClick={close} className="text-sm underline">
+      <Button variant="link" onClick={close} className="text-sm">
         Cerrar
-      </button>
+      </Button>
     </div>
   );
 }

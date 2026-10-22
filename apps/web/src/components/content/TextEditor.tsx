@@ -4,11 +4,10 @@ import { type ReactNode, useId, useState } from "react";
 import { ApiError } from "../../api/client.js";
 import { useEditContent } from "../../queries/content.js";
 import { ErrorAlert } from "../ErrorAlert.js";
+import { Button } from "../ui/Button.js";
+import { Input, Textarea } from "../ui/Field.js";
 import { Checks } from "./Checks.js";
 import { type Counter, parseHashtags, textCounter } from "./editor.js";
-
-const FIELD =
-  "mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-slate-500 focus:outline-none";
 
 /** `123 / 2200`, en rojo y con lo que sobra si se pasa (la revisión lo marcará como error). */
 function CounterText({ counter, id }: { counter: Counter; id: string }) {
@@ -27,29 +26,31 @@ function CounterText({ counter, id }: { counter: Counter; id: string }) {
 function SaveError({ error, onReload }: { error: Error; onReload: () => void }) {
   if (error instanceof ApiError && error.code === "CONTENT_NOT_CURRENT") {
     return (
-      <div role="alert" className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
-        <p className="font-semibold text-amber-900">Este texto ya no es el vigente</p>
-        <p className="mt-1 text-amber-900">
+      <div
+        role="alert"
+        className="mt-3 rounded-lg border border-warning-200 bg-warning-50 p-3 text-sm"
+      >
+        <p className="font-semibold text-warning-800">Este texto ya no es el vigente</p>
+        <p className="mt-1 text-warning-800">
           Una preparación nueva lo reemplazó mientras lo editabas. Recarga el contenido y vuelve a
           editar el texto nuevo.
         </p>
-        <button
-          type="button"
-          onClick={onReload}
-          className="mt-2 rounded-md bg-amber-700 px-3 py-1.5 font-medium text-white"
-        >
+        <Button size="sm" onClick={onReload} className="mt-2">
           Recargar el contenido
-        </button>
+        </Button>
       </div>
     );
   }
   if (error instanceof ApiError && error.code === "CONTENT_RUN_ACTIVE") {
     return (
-      <div role="alert" className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
-        <p className="font-semibold text-amber-900">
+      <div
+        role="alert"
+        className="mt-3 rounded-lg border border-warning-200 bg-warning-50 p-3 text-sm"
+      >
+        <p className="font-semibold text-warning-800">
           No se guardó: se están regenerando los textos
         </p>
-        <p className="mt-1 text-amber-900">
+        <p className="mt-1 text-warning-800">
           Espera a que termine la preparación; después podrás editar el texto nuevo.
         </p>
       </div>
@@ -120,45 +121,45 @@ function Editor({
       {!instagram && (
         <label className="block text-sm font-medium text-slate-700">
           Título
-          <input
+          <Input
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             aria-describedby={describedBy(blankId)}
             aria-invalid={title.trim() === ""}
-            className={FIELD}
+            className="mt-1"
           />
         </label>
       )}
       <label className="block text-sm font-medium text-slate-700">
         {instagram ? "Texto" : "Descripción"}
-        <textarea
+        <Textarea
           value={body}
           onChange={(event) => setBody(event.target.value)}
           rows={instagram ? 10 : 14}
           aria-describedby={instagram ? describedBy(blankId) : blankId}
           aria-invalid={body.trim() === ""}
-          className={FIELD}
+          className="mt-1"
         />
       </label>
       {instagram && (
         <div>
           <label className="block text-sm font-medium text-slate-700">
             Hashtags
-            <input
+            <Input
               value={hashtags}
               onChange={(event) => setHashtags(event.target.value)}
               placeholder="#nunoa #departamento"
               aria-describedby={describedBy(`${ids}-tags`)}
-              className={FIELD}
+              className="mt-1"
             />
           </label>
-          <p id={`${ids}-tags`} className="mt-1 text-xs text-slate-500">
+          <p id={`${ids}-tags`} className="mt-1 text-xs text-fg-subtle">
             Separados por espacios. Se guardan sin tildes ni mayúsculas.
           </p>
         </div>
       )}
       <CounterText counter={counter} id={counterId} />
-      <p id={blankId} className="text-xs text-red-700">
+      <p id={blankId} className="text-xs text-danger-700">
         {blank
           ? instagram
             ? "El texto no puede quedar vacío."
@@ -166,42 +167,36 @@ function Editor({
           : ""}
       </p>
       {lockReason !== null && (
-        <p role="alert" className="text-sm text-amber-800">
+        <p role="alert" className="text-sm text-warning-800">
           {lockReason} Tu edición queda aquí hasta que termine.
         </p>
       )}
       {stale && lockReason === null && (
-        <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
-          <p className="font-semibold text-amber-900">El texto cambió mientras editabas</p>
-          <p className="mt-1 text-amber-900">
+        <div
+          role="alert"
+          className="rounded-lg border border-warning-200 bg-warning-50 p-3 text-sm"
+        >
+          <p className="font-semibold text-warning-800">El texto cambió mientras editabas</p>
+          <p className="mt-1 text-warning-800">
             Una preparación nueva lo reemplazó. Tu borrador sigue aquí: guárdalo sobre el texto
             nuevo o descártalo para ver el nuevo.
           </p>
-          <button
-            type="button"
-            onClick={discard}
-            className="mt-2 rounded-md border border-amber-400 bg-white px-3 py-1.5 font-medium text-amber-900"
-          >
+          <Button variant="secondary" size="sm" onClick={discard} className="mt-2">
             Descartar mi borrador
-          </button>
+          </Button>
         </div>
       )}
       <div className="flex gap-2">
-        <button
+        <Button
+          size="sm"
           type="submit"
           disabled={save.isPending || (!changed && !stale) || blank || lockReason !== null}
-          className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
         >
           {save.isPending ? "Guardando…" : stale ? "Guardar sobre el texto nuevo" : "Guardar"}
-        </button>
-        <button
-          type="button"
-          onClick={onClose}
-          disabled={save.isPending}
-          className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 disabled:opacity-50"
-        >
+        </Button>
+        <Button variant="secondary" size="sm" onClick={onClose} disabled={save.isPending}>
           Cancelar
-        </button>
+        </Button>
       </div>
       {save.error && (
         <SaveError
@@ -248,20 +243,20 @@ export function EditableText({
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-fg-subtle">
           Texto: {CONTENT_STATUS_TEXT[content.status]}
           {content.status === "edited" ? "" : ` · ${content.promptVersion}`}
         </p>
-        <button
-          type="button"
+        <Button
+          variant="secondary"
+          size="sm"
           onClick={() => setEditing(true)}
           disabled={lockReason !== null}
-          className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-800 hover:bg-slate-100 disabled:opacity-50"
         >
           Editar
-        </button>
+        </Button>
       </div>
-      {lockReason !== null && <p className="mt-1 text-xs text-amber-800">{lockReason}</p>}
+      {lockReason !== null && <p className="mt-1 text-xs text-warning-800">{lockReason}</p>}
       {children}
       <Checks content={content} />
     </>

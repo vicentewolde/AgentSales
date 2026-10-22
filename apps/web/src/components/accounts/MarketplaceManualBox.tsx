@@ -2,6 +2,7 @@ import type { Broker } from "@agentsales/core";
 import { useState } from "react";
 import { useActivateManualMarketplace } from "../../queries/accounts.js";
 import { ErrorAlert } from "../ErrorAlert.js";
+import { Button } from "../ui/Button.js";
 
 /**
  * Marketplace a mano (F7-T18, ADR-0023): el administrador la activa con un botón; el corredor
@@ -26,7 +27,7 @@ export function MarketplaceManualBox({
   const run = () => activate.mutate(broker.slug, { onSettled: () => setConfirming(false) });
   const cancel = () => setConfirming(false);
   return (
-    <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+    <div className="mt-3 rounded-lg border border-line bg-slate-50 p-3 text-sm">
       <p className="text-slate-700">
         {!automation
           ? "En el servidor Marketplace se publica a mano: el sistema deja listos el texto, las fotos y el precio, y el corredor lo publica y confirma con el enlace."
@@ -38,35 +39,29 @@ export function MarketplaceManualBox({
           " La cuenta de Facebook que quedó conectada deja de usarse; no se borra ningún archivo."}
       </p>
       {active ? (
-        <p className="mt-2 font-medium text-green-800">Marketplace a mano activo.</p>
+        <p className="mt-2 font-medium text-success-800">Marketplace a mano activo.</p>
       ) : confirming ? (
         <div role="alert" className="mt-2 flex flex-wrap items-center gap-2">
           <span>
             Se cierra la sesión de Facebook de {broker.brandName} y se borra su perfil de este Mac.
             ¿Activar Marketplace a mano?
           </span>
-          <button
-            type="button"
-            disabled={activate.isPending}
-            onClick={run}
-            className="rounded-md bg-red-700 px-3 py-1.5 font-medium text-white disabled:opacity-50"
-          >
+          <Button variant="danger" size="sm" disabled={activate.isPending} onClick={run}>
             {activate.isPending ? "Activando…" : "Sí, activar a mano"}
-          </button>
-          {/* biome-ignore lint/a11y/noAutofocus: el foco va a la opción segura al abrir la confirmación */}
-          <button type="button" autoFocus onClick={cancel} className="underline">
+          </Button>
+          <Button variant="link" autoFocus onClick={cancel}>
             Cancelar
-          </button>
+          </Button>
         </div>
       ) : (
-        <button
-          type="button"
+        <Button
+          size="sm"
           disabled={activate.isPending}
           onClick={() => (replacesProfile && automation ? setConfirming(true) : run())}
-          className="mt-2 rounded-md bg-slate-900 px-3 py-1.5 font-medium text-white disabled:opacity-50"
+          className="mt-2"
         >
           {activate.isPending ? "Activando…" : "Activar Marketplace a mano"}
-        </button>
+        </Button>
       )}
       {activate.error && <ErrorAlert error={activate.error} />}
     </div>

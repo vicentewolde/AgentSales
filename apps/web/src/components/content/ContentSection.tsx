@@ -13,14 +13,10 @@ import { useHealth } from "../../queries/health.js";
 import { useListingPublications } from "../../queries/publications.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 import { prepareBlockedReason } from "../publications/publications.js";
+import { Button } from "../ui/Button.js";
 import type { ListingPrice } from "./marketplace.js";
 import { Preview } from "./Preview.js";
 import { RunProgress, RunResult } from "./RunStatus.js";
-
-const BUTTON =
-  "rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-100 disabled:opacity-50";
-const PRIMARY =
-  "rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50";
 
 /**
  * La sección Contenido del detalle (spec F2 §4.7, F2-T14): preparar y rehacer imágenes, el avance
@@ -98,35 +94,33 @@ export function ContentSection({
     content.data.carousel.length === 0;
 
   return (
-    <section aria-labelledby="contenido" className="mt-10">
+    <section
+      aria-labelledby="contenido"
+      className="mt-6 rounded-xl border border-line bg-surface p-5 shadow-xs"
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 id="contenido" className="text-lg font-semibold">
           Contenido
         </h2>
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            className={PRIMARY}
-            disabled={busy || !preparable}
-            onClick={prepare}
-          >
+          <Button size="sm" disabled={busy || !preparable} onClick={prepare}>
             Preparar contenido
-          </button>
-          <button
-            type="button"
-            className={BUTTON}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
             disabled={busy || !preparable}
             onClick={() => start(false)}
           >
             Rehacer imágenes
-          </button>
+          </Button>
         </div>
       </div>
       {!canPrepareContent(listingStatus) && (
-        <p className="mt-2 text-sm text-slate-600">{LISTING_NOT_PREPARABLE_TEXT}.</p>
+        <p className="mt-2 text-sm text-fg-muted">{LISTING_NOT_PREPARABLE_TEXT}.</p>
       )}
       {canPrepareContent(listingStatus) && pendingReason !== null && (
-        <p className="mt-2 text-sm text-slate-600">{pendingReason}</p>
+        <p className="mt-2 text-sm text-fg-muted">{pendingReason}</p>
       )}
       {publications.error && (
         <ErrorAlert
@@ -137,42 +131,37 @@ export function ContentSection({
       )}
 
       {confirmReplace && (
-        <div role="alert" className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4">
-          <p className="font-semibold text-amber-900">Hay textos editados a mano o aprobados</p>
-          <p className="mt-1 text-sm text-amber-900">
+        <div role="alert" className="mt-4 rounded-lg border border-warning-200 bg-warning-50 p-4">
+          <p className="font-semibold text-warning-800">Hay textos editados a mano o aprobados</p>
+          <p className="mt-1 text-sm text-warning-800">
             {editedPlatforms.length > 0
               ? `Revisaste ${editedPlatforms.join(", ")}: se reemplazarán por textos nuevos, que habrá que aprobar de nuevo.`
               : "Se reemplazarán tus textos revisados por textos nuevos."}{" "}
             Puedes rehacer solo las imágenes y conservar tus textos.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              type="button"
-              className={BUTTON}
+            <Button
+              variant="secondary"
+              size="sm"
               disabled={request.isPending}
               onClick={() => start(false)}
             >
               Rehacer solo imágenes
-            </button>
-            <button
-              type="button"
-              className={PRIMARY}
-              disabled={request.isPending}
-              onClick={() => start(true, true)}
-            >
+            </Button>
+            <Button size="sm" disabled={request.isPending} onClick={() => start(true, true)}>
               Reemplazar mis textos
-            </button>
+            </Button>
           </div>
         </div>
       )}
       {request.error && !editedConflict && <ErrorAlert error={request.error} />}
 
       {/* Siempre montada: los lectores de pantalla anuncian los cambios de una región que ya estaba. */}
-      <p aria-live="polite" className="mt-4 font-medium text-slate-800">
+      <p aria-live="polite" className="mt-4 font-medium text-fg">
         {inProgress && tracked !== null ? `Preparando: ${contentRunProgressText(tracked)}…` : ""}
       </p>
       {inProgress && reused && (
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-fg-muted">
           Ya había una preparación en curso de esta propiedad: se muestra esa.
         </p>
       )}
@@ -194,7 +183,7 @@ export function ContentSection({
       )}
       {!inProgress && shown !== null && <RunResult run={shown} />}
 
-      {content.isPending && <p className="mt-4 text-sm text-slate-600">Cargando el contenido…</p>}
+      {content.isPending && <p className="mt-4 text-sm text-fg-muted">Cargando el contenido…</p>}
       {content.error && (
         <ErrorAlert
           error={content.error}
@@ -205,7 +194,7 @@ export function ContentSection({
       {content.data &&
         (empty ? (
           !inProgress && (
-            <p className="mt-4 text-sm text-slate-600">
+            <p className="mt-4 text-sm text-fg-muted">
               Todavía no hay contenido. Prepáralo para ver cómo se vería en cada canal.
             </p>
           )

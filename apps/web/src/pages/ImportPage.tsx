@@ -10,6 +10,10 @@ import { Link, useNavigate } from "react-router";
 import { checkFolder, folderSelection, type UploadProgress } from "../api/upload.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { RunStatusBadge } from "../components/RunStatusBadge.js";
+import { Button } from "../components/ui/Button.js";
+import { Select } from "../components/ui/Field.js";
+import { PageHeader } from "../components/ui/PageHeader.js";
+import { FILE_INPUT } from "../components/ui/styles.js";
 import { useBrokers } from "../queries/brokers.js";
 import { useImportRuns, useStartImport } from "../queries/imports.js";
 import { useRole } from "../scope/broker-scope.js";
@@ -19,8 +23,6 @@ const dateTime = new Intl.DateTimeFormat("es-CL", {
   dateStyle: "medium",
   timeStyle: "short",
 });
-
-const fieldClass = "rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm";
 
 /** Lo que se puede revisar sin subir nada: tipo y tamaño del Excel, tipo del zip. */
 function checkFiles(file: File | undefined, media: File | undefined): string | null {
@@ -59,13 +61,9 @@ function UploadStatus({ progress, onCancel }: { progress: UploadProgress; onCanc
         />
       )}
       {progress.phase !== "starting" && (
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-md border border-slate-300 px-3 py-1 text-sm"
-        >
+        <Button variant="secondary" size="sm" onClick={onCancel}>
           Cancelar la subida
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -123,13 +121,19 @@ function ImportForm() {
     <form
       aria-label="Nueva carga"
       onSubmit={onSubmit}
-      className="mt-4 space-y-4 rounded-lg border border-slate-200 bg-white p-4"
+      className="mt-4 space-y-4 rounded-xl border border-line bg-surface p-4 shadow-xs"
     >
       <div className="flex flex-col gap-1">
         <label htmlFor={ids.file} className="text-sm font-medium">
           Excel de propiedades (.xlsx)
         </label>
-        <input id={ids.file} name="file" type="file" accept={XLSX_EXTENSION} className="text-sm" />
+        <input
+          id={ids.file}
+          name="file"
+          type="file"
+          accept={XLSX_EXTENSION}
+          className={FILE_INPUT}
+        />
       </div>
       <fieldset className="flex flex-col gap-2">
         <legend className="text-sm font-medium">Fotos y videos (opcional)</legend>
@@ -163,7 +167,7 @@ function ImportForm() {
               name="media"
               type="file"
               accept={MEDIA_ZIP_EXTENSION}
-              className="text-sm"
+              className={FILE_INPUT}
             />
           </div>
         ) : (
@@ -177,11 +181,11 @@ function ImportForm() {
               type="file"
               multiple
               {...folderPicker}
-              className="text-sm"
+              className={FILE_INPUT}
             />
           </div>
         )}
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-fg-subtle">
           Una carpeta por propiedad, con el nombre de su id_propiedad o de carpeta_medios. Los
           archivos suben directo al almacenamiento, sin pasar por el servidor.
         </p>
@@ -192,7 +196,7 @@ function ImportForm() {
           <label htmlFor={ids.broker} className="text-sm font-medium">
             Corredor
           </label>
-          <select id={ids.broker} name="broker" defaultValue="" className={fieldClass}>
+          <Select width="auto" id={ids.broker} name="broker" defaultValue="">
             <option value="">Desde la hoja Corredor del Excel</option>
             {/* Una marca (F9) no tiene propiedades: no se ofrece. */}
             {(brokers.data ?? []).filter(brokerHoldsListings).map((broker) => (
@@ -200,9 +204,9 @@ function ImportForm() {
                 {broker.brandName} ({broker.slug})
               </option>
             ))}
-          </select>
+          </Select>
           {brokers.error && (
-            <p className="text-xs text-amber-700">
+            <p className="text-xs text-warning-700">
               No se pudo cargar la lista de corredores; puedes importar igual con la hoja Corredor.
             </p>
           )}
@@ -214,18 +218,14 @@ function ImportForm() {
           Solo simular: valida y muestra el reporte sin guardar nada
         </label>
       </div>
-      <button
-        type="submit"
-        disabled={start.isPending}
-        className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-      >
+      <Button type="submit" disabled={start.isPending}>
         {start.isPending ? "Subiendo…" : "Importar"}
-      </button>
+      </Button>
       {start.isPending && start.progress && (
         <UploadStatus progress={start.progress} onCancel={start.cancel} />
       )}
       {problem && (
-        <p role="alert" className="text-sm text-red-700">
+        <p role="alert" className="text-sm text-danger-700">
           {problem}
         </p>
       )}
@@ -242,7 +242,7 @@ function History() {
       <h2 id="historial" className="text-lg font-semibold">
         Cargas anteriores
       </h2>
-      {runs.isPending && <p className="mt-2 text-sm text-slate-600">Cargando…</p>}
+      {runs.isPending && <p className="mt-2 text-sm text-fg-muted">Cargando…</p>}
       {runs.error && (
         <ErrorAlert
           error={runs.error}
@@ -251,32 +251,35 @@ function History() {
         />
       )}
       {runs.data?.length === 0 && (
-        <p className="mt-2 text-sm text-slate-600">Todavía no hay cargas.</p>
+        <p className="mt-2 text-sm text-fg-muted">Todavía no hay cargas.</p>
       )}
       {runs.data && runs.data.length > 0 && (
-        <div className="mt-2 overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="text-xs text-slate-500">
+        <div className="mt-2 overflow-x-auto rounded-xl border border-line bg-surface shadow-xs">
+          <table className="ui-table">
+            <thead className="text-xs text-fg-subtle">
               <tr>
-                <th className="py-1 pr-4">Fecha</th>
-                <th className="py-1 pr-4">Archivo</th>
-                <th className="py-1 pr-4">Estado</th>
-                <th className="py-1">Resultado</th>
+                <th>Fecha</th>
+                <th>Archivo</th>
+                <th>Estado</th>
+                <th>Resultado</th>
               </tr>
             </thead>
             <tbody>
               {runs.data.map((run) => (
-                <tr key={run.id} className="border-t border-slate-200">
-                  <td className="py-1 pr-4">
-                    <Link to={`/importar/${run.id}`} className="underline">
+                <tr key={run.id}>
+                  <td>
+                    <Link
+                      to={`/importar/${run.id}`}
+                      className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-900"
+                    >
                       {dateTime.format(run.createdAt)}
                     </Link>
                   </td>
-                  <td className="py-1 pr-4">{run.input.xlsxFile}</td>
-                  <td className="py-1 pr-4">
+                  <td>{run.input.xlsxFile}</td>
+                  <td>
                     <RunStatusBadge status={run.status} dryRun={run.dryRun} />
                   </td>
-                  <td className="py-1">
+                  <td>
                     {run.rowsCreated} creadas · {run.rowsUpdated} actualizadas · {run.rowsSkipped}{" "}
                     sin cambios · {run.rowsFailed} con error
                   </td>
@@ -297,7 +300,7 @@ function History() {
 export function ImportPage() {
   return (
     <section className="mx-auto max-w-4xl">
-      <h1 className="text-2xl font-semibold tracking-tight">Importar propiedades</h1>
+      <PageHeader title="Importar propiedades" />
       <ImportForm />
       <History />
     </section>

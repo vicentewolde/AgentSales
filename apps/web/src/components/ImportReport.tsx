@@ -19,23 +19,23 @@ function Counts({ run }: { run: ImportRunView }) {
   return (
     <>
       {run.dryRun && (
-        <p className="mt-4 text-xs font-medium text-amber-700">
+        <p className="mt-4 text-xs font-medium text-warning-700">
           Simulación: estos números son lo que habría pasado; no se guardó nada.
         </p>
       )}
       <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {items.map(([label, value]) => (
-          <div key={label} className="rounded-lg border border-slate-200 bg-white p-3">
-            <dt className="text-xs font-medium text-slate-500">{label}</dt>
+          <div key={label} className="rounded-xl border border-line bg-surface p-3 shadow-xs">
+            <dt className="text-xs font-medium text-fg-subtle">{label}</dt>
             <dd
-              className={`text-2xl font-semibold ${label === "Con error" && value > 0 ? "text-red-700" : ""}`}
+              className={`text-2xl font-semibold ${label === "Con error" && value > 0 ? "text-danger-700" : ""}`}
             >
               {value}
             </dd>
           </div>
         ))}
-        <div className="col-span-2 rounded-lg border border-slate-200 bg-white p-3 sm:col-span-4">
-          <dt className="text-xs font-medium text-slate-500">Fotos y videos</dt>
+        <div className="col-span-2 rounded-xl border border-line bg-surface p-3 sm:col-span-4 shadow-xs">
+          <dt className="text-xs font-medium text-fg-subtle">Fotos y videos</dt>
           {/* `media` falta si la carga no llegó a la ingesta: no se asumen ceros. */}
           <dd className="text-sm">
             {media
@@ -52,15 +52,15 @@ function HeaderNotes({ headers }: { headers: Report["headers"] }) {
   if (headers === null) return null;
   const notes = [
     headers.missing.length > 0 && {
-      tone: "text-red-700",
+      tone: "text-danger-700",
       text: `Faltan columnas: ${headers.missing.join(", ")}`,
     },
     headers.unknown.length > 0 && {
-      tone: "text-amber-700",
+      tone: "text-warning-700",
       text: `Columnas desconocidas (se guardan aparte): ${headers.unknown.join(", ")}`,
     },
     headers.duplicated.length > 0 && {
-      tone: "text-amber-700",
+      tone: "text-warning-700",
       text: `Columnas repetidas: ${headers.duplicated.join(", ")}`,
     },
   ].filter((note): note is { tone: string; text: string } => Boolean(note));
@@ -87,17 +87,17 @@ function ErrorsTable({ report }: { report: Report }) {
   if (rows.length === 0) return null;
   return (
     <section aria-labelledby="errores" className="mt-6">
-      <h2 id="errores" className="text-lg font-semibold text-red-800">
+      <h2 id="errores" className="text-lg font-semibold text-danger-800">
         Errores ({rows.length})
       </h2>
-      <div className="mt-2 overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead className="text-xs text-slate-500">
+      <div className="mt-2 overflow-x-auto rounded-xl border border-line bg-surface shadow-xs">
+        <table className="ui-table">
+          <thead className="text-xs text-fg-subtle">
             <tr>
-              <th className="py-1 pr-4">Fila</th>
-              <th className="py-1 pr-4">Propiedad</th>
-              <th className="py-1 pr-4">Columna</th>
-              <th className="py-1">Motivo</th>
+              <th>Fila</th>
+              <th>Propiedad</th>
+              <th>Columna</th>
+              <th>Motivo</th>
             </tr>
           </thead>
           <tbody>
@@ -105,12 +105,11 @@ function ErrorsTable({ report }: { report: Report }) {
               <tr
                 // biome-ignore lint/suspicious/noArrayIndexKey: una fila puede repetir columna y motivo.
                 key={index}
-                className="border-t border-slate-200"
               >
-                <td className="py-1 pr-4">{row.row}</td>
-                <td className="py-1 pr-4">{row.ref}</td>
-                <td className="py-1 pr-4">{row.column}</td>
-                <td className="py-1">{row.message}</td>
+                <td>{row.row}</td>
+                <td>{row.ref}</td>
+                <td>{row.column}</td>
+                <td>{row.message}</td>
               </tr>
             ))}
           </tbody>
@@ -129,29 +128,32 @@ function RowsTable({ report }: { report: Report }) {
       <h2 id="filas" className="text-lg font-semibold">
         Filas ({rows.length})
       </h2>
-      <div className="mt-2 overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead className="text-xs text-slate-500">
+      <div className="mt-2 overflow-x-auto rounded-xl border border-line bg-surface shadow-xs">
+        <table className="ui-table">
+          <thead className="text-xs text-fg-subtle">
             <tr>
-              <th className="py-1 pr-4">Fila</th>
-              <th className="py-1 pr-4">Propiedad</th>
-              <th className="py-1">Resultado</th>
+              <th>Fila</th>
+              <th>Propiedad</th>
+              <th>Resultado</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.rowNumber} className="border-t border-slate-200">
-                <td className="py-1 pr-4">{row.rowNumber}</td>
-                <td className="py-1 pr-4">
+              <tr key={row.rowNumber}>
+                <td>{row.rowNumber}</td>
+                <td>
                   {row.listingId ? (
-                    <Link to={`/propiedades/${row.listingId}`} className="underline">
+                    <Link
+                      to={`/propiedades/${row.listingId}`}
+                      className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-900"
+                    >
                       {row.externalRef ?? "—"}
                     </Link>
                   ) : (
                     (row.externalRef ?? "—")
                   )}
                 </td>
-                <td className={`py-1 ${row.outcome === "failed" ? "text-red-700" : ""}`}>
+                <td className={`${row.outcome === "failed" ? "text-danger-700" : ""}`}>
                   {IMPORT_ROW_OUTCOME_TEXT[row.outcome]}
                 </td>
               </tr>
@@ -168,7 +170,7 @@ function Warnings({ report }: { report: Report }) {
   if (warnings.length === 0) return null;
   return (
     <section aria-labelledby="advertencias" className="mt-6">
-      <h2 id="advertencias" className="text-lg font-semibold text-amber-800">
+      <h2 id="advertencias" className="text-lg font-semibold text-warning-800">
         Advertencias ({warnings.length})
       </h2>
       <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">

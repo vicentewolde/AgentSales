@@ -8,6 +8,7 @@ import { useState } from "react";
 import { PublicationsPanel } from "../publications/PublicationsPanel.js";
 import { safeExternalUrl } from "../publications/publications.js";
 import { marketplaceIssuesHint, ReadinessIssueList } from "../ReadinessIssueList.js";
+import { Button } from "../ui/Button.js";
 import { ApprovableText, type EditContext } from "./ApprovableText.js";
 import { type ListingPrice, planBPrice } from "./marketplace.js";
 
@@ -20,7 +21,7 @@ const MARKETPLACE = "fb_marketplace";
 function MarketplaceReadiness({ readiness }: { readiness: ReadinessView }) {
   if (readiness.ready) {
     return (
-      <p className="mb-3 text-sm text-emerald-800">
+      <p className="mb-3 text-sm text-success-800">
         El aviso tiene lo que pide el formulario de Marketplace.
       </p>
     );
@@ -29,11 +30,11 @@ function MarketplaceReadiness({ readiness }: { readiness: ReadinessView }) {
   return (
     <section
       aria-label="Lo que falta para Marketplace"
-      className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm"
+      className="mb-3 rounded-lg border border-warning-200 bg-warning-50 p-3 text-sm"
     >
-      <p className="font-semibold text-amber-900">Para publicar en Marketplace falta:</p>
-      <ReadinessIssueList issues={readiness.issues} className="text-amber-900" />
-      {hint !== "" && <p className="mt-1 text-xs text-amber-800">{hint}</p>}
+      <p className="font-semibold text-warning-800">Para publicar en Marketplace falta:</p>
+      <ReadinessIssueList issues={readiness.issues} className="text-warning-800" />
+      {hint !== "" && <p className="mt-1 text-xs text-warning-800">{hint}</p>}
     </section>
   );
 }
@@ -53,15 +54,10 @@ function CopyButton({ text, label, children }: { text: string; label: string; ch
   };
   return (
     <span className="inline-flex items-center gap-2">
-      <button
-        type="button"
-        aria-label={label}
-        onClick={() => void copy()}
-        className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium"
-      >
+      <Button variant="secondary" size="sm" aria-label={label} onClick={() => void copy()}>
         {children}
-      </button>
-      <span role="status" className="text-xs text-slate-600">
+      </Button>
+      <span role="status" className="text-xs text-fg-muted">
         {state === "copied" && "Copiado"}
         {state === "failed" && "No se pudo copiar: selecciónalo a mano"}
       </span>
@@ -90,19 +86,19 @@ function PlanB({
   return (
     <details
       open={byHand}
-      className={`mt-4 rounded-lg border p-3 text-sm ${byHand ? "border-amber-300 bg-amber-50" : "border-slate-200"}`}
+      className={`mt-4 rounded-lg border p-3 text-sm ${byHand ? "border-warning-200 bg-warning-50" : "border-line"}`}
     >
       <summary className="cursor-pointer font-medium">
         {byHand ? "Publícalo tú en Facebook (Marketplace a mano)" : "Publicar a mano (plan B)"}
       </summary>
-      <p className="mt-2 text-slate-600">
+      <p className="mt-2 text-fg-muted">
         {byHand
           ? "Copia el título, la descripción y el precio, sube las fotos en Facebook Marketplace y después confirma abajo con el enlace del aviso (o «No lo publiqué»)."
           : "Si el formulario automático no sirve, copia esto y publícalo tú en Facebook."}
       </p>
       <dl className="mt-2 space-y-2">
         <div>
-          <dt className="text-slate-500">Título</dt>
+          <dt className="text-fg-subtle">Título</dt>
           <dd className="flex flex-wrap items-center gap-2">
             {content?.title ?? "—"}
             {content?.title != null && (
@@ -113,7 +109,7 @@ function PlanB({
           </dd>
         </div>
         <div>
-          <dt className="text-slate-500">Descripción</dt>
+          <dt className="text-fg-subtle">Descripción</dt>
           <dd>
             {content === undefined ? (
               "—"
@@ -125,11 +121,11 @@ function PlanB({
           </dd>
         </div>
         <div>
-          <dt className="text-slate-500">Precio</dt>
+          <dt className="text-fg-subtle">Precio</dt>
           <dd>{planBPrice(publications, listingPrice)}</dd>
         </div>
         <div>
-          <dt className="text-slate-500">Fotos</dt>
+          <dt className="text-fg-subtle">Fotos</dt>
           <dd className="flex flex-wrap gap-2">
             {photos.length === 0
               ? "—"
@@ -144,7 +140,7 @@ function PlanB({
                       href={href}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-sky-700 underline"
+                      className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-900"
                     >
                       Abrir foto {index + 1}
                     </a>
@@ -193,7 +189,7 @@ export function MarketplacePanel({
       <MarketplaceReadiness readiness={readiness} />
       {byHand && planB}
       {content === undefined ? (
-        <p className="text-sm text-slate-500">Sin texto todavía.</p>
+        <p className="text-sm text-fg-subtle">Sin texto todavía.</p>
       ) : (
         <ApprovableText content={content} edit={edit}>
           <h3 className="mt-2 text-lg font-semibold">{content.title}</h3>

@@ -3,6 +3,8 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { BrandForm } from "../components/brokers/BrandForm.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
+import { Button } from "../components/ui/Button.js";
+import { PageHeader } from "../components/ui/PageHeader.js";
 import { useBrokers, useCreateBroker } from "../queries/brokers.js";
 import { useUsage } from "../queries/usage.js";
 import { useCan, useRole } from "../scope/broker-scope.js";
@@ -20,49 +22,58 @@ export function BrokersPage() {
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
   // Mientras no se sabe el rol, nada de la vista del administrador.
-  if (role === null) return <p className="text-slate-600">Cargando…</p>;
-  if (!allowed) return <p className="text-slate-600">Esto lo hace el administrador.</p>;
+  if (role === null) return <p className="text-fg-muted">Cargando…</p>;
+  if (!allowed) return <p className="text-fg-muted">Esto lo hace el administrador.</p>;
   const spendOf = (id: string) => usage.data?.brokers.find((row) => row.brokerId === id);
   return (
     <div>
-      <h1 className="text-2xl font-semibold tracking-tight">Corredores</h1>
-      <p className="mt-1 text-slate-600">
-        Cada corredor con su marca, sus usuarios, su gasto de IA del mes (estimado) y su lista de
-        alta.
-      </p>
+      <PageHeader
+        title="Corredores"
+        description={
+          <>
+            Cada corredor con su marca, sus usuarios, su gasto de IA del mes (estimado) y su lista
+            de alta.
+          </>
+        }
+      />
       {brokers.error && <ErrorAlert error={brokers.error} onRetry={() => void brokers.refetch()} />}
       {brokers.data && (
-        <table className="mt-4 w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 text-slate-500">
-              <th className="py-2 font-medium">Marca</th>
-              <th className="py-2 font-medium">Propio</th>
-              <th className="py-2 font-medium">Gasto de IA del mes</th>
-            </tr>
-          </thead>
-          <tbody>
-            {brokers.data.map((broker) => {
-              const spend = spendOf(broker.id);
-              return (
-                <tr key={broker.id} className="border-b border-slate-100">
-                  <td className="py-2">
-                    <Link to={`/corredores/${broker.id}`} className="underline">
-                      {broker.brandName}
-                    </Link>{" "}
-                    <span className="text-slate-500">({broker.slug})</span>
-                  </td>
-                  <td className="py-2">{broker.operatorOwned ? "Sí" : "No"}</td>
-                  <td className="py-2">
-                    {spend === undefined ? "—" : llmSpendText(spend)}
-                    {spend?.capReached && (
-                      <span className="ml-1 font-medium text-red-700">tope alcanzado</span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div className="mt-4 overflow-x-auto rounded-xl border border-line bg-surface shadow-xs">
+          <table className="ui-table">
+            <thead>
+              <tr>
+                <th>Marca</th>
+                <th>Propio</th>
+                <th>Gasto de IA del mes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {brokers.data.map((broker) => {
+                const spend = spendOf(broker.id);
+                return (
+                  <tr key={broker.id}>
+                    <td>
+                      <Link
+                        to={`/corredores/${broker.id}`}
+                        className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-900"
+                      >
+                        {broker.brandName}
+                      </Link>{" "}
+                      <span className="text-fg-subtle">({broker.slug})</span>
+                    </td>
+                    <td>{broker.operatorOwned ? "Sí" : "No"}</td>
+                    <td>
+                      {spend === undefined ? "—" : llmSpendText(spend)}
+                      {spend?.capReached && (
+                        <span className="ml-1 font-medium text-danger-700">tope alcanzado</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
       <section aria-label="Crear un corredor" className="mt-6">
         {creating ? (
@@ -89,13 +100,7 @@ export function BrokersPage() {
             />
           </>
         ) : (
-          <button
-            type="button"
-            onClick={() => setCreating(true)}
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white"
-          >
-            Crear un corredor
-          </button>
+          <Button onClick={() => setCreating(true)}>Crear un corredor</Button>
         )}
       </section>
     </div>

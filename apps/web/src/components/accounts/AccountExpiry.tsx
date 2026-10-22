@@ -7,11 +7,11 @@ export function AccountExpiry({ account, now }: { account: PlatformAccountView; 
   const text = `${accountDateText(account.tokenExpiresAt)}${account.tokenExpiryEstimated ? " (estimado)" : ""}`;
   const state = expiryState(account, now);
   if (state.kind === "expired") {
-    return <span className="font-semibold text-red-700">{text} · venció: reconéctala</span>;
+    return <span className="font-semibold text-danger-700">{text} · venció: reconéctala</span>;
   }
   if (state.kind === "soon") {
     return (
-      <span className="font-semibold text-amber-700">
+      <span className="font-semibold text-warning-700">
         {text} · vence en {state.days} {state.days === 1 ? "día" : "días"}
       </span>
     );

@@ -8,6 +8,7 @@ import { LISTING_PLATFORMS, type ListingPlatform, PLATFORM_TEXT } from "@agentsa
 import { type KeyboardEvent, useRef, useState } from "react";
 import { PublicationsPanel } from "../publications/PublicationsPanel.js";
 import { portalIssuesHint, ReadinessIssueList } from "../ReadinessIssueList.js";
+import { Button } from "../ui/Button.js";
 import { ApprovableText, type EditContext } from "./ApprovableText.js";
 import { captionPreview } from "./caption.js";
 import { MarketplacePanel } from "./MarketplacePanel.js";
@@ -20,13 +21,13 @@ function Caption({ content }: { content: ContentView }) {
     <section aria-label="Caption de Instagram" className="mt-3 text-sm">
       <p className="whitespace-pre-line">{preview !== null && !expanded ? preview : full}</p>
       {preview !== null && (
-        <button
-          type="button"
+        <Button
+          variant="link"
           onClick={() => setExpanded((value) => !value)}
-          className="mt-1 text-sm font-medium text-slate-500 underline"
+          className="mt-1 text-sm"
         >
           {expanded ? "ver menos" : "ver más"}
-        </button>
+        </Button>
       )}
     </section>
   );
@@ -48,7 +49,7 @@ function InstagramPanel({
       <div>
         <h3 className="text-sm font-semibold text-slate-700">Carrusel ({carousel.length})</h3>
         {carousel.length === 0 ? (
-          <p className="mt-2 text-sm text-slate-500">Sin imágenes todavía.</p>
+          <p className="mt-2 text-sm text-fg-subtle">Sin imágenes todavía.</p>
         ) : (
           <ul
             aria-label="Carrusel de Instagram"
@@ -71,7 +72,7 @@ function InstagramPanel({
         )}
         <h3 className="mt-4 text-sm font-semibold text-slate-700">Reel</h3>
         {reel === null ? (
-          <p className="mt-2 text-sm text-slate-500">Sin reel (la propiedad no tiene video).</p>
+          <p className="mt-2 text-sm text-fg-subtle">Sin reel (la propiedad no tiene video).</p>
         ) : (
           // biome-ignore lint/a11y/useMediaCaption: el texto del reel va dibujado en el video.
           <video
@@ -85,7 +86,7 @@ function InstagramPanel({
       </div>
       <div>
         {content === undefined ? (
-          <p className="text-sm text-slate-500">Sin texto todavía.</p>
+          <p className="text-sm text-fg-subtle">Sin texto todavía.</p>
         ) : (
           <ApprovableText content={content} edit={edit}>
             <Caption content={content} />
@@ -112,7 +113,7 @@ function InstagramPanel({
 function PortalReadiness({ readiness }: { readiness: PortalReadinessView }) {
   if (readiness.ready) {
     return (
-      <p className="mb-3 text-sm text-emerald-800">
+      <p className="mb-3 text-sm text-success-800">
         El aviso tiene lo que pide Portal Inmobiliario.
       </p>
     );
@@ -120,11 +121,11 @@ function PortalReadiness({ readiness }: { readiness: PortalReadinessView }) {
   return (
     <section
       aria-label="Lo que falta para Portal"
-      className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm"
+      className="mb-3 rounded-lg border border-warning-200 bg-warning-50 p-3 text-sm"
     >
-      <p className="font-semibold text-amber-900">Para publicar en Portal falta:</p>
-      <ReadinessIssueList issues={readiness.issues} className="text-amber-900" />
-      <p className="mt-1 text-xs text-amber-800">{portalIssuesHint(readiness.issues)}</p>
+      <p className="font-semibold text-warning-800">Para publicar en Portal falta:</p>
+      <ReadinessIssueList issues={readiness.issues} className="text-warning-800" />
+      <p className="mt-1 text-xs text-warning-800">{portalIssuesHint(readiness.issues)}</p>
     </section>
   );
 }
@@ -147,7 +148,7 @@ function ListingPanel({
     <div>
       {portal && <PortalReadiness readiness={portalReadiness} />}
       {content === undefined ? (
-        <p className="text-sm text-slate-500">Sin texto todavía.</p>
+        <p className="text-sm text-fg-subtle">Sin texto todavía.</p>
       ) : (
         <ApprovableText content={content} edit={edit}>
           <h3 className="mt-2 text-lg font-semibold">{content.title}</h3>
@@ -219,7 +220,7 @@ export function Preview({ content, ...edit }: { content: ListingContentResponse 
         role="tablist"
         aria-label="Canales"
         onKeyDown={onKeyDown}
-        className="flex gap-1 border-b border-slate-200"
+        className="flex gap-1 border-b border-line"
       >
         {LISTING_PLATFORMS.map((target) => {
           const selected = platform === target;
@@ -236,15 +237,15 @@ export function Preview({ content, ...edit }: { content: ListingContentResponse 
               aria-controls={`panel-${target}`}
               tabIndex={selected ? 0 : -1}
               onClick={() => setPlatform(target)}
-              className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${
+              className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
                 selected
-                  ? "border-slate-900 text-slate-900"
-                  : "border-transparent text-slate-500 hover:text-slate-800"
+                  ? "border-brand-700 text-brand-800"
+                  : "border-transparent text-fg-subtle hover:text-fg"
               }`}
             >
               {PLATFORM_TEXT[target]}
               {hasErrors(target) && (
-                <span className="ml-1 text-red-600" aria-hidden="true">
+                <span className="ml-1 text-danger-700" aria-hidden="true">
                   ●
                 </span>
               )}

@@ -24,6 +24,8 @@ import { ErrorAlert } from "../components/ErrorAlert.js";
 import { safeExternalUrl } from "../components/publications/publications.js";
 import { ScheduleForm } from "../components/publications/ScheduleForm.js";
 import { PublicationStatusBadge } from "../components/StatusBadge.js";
+import { Button } from "../components/ui/Button.js";
+import { PageHeader } from "../components/ui/PageHeader.js";
 import { useCalendar, useMovePublication } from "../queries/calendar.js";
 import { useHealth } from "../queries/health.js";
 import { useBrokerFilter, useRole } from "../scope/broker-scope.js";
@@ -31,10 +33,6 @@ import { useBrokerFilter, useRole } from "../scope/broker-scope.js";
 // F9-T18: el calendario de lo programado y lo publicado, con posts y avisos, por semana o por mes,
 // siempre en hora de Chile. Mover la fecha de una programada usa `POST /publications/:id/schedule`
 // (el caso de uso de F6) con el selector de programar, que en vivo pide confirmar.
-
-const BUTTON =
-  "rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-100";
-const TOGGLE_ON = "rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white";
 
 /** La hora de Chile de una entrada (`10:00`). */
 const timeOf = (entry: CalendarEntryView) => formatChileTime(entry.at).slice(11);
@@ -48,9 +46,12 @@ function EntryTitle({ entry }: { entry: CalendarEntryView }) {
         : null;
   if (to === null) return <span className="font-semibold">{entry.title}</span>;
   return (
-    <Link to={to} className="font-semibold underline">
+    <Link
+      to={to}
+      className="font-semibold text-fg underline-offset-2 hover:text-brand-700 hover:underline"
+    >
       {entry.title}
-      {entry.postId !== null && <span className="font-normal text-slate-500"> (post)</span>}
+      {entry.postId !== null && <span className="font-normal text-fg-subtle"> (post)</span>}
     </Link>
   );
 }
@@ -68,7 +69,7 @@ export function CalendarItem({
   const url = safeExternalUrl(entry.externalUrl);
   return (
     <li
-      className="rounded-md border border-slate-200 bg-white p-2 text-xs"
+      className="rounded-md border border-line bg-surface p-2 text-xs"
       aria-label={`${timeOf(entry)} ${PLATFORM_TEXT[entry.platform]} ${entry.title}`}
     >
       <p>
@@ -80,25 +81,30 @@ export function CalendarItem({
         <EntryTitle entry={entry} />
       </p>
       {showBroker && entry.brokerSlug !== null && (
-        <p className="text-slate-500">{entry.brokerSlug}</p>
+        <p className="text-fg-subtle">{entry.brokerSlug}</p>
       )}
       <p className="mt-1 flex flex-wrap items-center gap-1">
         <PublicationStatusBadge status={entry.status} />
         {entry.schedule === "overdue" && (
-          <span className="font-semibold text-amber-800">atrasada</span>
+          <span className="font-semibold text-warning-800">atrasada</span>
         )}
-        <span className={entry.dryRun ? "text-slate-500" : "font-semibold text-red-700"}>
+        <span className={entry.dryRun ? "text-fg-subtle" : "font-semibold text-danger-700"}>
           {entry.dryRun ? "simulación" : "en vivo"}
         </span>
       </p>
       <p className="mt-1 flex flex-wrap gap-2">
         {entry.kind === "scheduled" && (
-          <button type="button" className="text-sky-700 underline" onClick={() => onMove(entry)}>
+          <Button variant="link" onClick={() => onMove(entry)}>
             Mover
-          </button>
+          </Button>
         )}
         {url !== null && (
-          <a href={url} target="_blank" rel="noreferrer" className="text-sky-700 underline">
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-900"
+          >
             Ver
           </a>
         )}
@@ -130,7 +136,7 @@ export function CalendarGrid({
     <div className="mt-4">
       <div aria-hidden="true" className="hidden grid-cols-7 gap-2 md:grid">
         {WEEKDAYS.map((weekday) => (
-          <p key={weekday} className="px-1 text-xs font-semibold text-slate-500 uppercase">
+          <p key={weekday} className="px-1 text-xs font-semibold text-fg-subtle uppercase">
             {weekday.slice(0, 3)}
           </p>
         ))}
@@ -146,11 +152,11 @@ export function CalendarGrid({
               key={day}
               aria-label={dayLabel(day)}
               className={`rounded-lg border p-1.5 ${view === "semana" ? "md:min-h-40" : "md:min-h-24"} ${
-                day === today ? "border-sky-500 bg-sky-50" : "border-slate-200 bg-slate-50"
+                day === today ? "border-info-500 bg-info-50" : "border-line bg-slate-50"
               } ${outside ? "opacity-60" : ""} ${view === "mes" ? hideOnPhone : ""}`}
             >
               <p
-                className={`text-xs font-semibold ${day === today ? "text-sky-800" : "text-slate-600"}`}
+                className={`text-xs font-semibold ${day === today ? "text-info-800" : "text-fg-muted"}`}
               >
                 <span className="md:hidden">{dayLabel(day)}</span>
                 <span className="hidden md:inline">{Number(day.slice(8))}</span>
@@ -198,7 +204,7 @@ function MovePanel({
     <section
       ref={panel}
       aria-label="Mover la fecha"
-      className="mt-4 rounded-lg border border-slate-200 bg-white p-4"
+      className="mt-4 rounded-xl border border-line bg-surface p-4 shadow-xs"
     >
       <h2 className="text-base font-semibold">Mover la fecha</h2>
       <p className="mt-1 text-sm text-slate-700">
@@ -244,15 +250,20 @@ export function CalendarPage() {
 
   return (
     <section className="mx-auto max-w-6xl">
-      <h1 className="text-2xl font-semibold tracking-tight">Calendario</h1>
-      <p className="mt-1 text-sm text-slate-600">
-        Lo programado y lo publicado, de propiedades y posts. Las horas son de Chile.
-      </p>
+      <PageHeader
+        title="Calendario"
+        description={
+          <>Lo programado y lo publicado, de propiedades y posts. Las horas son de Chile.</>
+        }
+      />
       {/* Al llegar su hora, una publicación deja de estar programada: si falló, espera tu
           confirmación o quedó con resultado dudoso, sale de aquí y se resuelve en Seguimiento. */}
-      <p className="mt-1 text-sm text-slate-600">
+      <p className="mt-1 text-sm text-fg-muted">
         Lo que falló, espera tu confirmación o quedó con resultado dudoso está en{" "}
-        <Link to="/seguimiento" className="text-sky-700 underline">
+        <Link
+          to="/seguimiento"
+          className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-900"
+        >
           Seguimiento
         </Link>
         .
@@ -262,41 +273,41 @@ export function CalendarPage() {
         <fieldset className="flex gap-1">
           <legend className="sr-only">Vista</legend>
           {(["semana", "mes"] as const).map((option) => (
-            <button
+            <Button
               key={option}
-              type="button"
               aria-pressed={view === option}
-              className={view === option ? TOGGLE_ON : BUTTON}
+              variant={view === option ? "primary" : "secondary"}
+              size="sm"
               onClick={() => go({ vista: option })}
             >
               {option === "semana" ? "Semana" : "Mes"}
-            </button>
+            </Button>
           ))}
         </fieldset>
         <div className="flex gap-1">
-          <button
-            type="button"
-            className={BUTTON}
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => go({ dia: shiftAnchor(view, anchor, -1) })}
           >
             {view === "semana" ? "Semana anterior" : "Mes anterior"}
-          </button>
-          <button type="button" className={BUTTON} onClick={() => go({ dia: today })}>
+          </Button>
+          <Button variant="secondary" size="sm" onClick={() => go({ dia: today })}>
             Hoy
-          </button>
-          <button
-            type="button"
-            className={BUTTON}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => go({ dia: shiftAnchor(view, anchor, 1) })}
           >
             {view === "semana" ? "Semana siguiente" : "Mes siguiente"}
-          </button>
+          </Button>
         </div>
       </div>
       <h2 className="mt-4 text-lg font-semibold">{periodLabel(view, anchor)}</h2>
 
       {notice !== null && (
-        <p role="status" className="mt-2 text-sm text-emerald-800">
+        <p role="status" className="mt-2 text-sm text-success-800">
           {notice}
         </p>
       )}
@@ -318,11 +329,11 @@ export function CalendarPage() {
           retrying={calendar.isFetching}
         />
       )}
-      {calendar.isPending && <p className="mt-2 text-sm text-slate-600">Cargando el calendario…</p>}
+      {calendar.isPending && <p className="mt-2 text-sm text-fg-muted">Cargando el calendario…</p>}
       {calendar.data && (
         <>
           {calendar.data.length === 0 && (
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="mt-2 text-sm text-fg-muted">
               Nada programado ni publicado en estas fechas.
             </p>
           )}

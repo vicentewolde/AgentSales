@@ -79,7 +79,7 @@ function ListingCard({
   return (
     <li className="relative">
       {/* Fuera del enlace: un control dentro de un enlace no se puede usar con el teclado. */}
-      <label className="absolute top-3 left-3 z-10 flex rounded-md bg-white/95 p-1.5 shadow-sm ring-1 ring-black/5">
+      <label className="absolute top-3 left-3 z-10 flex rounded-md bg-surface/95 p-1.5 shadow-xs ring-1 ring-black/5">
         <input
           type="checkbox"
           checked={selected}

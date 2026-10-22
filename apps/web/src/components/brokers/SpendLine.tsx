@@ -9,11 +9,11 @@ export function SpendLine({ usage, brokerId }: { usage?: UsageResponse; brokerId
     <p className="mt-2 text-sm text-slate-700">
       Gasto de IA de {usage.month}: <strong>{llmSpendText(row)}</strong>
       {row.capReached && (
-        <span className="ml-1 font-medium text-red-700">
+        <span className="ml-1 font-medium text-danger-700">
           · tope alcanzado: preparar los textos está frenado
         </span>
       )}
-      <span className="block text-xs text-slate-500">
+      <span className="block text-xs text-fg-subtle">
         Es una estimación: la cifra oficial está en la consola de Anthropic.
       </span>
     </p>

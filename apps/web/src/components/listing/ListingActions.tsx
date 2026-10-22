@@ -14,13 +14,9 @@ import { useRef, useState } from "react";
 import { ApiError } from "../../api/client.js";
 import { useChangeListingStatus } from "../../queries/listings.js";
 import { ErrorAlert } from "../ErrorAlert.js";
+import { Button } from "../ui/Button.js";
 
 // F6-T13 (spec F6 §4.8, ADR-0019): la propiedad manda sobre sus publicaciones.
-
-const BUTTON =
-  "rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-100 disabled:opacity-50";
-const DANGER =
-  "rounded-md bg-red-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50";
 
 /** Un botón: la acción y, al cerrar, el motivo. */
 type Choice = { action: ListingAction; reason?: CloseReason; label: string };
@@ -124,33 +120,32 @@ export function ListingActions({ id, status }: { id: string; status: ListingStat
           aria-label="Acciones de la propiedad"
         >
           {choices.map((choice) => (
-            <button
+            <Button
+              variant="secondary"
+              size="sm"
               key={choice.label}
-              type="button"
-              className={BUTTON}
               disabled={change.isPending}
               onClick={(event) => start(choice, event.currentTarget)}
             >
               {choice.label}
-            </button>
+            </Button>
           ))}
         </fieldset>
       ) : (
-        <div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm">
-          <p className="font-semibold text-red-800">{confirming.question}</p>
+        <div role="alert" className="rounded-lg border border-danger-200 bg-danger-50 p-3 text-sm">
+          <p className="font-semibold text-danger-800">{confirming.question}</p>
           <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              type="button"
-              className={DANGER}
+            <Button
+              variant="danger"
+              size="sm"
               disabled={change.isPending}
               onClick={() => send(confirming.choice, true)}
             >
               Sí, {confirming.choice.label.toLowerCase()}
-            </button>
-            {/* biome-ignore lint/a11y/noAutofocus: el foco va a la opción segura al abrir la confirmación */}
-            <button type="button" autoFocus className="underline" onClick={cancel}>
+            </Button>
+            <Button variant="link" autoFocus onClick={cancel}>
               Cancelar
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -174,7 +169,7 @@ export function ListingActions({ id, status }: { id: string; status: ListingStat
             </ul>
           )}
           {result.body.manualTasks.length > 0 && (
-            <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-900">
+            <div className="mt-2 rounded-md border border-warning-200 bg-warning-50 p-2 text-warning-800">
               <p className="font-semibold">Tareas a mano</p>
               <p>
                 Siguen publicadas en vivo: bórralas en la plataforma y márcalas como retiradas en

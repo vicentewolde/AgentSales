@@ -66,12 +66,15 @@ function PageError() {
   const error = useRouteError();
   const detail = error instanceof Error ? error.message : String(error);
   return (
-    <div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-4">
-      <p className="font-semibold text-red-800">Esta página tuvo un problema.</p>
-      <p className="mt-1 text-sm text-red-700">{detail}</p>
+    <div role="alert" className="rounded-lg border border-danger-200 bg-danger-50 p-4">
+      <p className="font-semibold text-danger-800">Esta página tuvo un problema.</p>
+      <p className="mt-1 text-sm text-danger-700">{detail}</p>
       <p className="mt-3 text-sm">
         Recarga la página, o vuelve a{" "}
-        <Link to="/propiedades" className="underline">
+        <Link
+          to="/propiedades"
+          className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-900"
+        >
           Propiedades
         </Link>
         .
@@ -81,12 +84,12 @@ function PageError() {
 }
 
 function NotFound() {
-  return <p className="text-slate-600">Esta página no existe.</p>;
+  return <p className="text-fg-muted">Esta página no existe.</p>;
 }
 
 /** Las páginas sin sesión (spec F7 §4.11): fuera del layout, sin menú ni banner. */
 function Bare({ children }: { children: React.ReactNode }) {
-  return <Suspense fallback={<p className="p-6 text-slate-600">Cargando…</p>}>{children}</Suspense>;
+  return <Suspense fallback={<p className="p-6 text-fg-muted">Cargando…</p>}>{children}</Suspense>;
 }
 
 export const routes: RouteObject[] = [

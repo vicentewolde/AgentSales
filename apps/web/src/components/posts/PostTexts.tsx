@@ -76,7 +76,7 @@ function Preview({ content, media }: { content: ContentView; media: readonly Pos
   return (
     <figure
       aria-label={`Vista previa de ${tabName(content)}`}
-      className="rounded-lg border border-line bg-surface p-4"
+      className="rounded-xl border border-line bg-surface p-4 shadow-xs"
     >
       <figcaption className="text-xs font-medium text-fg-subtle">
         Vista previa · {PLATFORM_TEXT[content.platform]}

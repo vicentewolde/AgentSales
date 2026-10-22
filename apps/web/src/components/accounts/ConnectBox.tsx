@@ -1,4 +1,5 @@
 import { type Broker, tokenStdinCommand } from "@agentsales/core";
+import { buttonClasses } from "../ui/styles.js";
 import { CopyCommand } from "./CopyCommand.js";
 
 /**
@@ -24,7 +25,7 @@ export function ConnectBox({
       <a
         href={`${startUrl}?broker=${encodeURIComponent(broker.slug)}`}
         aria-label={`${label} de ${broker.brandName}`}
-        className="mt-3 inline-block rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white"
+        className={`mt-3 ${buttonClasses("primary", "sm")}`}
       >
         {label}
       </a>
@@ -32,13 +33,13 @@ export function ConnectBox({
   }
   const command = tokenStdinCommand(broker.slug);
   return (
-    <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+    <div className="mt-3 rounded-lg border border-line bg-slate-50 p-3 text-sm">
       <p className="font-medium">{label}</p>
-      <p className="mt-1 text-slate-600">
+      <p className="mt-1 text-fg-muted">
         Meta no acepta la conexión desde localhost: se conecta con el token del panel de Meta, en
         este orden (el comando lee el token del portapapeles):
       </p>
-      <ol className="mt-1 list-decimal pl-5 text-slate-600">
+      <ol className="mt-1 list-decimal pl-5 text-fg-muted">
         <li>Copia este comando y pégalo en la terminal, sin ejecutarlo.</li>
         <li>En el panel de Meta (Instagram API setup), copia el token del botón Generate token.</li>
         <li>Vuelve a la terminal y presiona Enter.</li>

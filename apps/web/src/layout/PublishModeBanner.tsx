@@ -2,7 +2,7 @@ import { useHealth } from "../queries/health.js";
 
 // En simulación, una franja discreta; en vivo, roja y en negrita: tiene que verse siempre.
 const TONE = {
-  live: { bar: "bg-danger-700 font-semibold text-white", dot: "bg-white" },
+  live: { bar: "bg-danger-700 font-semibold text-white", dot: "bg-surface" },
   "dry-run": {
     bar: "border-b border-success-200 bg-success-50 font-medium text-success-800",
     dot: "bg-success-500",
