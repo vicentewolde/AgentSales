@@ -3,6 +3,7 @@ import type { Platform } from "../enums.js";
 import type { FieldDefinition } from "../field-definition.js";
 import type { Listing } from "../listing.js";
 import { foldText } from "../listing-validator/normalizers.js";
+import { aiTellMessage, listingAiTells } from "./ai-tells.js";
 import {
   type AssembledText,
   type ContentContact,
@@ -27,7 +28,7 @@ export const CONTENT_CHECK_SEVERITY_LEVELS = ["error", "warning"] as const;
 
 /**
  * Códigos de la revisión editorial (spec F2 §4.6 y F4 §4.7) y de la de posts (spec F9 §4.4), con
- * su severidad.
+ * su severidad. `AI_TELL` (spec F9.5, D6) va en las dos.
  */
 export const CONTENT_CHECK_SEVERITIES = {
   NUMBER_NOT_IN_DATA: "error",
@@ -41,6 +42,8 @@ export const CONTENT_CHECK_SEVERITIES = {
   SUPERLATIVE: "warning",
   MARKDOWN: "warning",
   HASHTAG_COUNT: "warning",
+  // Avisos y posts (spec F9.5, D6): muletillas de texto escrito por IA (`ai-tells.ts`).
+  AI_TELL: "warning",
   // Posts (spec F9 §4.4, `checkPostContent`).
   HASHTAG_LIMIT: "error",
   MASS_MENTION: "error",
@@ -383,6 +386,9 @@ export function checkContent(
       `Usa superlativos vacíos: ${superlatives.map((term) => `«${term}»`).join(", ")}`,
     );
   }
+
+  const tells = listingAiTells(text);
+  if (tells.length > 0) add("AI_TELL", aiTellMessage(tells));
 
   if (platform === "instagram") {
     if (/\*\*|__|^#{1,6}\s|\[[^\]]*\]\([^)]*\)/m.test(text.body)) {
