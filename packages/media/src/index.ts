@@ -6,6 +6,7 @@ import { FFMPEG_INSTALL_HINT, isSupportedFfmpeg, parseFfmpegVersion } from "./to
 import { processVideo } from "./video.js";
 
 export {
+  DISCORD_VIDEO_SPEC,
   IMAGE_VARIANT_SPECS,
   type ImageVariantSpec,
   MEDIA_PIPELINE_VERSION,

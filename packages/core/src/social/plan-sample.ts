@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { POST_PLATFORMS, type PostKind, type PostPlatform } from "../enums.js";
+import { kindProblem } from "./networks.js";
 import type { PlanIdea } from "./plan.js";
 import { topicKey } from "./plan.js";
 import { PLAN_DATA_TAG } from "./plan-prompt.js";
@@ -7,33 +8,25 @@ import { PLAN_DATA_TAG } from "./plan-prompt.js";
 // El plan de ejemplo del proveedor `fake` (`LLM_PROVIDER=fake`, F9-T20): ideas deterministas que
 // pasan las verificaciones de `checkPlanIdeas` con cualquier perfil, para probar el flujo (T21) y
 // la evaluación (T22) sin gastar cuota. Lee lo pedido del bloque de datos del prompt, que arma core
-// (`buildPlanPrompt`): sin red ni azar.
+// (`buildPlanPrompt`): sin red ni azar. Desde F9.5 (ADR-0034) no manda fecha ni hora: las ranuras
+// las pone el código, y si la cadencia no da para todas, las de sobra quedan como `NO_SLOT`.
 
 /** Lo que el ejemplo lee del bloque de datos (lo demás lo ignora). */
 const sampleDataSchema = z.object({
-  marca: z.string().optional(),
   lineas: z
     .array(z.object({ clave: z.string(), nombre: z.string(), peso: z.number() }))
     .default([]),
-  dias_del_periodo: z.array(z.object({ fecha: z.string(), dia: z.string() })).default([]),
   redes_pedidas: z.array(z.enum(POST_PLATFORMS)).default([]),
-  cadencia: z
-    .record(
-      z.string(),
-      z.object({
-        posts_por_semana: z.number(),
-        dias: z.array(z.string()).default([]),
-        horas: z.array(z.string()).default([]),
-      }),
-    )
-    .default({}),
   ideas_pedidas: z.number().int().nonnegative().default(0),
   temas_recientes: z.array(z.string()).default([]),
   ideas_descartadas: z.array(z.string()).default([]),
-  ya_planificados: z.array(z.object({ fecha: z.string(), redes: z.array(z.string()) })).default([]),
 });
 
-/** Ángulos de un tema: frases sin cifras ni nombres propios (pasan `unsupportedFacts`). */
+/**
+ * Ángulos de un tema: frases sin cifras ni nombres propios (pasan `unsupportedFacts`) y sin
+ * palabras con peso en común (no se parecen entre sí, `topicSimilarity`). Son tantos como el tope
+ * de ideas de un plan (`PLAN_MAX_IDEAS`): dentro de un plan, ninguno se repite.
+ */
 const ANGLES = [
   "Lo que aprendimos esta semana",
   "Cómo trabajamos por dentro",
@@ -47,22 +40,27 @@ const ANGLES = [
   "Lo que más nos preguntan",
   "Un mito común",
   "Cómo empezamos",
+  "Lo que haríamos distinto",
+  "Un proceso que simplificamos",
+  "Lo que nos inspira",
+  "Una costumbre del equipo",
+  "Una idea que dejamos atrás",
+  "Un día cualquiera",
+  "Una recomendación sincera",
+  "Lo que todavía no sabemos",
 ];
 
 /** Las vueltas que se agregan cuando un ángulo ya se usó (un plan tras otro no se repite). */
 const VARIANTS = ["", " (otra mirada)", " (en corto)", " (paso a paso)", " (lo esencial)"];
 
-/** El formato que sirve en la red (Instagram necesita imagen; TikTok, video). */
-const kindFor = (platform: PostPlatform): PostKind =>
-  platform === "tiktok" ? "video" : platform === "instagram" ? "image" : "text";
-
-/** El lunes de la semana de un día (`AAAA-MM-DD`). */
-function mondayOf(day: string): string {
-  const [y, m, d] = day.split("-").map(Number) as [number, number, number];
-  const date = new Date(Date.UTC(y, m - 1, d));
-  date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
-  return date.toISOString().slice(0, 10);
-}
+/** Los formatos que se turnan en cada red (Instagram necesita imagen o video; TikTok, video). */
+const KINDS: Readonly<Record<PostPlatform, readonly PostKind[]>> = {
+  instagram: ["image", "carousel", "video"],
+  tiktok: ["video"],
+  x: ["text", "image", "carousel"],
+  linkedin: ["text", "image", "carousel"],
+  discord: ["text", "image", "carousel"],
+};
 
 /** Los datos del bloque del prompt, o `null` si no están o no se leen. */
 function readData(prompt: string): z.infer<typeof sampleDataSchema> | null {
@@ -80,55 +78,32 @@ function readData(prompt: string): z.infer<typeof sampleDataSchema> | null {
 }
 
 /**
- * La respuesta de ejemplo para un prompt del plan: `ideas_pedidas` ideas de una red cada una, en
- * los días y horas de la cadencia de cada red (las 10:00 si no tiene), sin pasar sus posts por
- * semana, repartidas a lo largo del período; las líneas por turno (entre las de peso mayor que 0);
- * y temas que no repiten los recientes ni los descartados. Si el período no da para tantas, menos
- * ideas (y una advertencia). Determinista: el mismo prompt da la misma respuesta.
+ * La respuesta de ejemplo para un prompt del plan: `ideas_pedidas` ideas, en orden; cada una
+ * empieza por una red pedida (por turno), con un formato que esa red admite (por turno) y, como
+ * redes preferidas, esa y las demás pedidas que admiten el formato; las líneas por turno (entre las
+ * de peso mayor que 0); y temas con un ángulo distinto cada uno que no repiten los recientes ni los
+ * descartados. Sin fecha ni hora. Determinista: el mismo prompt da la misma respuesta.
  */
 export function samplePlanResponse(prompt: string): { ideas: PlanIdea[]; warnings: string[] } {
   const data = readData(prompt);
   if (data === null) {
     return { ideas: [], warnings: ["El ejemplo no encontró los datos del plan en el prompt"] };
   }
-  // Los huecos posibles: cada día y cada red, en su cadencia y sin pasar su tope semanal.
-  const slots: { date: string; hour: string; platform: PostPlatform }[] = [];
-  const perWeek = new Map<string, number>();
-  // Lo ya planificado ocupa su cupo de la semana.
-  for (const { fecha, redes } of data.ya_planificados) {
-    for (const platform of redes) {
-      const key = `${platform}:${mondayOf(fecha)}`;
-      perWeek.set(key, (perWeek.get(key) ?? 0) + 1);
-    }
-  }
-  for (const { fecha, dia } of data.dias_del_periodo) {
-    for (const platform of data.redes_pedidas) {
-      const cadence = data.cadencia[platform];
-      if (cadence !== undefined) {
-        if (cadence.dias.length > 0 && !cadence.dias.includes(dia)) continue;
-        const key = `${platform}:${mondayOf(fecha)}`;
-        if ((perWeek.get(key) ?? 0) >= cadence.posts_por_semana) continue;
-        perWeek.set(key, (perWeek.get(key) ?? 0) + 1);
-      }
-      slots.push({ date: fecha, hour: cadence?.horas[0] ?? "10:00", platform });
-    }
-  }
-  const count = Math.min(data.ideas_pedidas, slots.length);
-  // Repartidas en el período: los huecos a intervalos parejos.
-  const chosen = Array.from(
-    { length: count },
-    (_, index) => slots[Math.floor((index * slots.length) / count)],
-  ).filter((slot) => slot !== undefined);
+  const networks = data.redes_pedidas;
+  if (networks.length === 0) return { ideas: [], warnings: ["No se pidió ninguna red"] };
 
   const used = new Set([...data.temas_recientes, ...data.ideas_descartadas].map(topicKey));
   const pillars = data.lineas.filter((pillar) => pillar.peso > 0);
-  /** El primer tema libre para una línea (o para la marca, sin líneas), que queda usado. */
+  let cursor = 0;
+  /** El primer tema libre con el ángulo siguiente (para una línea, o para la marca sin líneas). */
   const nextTopic = (pillar: { nombre: string } | null): string | null => {
     for (const variant of VARIANTS) {
-      for (const angle of ANGLES) {
-        const topic = `${angle}${pillar === null ? "" : `: ${pillar.nombre}`}${variant}`;
+      for (let offset = 0; offset < ANGLES.length; offset += 1) {
+        const index = (cursor + offset) % ANGLES.length;
+        const topic = `${ANGLES[index]}${pillar === null ? "" : `: ${pillar.nombre}`}${variant}`;
         if (used.has(topicKey(topic))) continue;
         used.add(topicKey(topic));
+        cursor = index + 1;
         return topic;
       }
     }
@@ -136,23 +111,23 @@ export function samplePlanResponse(prompt: string): { ideas: PlanIdea[]; warning
   };
 
   const ideas: PlanIdea[] = [];
-  chosen.forEach((slot, index) => {
+  for (let index = 0; index < data.ideas_pedidas; index += 1) {
+    const platform = networks[index % networks.length] as PostPlatform;
+    const kinds = KINDS[platform];
+    const kind = kinds[Math.floor(index / networks.length) % kinds.length] as PostKind;
     const pillar = pillars.length === 0 ? null : (pillars[index % pillars.length] ?? null);
     const topic = nextTopic(pillar);
-    if (topic === null) return;
+    if (topic === null) break;
     ideas.push({
       tema: topic,
       linea: pillar?.clave ?? null,
-      redes: [slot.platform],
-      formato: kindFor(slot.platform),
-      fecha: slot.date,
-      hora: slot.hour,
-      porque: "Mantiene la cadencia de la red y reparte las líneas del perfil.",
+      redes: [
+        platform,
+        ...networks.filter((other) => other !== platform && kindProblem(other, kind) === null),
+      ],
+      formato: kind,
+      porque: "Suma un ángulo y un formato distintos al plan, y reparte las líneas del perfil.",
     });
-  });
-  const warnings =
-    ideas.length < data.ideas_pedidas
-      ? ["El período y la cadencia no dan para todas las ideas pedidas"]
-      : [];
-  return { ideas, warnings };
+  }
+  return { ideas, warnings: [] };
 }

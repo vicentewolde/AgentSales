@@ -441,7 +441,7 @@ export function runResolvePublication(deps: ConfirmDeps, id: string, options: Re
       }),
       publicationConfirmResponseSchema,
     ).catch((error: unknown) => {
-      throw explainedResolve(error);
+      throw explainedResolve(error, pipe);
     });
     const name = `${publicationName(publication)} (${LANGUAGE_TEXT[publication.language]})`;
     if (!changed) {
@@ -467,16 +467,20 @@ export function runResolvePublication(deps: ConfirmDeps, id: string, options: Re
   });
 }
 
-/** Los errores de resolver, con qué hacer. */
-function explainedResolve(error: unknown): unknown {
+/** Los errores de resolver, con qué hacer (`pipe`: el comando con el enlace por la entrada estándar). */
+export function explainedResolve(error: unknown, pipe: string): unknown {
   if (!(error instanceof ApiCallError)) return error;
   const hints: Record<string, string> = {
+    // Portal en vivo (F9.5-T04a): sin el enlace o el número del aviso no se sabe qué ítem es.
+    PUBLISHED_URL_REQUIRED: `Copia el enlace del aviso en Portal Inmobiliario o Mercado Libre (o su número, que empieza con MLC) y corre: ${pipe}`,
+    PORTAL_ITEM_IN_USE:
+      "Ese es el aviso de otra publicación (por ejemplo, el anterior a republicar): busca en Mercado Libre el que salió ahora y pega ese",
     INVALID_TRANSITION:
       "Solo se resuelve una publicación que no se sabe si salió: mira su estado (agentsales agenda)",
     PUBLICATION_ALREADY_CONFIRMED:
       "Ya se marcó publicada con otro enlace: mira su estado (agentsales agenda)",
     PUBLISHED_URL_INVALID:
-      "Copia el enlace de la publicación desde la barra del navegador (empieza con https://)",
+      "Copia el enlace de la publicación desde la barra del navegador (empieza con https://); en Portal también vale el número del aviso (MLC…)",
   };
   const hint = error.code === undefined ? undefined : hints[error.code];
   if (hint === undefined) return error;
