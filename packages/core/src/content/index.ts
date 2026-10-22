@@ -2,6 +2,14 @@
 // llamada con validación y el ensamblado de los textos por canal.
 
 export {
+  AI_TELL_MAX_EXCLAMATIONS,
+  type AiTell,
+  type AiTellKind,
+  aiTellMessage,
+  findAiTells,
+  listingAiTells,
+} from "./ai-tells.js";
+export {
   type AssembledContents,
   type AssembledText,
   assembleContents,

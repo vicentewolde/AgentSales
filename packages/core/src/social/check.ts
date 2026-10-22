@@ -1,4 +1,5 @@
 import type { Broker } from "../broker.js";
+import { aiTellMessage, findAiTells } from "../content/ai-tells.js";
 import {
   CONTENT_CHECK_SEVERITIES,
   type ContentCheck,
@@ -546,8 +547,9 @@ export function unsupportedFacts(text: string, sources: string): string[] {
  *   Instagram fuera de 2 a 10 imágenes, TikTok sin video, X con más de 4 imágenes, Discord con
  *   más de 10.
  * Advertencias: `LINK_COST` (X con un enlace: US$0,20 en vez de US$0,015), `AVOID_TERM` (algo de
- * lo que el perfil pide evitar), `MARKDOWN` (salvo en Discord, que lo muestra) y `MEDIA_UNUSED`
- * (un post `image` con varias fotos en Instagram: sale solo la primera).
+ * lo que el perfil pide evitar), `AI_TELL` (muletillas de texto escrito por IA, `findAiTells`),
+ * `MARKDOWN` (salvo en Discord, que lo muestra) y `MEDIA_UNUSED` (un post `image` con varias fotos
+ * en Instagram: sale solo la primera).
  */
 export function checkPostContent(
   platform: PostPlatform,
@@ -648,6 +650,9 @@ export function checkPostContent(
     );
     if (pattern.test(folded)) add("AVOID_TERM", `Usa «${term}», que el perfil pide evitar`);
   }
+
+  const tells = findAiTells(text.body);
+  if (tells.length > 0) add("AI_TELL", aiTellMessage(tells));
 
   if (platform !== "discord" && /\*\*|__|^#{1,6}\s|\[[^\]]*\]\([^)]*\)/m.test(text.body)) {
     add("MARKDOWN", `Tiene formato markdown (**, encabezados o links), que ${name} no muestra`);
