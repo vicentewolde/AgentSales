@@ -72,6 +72,7 @@ Reglas: `main` solo recibe cambios por PR; una rama por tarea o por lote de tare
 | Quieres cambiar el stack o un patrón | `/adr "..."` primero, código después |
 | Perdiste el hilo entre sesiones | `/estado` |
 | Quieres preparar el contenido de una propiedad | Con `pnpm dev` corriendo: `pnpm -s cli prepare P001` (espera y muestra la revisión), y después `pnpm -s cli content P001` para leer los textos (`--platform portal` para uno solo). Con `LLM_PROVIDER=fake` en `.env` no gasta cuota |
+| Una propiedad no tiene video y quieres un reel | Con 3 fotos o más, preparar el contenido arma el reel con ellas (la portada primero, unos 3 s cada una con un fundido, hasta 10 fotos, y el texto encima al comienzo); en **Contenido → Instagram** dice «Reel armado con tus fotos», y `content` dice «Reel: sí, armado con tus fotos». Cambiar la portada, el orden de las fotos o el precio lo rehace al preparar de nuevo. Si subes un video, el reel pasa a salir del video |
 | `prepare` dice `CONTENT_EDITED` | Editaste textos a mano y prepararlos de nuevo los reemplazaría: usa `--no-texts` para rehacer solo las imágenes, o `--replace-edits` si quieres textos nuevos |
 | `prepare` dice "Sigue en cola" | El worker no está corriendo: levanta `pnpm dev` (la corrida espera en cola y arranca sola). `publish` dice "en cola o esperando su turno": el worker publica de a una, y un carrusel tarda más de 20 s en dar señales |
 | Una corrida de contenido falla con `LLM_AUTH_REQUIRED` | La CLI de Claude perdió la sesión: abre `claude`, usa `/login` y prepara de nuevo. `pnpm -s cli doctor` muestra si tiene sesión |
@@ -262,7 +263,7 @@ Todo lo anterior se puede hacer en el panel, en **Contenido** (el menú de la iz
 
 Cada texto, el de un post (en su pestaña de red e idioma) y el de una propiedad (en **Contenido**: Instagram, Portal y Marketplace), trae una **vista previa con la forma de la red**: la foto o el video, el nombre de la cuenta y el texto **tal como se envía y cortado donde la red lo corta**. No lleva logos ni marcas de las redes: es una aproximación para revisar, no una captura.
 
-- **Instagram:** la imagen, el carrusel (deslízalo; arriba dice en cuál vas, `1/4`, y abajo los puntos) o el reel vertical; el nombre de la cuenta conectada (`@usuario`) y el caption con los hashtags, cortado como Instagram (unos 125 caracteres o dos líneas) con «… más».
+- **Instagram:** la imagen, el carrusel (deslízalo; arriba dice en cuál vas, `1/4`, y abajo los puntos) o el reel vertical (en una propiedad sin video, el armado con sus fotos, con la nota «Reel armado con tus fotos»); el nombre de la cuenta conectada (`@usuario`) y el caption con los hashtags, cortado como Instagram (unos 125 caracteres o dos líneas) con «… más».
 - **X:** el texto entero con los hashtags (X no lo corta: el contador dice si pasa de 280) y hasta 4 imágenes en grilla, o el video.
 - **LinkedIn:** el texto cortado como LinkedIn (unos 210 caracteres o tres líneas) con «…ver más», y la imagen o las imágenes. Los caracteres que LinkedIn exige escapar se ven normales, como los lee la gente.
 - **Discord:** el mensaje del webhook (su nombre, con la etiqueta APP), el texto **sin hashtags** (en Discord no se envían) y los adjuntos. `@everyone` y `@here` se ven como los escribiste, pero al enviar se neutralizan (no avisan a todo el canal), y la revisión no deja aprobar un texto que los tenga.
