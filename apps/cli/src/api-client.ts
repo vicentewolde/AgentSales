@@ -217,6 +217,12 @@ function replaceAt(root: unknown, path: Path, value: unknown): boolean {
 const NEW_VALUES_SHOWN = 5;
 
 /**
+ * Un valor nuevo que el aviso puede nombrar tal cual (`discord_video`, `AI_TELL`); otro texto del
+ * servidor (largo, con espacios o caracteres de control) se nombra «…».
+ */
+const SAFE_VALUE_PATTERN = /^[\w.:-]{1,40}$/;
+
+/**
  * Un valor de enum que esta CLI no conoce (spec F9.5 §4.2, B5): un servidor más nuevo agregó un
  * estado, una variante o un código. Si **todos** los errores de validación son `invalid_value`
  * (zod 4: un `z.enum` o un `z.literal`) sobre un texto que sí llegó, el cuerpo se acepta con ese
@@ -235,7 +241,9 @@ function withNewEnumValues<S extends z.ZodType>(
   if (issues.length === 0) return null;
   const found: { path: Path; value: string; known: unknown }[] = [];
   for (const issue of issues) {
+    // Solo un enum de textos: un `z.literal(5)` o un enum numérico que no calza es otra forma.
     if (issue.code !== "invalid_value" || issue.values.length === 0) return null;
+    if (!issue.values.every((value) => typeof value === "string")) return null;
     const original = valueAt(body, issue.path);
     // Un campo que falta o que no es texto no es un valor nuevo: es otra forma.
     if (!original.found || typeof original.value !== "string") return null;
@@ -253,7 +261,9 @@ function withNewEnumValues<S extends z.ZodType>(
   }
   return {
     data: reparsed.data,
-    values: [...new Set(found.map((item) => item.value))].slice(0, NEW_VALUES_SHOWN),
+    values: [
+      ...new Set(found.map((item) => (SAFE_VALUE_PATTERN.test(item.value) ? item.value : "…"))),
+    ].slice(0, NEW_VALUES_SHOWN),
   };
 }
 

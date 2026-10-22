@@ -68,6 +68,63 @@ describe("unwrap con un valor de enum nuevo", () => {
     ]);
   });
 
+  it("acepta un enum anidado en un objeto dentro de un arreglo", async () => {
+    const nested = z.object({
+      rows: z.array(
+        z.object({
+          id: z.string(),
+          owner: z.object({ role: z.enum(["admin", "broker"]), since: z.coerce.date() }),
+        }),
+      ),
+    });
+
+    const data = await unwrap(
+      jsonResponse({
+        rows: [
+          { id: "1", owner: { role: "admin", since: "2026-10-01T00:00:00Z" } },
+          { id: "2", owner: { role: "auditor", since: "2026-10-02T00:00:00Z" } },
+        ],
+      }),
+      nested,
+    );
+
+    expect(data.rows.map((row) => row.owner.role)).toEqual(["admin", "auditor"]);
+    expect(data.rows[1]?.owner.since).toBeInstanceOf(Date);
+    expect(notices).toEqual([
+      `${NEW_VALUES} (auditor): se muestran tal como llegan; actualiza la CLI`,
+    ]);
+  });
+
+  it('un literal que no es texto no se tolera: z.literal(5) con "5" es UNEXPECTED_RESPONSE', async () => {
+    const literal = z.object({ version: z.literal(5) });
+
+    const failure = await unwrap(jsonResponse({ version: "5" }), literal).catch(
+      (error: unknown) => error,
+    );
+
+    expect(failure).toBeInstanceOf(ApiCallError);
+    expect(failure).toMatchObject({ code: "UNEXPECTED_RESPONSE" });
+    expect(notices).toEqual([]);
+  });
+
+  it("el aviso nombra solo valores seguros: otro texto del servidor sale como «…»", async () => {
+    const data = await unwrap(
+      jsonResponse({
+        items: [
+          { status: "con espacios y \u001b[31mcolor", at: "2026-10-22T10:00:00Z", tags: [] },
+          { status: "x".repeat(41), at: "2026-10-22T10:00:00Z", tags: ["nuevo:valor"] },
+        ],
+      }),
+      schema,
+    );
+
+    // El dato llega tal cual al comando; solo el aviso lo esconde.
+    expect(data.items[0]?.status).toBe("con espacios y \u001b[31mcolor");
+    expect(notices).toEqual([
+      `${NEW_VALUES} (…, nuevo:valor): se muestran tal como llegan; actualiza la CLI`,
+    ]);
+  });
+
   it("avisa una sola vez por comando, aunque lleguen varias respuestas", async () => {
     for (let i = 0; i < 3; i++) {
       await unwrap(

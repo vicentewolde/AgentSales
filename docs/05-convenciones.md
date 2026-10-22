@@ -172,6 +172,7 @@ Una subruta (por ejemplo `./contracts` y `./testing` en `apps/api`, `./testing` 
 - **Migraciones compatibles con la versión anterior (F8):** al desplegar, las migraciones corren antes de reemplazar la API y el worker (`release_command`), y volver a una versión anterior no las deshace. Por eso cada migración es **aditiva**: tablas, columnas que aceptan `null` o con valor por defecto, índices y `UPDATE` de relleno. Borrar o renombrar una columna o tabla, o volver `NOT NULL` una columna sin default, se hace en dos despliegues: primero el código deja de usarla, después la migración la quita.
 - **El repositorio es público:** nada de secretos, datos de clientes ni capturas con datos reales en commits, issues o PRs.
 - Al cerrar cada fase: tag `vX.Y.0` (F0 → `v0.0.1`, F1 → `v0.1.0`, …).
+- **La versión del producto es solo la del `package.json` raíz** (`readProductVersion`; la de `apps/*` y `packages/*` no se usa): la API la manda en `X-AgentSales-Version` y la CLI la compara con la suya (ADR-0011). El PR del cierre de fase la sube a la del tag.
 - Nunca `git push --force` a `main`. Nunca commitear `.env` ni datos reales de clientes.
 
 ## Seguridad operacional
