@@ -120,7 +120,7 @@ export function onboardingSteps(input: {
           "editorial",
           profile !== null && profile.pillars.length > 0 && profile.facts.length > 0,
           "broker",
-          "el perfil editorial (al menos una línea de contenido y un hecho)",
+          "el perfil editorial (al menos un tema y un hecho)",
         ),
         userStep,
         step(

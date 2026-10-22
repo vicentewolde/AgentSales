@@ -120,7 +120,7 @@ describe("panel: Plan", () => {
     expect(screen.getByText(/Una idea no se publica sola/)).toBeTruthy();
     const card = screen.getByRole("listitem", { name: ideas[0]?.topic ?? "" });
     expect(within(card).getByText(/^Por qué:/)).toBeTruthy();
-    expect(within(card).getByText(/LinkedIn · línea Producto/)).toBeTruthy();
+    expect(within(card).getByText(/LinkedIn · tema Producto/)).toBeTruthy();
 
     // Terminado el plan (y sin textos redactándose), la página deja de volver a mirar.
     const reads = () => s.requests.filter((request) => request === `GET /plans/${run?.id}`).length;

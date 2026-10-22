@@ -102,33 +102,40 @@ describe("panel: perfil editorial", () => {
     fireEvent.change(within(form).getByLabelText(/^Público/), {
       target: { value: "Corredores independientes" },
     });
-    fireEvent.click(within(form).getByRole("button", { name: "Agregar una línea" }));
-    fireEvent.change(within(form).getByLabelText("Clave de la línea 1"), {
+    fireEvent.click(within(form).getByRole("button", { name: "Agregar un tema" }));
+    fireEvent.change(within(form).getByLabelText("Clave interna del tema 1"), {
       target: { value: "Una Clave Mala" },
     });
-    fireEvent.change(within(form).getByLabelText("Nombre de la línea 1"), {
+    fireEvent.change(within(form).getByLabelText("Nombre del tema 1"), {
       target: { value: "Bastidores" },
     });
+    fireEvent.change(within(form).getByLabelText("Cuánto del tema 1"), { target: { value: "1" } });
     fireEvent.change(within(form).getByLabelText(/^Hechos/), {
       target: { value: "AgentSales publica en cuatro redes\n\nNació en 2026" },
     });
     fireEvent.click(within(form).getByRole("checkbox", { name: "X" }));
-    fireEvent.click(within(form).getByRole("checkbox", { name: "X: lun" }));
-    fireEvent.change(within(form).getByLabelText("Horas"), { target: { value: "09:00, 25:00" } });
+    fireEvent.click(within(form).getByRole("button", { name: "X: lunes" }));
+    fireEvent.change(within(form).getByLabelText("Posts por semana"), { target: { value: "30" } });
     fireEvent.click(within(form).getByRole("button", { name: "Guardar el perfil" }));
 
-    const line = within(form).getByRole("listitem", { name: "Línea 1" });
+    const line = within(form).getByRole("listitem", { name: "Tema 1" });
     expect(await within(line).findByText(/la clave «Una Clave Mala» no sirve/)).toBeTruthy();
     const cadence = within(form).getByRole("listitem", { name: "Cadencia de X" });
-    expect(within(cadence).getByText(/25:00/)).toBeTruthy();
+    expect(
+      within(cadence).getByText(/los posts por semana son un número entero de 0 a 21/),
+    ).toBeTruthy();
     expect(
       within(form).getByText("El perfil no se guardó: corrige lo marcado en rojo."),
     ).toBeTruthy();
 
-    fireEvent.change(within(form).getByLabelText("Clave de la línea 1"), {
+    fireEvent.change(within(form).getByLabelText("Clave interna del tema 1"), {
       target: { value: "bastidores" },
     });
-    fireEvent.change(within(form).getByLabelText("Horas"), { target: { value: "09:00" } });
+    fireEvent.change(within(form).getByLabelText("Posts por semana"), { target: { value: "1" } });
+    fireEvent.change(within(form).getByLabelText("Hora nueva en X"), {
+      target: { value: "09:00" },
+    });
+    fireEvent.click(within(form).getByRole("button", { name: "Agregar la hora en X" }));
     fireEvent.click(within(form).getByRole("button", { name: "Guardar el perfil" }));
     expect(await within(form).findByText("Perfil guardado.")).toBeTruthy();
     expect(await s.deps.editorialProfiles.get(s.vinny.id)).toMatchObject({
