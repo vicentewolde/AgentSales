@@ -36,10 +36,14 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
+      // En IPv4 (spec F0 §4.5 y F9.5-T02): sin `host`, Vite escucha solo en `[::1]` y
+      // `http://127.0.0.1:5173` no abre. Con `127.0.0.1`, el navegador también llega por
+      // `localhost` (cae en IPv4), y la API acepta los dos (`localAccess`).
+      host: "127.0.0.1",
       port: webPort,
       strictPort: true,
       // La API va bajo `/api` también en el Mac (spec F8 §4.3, ADR-0024): el proxy la pasa tal
-      // cual. Solo escucha en IPv4 (spec F0 §4.5).
+      // cual.
       proxy: {
         "/api": { target: `http://127.0.0.1:${apiPort}` },
       },

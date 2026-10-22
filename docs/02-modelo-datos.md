@@ -129,7 +129,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Únic
 | broker_id | uuid FK | |
 | kind | enum `media_kind` | `image`, `video` |
 | role | enum `media_role` | `original`, `processed`, `rendered` |
-| variant | text null | `MEDIA_VARIANTS` (core): de un `processed`, `thumb`, `ig_4x5`, `pi_4x3`, `ig_reel` o, desde F9-T10 (solo posts, sin migración), `x_video` (el video reducido para X); de un `rendered`, `cover` o `spec_sheet`. `null` en un original. `ig_reel` y `x_video` son `kind = video` |
+| variant | text null | `MEDIA_VARIANTS` (core): de un `processed`, `thumb`, `ig_4x5`, `pi_4x3`, `ig_reel` o, desde F9-T10 (solo posts, sin migración), `x_video` (el video reducido para X) y, desde F9.5-T10 (solo posts que van a Discord, sin migración), `discord_video` (el video liviano para Discord, bajo 19 MiB); de un `rendered`, `cover` o `spec_sheet`. `null` en un original. `ig_reel`, `x_video` y `discord_video` son `kind = video` |
 | parent_media_id | uuid null | Derivado de qué original |
 | storage_path | text | Ruta en el bucket |
 | mime | text | |
@@ -243,10 +243,10 @@ Se crea con `posts` (migración `0015`) porque `posts.plan_run_id` la referencia
 | period_start, period_end | timestamptz | El período que propone (por defecto, las próximas 2 semanas) |
 | status | enum `plan_run_status` default `queued` | `queued`, `running`, `succeeded`, `failed` (`PLAN_RUN_STATUSES`) |
 | request | jsonb | Lo pedido (`planRunRequestSchema`, core): `{ platforms, count, days, requestedBy }`, sin secretos |
-| report | jsonb null | `planRunReportSchema` (core, F9-T20): las ideas guardadas (id del post, tema, línea, redes, formato, fecha y notas), las descartadas con su código, las advertencias de la IA y la llamada; `null` hasta que termina bien. Es una **foto al terminar el plan**: después manda el post (su tema, línea, fecha y redes, que el operador puede cambiar) |
+| report | jsonb null | `planRunReportSchema` (core, F9-T20): las ideas guardadas (id del post, tema, línea, redes, formato, fecha y notas), las descartadas con su código (`PLAN_DISCARD_CODES`, leídos con `z.enum`: la lista **solo crece**, con los nuevos al final; desde F9.5, ADR-0034, `IDEA_TOO_SIMILAR` y `NO_SLOT`, y ya no salen `DATE_INVALID`, `OUT_OF_PERIOD`, `IN_THE_PAST` ni `WEEK_FULL`, que se quedan por los reportes de antes), las advertencias de la IA y la llamada; `null` hasta que termina bien. Desde F9.5 la fecha y las redes de cada idea las pone el código según la cadencia, no la IA. Es una **foto al terminar el plan**: después manda el post (su tema, línea, fecha y redes, que el operador puede cambiar). Volver a una imagen anterior a F9.5 con un reporte que tenga un código nuevo hace fallar su lectura (spec F9.5 §4.3) |
 | error | jsonb null | `{ code, message }` cuando `status = failed` |
 | llm_usage | jsonb null | `llmUsageSchema`, como en `content_runs`; entra en `sumLlmCost` desde F9-T04 |
-| prompt_version | text null | La versión del prompt del plan con que corrió (`PLAN_PROMPT_VERSION`, `social-plan-v1`, F9-T20; propia del plan, no la de los textos) |
+| prompt_version | text null | La versión del prompt del plan con que corrió (`PLAN_PROMPT_VERSION`: `social-plan-v2` desde F9.5, ADR-0034; antes `social-plan-v1`, F9-T20; propia del plan, no la de los textos) |
 | started_at, finished_at | timestamptz null | |
 
 Índice `(broker_id, created_at)` y, desde F9-T20 (migración `0018`), el índice único parcial `plan_runs_one_active_per_broker` sobre `(broker_id) WHERE status IN ('queued', 'running')`: un plan activo por marca (un segundo `create` es `PLAN_RUN_CONFLICT` y `requestPlanRun` devuelve el que está en curso).

@@ -3,9 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   approveBlockedReason,
   editBlockedReason,
+  hasSomethingToPublish,
   needsLiveConfirm,
+  platformsToPublish,
   prepareBlockedReason,
   publicationActions,
+  publicationModeOf,
   publishBlockedReason,
   publishButtonText,
   readinessPublishBlockedReason,
@@ -262,5 +265,65 @@ describe("modo, espera y enlace", () => {
     expect(safeExternalUrl("javascript:alert(1)")).toBeNull();
     expect(safeExternalUrl("http://instagram.com/p/x/")).toBeNull();
     expect(safeExternalUrl(null)).toBeNull();
+  });
+});
+
+describe("algo por publicar (F9.5-T02)", () => {
+  it("un texto aprobado sin publicaciones, o con una aprobada o fallida; si todo salió, nada", () => {
+    expect(hasSomethingToPublish([content()], [])).toBe(true);
+    expect(hasSomethingToPublish([content()], [publication({ status: "approved" })])).toBe(true);
+    expect(hasSomethingToPublish([content()], [publication({ status: "failed" })])).toBe(true);
+    for (const status of ["published", "publishing", "scheduled", "outcome_unknown"] as const) {
+      expect(hasSomethingToPublish([content()], [publication({ status })])).toBe(false);
+    }
+    // Una descartada o una retirada no cuenta: al publicar nace otra.
+    expect(hasSomethingToPublish([content()], [publication({ status: "cancelled" })])).toBe(true);
+    expect(hasSomethingToPublish([content()], [publication({ status: "unpublished" })])).toBe(true);
+    expect(
+      hasSomethingToPublish(
+        [content()],
+        [publication({ status: "unpublished" }), publication({ status: "published" })],
+      ),
+    ).toBe(false);
+    // Sin texto aprobado, nada; las publicaciones de otro texto no cuentan.
+    expect(hasSomethingToPublish([content({ status: "draft" })], [])).toBe(false);
+    expect(
+      hasSomethingToPublish([content()], [publication({ status: "published", contentId: "otro" })]),
+    ).toBe(true);
+  });
+
+  it("platformsToPublish: por red, con todos sus idiomas; sin las publicaciones, todas", () => {
+    const contents = [
+      content({ id: "x-es", platform: "x" }),
+      content({ id: "x-en", platform: "x", language: "en" }),
+      content({ id: "d-es", platform: "discord" }),
+    ];
+    const publications = [
+      publication({ contentId: "x-es", platform: "x", status: "published" }),
+      publication({ contentId: "x-en", platform: "x", status: "published" }),
+      publication({ contentId: "d-es", platform: "discord", status: "published" }),
+    ];
+    expect(platformsToPublish(["x", "discord"], contents, undefined)).toEqual(["x", "discord"]);
+    expect(platformsToPublish(["x", "discord"], contents, publications)).toEqual([]);
+    // El inglés de X todavía no sale: X tiene algo por publicar.
+    expect(
+      platformsToPublish(["x", "discord"], contents, [
+        publications[0] as PublicationView,
+        publications[2] as PublicationView,
+      ]),
+    ).toEqual(["x"]);
+  });
+});
+
+describe("el modo que se muestra (D4 del spec F9.5)", () => {
+  it("aprobada: no fijado (vale el del sistema); publicada y fallida que empezó en vivo: fijado", () => {
+    expect(publicationModeOf(publication({ status: "approved" })).modeFixed).toBe(false);
+    expect(publicationModeOf(publication({ status: "published" })).modeFixed).toBe(true);
+    expect(
+      publicationModeOf(publication({ status: "failed", dryRun: false, startedLive: true })),
+    ).toEqual({ dryRun: false, modeFixed: true });
+    expect(publicationModeOf(publication({ status: "failed", startedLive: false })).modeFixed).toBe(
+      false,
+    );
   });
 });

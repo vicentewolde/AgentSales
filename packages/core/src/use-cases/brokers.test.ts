@@ -267,6 +267,23 @@ describe("onboardingSteps", () => {
       mercadolibre: "admin",
     });
   });
+
+  it("una cuenta conectada de otro corredor no marca el paso (accountOwnedBy, F9.5-T12)", () => {
+    const steps = onboardingSteps({
+      broker,
+      users: [],
+      accounts: [
+        { ...account("instagram"), brokerId: "otro" },
+        { ...account("portal_inmobiliario"), brokerId: "otro" },
+        { ...account("fb_marketplace"), brokerId: "otro" },
+      ],
+    });
+    expect(state(steps)).toMatchObject({
+      instagram: "broker",
+      mercadolibre: "admin",
+      marketplace: "admin",
+    });
+  });
 });
 
 describe("setBrokerLogo", () => {

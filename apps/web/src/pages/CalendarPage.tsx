@@ -21,6 +21,7 @@ import {
   WEEKDAYS,
 } from "../components/calendar/calendar.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
+import { PublicationMode } from "../components/publications/PublicationMode.js";
 import { safeExternalUrl } from "../components/publications/publications.js";
 import { ScheduleForm } from "../components/publications/ScheduleForm.js";
 import { PublicationStatusBadge } from "../components/StatusBadge.js";
@@ -74,7 +75,7 @@ export function CalendarItem({
     >
       <p>
         <span className="font-semibold">{timeOf(entry)}</span> · {PLATFORM_TEXT[entry.platform]}{" "}
-        {publicationFormatText(entry.platform, entry.format)}
+        {publicationFormatText(entry.platform, entry.format, entry.mediaCount)}
         {entry.postId !== null && <> · {LANGUAGE_TEXT[entry.language]}</>}
       </p>
       <p className="mt-0.5 break-words">
@@ -88,9 +89,11 @@ export function CalendarItem({
         {entry.schedule === "overdue" && (
           <span className="font-semibold text-warning-800">atrasada</span>
         )}
-        <span className={entry.dryRun ? "text-fg-subtle" : "font-semibold text-danger-700"}>
-          {entry.dryRun ? "simulación" : "en vivo"}
-        </span>
+        {/* Programada o ya publicada: su modo está fijado (D4 del spec F9.5). */}
+        <PublicationMode
+          publication={{ dryRun: entry.dryRun, modeFixed: true }}
+          publishMode={undefined}
+        />
       </p>
       <p className="mt-1 flex flex-wrap gap-2">
         {entry.kind === "scheduled" && (
@@ -208,7 +211,8 @@ function MovePanel({
     >
       <h2 className="text-base font-semibold">Mover la fecha</h2>
       <p className="mt-1 text-sm text-fg-muted">
-        {PLATFORM_TEXT[entry.platform]} {publicationFormatText(entry.platform, entry.format)} de{" "}
+        {PLATFORM_TEXT[entry.platform]}{" "}
+        {publicationFormatText(entry.platform, entry.format, entry.mediaCount)} de{" "}
         <EntryTitle entry={entry} />, programada para el {formatChileTime(entry.at)} (hora de
         Chile).
       </p>

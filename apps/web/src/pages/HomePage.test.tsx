@@ -29,6 +29,8 @@ const item = (extra: Partial<Item>): Item => ({
   publicationId: "p1",
   at: new Date(Date.now() + 2 * HOUR),
   dryRun: true,
+  modeFixed: true,
+  mediaCount: 1,
   code: null,
   advice: null,
   daysLeft: null,
@@ -44,6 +46,8 @@ const cell = (extra: Partial<Cell>): Cell => ({
   language: "es",
   status: "published",
   dryRun: false,
+  modeFixed: true,
+  mediaCount: 1,
   externalUrl: null,
   scheduledAt: null,
   schedule: null,
@@ -78,6 +82,17 @@ const agenda: AgendaResponse = {
       code: "IG_AUTH_INVALID",
       advice: "Vuelve a conectar la cuenta",
       at: ago(2 * HOUR),
+    }),
+    // Sin consejo: el código, como error.
+    item({
+      kind: "stuck",
+      action: "requeue",
+      publicationId: "p-stuck",
+      listingId: "l4",
+      externalRef: "P-004",
+      title: "P-004",
+      code: "SIN_CONSEJO",
+      at: ago(3 * HOUR),
     }),
     item({
       kind: "needs_review",
@@ -184,7 +199,14 @@ const tracking: TrackingResponse = {
       cells: {
         instagram: [],
         // Un enlace que no es `https` no se vuelve enlace.
-        x: [cell({ id: "pub-x", publishedAt: ago(2 * HOUR), externalUrl: "javascript:alert(1)" })],
+        x: [
+          cell({
+            id: "pub-x",
+            dryRun: true,
+            publishedAt: ago(2 * HOUR),
+            externalUrl: "javascript:alert(1)",
+          }),
+        ],
         linkedin: [],
         discord: [],
         tiktok: [],
@@ -216,7 +238,7 @@ describe("la portada Hoy (F9.5-T03)", () => {
     const todo = await screen.findByRole("region", { name: "Te toca" });
     await within(todo).findByText("Bastidores de la semana", { exact: false });
     const todoItems = within(todo).getAllByRole("listitem");
-    expect(todoItems).toHaveLength(4);
+    expect(todoItems).toHaveLength(5);
     // Cada una con su insignia y su enlace al detalle.
     expect(
       within(todoItems[0] as HTMLElement).getByText(AGENDA_KIND_TEXT.outcome_unknown),
@@ -227,7 +249,9 @@ describe("la portada Hoy (F9.5-T03)", () => {
         .getAttribute("href"),
     ).toBe("/contenido/post-1");
     expect(within(todo).getByText(AGENDA_KIND_TEXT.failed)).toBeTruthy();
-    expect(within(todo).getByText("IG_AUTH_INVALID")).toBeTruthy();
+    // Con consejo, el consejo y no el código; sin consejo, el código.
+    expect(within(todo).queryByText(/IG_AUTH_INVALID/)).toBeNull();
+    expect(within(todo).getByText("Error: SIN_CONSEJO")).toBeTruthy();
     expect(within(todo).getByText("Vuelve a conectar la cuenta")).toBeTruthy();
     expect(within(todo).getByRole("link", { name: "P-002" }).getAttribute("href")).toBe(
       "/propiedades/l2",
@@ -265,11 +289,15 @@ describe("la portada Hoy (F9.5-T03)", () => {
     expect(external.getAttribute("href")).toBe("https://www.instagram.com/p/abc/");
     expect(external.getAttribute("target")).toBe("_blank");
     expect(within(recent).queryByRole("link", { name: /Ver en X/ })).toBeNull();
+    // El modo de cada una: la de X fue una simulación; la de Instagram, en vivo.
+    expect(recentItems[0]?.textContent).toContain("simulación");
+    expect(recentItems[1]?.textContent).toContain("en vivo");
+    expect(recentItems[1]?.textContent).not.toContain("simulación");
 
     // El resumen de arriba.
-    expect(figure("Te toca")).toBe("4");
+    expect(figure("Te toca")).toBe("5");
     expect(figure("Próximas (7 días)")).toBe("2");
-    expect(figure("Publicadas esta semana")).toBe("2");
+    expect(figure("Publicadas en 7 días")).toBe("2");
   });
 
   it("sin nada, cada bloque lo dice con un vacío amable", async () => {
@@ -279,7 +307,7 @@ describe("la portada Hoy (F9.5-T03)", () => {
     expect(within(block("Próximas")).getByText("Nada programado esta semana")).toBeTruthy();
     expect(within(block("Publicado hace poco")).getByText("Todavía nada esta semana")).toBeTruthy();
     expect(figure("Te toca")).toBe("0");
-    expect(figure("Publicadas esta semana")).toBe("0");
+    expect(figure("Publicadas en 7 días")).toBe("0");
   });
 
   it("pide solo /agenda y /tracking, con el corredor del selector", async () => {

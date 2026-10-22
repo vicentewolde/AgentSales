@@ -46,7 +46,7 @@ const DONE: Readonly<Record<ListingAction, string>> = {
 };
 
 const publicationLine = (publication: ListingStatusResponse["changed"][number]) =>
-  `${PLATFORM_TEXT[publication.platform]} ${publicationFormatText(publication.platform, publication.format)}`;
+  `${PLATFORM_TEXT[publication.platform]} ${publicationFormatText(publication.platform, publication.format, publication.mediaIds.length)}`;
 
 /**
  * Las acciones de la propiedad en su detalle (spec F6 §4.8): solo las que salen de su estado

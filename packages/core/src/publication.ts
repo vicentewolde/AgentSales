@@ -8,6 +8,7 @@ import {
   PUBLICATION_STATUSES,
   PUBLISH_MODES,
   type PublicationStatus,
+  type PublishMode,
 } from "./enums.js";
 import { AppError } from "./errors.js";
 import { marketplaceProgressSchema } from "./marketplace/progress.js";
@@ -205,6 +206,43 @@ export function requirePublicationMode(
  */
 export const hasStartedLive = (publication: { dryRun: boolean; progress: unknown }): boolean =>
   !publication.dryRun && publication.progress !== null;
+
+/**
+ * Si el modo de una publicación ya está fijado (D4 del spec F9.5). Toda publicación nace con
+ * `dryRun: true` como valor seguro y el modo real se fija al programarla o publicarla
+ * (`requirePublicationMode`): hasta entonces el que vale es el del servidor. No está fijado en
+ * `approved`, en `cancelled` sin intentos ni en `failed` que no empezó en vivo (el próximo intento
+ * usa el modo del servidor); en los demás estados, sí (una `failed` que empezó en vivo queda en vivo).
+ */
+export function publicationModeFixed(publication: {
+  status: PublicationStatus;
+  attempts: number;
+  startedLive: boolean;
+}): boolean {
+  switch (publication.status) {
+    case "approved":
+      return false;
+    case "cancelled":
+      return publication.attempts > 0;
+    case "failed":
+      return publication.startedLive;
+    default:
+      return true;
+  }
+}
+
+/**
+ * El modo que el operador ve en una publicación (D4 del spec F9.5): el fijado (`dryRun`) o, si no lo
+ * está, el del servidor (`publishMode` de `/health`). `null` si el que corresponde es el del
+ * servidor y todavía no se sabe: mejor no decir nada que decir «simulación» sin saberlo.
+ */
+export function shownPublicationMode(
+  publication: { dryRun: boolean; modeFixed: boolean },
+  serverMode: PublishMode | null | undefined,
+): PublishMode | null {
+  if (publication.modeFixed) return publication.dryRun ? "dry-run" : "live";
+  return serverMode ?? null;
+}
 
 /** Motivo del último intento fallido (`publications.last_error`): legible y sin secretos. */
 export const publicationErrorSchema = z.object({

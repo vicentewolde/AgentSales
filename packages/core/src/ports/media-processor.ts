@@ -16,7 +16,7 @@ export type ImageOutput = {
 };
 
 /**
- * Un video producido (el reel o el video para X): queda en el temporal del intento y se sube con
+ * Un video producido (el reel, el video para X o el de Discord): queda en el temporal del intento y se sube con
  * `putStream` (`open()`), porque puede pesar hasta 300 MB. `size` en bytes.
  */
 export type VideoOutput = {
@@ -45,17 +45,26 @@ export type ProcessedVideo = {
    * completa del original: el límite de X es NO VERIFICADO y lo revisa quien publica (T16).
    */
   xVideo: VideoOutput | null;
+  /**
+   * El video liviano para Discord (spec F9.5 D8, solo posts): `null` si no se pidió o si no se puede
+   * (con el tope, el bitrate quedaría bajo el mínimo legible, o el resultado igual no cupo). Pesa
+   * menos de `maxBytes`, con la duración completa del original.
+   */
+  discordVideo: VideoOutput | null;
 };
 
 /**
  * Lo que se pide de un video además de sus medidas y su `thumb`:
  * - `reel`: el reel 9:16; `overlayPng` es el texto que va encima los primeros 2 s (el de un aviso)
  *   o `null` para un reel sin texto (un post, spec F9 §4.5);
- * - `xVideo`: el video reducido para X (por defecto, no).
+ * - `xVideo`: el video reducido para X (por defecto, no);
+ * - `discordVideo`: el video liviano para Discord bajo `maxBytes` (por defecto, no; core pide
+ *   `DISCORD_VIDEO_MAX_BYTES`; el tope es un parámetro para probar con un video corto).
  */
 export type VideoProcessOptions = {
   reel: { overlayPng: Uint8Array | null } | null;
   xVideo?: boolean;
+  discordVideo?: { maxBytes: number } | null;
 };
 
 /**
@@ -81,7 +90,7 @@ export interface MediaProcessor {
   /**
    * Medidas y `thumb` de un video; con `reel`, además el reel (con el PNG del texto encima durante
    * los primeros 2 s, si viene), cortado a `REEL_MAX_DURATION_S` (F2-T08); con `xVideo`, el video
-   * reducido para X (F9-T10).
+   * reducido para X (F9-T10); con `discordVideo`, el video liviano para Discord (F9.5-T10).
    */
   processVideo(
     input: AsyncIterable<Uint8Array>,

@@ -3,7 +3,9 @@ import {
   type AgendaAction,
   type AgendaKind,
   formatChileTime,
+  LISTING_PLATFORMS,
   type Platform,
+  POST_PLATFORMS,
 } from "@agentsales/core";
 import type { BadgeTone } from "../ui/styles.js";
 
@@ -16,7 +18,7 @@ export type AgendaItem = AgendaResponse["items"][number];
 export const AGENDA_ACTION_TEXT: Readonly<Record<AgendaAction, string>> = {
   publish: "Publícala desde Contenido",
   reschedule: "Reprográmala",
-  requeue: "Vuelve a encolarla desde Contenido",
+  requeue: "Retómala desde Contenido",
   retry: "Reintenta desde Contenido",
   retire: "Bórrala en la plataforma y márcala como retirada",
   review: "Revisa y aprueba el texto en Contenido",
@@ -91,6 +93,9 @@ export type RecentPublication = {
   platform: Platform;
   publishedAt: Date;
   externalUrl: string | null;
+  /** El modo de la publicación (una publicada lo tiene fijado: D4 del spec F9.5). */
+  dryRun: boolean;
+  modeFixed: boolean;
 };
 
 /**
@@ -100,33 +105,41 @@ export type RecentPublication = {
 export function recentPublications(tracking: TrackingResponse, now: Date): RecentPublication[] {
   const since = now.getTime() - RECENT_DAYS * 24 * 60 * 60 * 1000;
   const out: RecentPublication[] = [];
-  const collect = (
-    cells: Readonly<Record<string, TrackingResponse["rows"][number]["cells"]["instagram"]>>,
+  type Cell = TrackingResponse["rows"][number]["cells"]["instagram"][number];
+  const collect = <P extends Platform>(
+    platforms: readonly P[],
+    cells: Readonly<Record<P, readonly Cell[]>>,
     base: Pick<RecentPublication, "title" | "path" | "kind">,
   ) => {
-    for (const [platform, publications] of Object.entries(cells)) {
-      for (const publication of publications) {
+    for (const platform of platforms) {
+      for (const publication of cells[platform]) {
         const at = publication.publishedAt;
         if (publication.status !== "published" || at === null || at.getTime() < since) continue;
         out.push({
           ...base,
           id: publication.id,
-          platform: platform as Platform,
+          platform,
           publishedAt: at,
           externalUrl: publication.externalUrl,
+          dryRun: publication.dryRun,
+          modeFixed: publication.modeFixed,
         });
       }
     }
   };
   for (const row of tracking.rows) {
-    collect(row.cells, {
+    collect(LISTING_PLATFORMS, row.cells, {
       title: row.listing.externalRef,
       path: `/propiedades/${row.listing.id}`,
       kind: "listing",
     });
   }
   for (const row of tracking.posts) {
-    collect(row.cells, { title: row.post.topic, path: `/contenido/${row.post.id}`, kind: "post" });
+    collect(POST_PLATFORMS, row.cells, {
+      title: row.post.topic,
+      path: `/contenido/${row.post.id}`,
+      kind: "post",
+    });
   }
   return out.sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime());
 }

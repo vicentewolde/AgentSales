@@ -65,6 +65,8 @@ function fakeInstagram(clock: { now: number }) {
     /** El estado de cada contenedor nuevo, según sus campos (por defecto `FINISHED`). */
     statusFor: (_fields: Record<string, string>, _id: string): string => "FINISHED",
     publishBehaviors: [] as PublishBehavior[],
+    /** Los medios recientes de la cuenta no traen lo publicado (Instagram cambió el caption, por ejemplo). */
+    hideRecent: false,
     publishes: () => log.filter((entry) => entry.startsWith("publish:")),
     created: () => [...containers.entries()].map(([id, container]) => ({ id, ...container })),
   };
@@ -126,6 +128,7 @@ function fakeInstagram(clock: { now: number }) {
     http.get(`${BASE}/:ig/media`, ({ params }) => {
       const ig = String(params.ig);
       log.push(`recent:${ig}`);
+      if (state.hideRecent) return HttpResponse.json({ data: [] });
       const recent = [...media.entries()]
         .filter(([, item]) => item.igUserId === ig)
         .map(([id]) => mediaView(id))
@@ -490,6 +493,56 @@ describe("Instagram para posts · reintentos sin publicar dos veces (F9-T13, ADR
     expect(ig.log.filter((entry) => entry.startsWith("recent:"))).toHaveLength(1);
     expect(ig.publishes()).toEqual(["publish:c-1", "publish:c-1"]);
     expect([...ig.containers.values()].map((container) => container.published)).toEqual([1]);
+  });
+});
+
+describe("Instagram · resultado dudoso de un aviso (F9.5-T04a)", () => {
+  it("un corte después de publicar y el medio que no aparece dejan el aviso en outcome_unknown, sin publicar de nuevo", async () => {
+    const clock = { now: NOW };
+    const ig = fakeInstagram(clock);
+    const listing = await createPublicationScenario();
+    const { started } = await publishListing(listing.deps, {
+      listingId: listing.listingId,
+      platform: "instagram",
+      dryRun: false,
+      actor: "operator",
+    });
+    const publication = started.find((item) => item.format === "post") ?? never();
+    const deps = {
+      publications: listing.publications,
+      platformAccounts: listing.platformAccounts,
+      contents: listing.contents,
+      media: listing.media,
+      listings: listing.listings,
+      brokers: listing.brokers,
+      storage: listing.storage,
+      publishers: { instagram: instagramPublisher(clock) },
+      workerMode: "live" as const,
+      marketplaceAutomation: true,
+      mercadoLibre: null,
+      now: () => new Date(clock.now),
+    };
+    const attempt = (retryCount: number) =>
+      publishPublication(deps, { publicationId: publication.id, isLastAttempt: false, retryCount });
+    const current = () => listing.publications.all().find((item) => item.id === publication.id);
+    ig.publishBehaviors = ["error-after-publish"];
+    ig.hideRecent = true;
+
+    // El corte: Instagram publicó, pero la respuesta no llegó. Se reintenta (pasajero).
+    const first = await caught(attempt(0));
+    expect(isAppError(first) && first.retriable).toBe(true);
+    expect(current()?.status).toBe("publishing");
+
+    // El reintento ve el contenedor publicado y no encuentra el medio: dudoso, sin reintento.
+    await expect(attempt(1)).resolves.toMatchObject({
+      outcome: "outcome_unknown",
+      publication: {
+        status: "outcome_unknown",
+        lastError: { code: "IG_PUBLISH_OUTCOME_UNKNOWN", retriable: false },
+      },
+    });
+    expect(ig.publishes()).toHaveLength(1);
+    expect(current()?.lastError?.message).not.toMatch(/descart/i);
   });
 });
 

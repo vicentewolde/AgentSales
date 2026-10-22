@@ -103,6 +103,13 @@ describe("instagramError", () => {
     expect(instagramError({ code: 17 }).message).toContain("60 minutos");
   });
 
+  it("el resultado dudoso pide decir si salió, sin «descártala» (F9.5-T04a: queda en outcome_unknown)", () => {
+    const { message } = INSTAGRAM_ERRORS.publishOutcomeUnknown();
+    expect(message).toContain("di si salió");
+    expect(message).toContain("si no salió");
+    expect(message).not.toMatch(/descart/i);
+  });
+
   it("los errores que arma el publisher, con su código y si se reintentan", () => {
     expect(INSTAGRAM_ERRORS.containerTimeout()).toMatchObject({
       code: "IG_CONTAINER_TIMEOUT",

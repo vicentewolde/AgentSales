@@ -399,15 +399,17 @@ export const MERCADOLIBRE_ERRORS = {
       "Ese cambio de estado no está permitido en Mercado Libre",
     ),
   /**
-   * No se sabe si `POST /items` creó el ítem y la búsqueda por `seller_custom_field` no lo aclara
-   * (ninguno o más de uno, spec F4 §4.8): no se reintenta, porque crear de nuevo gastaría otro cupo.
+   * No se sabe si `POST /items` (o el `relist`) creó el ítem y la búsqueda por
+   * `seller_custom_field` no lo aclara (ninguno o más de uno, spec F4 §4.8): no se reintenta,
+   * porque crear de nuevo gastaría otro cupo. La publicación queda en `outcome_unknown`
+   * (F9.5-T04a) y el operador dice si salió, con el enlace o el id del aviso que quedó.
    */
   publishOutcomeUnknown: (found: "none" | "many") =>
     new AppError(
       "ML_PUBLISH_OUTCOME_UNKNOWN",
       found === "none"
-        ? "No se sabe si el aviso se creó en Mercado Libre: revisa la cuenta. Si no está, descarta la publicación y vuelve a publicar; si está, ciérralo a mano antes de volver a publicar"
-        : "Hay más de un aviso de esta publicación en Mercado Libre: revisa la cuenta y cierra a mano los que sobren antes de seguir",
+        ? "No se sabe si el aviso se creó en Mercado Libre: búscalo en tus publicaciones y di si salió (con su enlace o su número MLC) o si no salió"
+        : "Hay más de un aviso de esta publicación en Mercado Libre: cierra a mano los que sobren. Si dejas uno, di que salió con su enlace o su número MLC; si los cierras todos, di que no salió",
       { details: { found } },
     ),
   /** Una respuesta con otra forma: reintentar no la cambia. */

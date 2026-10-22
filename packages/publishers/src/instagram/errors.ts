@@ -200,10 +200,14 @@ export const INSTAGRAM_ERRORS = {
       `Instagram no terminó de procesar el medio en ${INSTAGRAM_POLL.maxWaitMs / 60_000} minutos: se reintenta con uno nuevo`,
       { retriable: true },
     ),
+  /**
+   * El contenedor quedó publicado y el medio no aparece (o el progreso no se lee): la publicación
+   * queda en `outcome_unknown` (F9.5-T04a) y el operador dice si salió, sin reintento solo.
+   */
   publishOutcomeUnknown: () =>
     new AppError(
       "IG_PUBLISH_OUTCOME_UNKNOWN",
-      "No se sabe si la publicación salió en Instagram: revisa la cuenta. Si no salió, descártala y vuelve a publicar; si salió, bórrala a mano antes de volver a publicar",
+      "No se sabe si la publicación salió en Instagram: mira el perfil y di si salió (con el enlace, si lo tienes) o si no salió",
     ),
 } as const;
 

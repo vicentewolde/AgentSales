@@ -1057,6 +1057,13 @@ export const trackingPublicationSchema = z.object({
   language: z.enum(LANGUAGES),
   status: z.enum(PUBLICATION_STATUSES),
   dryRun: z.boolean(),
+  /**
+   * Si el modo ya está fijado (`publicationModeFixed`, D4 del spec F9.5): si no, el panel muestra el
+   * del servidor. Un servidor anterior no lo manda: se lee como fijado (lo de antes).
+   */
+  modeFixed: z.boolean().default(true),
+  /** Los medios fijos (un `post` de Instagram con uno es una imagen); `null` de un servidor anterior. */
+  mediaCount: z.number().int().nonnegative().nullable().default(null),
   externalUrl: z.string().nullable(),
   scheduledAt: z.coerce.date().nullable(),
   schedule: z.enum(SCHEDULE_STATES).nullable(),
@@ -1133,6 +1140,10 @@ export const agendaItemSchema = z.object({
   publicationId: z.string().nullable(),
   at: z.coerce.date().nullable(),
   dryRun: z.boolean().nullable(),
+  /** Como en el seguimiento: si el modo ya está fijado (D4 del spec F9.5); `true` si no es una publicación. */
+  modeFixed: z.boolean().default(true),
+  /** Los medios fijos de la publicación; `null` si no es una publicación o de un servidor anterior. */
+  mediaCount: z.number().int().nonnegative().nullable().default(null),
   code: z.string().nullable(),
   advice: z.string().nullable(),
   daysLeft: z.number().int().nullable(),
@@ -1172,6 +1183,8 @@ export const calendarEntrySchema = z.object({
   language: z.enum(LANGUAGES),
   status: z.enum(PUBLICATION_STATUSES),
   dryRun: z.boolean(),
+  /** Los medios fijos (un `post` de Instagram con uno es una imagen); `null` de un servidor anterior. */
+  mediaCount: z.number().int().nonnegative().nullable().default(null),
   schedule: z.enum(SCHEDULE_STATES).nullable(),
   /** El aviso o el post (uno de los dos), con su `id_propiedad` o su tema como título. */
   listingId: z.string().nullable(),

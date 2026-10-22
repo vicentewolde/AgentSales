@@ -1,4 +1,9 @@
-import { AGENDA_KIND_TEXT, formatChileTime, PLATFORM_TEXT } from "@agentsales/core";
+import {
+  AGENDA_KIND_TEXT,
+  formatChileTime,
+  PLATFORM_TEXT,
+  type PublishMode,
+} from "@agentsales/core";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import {
@@ -14,6 +19,7 @@ import {
   recentPublications,
 } from "../components/agenda/agenda.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
+import { PublicationMode } from "../components/publications/PublicationMode.js";
 import { safeExternalUrl } from "../components/publications/publications.js";
 import { Badge } from "../components/ui/Badge.js";
 import { ButtonLink } from "../components/ui/Button.js";
@@ -22,6 +28,7 @@ import { EmptyState } from "../components/ui/EmptyState.js";
 import { CalendarIcon, CheckCircleIcon, InboxIcon, LinkIcon } from "../components/ui/icons.js";
 import { PageHeader } from "../components/ui/PageHeader.js";
 import { Loading } from "../components/ui/Spinner.js";
+import { useHealth } from "../queries/health.js";
 import { useAgenda, useTracking } from "../queries/tracking.js";
 import { useBrokerFilter } from "../scope/broker-scope.js";
 
@@ -66,8 +73,14 @@ function TodoEntry({ item }: { item: AgendaItem }) {
       <div className="min-w-0">
         <ItemTitle item={item} />
         <Details parts={[item.platform === null ? null : PLATFORM_TEXT[item.platform], when]} />
-        {item.code !== null && <span className="block text-sm text-danger-700">{item.code}</span>}
-        {item.advice !== null && <span className="block text-sm text-fg-muted">{item.advice}</span>}
+        {/* El consejo dice qué hacer; el código, solo si no hay consejo (como Seguimiento). */}
+        {item.advice !== null ? (
+          <span className="block text-sm text-fg-muted">{item.advice}</span>
+        ) : (
+          item.code !== null && (
+            <span className="block text-sm text-danger-700">Error: {item.code}</span>
+          )
+        )}
         {item.action !== "none" && (
           <span className="block text-xs text-fg-subtle">{AGENDA_ACTION_TEXT[item.action]}</span>
         )}
@@ -93,7 +106,13 @@ function UpcomingEntry({ item }: { item: AgendaItem }) {
   );
 }
 
-function RecentEntry({ publication }: { publication: RecentPublication }) {
+function RecentEntry({
+  publication,
+  publishMode,
+}: {
+  publication: RecentPublication;
+  publishMode: PublishMode | undefined;
+}) {
   const url = safeExternalUrl(publication.externalUrl);
   return (
     <li className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0">
@@ -104,9 +123,10 @@ function RecentEntry({ publication }: { publication: RecentPublication }) {
             <span className="font-normal text-fg-subtle"> (post)</span>
           )}
         </Link>
-        <Details
-          parts={[PLATFORM_TEXT[publication.platform], formatChileTime(publication.publishedAt)]}
-        />
+        <span className="block text-sm text-fg-muted">
+          {PLATFORM_TEXT[publication.platform]} · {formatChileTime(publication.publishedAt)}
+          <PublicationMode publication={publication} publishMode={publishMode} prefix=" · " />
+        </span>
       </div>
       {url !== null && (
         <a
@@ -164,6 +184,8 @@ export function HomePage() {
   const broker = useBrokerFilter();
   const agenda = useAgenda(broker);
   const tracking = useTracking(false, broker);
+  // El modo del sistema (el del banner), para `PublicationMode` (D4 del spec F9.5).
+  const publishMode = useHealth().data?.publishMode;
   const now = new Date();
 
   const todo = agenda.data?.filter(needsAction);
@@ -182,7 +204,7 @@ export function HomePage() {
       <dl className="mb-6 grid gap-3 sm:grid-cols-3">
         <Figure label="Te toca" value={todo?.length ?? null} />
         <Figure label="Próximas (7 días)" value={upcoming?.length ?? null} />
-        <Figure label="Publicadas esta semana" value={recent?.length ?? null} />
+        <Figure label="Publicadas en 7 días" value={recent?.length ?? null} />
       </dl>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -266,7 +288,11 @@ export function HomePage() {
           >
             {(items) =>
               items.map((publication) => (
-                <RecentEntry key={publication.id} publication={publication} />
+                <RecentEntry
+                  key={publication.id}
+                  publication={publication}
+                  publishMode={publishMode}
+                />
               ))
             }
           </Block>

@@ -73,7 +73,7 @@ describe("panel: Estado del sistema", () => {
     renderWithHealth(() => new Promise(() => {}));
 
     expect(await screen.findByText("Consultando la API…")).toBeTruthy();
-    expect(banner().textContent).toBe("Consultando PUBLISH_MODE…");
+    expect(banner().textContent).toBe("Consultando el modo…");
   });
 
   it("muestra los tres checks con su latencia y el banner dry-run", async () => {
@@ -84,7 +84,7 @@ describe("panel: Estado del sistema", () => {
     expect(within(card("Base de datos")).getByText("60 ms")).toBeTruthy();
     expect(card("Almacenamiento")).toBeTruthy();
     expect(within(card("Cola de trabajos")).getByText(/el worker se ve abajo/)).toBeTruthy();
-    expect(banner().textContent).toBe("PUBLISH_MODE: dry-run — no se publica nada");
+    expect(banner().textContent).toBe("Modo simulación: nada se publica en las redes");
     expect(screen.getByText(/Estado general:/).textContent).toContain("ok");
   });
 
@@ -111,10 +111,10 @@ describe("panel: Estado del sistema", () => {
     expect(screen.getByText(/Estado general:/).textContent).toContain("degradado");
   });
 
-  it("con PUBLISH_MODE=live el banner lo anuncia de inmediato", async () => {
+  it("en vivo el banner lo anuncia de inmediato", async () => {
     renderWithHealth(() => ({ ...healthy, publishMode: "live" }));
 
-    await screen.findByText("PUBLISH_MODE: LIVE — las publicaciones son reales");
+    await screen.findByText("En vivo: lo que publiques sale de verdad en las redes");
     expect(banner().getAttribute("aria-live")).toBe("assertive");
   });
 
@@ -132,7 +132,9 @@ describe("panel: Estado del sistema", () => {
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("La API no responde (HTTP 502)");
     expect(alert.textContent).toContain("pnpm dev");
-    expect(banner().textContent).toBe("PUBLISH_MODE desconocido: la API no responde");
+    expect(banner().textContent).toBe(
+      "No se sabe si está en simulación o en vivo: el sistema no responde",
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Actualizar" }));
 

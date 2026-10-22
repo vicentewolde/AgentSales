@@ -4,7 +4,12 @@ import type {
   ListingContentResponse,
   PortalReadinessView,
 } from "@agentsales/api/contracts";
-import { LISTING_PLATFORMS, type ListingPlatform, PLATFORM_TEXT } from "@agentsales/core";
+import {
+  LISTING_PLATFORMS,
+  type ListingPlatform,
+  PLATFORM_TEXT,
+  publicationFormatText,
+} from "@agentsales/core";
 import { type KeyboardEvent, useRef, useState } from "react";
 import { PublicationsPanel } from "../publications/PublicationsPanel.js";
 import { portalIssuesHint, ReadinessIssueList } from "../ReadinessIssueList.js";
@@ -47,7 +52,10 @@ function InstagramPanel({
   return (
     <div className="grid gap-6 md:grid-cols-2">
       <div>
-        <h3 className="text-sm font-semibold text-fg">Carrusel ({carousel.length})</h3>
+        <h3 className="text-sm font-semibold text-fg first-letter:uppercase">
+          {/* Una sola imagen sale como imagen suelta, no como carrusel (F9.5-T02). */}
+          {publicationFormatText("instagram", "post", carousel.length)} ({carousel.length})
+        </h3>
         {carousel.length === 0 ? (
           <p className="mt-2 text-sm text-fg-subtle">Sin imágenes todavía.</p>
         ) : (
