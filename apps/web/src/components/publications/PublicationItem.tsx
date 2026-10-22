@@ -5,8 +5,9 @@ import {
   type ListingStatus,
   marketplacePriceText,
   PLATFORM_TEXT,
+  type PublicationFormatPhrase,
   type PublishMode,
-  publicationFormatText,
+  publicationFormatPhrase,
   remoteStatusText,
 } from "@agentsales/core";
 import { useEffect, useRef, useState } from "react";
@@ -138,10 +139,14 @@ const SIMULATION_TEXT: Readonly<Record<ListingPublicationView["platform"], strin
 };
 
 /** La confirmación de reintentar en vivo según el canal (Marketplace: quien publica es el operador). */
-const liveRetryText = (publication: ListingPublicationView, format: string, channel: string) =>
+const liveRetryText = (
+  publication: ListingPublicationView,
+  phrase: PublicationFormatPhrase,
+  channel: string,
+) =>
   publication.platform === "fb_marketplace"
     ? "El sistema está en vivo: se abrirá Chromium con un formulario nuevo de Facebook Marketplace; tú haces Siguiente y Publicar."
-    : `El sistema está en vivo: el ${format} se publicará de verdad en ${channel}${publication.platform === "portal_inmobiliario" ? " y usará un cupo de tu paquete" : ""}.`;
+    : `El sistema está en vivo: ${phrase.el} ${phrase.name} se publicará de verdad en ${channel}${publication.platform === "portal_inmobiliario" ? " y usará un cupo de tu paquete" : ""}.`;
 
 /** Una fecha en hora de Chile (el vencimiento en la plataforma). */
 const dateText = (iso: string) =>
@@ -173,13 +178,14 @@ function RemoteState({ publication }: { publication: ListingPublicationView }) {
 /** Las miniaturas de una pendiente (imágenes, o el reel en video, que es el MP4 completo). */
 function Thumbnails({ publication }: { publication: ListingPublicationView }) {
   if (publication.media.length === 0) return null;
-  const format = publicationFormatText(
+  const phrase = publicationFormatPhrase(
     publication.platform,
     publication.format,
     publication.mediaIds.length,
   );
+  const format = phrase.name;
   return (
-    <ul aria-label={`Medios del ${format}`} className="mt-2 flex gap-1 overflow-x-auto">
+    <ul aria-label={`Medios ${phrase.del} ${format}`} className="mt-2 flex gap-1 overflow-x-auto">
       {publication.media.map((media, index) => (
         <li key={media.id} className="flex-none">
           {media.mime.startsWith("video/") ? (
@@ -187,13 +193,13 @@ function Thumbnails({ publication }: { publication: ListingPublicationView }) {
               src={media.url}
               preload="metadata"
               muted
-              aria-label={`Video del ${format}`}
+              aria-label={`Video ${phrase.del} ${format}`}
               className="h-16 w-9 rounded bg-black object-cover"
             />
           ) : (
             <img
               src={media.url}
-              alt={`Imagen ${index + 1} del ${format}`}
+              alt={`Imagen ${index + 1} ${phrase.del} ${format}`}
               loading="lazy"
               className="h-16 w-14 rounded bg-slate-100 object-cover"
             />
@@ -259,11 +265,12 @@ export function PublicationItem({
   const [retryReason, setRetryReason] = useState<"retry" | "publish-now">("retry");
   // Lo sondeado (de esta misma versión del listado) es lo más nuevo mientras se publica.
   const publication = poll.data === undefined ? listed : { ...listed, ...poll.data };
-  const format = publicationFormatText(
+  const phrase = publicationFormatPhrase(
     publication.platform,
     publication.format,
     publication.mediaIds.length,
   );
+  const format = phrase.name;
   const channel = PLATFORM_TEXT[publication.platform];
   const portal = publication.platform === "portal_inmobiliario";
   const actions = publicationActions(
@@ -433,7 +440,7 @@ export function PublicationItem({
             <Button
               variant="secondary"
               size="sm"
-              aria-label={`Reintentar el ${format}`}
+              aria-label={`Reintentar ${phrase.el} ${format}`}
               disabled={action.isPending || retryBlocked !== null || modeUnknown}
               onClick={(event) => void retry(event.currentTarget)}
             >
@@ -444,7 +451,7 @@ export function PublicationItem({
             <Button
               variant="secondary"
               size="sm"
-              aria-label={`Publicar ahora el ${format}`}
+              aria-label={`Publicar ahora ${phrase.el} ${format}`}
               disabled={action.isPending || modeUnknown}
               onClick={(event) => void retry(event.currentTarget, "publish-now")}
             >
@@ -455,7 +462,7 @@ export function PublicationItem({
             <Button
               variant="secondary"
               size="sm"
-              aria-label={`${actions.reschedule ? "Reprogramar" : "Programar"} el ${format}`}
+              aria-label={`${actions.reschedule ? "Reprogramar" : "Programar"} ${phrase.el} ${format}`}
               disabled={action.isPending || scheduleBlocked !== null}
               title={scheduleBlocked ?? undefined}
               onClick={(event) => open("schedule", event.currentTarget)}
@@ -467,7 +474,7 @@ export function PublicationItem({
             <Button
               variant="secondary"
               size="sm"
-              aria-label={`Desprogramar el ${format}`}
+              aria-label={`Desprogramar ${phrase.el} ${format}`}
               disabled={action.isPending}
               onClick={() => run({ kind: "unschedule", id: publication.id })}
             >
@@ -478,7 +485,7 @@ export function PublicationItem({
             <Button
               variant="secondary"
               size="sm"
-              aria-label={`Actualizar el aviso del ${format} en ${channel}`}
+              aria-label={`Actualizar el aviso ${phrase.del} ${format} en ${channel}`}
               disabled={action.isPending}
               onClick={(event) => {
                 openerLabel.current = event.currentTarget.getAttribute("aria-label");
@@ -494,7 +501,7 @@ export function PublicationItem({
             <Button
               variant="secondary"
               size="sm"
-              aria-label={`Republicar el ${format}`}
+              aria-label={`Republicar ${phrase.el} ${format}`}
               disabled={action.isPending}
               onClick={(event) => {
                 openerLabel.current = event.currentTarget.getAttribute("aria-label");
@@ -508,7 +515,7 @@ export function PublicationItem({
             <Button
               variant="secondary"
               size="sm"
-              aria-label={`Volver a encolar el ${format}`}
+              aria-label={`Volver a encolar ${phrase.el} ${format}`}
               disabled={action.isPending}
               onClick={() => run({ kind: "publish", id: publication.id })}
             >
@@ -519,7 +526,7 @@ export function PublicationItem({
             <Button
               variant="secondary"
               size="sm"
-              aria-label={`Descartar el ${format}`}
+              aria-label={`Descartar ${phrase.el} ${format}`}
               onClick={(event) => open("cancel", event.currentTarget)}
             >
               Descartar
@@ -529,7 +536,7 @@ export function PublicationItem({
             <Button
               variant="secondary"
               size="sm"
-              aria-label={`Pausar el ${format}`}
+              aria-label={`Pausar ${phrase.el} ${format}`}
               disabled={action.isPending}
               onClick={() => run({ kind: "pause", id: publication.id })}
             >
@@ -540,7 +547,7 @@ export function PublicationItem({
             <Button
               variant="secondary"
               size="sm"
-              aria-label={`Reactivar el ${format}`}
+              aria-label={`Reactivar ${phrase.el} ${format}`}
               disabled={action.isPending}
               onClick={() => run({ kind: "resume", id: publication.id })}
             >
@@ -553,7 +560,7 @@ export function PublicationItem({
             <Button
               variant="secondary"
               size="sm"
-              aria-label={`Cerrar el ${format}`}
+              aria-label={`Cerrar ${phrase.el} ${format}`}
               disabled={action.isPending}
               onClick={(event) => open("close", event.currentTarget)}
             >
@@ -564,7 +571,7 @@ export function PublicationItem({
             <Button
               variant="secondary"
               size="sm"
-              aria-label={`Actualizar el estado del ${format}`}
+              aria-label={`Actualizar el estado ${phrase.del} ${format}`}
               disabled={action.isPending}
               onClick={() => run({ kind: "sync", id: publication.id })}
             >
@@ -575,7 +582,7 @@ export function PublicationItem({
             <Button
               variant="secondary"
               size="sm"
-              aria-label={`Marcar como retirado el ${format}`}
+              aria-label={`Marcar como retirad${phrase.o} ${phrase.el} ${format}`}
               onClick={(event) => open("retire", event.currentTarget)}
             >
               Marcar como retirada
@@ -585,7 +592,7 @@ export function PublicationItem({
             variant="link"
             className="text-xs"
             aria-expanded={showEvents}
-            aria-label={`Bitácora del ${format}`}
+            aria-label={`Bitácora ${phrase.del} ${format}`}
             onClick={() => setShowEvents(!showEvents)}
           >
             {showEvents ? "Ocultar bitácora" : "Ver bitácora"}
@@ -614,8 +621,8 @@ export function PublicationItem({
         >
           <p className="font-semibold text-danger-800">
             {retryReason === "publish-now"
-              ? `Se publicará ahora, sin esperar la hora programada. ${liveRetryText(publication, format, channel)}`
-              : liveRetryText(publication, format, channel)}
+              ? `Se publicará ahora, sin esperar la hora programada. ${liveRetryText(publication, phrase, channel)}`
+              : liveRetryText(publication, phrase, channel)}
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             <Button
@@ -668,7 +675,8 @@ export function PublicationItem({
       {confirming === "cancel" && (
         <fieldset className="mt-2 text-sm">
           <legend>
-            ¿Descartar el {format}? El texto sigue aprobado: publicar de nuevo abre otro.
+            ¿Descartar {phrase.el} {format}? El texto sigue aprobado: publicar de nuevo abre otr
+            {phrase.o}.
             {publication.startedLive &&
               ` Ojo: ya empezó en vivo, así que pudo haber salido en ${channel}; revísalo antes.`}
           </legend>
@@ -689,7 +697,9 @@ export function PublicationItem({
       )}
       {confirming === "retire" && (
         <fieldset className="mt-2 space-y-2 text-sm">
-          <legend className="sr-only">Marcar como retirado el {format}</legend>
+          <legend className="sr-only">
+            Marcar como retirad{phrase.o} {phrase.el} {format}
+          </legend>
           {live ? (
             <label className="flex items-center gap-2">
               <input
@@ -721,8 +731,8 @@ export function PublicationItem({
         <fieldset className="mt-2 space-y-2 text-sm">
           <legend>
             {live
-              ? `¿Cerrar el ${format} en ${channel}? Es irreversible: volver a publicar crea un aviso nuevo y usa otro cupo.`
-              : `¿Cerrar el ${format}? Es una simulación: no se cambia nada en Mercado Libre.`}
+              ? `¿Cerrar ${phrase.el} ${format} en ${channel}? Es irreversible: volver a publicar crea un aviso nuevo y usa otro cupo.`
+              : `¿Cerrar ${phrase.el} ${format}? Es una simulación: no se cambia nada en Mercado Libre.`}
           </legend>
           <div className="flex flex-wrap gap-2">
             <Button

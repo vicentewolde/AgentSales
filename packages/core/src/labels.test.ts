@@ -48,6 +48,7 @@ import {
   PUBLICATION_STATUS_TEXT,
   PUBLISH_ATTEMPT_RESULT_TEXT,
   publicationEventDetail,
+  publicationFormatPhrase,
   publicationFormatText,
   remoteStatusText,
   SCHEDULE_REASON_TEXT,
@@ -152,6 +153,29 @@ describe("publicationFormatText (F4-T20, F9.5-T02)", () => {
     expect(publicationFormatText("instagram", "post", 2)).toBe("carrusel");
     // Sin saber cuántos medios lleva (un formato saltado, otro servidor), el carrusel de un aviso.
     expect(publicationFormatText("instagram", "post", null)).toBe("carrusel");
+  });
+
+  it("publicationFormatPhrase: el artículo concuerda con el formato (la imagen, el carrusel)", () => {
+    expect(publicationFormatPhrase("instagram", "post", 1)).toEqual({
+      name: "imagen",
+      el: "la",
+      del: "de la",
+      o: "a",
+    });
+    for (const [platform, format, count, name] of [
+      ["instagram", "post", 3, "carrusel"],
+      ["instagram", "reel", 1, "reel"],
+      ["portal_inmobiliario", "post", 1, "aviso"],
+      ["fb_marketplace", "post", 5, "aviso"],
+      ["linkedin", "post", 1, "post"],
+    ] as const) {
+      expect(publicationFormatPhrase(platform, format, count)).toEqual({
+        name,
+        el: "el",
+        del: "del",
+        o: "o",
+      });
+    }
   });
 });
 
