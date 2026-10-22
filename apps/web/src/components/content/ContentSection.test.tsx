@@ -202,9 +202,11 @@ describe("panel: sección Contenido", () => {
     expect(items.map((item) => item.textContent?.split(":")[0])).toEqual(
       expect.arrayContaining(["Error", "Advertencia"]),
     );
-    expect(items.find((item) => item.textContent?.startsWith("Error"))?.className).toContain("red");
+    expect(items.find((item) => item.textContent?.startsWith("Error"))?.className).toContain(
+      "danger",
+    );
     expect(items.find((item) => item.textContent?.startsWith("Advertencia"))?.className).toContain(
-      "amber",
+      "warning",
     );
   });
 
@@ -418,7 +420,7 @@ describe("panel: edición de textos", () => {
     });
     // 2195 + "\n\n" + "#nunoa": el hashtag repetido cuenta una vez, ya normalizado.
     expect(counter().textContent).toBe("2203 / 2200 caracteres · se pasa por 3");
-    expect(counter().className).toContain("red");
+    expect(counter().className).toContain("danger");
 
     // Se puede guardar igual: la revisión lo marca como error.
     fireEvent.click(within(t.form).getByRole("button", { name: "Guardar" }));

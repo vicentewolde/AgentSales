@@ -1,3 +1,4 @@
+import { accountOwnedBy } from "./accounts/owner.js";
 import type { Broker } from "./broker.js";
 import type { EditorialProfile } from "./editorial-profile.js";
 import { type BrokerKind, isPostPlatform, POST_PLATFORMS } from "./enums.js";
@@ -66,7 +67,7 @@ export function onboardingSteps(input: {
     (user) => user.role === "broker" && user.brokerId === broker.id && user.disabledAt === null,
   );
   const isConnected = (account: Pick<PlatformAccount, "brokerId" | "status">) =>
-    account.brokerId === broker.id && account.status === "connected";
+    accountOwnedBy(account, broker.id) && account.status === "connected";
   const connected = (platform: PlatformAccount["platform"]) =>
     input.accounts.some((account) => isConnected(account) && account.platform === platform);
   const invited = users.length > 0;

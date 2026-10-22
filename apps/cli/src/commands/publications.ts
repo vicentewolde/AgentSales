@@ -28,11 +28,13 @@ import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith, type Terminal } from "../context.js";
 import { CliError, guarded, type Io } from "../output.js";
 import {
+  ofTheName,
   paintPublicationStatus,
   publicationName,
   renderPublicationEvents,
   renderPublications,
   renderRemoteState,
+  theName,
 } from "./publication-view.js";
 import { fetchBrokers, manualConfirmHint, resolveListingId, withConfirmation } from "./shared.js";
 
@@ -258,8 +260,8 @@ export function runRetirePublication(
     if (live && !options.yes) {
       const confirmed = await deps.confirm(
         options.delete
-          ? `¿Borrar en ${platform} el ${publicationName(current)}${where}? Es definitivo`
-          : `¿Ya borraste a mano en ${platform} el ${publicationName(current)}${where}?`,
+          ? `¿Borrar en ${platform} ${theName(current)}${where}? Es definitivo`
+          : `¿Ya borraste a mano en ${platform} ${theName(current)}${where}?`,
       );
       if (!confirmed) {
         deps.printError(
@@ -528,7 +530,7 @@ export function runRetryPublication(
     const { publishMode } = await unwrap(deps.client.health.$get(), healthReportSchema);
     if (publishMode === "live" && !options.yes) {
       const confirmed = await deps.confirm(
-        `La API está en vivo (PUBLISH_MODE=live): ¿publicar de verdad el ${publicationName(current)}?`,
+        `La API está en vivo (PUBLISH_MODE=live): ¿publicar de verdad ${theName(current)}?`,
       );
       if (!confirmed) {
         deps.printError(c.yellow("No se publicó nada: confirma en la terminal o usa --yes"));
@@ -697,7 +699,7 @@ export function runPublicationOperation(
     if (confirmClose && !options.yes) {
       const where = current.externalUrl === null ? "" : ` (${current.externalUrl})`;
       const confirmed = await deps.confirm(
-        `¿Cerrar de verdad el ${publicationName(current)}${where}? Es irreversible: volver a publicar crea un aviso nuevo y usa otro cupo`,
+        `¿Cerrar de verdad ${theName(current)}${where}? Es irreversible: volver a publicar crea un aviso nuevo y usa otro cupo`,
       );
       if (!confirmed) {
         deps.printError(c.yellow("No se cerró: confirma en la terminal o usa --yes"));
@@ -750,8 +752,8 @@ export function runSyncPublication(deps: PublicationsDeps, id: string) {
     });
     deps.print(
       queued
-        ? `${c.green("✓")} Se pidió leer el estado del ${publicationName(target.publication)} en Mercado Libre`
-        : `${c.green("✓")} Ya hay una lectura programada del ${publicationName(target.publication)} en Mercado Libre`,
+        ? `${c.green("✓")} Se pidió leer el estado ${ofTheName(target.publication)} en Mercado Libre`
+        : `${c.green("✓")} Ya hay una lectura programada ${ofTheName(target.publication)} en Mercado Libre`,
     );
     deps.printError(
       c.dim(

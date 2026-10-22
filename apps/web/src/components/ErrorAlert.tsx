@@ -13,15 +13,15 @@ import { Button } from "./ui/Button.js";
 function hintFor(error: Error): string | null {
   const code = error instanceof ApiError ? error.code : undefined;
   if (code === "UNREACHABLE" || code === "TIMEOUT")
-    return "Levántala con pnpm dev y vuelve a intentar.";
+    return "El sistema no responde: vuelve a intentar en un momento (en el Mac, revisa que pnpm dev esté corriendo).";
   if (code === "DB_UNAVAILABLE")
     return "Neon puede estar despertando: vuelve a intentar en unos segundos.";
   if (code === "STORAGE_UNAVAILABLE")
     return "Revisa las variables R2_* y corre pnpm storage:check.";
   if (code === "QUEUE_UNAVAILABLE")
-    return "Arranca el worker (pnpm dev): retoma lo que quedó en curso al arrancar.";
+    return "La cola de trabajos no responde: vuelve a intentar en un momento (en el Mac, revisa que pnpm dev esté corriendo); lo que quedó en curso se retoma solo.";
   if (code === "PUBLISH_MODE_MISMATCH")
-    return "La publicación y la API no están en el mismo modo (simulación o en vivo): arranca la API en vivo (PUBLISH_MODE=live pnpm dev) solo si lo decides tú.";
+    return "La publicación y el sistema no están en el mismo modo (simulación o en vivo). No se cambió nada. Para hacerlo, el sistema tiene que estar en el modo de esta publicación.";
   if (code === "PORTAL_NOT_READY")
     return portalIssuesHint(error instanceof ApiError ? (error.issues ?? []) : []);
   if (code === "MARKETPLACE_NOT_READY")

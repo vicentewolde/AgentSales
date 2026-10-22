@@ -65,7 +65,7 @@ function fakeProviders() {
   return { planLlm: createLlmProvider(options.plan), textLlm: createLlmProvider(options.texts) };
 }
 
-/** Un `fake` del plan que antepone ideas con estos temas al plan de ejemplo (misma fecha y red). */
+/** Un `fake` del plan que antepone ideas con estos temas al plan de ejemplo (mismas redes y formato). */
 function planWithInventedIdeas(topics: readonly string[]): LLMProvider {
   return createLlmProvider({
     provider: "fake",
@@ -210,14 +210,15 @@ describe("runSocialEval con fake", () => {
   });
 });
 
-/** Una idea del plan del perfil con historial (Instagram: lunes, miércoles y viernes a las 19:00). */
-const idea = (tema: string, fecha: string, porque = "Es lo que más preguntan los vecinos.") => ({
+/**
+ * Una idea del plan del perfil con historial, sin fecha ni hora (ADR-0034: el código la agenda en
+ * Instagram, lunes, miércoles y viernes a las 19:00).
+ */
+const idea = (tema: string, porque = "Es lo que más preguntan los vecinos.") => ({
   tema,
   linea: "cultivo",
   redes: ["instagram"],
   formato: "image",
-  fecha,
-  hora: "19:00",
   porque,
 });
 
@@ -235,12 +236,12 @@ describe("runSocialEval cuenta los problemas que se le inyectan", () => {
     const plan: ScriptedLlmResponse = {
       data: {
         ideas: [
-          idea("Abonos para la huerta del barrio", "2026-10-21"),
-          idea("Atendimos a 300 vecinos este año", "2026-10-23"),
-          idea("Qué sembrar en primavera", "2026-10-26"),
-          idea("Avisen a @everyone del taller", "2026-10-28"),
-          idea("Abonos para la huerta del barrio", "2026-10-30"),
-          idea("Cómo hacer compost en casa paso a paso", "2026-10-30"),
+          idea("Abonos para la huerta del barrio"),
+          idea("Atendimos a 300 vecinos este año"),
+          idea("Qué sembrar en primavera"),
+          idea("Avisen a @everyone del taller"),
+          idea("Abonos para la huerta del barrio"),
+          idea("Cómo hacer compost en casa paso a paso"),
         ],
         warnings: [],
       },
@@ -345,28 +346,74 @@ describe("runSocialEval cuenta los problemas que se le inyectan", () => {
     expect(exitCode).toBe(1);
   });
 
+  it("ideas parecidas entre sí y sin ranura (F9.5): se cuentan, sin fechas de la IA", async () => {
+    const item = profile("con-historial");
+    // Discord: martes y sábado a las 10:00, 2 por semana; el período deja 4 ranuras (sáb 24,
+    // mar 27, sáb 31 y mar 3). La quinta idea de solo Discord no cabe.
+    const discordIdea = (tema: string) => ({ ...idea(tema), redes: ["discord"], formato: "text" });
+    const plan: ScriptedLlmResponse = {
+      data: {
+        ideas: [
+          idea("Cómo hacer compost con hojas secas"),
+          idea("Cómo hacer compost con hojas secas paso a paso"),
+          discordIdea("Riego por goteo"),
+          discordIdea("Semillas que se guardan"),
+          discordIdea("Herramientas para empezar"),
+          discordIdea("Plagas comunes de otoño"),
+          discordIdea("Una cosecha compartida"),
+        ],
+        warnings: [],
+      },
+    };
+    const { report, output } = await run(
+      { planLlm: createInMemoryLlmProvider([plan]), textLlm: fakeProviders().textLlm },
+      [item],
+      { ideas: 0 },
+    );
+    const [evaluation] = report.profiles;
+    expect(evaluation?.plan?.discarded.map((discarded) => discarded.code)).toEqual([
+      "IDEA_TOO_SIMILAR",
+      "NO_SLOT",
+    ]);
+    expect(report.totals).toMatchObject({
+      ideasAccepted: 5,
+      ideasDiscarded: 2,
+      repeated: 1,
+      noSlot: 1,
+      discardedByCode: { IDEA_TOO_SIMILAR: 1, NO_SLOT: 1 },
+    });
+    expect(output).toContain("sin ranura 1");
+    // Las fechas las puso el código, en las ranuras de Instagram y Discord y primero en las semanas
+    // con menos ideas: la primera semana ya tiene la de Instagram del miércoles 21.
+    expect(evaluation?.plan?.ideas.map((accepted) => accepted.plannedAt)).toEqual([
+      "2026-10-21T22:00:00.000Z",
+      "2026-10-27T13:00:00.000Z",
+      "2026-11-03T13:00:00.000Z",
+      "2026-10-24T13:00:00.000Z",
+      "2026-10-31T13:00:00.000Z",
+    ]);
+  });
+
   it("descartadas antes, términos a evitar, enlaces en X, hashtags, LinkedIn e invisibles", async () => {
     const base = profile("dos-idiomas");
     const item: SocialEvalProfile = {
       ...base,
       history: { recentTopics: [], discardedTopics: ["Una idea que ya descartamos"] },
     };
-    const planIdea = (tema: string, red: string, formato: string, fecha: string, hora: string) => ({
+    const planIdea = (tema: string, red: string, formato: string) => ({
       tema,
       linea: "producto",
       redes: [red],
       formato,
-      fecha,
-      hora,
       porque: "Ayuda a entender el producto.",
     });
     const plan: ScriptedLlmResponse = {
       data: {
         ideas: [
-          planIdea("Cómo planificar turnos de soporte", "x", "text", "2026-10-21", "12:00"),
-          planIdea("Lo que cambió en la última versión", "linkedin", "text", "2026-10-22", "09:00"),
-          planIdea("El equipo por dentro", "instagram", "image", "2026-10-24", "11:00"),
-          planIdea("Una idea que ya descartamos", "x", "text", "2026-10-23", "12:00"),
+          planIdea("Cómo planificar turnos de soporte", "x", "text"),
+          planIdea("Lo que cambió en la última versión", "linkedin", "text"),
+          planIdea("El equipo por dentro", "instagram", "image"),
+          planIdea("Una idea que ya descartamos", "x", "text"),
         ],
         warnings: [],
       },
@@ -453,7 +500,7 @@ describe("runSocialEval cuenta las muletillas de IA", () => {
   it("son una advertencia: se cuentan y no cambian el resultado", async () => {
     const item = profile("con-historial");
     const plan: ScriptedLlmResponse = {
-      data: { ideas: [idea("Cómo regar en verano", "2026-10-21")], warnings: [] },
+      data: { ideas: [idea("Cómo regar en verano")], warnings: [] },
     };
     const textLlm = createInMemoryLlmProvider([
       {
@@ -636,6 +683,7 @@ describe("las piezas de la evaluación", () => {
       ideasDiscarded: 0,
       discardedByCode: {},
       repeated: 0,
+      noSlot: 0,
       similar: 0,
       outsideProfile: 0,
       tooLong: 0,

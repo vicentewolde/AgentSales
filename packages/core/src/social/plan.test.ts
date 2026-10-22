@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { formatChileTime } from "../chile-time.js";
 import { editorialProfileView } from "../editorial-profile.js";
+import type { PostKind, PostPlatform } from "../enums.js";
 import { isAppError } from "../errors.js";
 import { POST_LIMITS } from "../use-cases/posts.js";
 import { profileSources } from "./check.js";
@@ -10,6 +12,7 @@ import {
   checkPlanIdeas,
   defaultPlanCount,
   groupByPlanWeek,
+  PLAN_DISCARD_CODES,
   PLAN_IDEA_LIMITS,
   PLAN_JSON_SCHEMA,
   type PlanIdea,
@@ -22,15 +25,18 @@ import {
   planWeeks,
   planWeekText,
   topicKey,
+  topicSimilarity,
   validatePlanResponse,
   weekdayOf,
+  weekOf,
 } from "./plan.js";
 import { buildPlanPrompt, PLAN_DATA_TAG, PLAN_PROMPT_VERSION } from "./plan-prompt.js";
 import { samplePlanResponse } from "./plan-sample.js";
+import { planSlotRules } from "./plan-slots.js";
 import { SOCIAL_PROMPT_VERSION } from "./prompt.js";
 
 // El plan de ideas (F9-T20, ADR-0030): el período, lo que ve la IA y las verificaciones de cada
-// idea. Funciones puras: sin IA.
+// idea; desde F9.5 (ADR-0034), la ranura que le pone el código. Funciones puras: sin IA.
 
 // Martes 20 de octubre de 2026, 12:00 en Chile (UTC-3 en horario de verano).
 const NOW = new Date("2026-10-20T15:00:00Z");
@@ -70,16 +76,18 @@ const brief = (overrides: Partial<Parameters<typeof buildPlanBrief>[0]> = {}) =>
     ...overrides,
   });
 
+/** Una idea como la entrega la IA desde ADR-0034: sin fecha ni hora (las pone el código). */
 const idea = (overrides: Partial<PlanIdea> = {}): PlanIdea => ({
   tema: "Cómo decidimos qué construir",
   linea: "producto",
   redes: ["linkedin"],
   formato: "text",
-  fecha: "2026-10-22", // jueves
-  hora: "09:00",
   porque: "La línea Producto pesa más y el jueves es día de LinkedIn.",
   ...overrides,
 });
+
+/** El día y la hora de Chile de una idea agendada (`2026-10-22 09:00`). */
+const at = (item: { plannedAt: Date }) => formatChileTime(item.plannedAt);
 
 const check = (ideas: unknown[], planBrief = brief(), now = NOW) =>
   checkPlanIdeas({ ideas, brief: planBrief, period, sources, now });
@@ -118,10 +126,11 @@ describe("el período del plan", () => {
     expect(weekdayOf("2026-10-25")).toBe("sun");
   });
 
-  it("cuántas ideas por defecto: la red que más publica por las semanas, o 3 por semana", () => {
+  it("cuántas ideas por defecto: la red que más publica por las semanas, o la ranura por defecto", () => {
     expect(defaultPlanCount(profile.cadence, ["linkedin", "instagram"], 14)).toBe(6);
     expect(defaultPlanCount(profile.cadence, ["x"], 7)).toBe(1);
-    expect(defaultPlanCount({}, ["discord"], 14)).toBe(6);
+    // Sin cadencia, 1 por semana: la ranura por defecto de D7 (F9.5; antes, 3).
+    expect(defaultPlanCount({}, ["discord"], 14)).toBe(2);
     const daily = { postsPerWeek: 21, days: [], hours: [], languageGapHours: 6 };
     expect(defaultPlanCount({ x: daily }, ["x"], 31)).toBe(20);
     expect(defaultPlanCount({}, ["discord"], 1)).toBe(1);
@@ -199,9 +208,10 @@ describe("lo ya planificado en el período", () => {
       period,
       ["x", "linkedin"],
     );
+    // Con su día y su hora de Chile (12:00 UTC son las 09:00): ocupan esa ranura (D7 de F9.5).
     expect(slots).toEqual([
-      { date: "2026-10-22", platforms: ["x"] },
-      { date: "2026-10-23", platforms: ["x", "linkedin"] },
+      { date: "2026-10-22", time: "09:00", platforms: ["x"] },
+      { date: "2026-10-23", time: "09:00", platforms: ["x", "linkedin"] },
     ]);
   });
 
@@ -222,30 +232,61 @@ describe("lo ya planificado en el período", () => {
       ["x"],
     );
     expect(slots.map((slot) => slot.date)).toEqual(["2026-10-19", "2026-11-08"]);
-    // X publica 1 por semana: el del lunes 19 llena la primera semana aunque esté fuera del período.
+    // X publica 1 por semana: el del lunes 19 llena la primera semana aunque esté fuera del período,
+    // y el del domingo 8, la última. Solo queda la del medio.
     const result = check(
-      [idea({ tema: "La primera semana", redes: ["x"], fecha: "2026-10-23" })],
+      [
+        idea({ tema: "Una", redes: ["x"] }),
+        idea({ tema: "Otra distinta", redes: ["x"] }),
+        idea({ tema: "La tercera", redes: ["x"] }),
+      ],
       brief({ planned: slots }),
     );
-    expect(result.discarded.map((item) => item.code)).toEqual(["WEEK_FULL"]);
+    expect(result.ideas.map(at)).toEqual(["2026-10-26 10:00"]);
+    expect(result.discarded.map((item) => item.code)).toEqual(["NO_SLOT", "NO_SLOT"]);
   });
 
-  it("cuenta para los posts por semana de cada red y lo ve la IA", () => {
-    // X publica 1 por semana: con uno ya planificado el miércoles, la idea del viernes no cabe.
+  it("cuenta para los posts por semana de cada red; la IA ya no lo ve (lo agenda el código)", () => {
+    // X publica 1 por semana: con uno ya planificado el miércoles 21, esa semana no recibe ideas.
     const planBrief = brief({ planned: [{ date: "2026-10-21", platforms: ["x"] }] });
     const result = check(
       [
-        idea({ tema: "Esa semana", redes: ["x"], fecha: "2026-10-23" }),
-        idea({ tema: "La otra", redes: ["x"], fecha: "2026-10-27" }),
+        idea({ tema: "Esa semana", redes: ["x"] }),
+        idea({ tema: "La otra", redes: ["x"] }),
+        idea({ tema: "Una tercera", redes: ["x"] }),
       ],
       planBrief,
     );
-    expect(result.ideas.map((item) => item.topic)).toEqual(["La otra"]);
-    expect(result.discarded.map((item) => item.code)).toEqual(["WEEK_FULL"]);
-    expect(buildPlanPrompt(planBrief).prompt).toContain('"ya_planificados"');
-    // El plan de ejemplo también lo respeta.
-    const sample = samplePlanResponse(buildPlanPrompt(planBrief).prompt);
-    expect(check(sample.ideas, planBrief).discarded).toEqual([]);
+    expect(result.ideas.map((item) => [item.topic, at(item)])).toEqual([
+      ["Esa semana", "2026-10-26 10:00"],
+      ["La otra", "2026-11-02 10:00"],
+    ]);
+    expect(result.discarded.map((item) => item.code)).toEqual(["NO_SLOT"]);
+    expect(buildPlanPrompt(planBrief).prompt).not.toContain("ya_planificados");
+    // El plan de ejemplo también cabe.
+    const fits = brief({
+      planned: [{ date: "2026-10-21", platforms: ["x"] }],
+      platforms: ["x"],
+      count: 2,
+    });
+    const sample = samplePlanResponse(buildPlanPrompt(fits).prompt);
+    expect(check(sample.ideas, fits).discarded).toEqual([]);
+  });
+
+  it("no choca con la ranura de lo ya planificado (D7 de F9.5)", () => {
+    // Instagram, 3 por semana a las 10:00 de los días hábiles: la primera ranura de cada semana ya
+    // tiene un post, así que la idea va a la siguiente de la primera semana, el jueves 22.
+    const result = check(
+      [idea({ tema: "Una foto del equipo", redes: ["instagram"], formato: "image" })],
+      brief({
+        planned: ["2026-10-21", "2026-10-26", "2026-11-02"].map((date) => ({
+          date,
+          time: "10:00",
+          platforms: ["instagram"],
+        })),
+      }),
+    );
+    expect(result.ideas.map(at)).toEqual(["2026-10-22 10:00"]);
   });
 
   it("qué tipo de post admite cada red", () => {
@@ -258,7 +299,7 @@ describe("lo ya planificado en el período", () => {
 });
 
 describe("lo que ve la IA", () => {
-  it("el perfil de la marca, el período con sus días, la cadencia de lo pedido y lo que no repite", () => {
+  it("el perfil de la marca, el período, los posts por semana de lo pedido y lo que no repite", () => {
     const planBrief = brief({
       platforms: ["linkedin", "discord"],
       history: { recentTopics: ["Tema reciente"], discardedTopics: ["Idea descartada"] },
@@ -271,8 +312,13 @@ describe("lo que ve la IA", () => {
     expect(system).toContain("No escribes los textos");
     expect(prompt).toContain(`<${PLAN_DATA_TAG}>`);
     expect(prompt).toContain("AgentPey publica en LinkedIn y X desde 2026");
-    expect(prompt).toContain('"miércoles"');
-    expect(prompt).toContain('"jueves"');
+    expect(prompt).toContain('"posts_por_semana": 2');
+    // Desde ADR-0034, sin los días ni las horas: la fecha la pone el código.
+    expect(prompt).not.toContain("dias_del_periodo");
+    expect(prompt).not.toContain('"jueves"');
+    expect(prompt).not.toContain("09:00");
+    expect(system).toContain("No propongas fecha ni hora");
+    expect(system).toContain("orden de preferencia");
     expect(prompt).toContain("Tema reciente");
     expect(prompt).toContain("Idea descartada");
     expect(prompt).toContain('"ideas_pedidas": 5');
@@ -296,24 +342,17 @@ describe("lo que ve la IA", () => {
   });
 
   it("la versión del plan es propia, distinta de la de los textos", () => {
-    expect(PLAN_PROMPT_VERSION).toBe("social-plan-v1");
+    expect(PLAN_PROMPT_VERSION).toBe("social-plan-v2");
     expect(PLAN_PROMPT_VERSION).not.toBe(SOCIAL_PROMPT_VERSION);
   });
 
-  it("el JSON Schema del proveedor pide la forma completa de cada idea", () => {
+  it("el JSON Schema del proveedor pide la forma completa de cada idea, sin fecha ni hora", () => {
     const schema = JSON.stringify(PLAN_JSON_SCHEMA);
-    for (const key of [
-      "tema",
-      "linea",
-      "redes",
-      "formato",
-      "fecha",
-      "hora",
-      "porque",
-      "warnings",
-    ]) {
+    for (const key of ["tema", "linea", "redes", "formato", "porque", "warnings"]) {
       expect(schema).toContain(`"${key}"`);
     }
+    expect(schema).not.toContain('"fecha"');
+    expect(schema).not.toContain('"hora"');
   });
 });
 
@@ -329,7 +368,7 @@ describe("la respuesta de la IA", () => {
 });
 
 describe("las verificaciones de cada idea", () => {
-  it("una idea en el período, la línea, la red y la cadencia pasa con su fecha de Chile", () => {
+  it("una idea con la línea y la red pasa, con la primera ranura de su cadencia en hora de Chile", () => {
     const result = check([idea()]);
     expect(result.discarded).toEqual([]);
     expect(result.ideas).toEqual([
@@ -345,31 +384,25 @@ describe("las verificaciones de cada idea", () => {
     ]);
   });
 
-  it("una fecha fuera del período, en el pasado o inexistente se descarta, sin tumbar las demás", () => {
-    const result = check(
-      [
-        idea({ tema: "Fuera del período", fecha: "2026-11-05" }),
-        idea({ tema: "Antes del período", fecha: "2026-10-20" }),
-        idea({ tema: "No existe", fecha: "2026-10-32" }),
-        idea({ tema: "Esta sí" }),
-      ],
-      brief(),
-    );
-    expect(result.ideas.map((item) => item.topic)).toEqual(["Esta sí"]);
-    expect(result.discarded.map((item) => [item.topic, item.code])).toEqual([
-      ["Fuera del período", "OUT_OF_PERIOD"],
-      ["Antes del período", "OUT_OF_PERIOD"],
-      ["No existe", "DATE_INVALID"],
+  it("la fecha y la hora que mande la IA se ignoran: las pone el código, nunca en el pasado", () => {
+    const result = check([
+      { ...idea({ tema: "Fuera del período" }), fecha: "2026-11-05", hora: "23:59" },
+      { ...idea({ tema: "No existe" }), fecha: "2026-10-32", hora: "25:00" },
     ]);
-    // En el período, pero ya pasó (el job corrió tarde).
+    expect(result.discarded).toEqual([]);
+    expect(result.ideas.map((item) => [item.topic, at(item)])).toEqual([
+      ["Fuera del período", "2026-10-22 09:00"],
+      ["No existe", "2026-10-27 09:00"],
+    ]);
+    // El job corrió tarde (jueves 22 a las 21:00): la ranura de ese jueves ya pasó.
     const late = check([idea()], brief(), new Date("2026-10-23T00:00:00Z"));
-    expect(late.discarded.map((item) => item.code)).toEqual(["IN_THE_PAST"]);
+    expect(late.ideas.map(at)).toEqual(["2026-10-27 09:00"]);
   });
 
   it("una línea que no está en el perfil se descarta; sin línea, pasa", () => {
     const result = check([
       idea({ tema: "Línea inventada", linea: "ventas" }),
-      idea({ tema: "Sin línea", linea: null, fecha: "2026-10-27" }),
+      idea({ tema: "Sin línea", linea: null }),
     ]);
     expect(result.discarded.map((item) => item.code)).toEqual(["PILLAR_UNKNOWN"]);
     expect(result.ideas.map((item) => item.pillar)).toEqual([null]);
@@ -384,7 +417,7 @@ describe("las verificaciones de cada idea", () => {
       idea({ tema: "Aviso para @everyone" }),
       idea({ tema: "Lo que dijo el cliente", porque: "Porque Falabella nos eligió." }),
       // Las cifras y nombres del perfil sí: 2026, AgentPey, LinkedIn, Producto.
-      idea({ tema: "AgentPey en LinkedIn desde 2026", fecha: "2026-10-27" }),
+      idea({ tema: "AgentPey en LinkedIn desde 2026" }),
     ]);
     expect(result.discarded.map((item) => item.code)).toEqual([
       "FACT_NOT_IN_PROFILE",
@@ -409,9 +442,9 @@ describe("las verificaciones de cada idea", () => {
     const result = check(
       [
         idea({ tema: "¡Cómo decidimos QUÉ construir!" }),
-        idea({ tema: "Un error que nos enseñó", fecha: "2026-10-27" }),
-        idea({ tema: "Detrás de escena", fecha: "2026-10-27" }),
-        idea({ tema: "detrás de escena", fecha: "2026-10-29" }),
+        idea({ tema: "Un error que nos enseñó" }),
+        idea({ tema: "Detrás de escena" }),
+        idea({ tema: "detrás de escena" }),
       ],
       planBrief,
     );
@@ -423,47 +456,248 @@ describe("las verificaciones de cada idea", () => {
     expect(result.ideas.map((item) => item.topic)).toEqual(["Detrás de escena"]);
   });
 
-  it("las redes: solo las pedidas, con un formato que admiten y en su cadencia", () => {
+  it("las redes: solo las pedidas y que admiten el formato; la idea queda en las que tienen libre su ranura", () => {
     const result = check([
-      // TikTok no se pidió y Discord tampoco: se le quitan, sigue con LinkedIn.
+      // TikTok no se pidió y Discord tampoco: se le quitan, sigue con LinkedIn (jueves 22, 09:00).
       idea({ tema: "Con redes de más", redes: ["linkedin", "tiktok", "discord"] }),
-      // Instagram no publica solo texto; X sí (sin cadencia de días ni horas).
-      idea({ tema: "Solo texto", redes: ["instagram", "x"], fecha: "2026-10-23", hora: "18:00" }),
-      // LinkedIn publica martes y jueves a las 09:00.
-      idea({ tema: "Un miércoles", fecha: "2026-10-21" }),
-      idea({ tema: "Otra hora", fecha: "2026-10-27", hora: "10:00" }),
+      // Instagram no publica solo texto; X sí (sin días ni horas: los hábiles a las 10:00).
+      idea({ tema: "Solo texto", redes: ["instagram", "x"] }),
+      // LinkedIn y X: la ranura más temprana libre de la semana con menos ideas es la de X del
+      // lunes 2 a las 10:00; LinkedIn publica a las 09:00, así que se le quita.
+      idea({ tema: "Para ambas plataformas", redes: ["linkedin", "x"] }),
       // TikTok, solo video.
       idea({ tema: "Imagen a TikTok", redes: ["tiktok"], formato: "image" }),
     ]);
-    expect(result.ideas.map((item) => [item.topic, item.platforms, item.notes.length])).toEqual([
-      ["Con redes de más", ["linkedin"], 2],
-      ["Solo texto", ["x"], 1],
+    expect(
+      result.ideas.map((item) => [item.topic, item.platforms, at(item), item.notes.length]),
+    ).toEqual([
+      ["Con redes de más", ["linkedin"], "2026-10-22 09:00", 2],
+      ["Solo texto", ["x"], "2026-10-26 10:00", 1],
+      ["Para ambas plataformas", ["x"], "2026-11-02 10:00", 1],
+    ]);
+    expect(result.ideas[2]?.notes).toEqual([
+      "LinkedIn no tiene libre la ranura del lunes 02-11 a las 10:00",
     ]);
     expect(result.discarded.map((item) => [item.topic, item.code])).toEqual([
-      ["Un miércoles", "OUT_OF_CADENCE"],
-      ["Otra hora", "OUT_OF_CADENCE"],
       ["Imagen a TikTok", "PLATFORM_NOT_REQUESTED"],
     ]);
   });
 
-  it("sin pasar los posts por semana de cada red (de lunes a domingo)", () => {
-    const result = check([
-      idea({ tema: "Primera", redes: ["x"], fecha: "2026-10-21" }),
-      idea({ tema: "Segunda", redes: ["x"], fecha: "2026-10-23" }),
-      // Otra semana: el lunes 26 empieza de nuevo.
-      idea({ tema: "Tercera", redes: ["x"], fecha: "2026-10-26" }),
+  it("una idea de video no cae en una red que no la publica, ni una de texto en Instagram", () => {
+    const all: PostPlatform[] = ["instagram", "tiktok", "x", "linkedin"];
+    const planBrief = brief({ platforms: all, count: 20 });
+    const kinds: PostKind[] = ["text", "image", "carousel", "video"];
+    const topics =
+      "Abeja Barco Cielo Duna Estrella Faro Gaviota Huerto Isla Jardín Lago Monte Nube Orilla Puente Ribera".split(
+        " ",
+      );
+    const ideas = kinds.flatMap((formato, k) =>
+      all.map((_, i) =>
+        idea({
+          tema: `Una mirada al ${(topics[k * 4 + i] ?? "").toLowerCase()}`,
+          redes: [...all.slice(i), ...all.slice(0, i)],
+          formato,
+        }),
+      ),
+    );
+    const result = check(ideas, planBrief);
+    expect(result.ideas.length).toBeGreaterThan(0);
+    for (const item of result.ideas) {
+      for (const platform of item.platforms) {
+        expect([item.kind, platform, kindProblem(platform, item.kind)]).toEqual([
+          item.kind,
+          platform,
+          null,
+        ]);
+      }
+    }
+    // Una idea de texto que solo prefiere Instagram, o una imagen que solo prefiere TikTok, se
+    // descarta: no le queda ninguna red.
+    const only = check(
+      [
+        idea({ tema: "Texto para Instagram", redes: ["instagram"] }),
+        idea({ tema: "Imagen para TikTok", redes: ["tiktok"], formato: "image" }),
+        idea({ tema: "Video corto", redes: ["tiktok"], formato: "video" }),
+      ],
+      planBrief,
+    );
+    expect(only.discarded.map((item) => item.code)).toEqual([
+      "FORMAT_NOT_SUPPORTED",
+      "FORMAT_NOT_SUPPORTED",
     ]);
-    expect(result.ideas.map((item) => item.topic)).toEqual(["Primera", "Tercera"]);
-    expect(result.discarded.map((item) => item.code)).toEqual(["WEEK_FULL"]);
+    expect(only.ideas.map((item) => [item.topic, item.platforms])).toEqual([
+      ["Video corto", ["tiktok"]],
+    ]);
+  });
+
+  it("sin pasar los posts por semana de cada red; sin ranura libre, NO_SLOT", () => {
+    const result = check([
+      idea({ tema: "Primera", redes: ["x"] }),
+      idea({ tema: "Segunda", redes: ["x"] }),
+      idea({ tema: "Tercera", redes: ["x"] }),
+      // X publica 1 por semana y el período toca 3 semanas (miércoles 21 a martes 3).
+      idea({ tema: "Cuarta", redes: ["x"] }),
+    ]);
+    expect(result.ideas.map((item) => [item.topic, at(item)])).toEqual([
+      ["Primera", "2026-10-21 10:00"],
+      ["Segunda", "2026-10-26 10:00"],
+      ["Tercera", "2026-11-02 10:00"],
+    ]);
+    expect(result.discarded).toEqual([
+      {
+        topic: "Cuarta",
+        code: "NO_SLOT",
+        message:
+          "X no tiene una ranura libre en el período (según su cadencia y lo ya planificado)",
+      },
+    ]);
+  });
+
+  it("reparte primero en las semanas con menos ideas, en la ranura más temprana", () => {
+    // LinkedIn: martes y jueves a las 09:00, 2 por semana. La primera semana del período solo
+    // tiene el jueves 22 (el martes 20 es antes del período).
+    const result = check(
+      ["Una", "Otra distinta", "La tercera", "Cuarta vuelta", "Quinta parada", "Sexta"].map(
+        (tema) => idea({ tema }),
+      ),
+      brief({ count: 6 }),
+    );
+    expect(result.ideas.map(at)).toEqual([
+      "2026-10-22 09:00",
+      "2026-10-27 09:00",
+      "2026-11-03 09:00",
+      "2026-10-29 09:00",
+    ]);
+    expect(result.discarded.map((item) => item.code)).toEqual(["NO_SLOT", "NO_SLOT"]);
+  });
+
+  it("las fechas caen siempre en ranuras de la cadencia, sin dos ideas en la misma ni sobre lo planificado", () => {
+    const planned: { date: string; time: string; platforms: PostPlatform[] }[] = [
+      { date: "2026-10-22", time: "09:00", platforms: ["linkedin"] },
+      { date: "2026-10-26", time: "10:00", platforms: ["instagram", "x"] },
+    ];
+    const planBrief = brief({ platforms: ["instagram", "x", "linkedin"], count: 20, planned });
+    const response = samplePlanResponse(buildPlanPrompt(planBrief).prompt);
+    const result = check(response.ideas, planBrief);
+    expect(result.ideas.length).toBeGreaterThan(5);
+    const taken = new Set(
+      planned.flatMap((item) => item.platforms.map((p) => `${p} ${item.date} ${item.time}`)),
+    );
+    const perWeek = new Map<string, number>();
+    for (const slot of planned) {
+      for (const platform of slot.platforms) {
+        const key = `${platform} ${weekOf(slot.date)}`;
+        perWeek.set(key, (perWeek.get(key) ?? 0) + 1);
+      }
+    }
+    for (const item of result.ideas) {
+      const [date = "", time = ""] = at(item).split(" ");
+      expect(item.plannedAt >= period.start && item.plannedAt < period.end).toBe(true);
+      for (const platform of item.platforms) {
+        const rules = planSlotRules(planBrief.cadence[platform]);
+        expect([platform, date, rules.days.includes(weekdayOf(date))]).toEqual([
+          platform,
+          date,
+          true,
+        ]);
+        expect([platform, time, rules.hours.includes(time)]).toEqual([platform, time, true]);
+        const key = `${platform} ${date} ${time}`;
+        expect([key, taken.has(key)]).toEqual([key, false]);
+        taken.add(key);
+        const week = `${platform} ${weekOf(date)}`;
+        perWeek.set(week, (perWeek.get(week) ?? 0) + 1);
+      }
+    }
+    for (const [key, n] of perWeek) {
+      const platform = key.split(" ")[0] as PostPlatform;
+      const max = planSlotRules(planBrief.cadence[platform]).postsPerWeek;
+      expect([key, n <= max]).toEqual([key, true]);
+    }
+  });
+
+  it("una red sin cadencia, o con días u horas vacíos, usa la ranura por defecto (D7)", () => {
+    // Sin cadencia: los días hábiles a las 10:00 y 1 por semana.
+    expect(planSlotRules(undefined)).toEqual({
+      postsPerWeek: 1,
+      days: ["mon", "tue", "wed", "thu", "fri"],
+      hours: ["10:00"],
+      perDay: 1,
+    });
+    // Con días u horas vacíos, lo que falta sale de la ranura por defecto; sus posts por semana
+    // quedan.
+    expect(planSlotRules({ postsPerWeek: 3, days: [], hours: [] })).toMatchObject({
+      postsPerWeek: 3,
+      days: ["mon", "tue", "wed", "thu", "fri"],
+      hours: ["10:00"],
+    });
+    expect(planSlotRules({ postsPerWeek: 2, days: ["sat", "wed"], hours: [] })).toMatchObject({
+      days: ["wed", "sat"],
+      hours: ["10:00"],
+      perDay: 1,
+    });
+    // El espacio mínimo: como mucho los posts por día justos para llegar a los de la semana.
+    expect(
+      planSlotRules({ postsPerWeek: 7, days: ["mon"], hours: ["18:00", "09:00"] }),
+    ).toMatchObject({ days: ["mon"], hours: ["09:00", "18:00"], perDay: 7 });
+    // Discord no tiene cadencia en el perfil: 1 por semana, de lunes a viernes a las 10:00.
+    const result = check(
+      ["Una", "Otra distinta", "La tercera", "Cuarta vuelta"].map((tema) =>
+        idea({ tema, redes: ["discord"], linea: null }),
+      ),
+      brief({ platforms: ["discord"] }),
+    );
+    expect(result.ideas.map(at)).toEqual([
+      "2026-10-21 10:00",
+      "2026-10-26 10:00",
+      "2026-11-02 10:00",
+    ]);
+    expect(result.discarded.map((item) => item.code)).toEqual(["NO_SLOT"]);
+  });
+
+  it("una red con 0 posts por semana no recibe ideas", () => {
+    const quiet = { ...profile, cadence: { x: { ...profile.cadence.x, postsPerWeek: 0 } } };
+    const result = check(
+      [idea({ tema: "Para X", redes: ["x"] })],
+      brief({ profile: quiet as typeof profile, platforms: ["x"] }),
+    );
+    expect(result.discarded.map((item) => item.code)).toEqual(["OUT_OF_CADENCE"]);
+  });
+
+  it("una idea que se parece en un 60 % o más a otra anterior del plan se descarta", () => {
+    expect(
+      topicSimilarity("Cómo hacer compost en casa", "Cómo hacer compost en casa paso a paso"),
+    ).toBe(0.75);
+    const result = check(
+      [
+        idea({ tema: "Cómo hacer compost en casa" }),
+        idea({ tema: "Cómo hacer compost en casa paso a paso" }),
+        idea({ tema: "Qué sembrar en primavera" }),
+      ],
+      brief({ count: 3 }),
+    );
+    expect(result.ideas.map((item) => item.topic)).toEqual([
+      "Cómo hacer compost en casa",
+      "Qué sembrar en primavera",
+    ]);
+    expect(result.discarded).toEqual([
+      {
+        topic: "Cómo hacer compost en casa paso a paso",
+        code: "IDEA_TOO_SIMILAR",
+        message: "Se parece demasiado a otra idea de este plan: «Cómo hacer compost en casa»",
+      },
+    ]);
+    // Solo se compara con las que quedaron en el plan: una descartada antes no cuenta.
+    const after = check([
+      idea({ tema: "Cómo hacer compost en casa", linea: "ventas" }),
+      idea({ tema: "Cómo hacer compost en casa paso a paso" }),
+    ]);
+    expect(after.discarded.map((item) => item.code)).toEqual(["PILLAR_UNKNOWN"]);
+    expect(after.ideas).toHaveLength(1);
   });
 
   it("más ideas de las pedidas: las de sobra se descartan", () => {
     const result = check(
-      [
-        idea({ tema: "Una", fecha: "2026-10-22" }),
-        idea({ tema: "Dos", fecha: "2026-10-27" }),
-        idea({ tema: "Tres", fecha: "2026-10-29" }),
-      ],
+      [idea({ tema: "Una" }), idea({ tema: "Dos" }), idea({ tema: "Tres" })],
       brief({ count: 2 }),
     );
     expect(result.ideas).toHaveLength(2);
@@ -482,12 +716,19 @@ describe("las verificaciones de cada idea", () => {
 
 describe("el plan de ejemplo (LLM_PROVIDER=fake)", () => {
   it("entrega las ideas pedidas, que pasan todas las verificaciones con cualquier perfil", () => {
-    for (const platforms of [["linkedin"], ["instagram", "x", "linkedin"], ["discord"]] as const) {
-      const planBrief = brief({ platforms: [...platforms], count: 4 });
+    // Discord no tiene cadencia: la ranura por defecto (1 por semana) da 3 en el período (D7).
+    for (const [platforms, count] of [
+      [["linkedin"], 4],
+      [["instagram", "x", "linkedin"], 4],
+      [["discord"], 3],
+    ] as const) {
+      const planBrief = brief({ platforms: [...platforms], count });
       const response = samplePlanResponse(buildPlanPrompt(planBrief).prompt);
+      // Sin fecha ni hora (ADR-0034).
+      for (const item of response.ideas) expect(Object.keys(item)).not.toContain("fecha");
       const result = check(response.ideas, planBrief);
       expect(result.discarded).toEqual([]);
-      expect(result.ideas).toHaveLength(4);
+      expect(result.ideas).toHaveLength(count);
     }
     // Sin líneas ni hechos ni cadencia.
     const bare = buildPlanBrief({
@@ -526,15 +767,33 @@ describe("el plan de ejemplo (LLM_PROVIDER=fake)", () => {
     expect(result.ideas).toHaveLength(3);
   });
 
-  it("si la cadencia no da para tantas, entrega menos y lo advierte", () => {
-    const planBrief = brief({ platforms: ["x"], count: 5 });
-    const response = samplePlanResponse(buildPlanPrompt(planBrief).prompt);
-    // X: 1 por semana; el período toca 3 semanas (mié 21 a mar 3).
-    expect(response.ideas).toHaveLength(3);
-    expect(response.warnings).toHaveLength(1);
+  it("varía los ángulos y los formatos, y no se parecen entre sí", () => {
+    const planBrief = brief({ platforms: ["instagram", "x", "linkedin"], count: 20 });
+    const { ideas } = samplePlanResponse(buildPlanPrompt(planBrief).prompt);
+    expect(ideas).toHaveLength(20);
+    expect(new Set(ideas.map((item) => item.formato)).size).toBeGreaterThan(2);
+    ideas.forEach((item, index) => {
+      for (const other of ideas.slice(0, index)) {
+        expect([item.tema, other.tema, topicSimilarity(item.tema, other.tema) < 0.6]).toEqual([
+          item.tema,
+          other.tema,
+          true,
+        ]);
+      }
+    });
   });
 
-  it("el reporte tiene su esquema", () => {
+  it("si la cadencia no da para tantas, las de sobra quedan sin ranura (NO_SLOT)", () => {
+    const planBrief = brief({ platforms: ["x"], count: 5 });
+    const response = samplePlanResponse(buildPlanPrompt(planBrief).prompt);
+    expect(response.ideas).toHaveLength(5);
+    // X: 1 por semana; el período toca 3 semanas (mié 21 a mar 3).
+    const result = check(response.ideas, planBrief);
+    expect(result.ideas).toHaveLength(3);
+    expect(result.discarded.map((item) => item.code)).toEqual(["NO_SLOT", "NO_SLOT"]);
+  });
+
+  it("el reporte tiene su esquema, con los códigos nuevos al final", () => {
     expect(
       planRunReportSchema.safeParse({
         ideas: [
@@ -548,10 +807,42 @@ describe("el plan de ejemplo (LLM_PROVIDER=fake)", () => {
             notes: [],
           },
         ],
-        discarded: [{ topic: "Otra", code: "OUT_OF_PERIOD", message: "Fuera" }],
+        discarded: [
+          { topic: "Otra", code: "IDEA_TOO_SIMILAR", message: "Se parece" },
+          { topic: "Más", code: "NO_SLOT", message: "Sin ranura" },
+        ],
         warnings: [],
       }).success,
     ).toBe(true);
+  });
+
+  it("un reporte guardado con los códigos de antes se sigue leyendo (ADR-0034, punto 4)", () => {
+    const before = [
+      "FORMAT_INVALID",
+      "DATE_INVALID",
+      "OUT_OF_PERIOD",
+      "IN_THE_PAST",
+      "PILLAR_UNKNOWN",
+      "MASS_MENTION",
+      "FACT_NOT_IN_PROFILE",
+      "REPEATED_TOPIC",
+      "DISCARDED_TOPIC",
+      "DUPLICATE_IN_PLAN",
+      "PLATFORM_NOT_REQUESTED",
+      "FORMAT_NOT_SUPPORTED",
+      "OUT_OF_CADENCE",
+      "WEEK_FULL",
+      "OVER_COUNT",
+    ];
+    // Los de antes, en su orden, y los nuevos al final.
+    expect(PLAN_DISCARD_CODES).toEqual([...before, "IDEA_TOO_SIMILAR", "NO_SLOT"]);
+    const saved = {
+      ideas: [],
+      discarded: before.map((code) => ({ topic: "Una", code, message: "De F9" })),
+      warnings: [],
+      llm: { provider: "fake", model: "fake", attempts: 1, durationMs: 10 },
+    };
+    expect(planRunReportSchema.parse(saved).discarded.map((item) => item.code)).toEqual(before);
   });
 });
 

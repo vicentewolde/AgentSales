@@ -193,7 +193,9 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
     deps.print(
       `Publicando ${trimmed} en ${PLATFORM_TEXT[platform]} (${mode}): ` +
         targets
-          .map((publication) => publicationFormatText(platform, publication.format))
+          .map((publication) =>
+            publicationFormatText(platform, publication.format, publication.mediaIds.length),
+          )
           .join(", "),
     );
     if (result.requeued.length > 0) {
@@ -202,7 +204,7 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
     for (const skipped of result.skipped) {
       deps.printError(
         c.yellow(
-          `  El ${publicationFormatText(platform, skipped.format)} tiene una publicación activa de un texto anterior (${skipped.publicationId}): retírala o descártala para publicar el nuevo`,
+          `  El ${publicationFormatText(platform, skipped.format, null)} tiene una publicación activa de un texto anterior (${skipped.publicationId}): retírala o descártala para publicar el nuevo`,
         ),
       );
     }
@@ -247,7 +249,7 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
         wait.publications
           .map(
             (p) =>
-              `${publicationFormatText(p.platform, p.format)}: ${PUBLICATION_STATUS_TEXT[p.status]}`,
+              `${publicationFormatText(p.platform, p.format, p.mediaIds.length)}: ${PUBLICATION_STATUS_TEXT[p.status]}`,
           )
           .join(" · "),
       // Nadie tocó las que empezaron ahora (las publicaciones no tienen `queued`). Es una heurística:

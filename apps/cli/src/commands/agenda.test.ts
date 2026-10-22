@@ -24,6 +24,8 @@ const item = (extra: Partial<Item>): Item => ({
   publicationId: "pub-1",
   at: new Date("2026-10-21T13:00:00.000Z"),
   dryRun: true,
+  modeFixed: true,
+  mediaCount: 1,
   code: null,
   advice: null,
   daysLeft: null,
@@ -97,6 +99,19 @@ describe("agenda con posts", () => {
     expect(renderAgenda([{ ...token, expired: true }], c)).toContain("venció");
   });
 
+  it("una aprobada sin publicar no dice simulación (su modo es el del servidor, D4 de F9.5)", () => {
+    const waiting = item({ kind: "approved_waiting", action: "publish", modeFixed: false });
+    expect(renderAgenda([waiting], c)).not.toContain("simulación");
+    // Una programada sí tiene su modo fijado.
+    expect(renderAgenda([item({})], c)).toContain("simulación");
+  });
+
+  it("un post de Instagram con una sola foto es una imagen; con varias, un carrusel (F9.5-T02)", () => {
+    const one = item({ platform: "instagram", mediaCount: 1 });
+    expect(renderAgenda([one], c)).toContain("Instagram imagen");
+    expect(renderAgenda([{ ...one, mediaCount: 3 }], c)).toContain("Instagram carrusel");
+  });
+
   it("posts y avisos van en la misma clase, en el orden que trae la API", () => {
     const listing = item({ postId: null, listingId: "l1", externalRef: "P1", title: "P1" });
     const text = renderAgenda([item({}), listing], c);
@@ -110,6 +125,8 @@ describe("tracking con posts", () => {
     const base = {
       format: "post" as const,
       dryRun: true,
+      modeFixed: true,
+      mediaCount: 1,
       externalUrl: null,
       scheduledAt: null,
       schedule: null,

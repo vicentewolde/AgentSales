@@ -94,12 +94,13 @@ const normalized = (error: unknown): AppError =>
  *    cada llamada (`LLM_BUDGET_EXCEEDED`, F7) y anota cada llamada en el plan en cuanto vuelve
  *    (también si después falla: entra a `sumLlmCost`). La respuesta se valida con zod (con un
  *    reintento si el sobre no calza: `LLM_OUTPUT_INVALID` después).
- * 3. Verifica cada idea (`checkPlanIdeas`, dentro de `proposePlanIdeas`, que T22 usa sin la base):
- *    las que no pasan se descartan y quedan en el reporte. Lo ya planificado en el período
- *    (`plannedSlots`) ocupa su cupo de la semana.
+ * 3. Verifica cada idea y le asigna su ranura (`checkPlanIdeas`, dentro de `proposePlanIdeas`, que
+ *    T22 usa sin la base; desde F9.5, ADR-0034): las que no pasan se descartan y quedan en el
+ *    reporte; las demás reciben del código su fecha, su hora y sus redes según la cadencia. Lo ya
+ *    planificado en el período (`plannedSlots`) ocupa su cupo de la semana y su ranura.
  * 4. Guarda, en una transacción, el reporte con `succeeded` y un post `idea` por cada idea válida
- *    (`source = ai`, `brief_origin = ai`, `plan_run_id`, `planned_at`, `pillar`, `rationale` y sus
- *    redes, `platforms`),
+ *    (`source = ai`, `brief_origin = ai`, `plan_run_id`, `planned_at` de su ranura, `pillar`,
+ *    `rationale` y sus redes, `platforms`),
  *    **sin textos ni publicaciones** (ADR-0030, puntos 2 y 4). Cero ideas válidas también es un
  *    plan terminado: el reporte dice por qué.
  * Como `draftPost`: un plan terminal no se toca (`skipped`); un error no reintentable, o el del

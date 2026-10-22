@@ -70,6 +70,7 @@ export {
   PLAN_MAX_IDEAS,
   PLAN_MAX_START_AHEAD_DAYS,
   PLAN_RECENT_DAYS,
+  PLAN_SIMILAR_TOPIC_THRESHOLD,
   type PlanBrief,
   type PlanCadence,
   type PlanDiscardCode,
@@ -91,6 +92,7 @@ export {
   planWeeks,
   planWeekText,
   topicKey,
+  topicSimilarity,
   validatePlanResponse,
   weekdayOf,
   weekOf,
@@ -104,6 +106,16 @@ export {
 } from "./plan-prompt.js";
 export { type ProposedPlanIdeas, proposePlanIdeas } from "./plan-propose.js";
 export { samplePlanResponse } from "./plan-sample.js";
+export {
+  type AssignedPlanSlot,
+  PLAN_DEFAULT_SLOT,
+  type PlanSlot,
+  type PlanSlotBook,
+  type PlanSlotRules,
+  planSlotBook,
+  planSlotRules,
+  planSlots,
+} from "./plan-slots.js";
 export {
   ideaNeedsDraft,
   type PostNetworkGaps,

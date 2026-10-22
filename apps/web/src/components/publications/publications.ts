@@ -14,6 +14,7 @@ import {
   PLATFORM_TEXT,
   type Platform,
   type PublishMode,
+  publicationModeFixed,
 } from "@agentsales/core";
 
 // Las reglas de la API (ADR-0014, spec F3 §4.2 y §4.3) vistas desde el panel: qué botón se puede
@@ -109,7 +110,7 @@ export function readinessPublishBlockedReason(
 }
 
 /**
- * Por qué no se puede reintentar una fallida: ya empezó en vivo en la plataforma y la API está en
+ * Por qué no se puede reintentar una fallida: ya empezó en vivo en la plataforma y el sistema está en
  * simulación (`PUBLISH_MODE_LOCKED`): la simulación la daría por publicada sin saber si salió.
  */
 export function retryBlockedReason(
@@ -117,9 +118,61 @@ export function retryBlockedReason(
   publishMode: PublishMode | undefined,
 ): string | null {
   return publication.startedLive && publishMode === "dry-run"
-    ? `Ya empezó en vivo en ${PLATFORM_TEXT[publication.platform]}: reintenta con la API en vivo, o descártala.`
+    ? `Ya empezó en vivo en ${PLATFORM_TEXT[publication.platform]}: solo se puede reintentar con el sistema en vivo, o descártala.`
     : null;
 }
+
+/**
+ * Si hay algo que publicar con estos textos (F9.5-T02): un texto aprobado sin publicaciones activas
+ * (nacen al publicar; las descartadas y las retiradas no cuentan, porque al publicar nacen otras,
+ * `ACTIVE_PUBLICATION_STATUSES`) o con alguna aprobada o fallida. Si todas salieron, están saliendo
+ * o están programadas, no hay botón Publicar. Lo usan el canal de un aviso y cada red de un post. La
+ * API lo vuelve a revisar (`NOTHING_TO_PUBLISH`).
+ */
+export function hasSomethingToPublish(
+  contents: readonly Pick<ContentView, "id" | "status">[],
+  publications: readonly Pick<PublicationView, "contentId" | "status">[],
+): boolean {
+  return contents.some((content) => {
+    if (content.status !== "approved") return false;
+    const own = publications.filter(
+      (publication) => publication.contentId === content.id && active.has(publication.status),
+    );
+    return (
+      own.length === 0 ||
+      own.some(
+        (publication) => publication.status === "approved" || publication.status === "failed",
+      )
+    );
+  });
+}
+
+/**
+ * Las redes de un post con algo por publicar (F9.5-T02, `hasSomethingToPublish` por red, con todos
+ * sus idiomas). Sin las publicaciones (cargando), todas: el panel no esconde lo que la API aceptaría.
+ */
+export function platformsToPublish<P extends Platform>(
+  platforms: readonly P[],
+  contents: readonly Pick<ContentView, "id" | "status" | "platform">[],
+  publications: readonly Pick<PublicationView, "contentId" | "status" | "platform">[] | undefined,
+): P[] {
+  if (publications === undefined) return [...platforms];
+  return platforms.filter((platform) =>
+    hasSomethingToPublish(
+      contents.filter((content) => content.platform === platform),
+      publications.filter((publication) => publication.platform === platform),
+    ),
+  );
+}
+
+/**
+ * El modo de una publicación para mostrarlo (D4 del spec F9.5, `shownPublicationMode`): el fijado,
+ * o el del sistema mientras no se fija (aprobada, descartada sin intento o fallida que no empezó en
+ * vivo).
+ */
+export const publicationModeOf = (
+  publication: Pick<PublicationView, "dryRun" | "status" | "attempts" | "startedLive">,
+) => ({ dryRun: publication.dryRun, modeFixed: publicationModeFixed(publication) });
 
 /**
  * Qué se puede hacer con una publicación según su estado y su canal. Un aviso de Portal no se

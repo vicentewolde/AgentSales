@@ -222,6 +222,10 @@ describe("panel: publicar", () => {
   it("con la API en vivo pide confirmación antes de publicar", async () => {
     const setup = await publicationSetup({ publishMode: "live" });
     const section = await setup.open();
+    // D4 (F9.5): una aprobada nace con dryRun, pero con el sistema en vivo dice «en vivo».
+    const approved = await item("carrusel");
+    expect(await within(approved).findByText("en vivo")).toBeTruthy();
+    expect(within(approved).queryByText("simulación")).toBeNull();
 
     fireEvent.click(
       await within(section).findByRole("button", { name: "Publicar en Instagram (en vivo)" }),
@@ -274,7 +278,7 @@ describe("panel: publicar", () => {
     expect((button as HTMLButtonElement).disabled).toBe(true);
     expect(
       await within(section).findByText(
-        "Todavía no se sabe si la API está en simulación o en vivo.",
+        "Todavía no se sabe si el sistema está en simulación o en vivo.",
       ),
     ).toBeTruthy();
   });
@@ -306,6 +310,9 @@ describe("panel: publicar", () => {
     const retry = await within(carrusel).findByRole("button", { name: "Reintentar el carrusel" });
     expect((retry as HTMLButtonElement).disabled).toBe(true);
     expect(carrusel.textContent).toContain("Ya empezó en vivo en Instagram");
+    // D4 (F9.5): con el sistema en simulación, sigue diciendo «en vivo» (quedó fijada así).
+    expect(within(carrusel).getByText("en vivo")).toBeTruthy();
+    expect(within(carrusel).queryByText("simulación")).toBeNull();
     // Tampoco el canal entero (la API respondería PUBLISH_MODE_LOCKED).
     const publish = within(section).getByRole("button", {
       name: "Publicar en Instagram (simulación)",

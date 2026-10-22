@@ -1,5 +1,6 @@
 import type { AccountListResponse, PlatformAccountView } from "@agentsales/api/contracts";
 import {
+  accountOwnedBy,
   type Broker,
   brokerHoldsListings,
   marketplaceAutomationAllowed,
@@ -104,7 +105,7 @@ function BrokerAccounts({
 }) {
   const own = (platform: PlatformAccountView["platform"]) =>
     data.accounts.filter(
-      (account) => account.brokerId === broker.id && account.platform === platform,
+      (account) => accountOwnedBy(account, broker.id) && account.platform === platform,
     );
   const instagram = channelState(own("instagram"), now);
   const mercadoLibre = channelState(own("portal_inmobiliario"), now);

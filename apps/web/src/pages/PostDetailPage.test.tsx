@@ -4,13 +4,17 @@ import { chileInputValue, formatChileTime, requestContentRun } from "@agentsales
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { brokerData, harness } from "../../test/harness.js";
+import { BROKER_SCOPE_STORAGE_KEY } from "../scope/broker-scope.js";
 
 // F9-T17 (spec F9 §4.10): el detalle de un post en el panel, contra la API real en proceso: los
 // textos por red e idioma (editar con el conteo de la red, aprobar), los medios con avance, pedir
 // los textos a la IA, publicar una red, programar, y resolver una publicación dudosa o confirmar
 // una que se publica a mano.
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  sessionStorage.clear();
+});
 
 async function setup() {
   const h = harness();
@@ -94,7 +98,7 @@ describe("panel: detalle de un post", () => {
     expect(screen.getByText("Todavía no hay textos: pídelos a la IA.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Pedir los textos a la IA" }));
     await waitFor(() => expect(s.requests).toContain(`POST /posts/${s.post.id}/draft`));
-    expect(await screen.findByText("Textos pedidos: esperando al worker…")).toBeTruthy();
+    expect(await screen.findByText("Textos pedidos: en cola…")).toBeTruthy();
   });
 
   it("una pestaña por red e idioma; editar muestra el conteo ponderado de X y guarda", async () => {
@@ -142,6 +146,14 @@ describe("panel: detalle de un post", () => {
     await waitFor(() => expect(s.requests).toContain(`POST /posts/${s.post.id}/publish`));
     expect(await within(list).findByText("publicando")).toBeTruthy();
     expect(screen.getByText(/Discord: 1 publicación\(es\) en curso/)).toBeTruthy();
+    // F9.5-T02: ya no queda nada por publicar, así que no hay botón Publicar (ni Programar).
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /Publicar en Discord/ })).toBeNull(),
+    );
+    expect(screen.queryByRole("button", { name: "Programar…" })).toBeNull();
+    expect(
+      screen.getByText(/Todo lo aprobado ya salió, está saliendo o está programado/),
+    ).toBeTruthy();
   });
 
   it("sin cuenta en la red aprobada no ofrece publicar ni programar: dice el motivo y enlaza a Cuentas", async () => {
@@ -169,6 +181,38 @@ describe("panel: detalle de un post", () => {
     );
     fireEvent.click(publish);
     expect(s.requests).not.toContain(`POST /posts/${s.post.id}/publish`);
+  });
+
+  it("un administrador con otro corredor en el selector ve activas las redes de la marca del post", async () => {
+    // F9.5-T12: las cuentas se piden con el alcance de la sesión, no con el corredor del selector,
+    // y se eligen las de la marca del post (`accountOwnedBy`).
+    const s = await setup();
+    await s.brokers.create(brokerData("otro"));
+    sessionStorage.setItem(BROKER_SCOPE_STORAGE_KEY, "otro");
+    await s.draft([
+      { platform: "discord", language: "es" },
+      { platform: "linkedin", language: "es" },
+    ]);
+    for (const platform of ["discord", "linkedin"] as const) {
+      await s.client.posts[":id"].contents[":platform"][":language"].approve.$post({
+        param: { id: s.post.id, platform, language: "es" },
+      });
+    }
+    await s.open();
+    const section = screen.getByRole("region", { name: "Publicar" });
+    const discord = await within(section).findByRole("button", {
+      name: "Publicar en Discord (simulación)",
+    });
+    const linkedin = within(section).getByRole("button", {
+      name: "Publicar en LinkedIn (simulación)",
+    });
+    // LinkedIn (la marca no tiene cuenta) queda desactivado: las cuentas ya cargaron.
+    await waitFor(() => expect(linkedin).toHaveProperty("disabled", true));
+    await waitFor(() => expect(s.requests).toContain("GET /brokers"));
+    expect(discord).toHaveProperty("disabled", false);
+    expect(within(section).queryByText(/Sin cuenta conectada en Discord/)).toBeNull();
+    expect(s.requests).toContain("GET /accounts");
+    expect(s.requests.filter((request) => request.startsWith("GET /accounts?"))).toEqual([]);
   });
 
   it("programar pide la hora de Chile y deja la publicación programada", async () => {

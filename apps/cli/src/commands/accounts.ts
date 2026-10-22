@@ -9,6 +9,7 @@ import {
 } from "@agentsales/api/contracts";
 import {
   accountDisconnectText,
+  accountOwnedBy,
   brokerHoldsListings,
   currentMarketplaceLoginError,
   discordWebhookUrlSchema,
@@ -472,7 +473,7 @@ async function connectMarketplace(
     if (result.outcome === "pending") return { status: "pending" };
     const account = accounts.find(
       (item) =>
-        item.brokerId === brokerId &&
+        accountOwnedBy(item, brokerId) &&
         item.platform === "fb_marketplace" &&
         item.status === "connected",
     );
