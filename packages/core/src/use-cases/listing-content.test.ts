@@ -147,6 +147,8 @@ describe("getListingContent", () => {
     ]);
     expect(result.photos.map((item) => item.variant)).toEqual(["pi_4x3", "pi_4x3", "pi_4x3"]);
     expect(result.reel).toMatchObject({ variant: "ig_reel", mime: "video/mp4" });
+    // Con video, el reel sale del video (F9.5-T18).
+    expect(result.reelFromPhotos).toBe(false);
     expect(result.latestRun).toMatchObject({ status: "succeeded", texts: true });
   });
 
@@ -158,6 +160,7 @@ describe("getListingContent", () => {
       carousel: [],
       photos: [],
       reel: null,
+      reelFromPhotos: false,
       latestRun: null,
       // El aviso de prueba tiene todo lo que pide Portal (F4-T19).
       portalReadiness: { ready: true },

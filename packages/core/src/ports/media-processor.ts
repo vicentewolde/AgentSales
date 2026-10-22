@@ -68,6 +68,18 @@ export type VideoProcessOptions = {
 };
 
 /**
+ * Una foto del reel armado con fotos (F9.5-T18): su tipo y cómo leer el original. El procesador
+ * las lee de a una (`read`), así no tiene todos los originales en memoria a la vez.
+ */
+export type ReelPhotoInput = { mime: string; read: () => Promise<Uint8Array> };
+
+/**
+ * Lo que se pide del reel armado con fotos: `overlayPng` es el texto que va encima los primeros
+ * 2 s, como en el reel de un video (o `null`, sin texto). La música (F9.5-T19) se agregará aquí.
+ */
+export type PhotoReelOptions = { overlayPng: Uint8Array | null };
+
+/**
  * Procesador de medios (spec F2 §4.2): el worker lo crea por intento, con el directorio temporal
  * de ese intento, que borra al terminar (el puerto no tiene `dispose`). Core solo ve bytes y
  * streams, nunca rutas. Errores (`AppError`):
@@ -97,4 +109,16 @@ export interface MediaProcessor {
     options: VideoProcessOptions,
     signal?: AbortSignalLike,
   ): Promise<ProcessedVideo>;
+  /**
+   * El reel de una propiedad sin video, armado con sus fotos en el orden recibido (F9.5-T18): cada
+   * una unos segundos con un fundido entre ellas, la foto entera sobre su propia imagen desenfocada
+   * y el texto encima los primeros 2 s. Pide entre `REEL_PHOTOS.min` y `REEL_PHOTOS.max` fotos
+   * (otra cantidad es un bug de quien llama: `MEDIA_REEL_PHOTOS_INVALID`); una foto ilegible es
+   * `MEDIA_DECODE_FAILED`.
+   */
+  processPhotoReel(
+    photos: readonly ReelPhotoInput[],
+    options: PhotoReelOptions,
+    signal?: AbortSignalLike,
+  ): Promise<VideoOutput>;
 }

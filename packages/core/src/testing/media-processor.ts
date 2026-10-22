@@ -1,6 +1,6 @@
 import type { AbortSignalLike } from "../abort.js";
 import { AppError } from "../errors.js";
-import { REEL_MAX_DURATION_S, REEL_MIN_DURATION_S } from "../media-checks.js";
+import { REEL_MAX_DURATION_S, REEL_MIN_DURATION_S, REEL_PHOTOS } from "../media-checks.js";
 import type {
   ImageOutput,
   ImageVariant,
@@ -22,7 +22,9 @@ export type MediaProcessorCall =
       /** El tope pedido para el video de Discord, o `null` si no se pidió. */
       discordMaxBytes: number | null;
       inputBytes: number;
-    };
+    }
+  /** El reel con fotos (F9.5-T18): cuántas fotos recibió, sus tipos y si llevaba texto. */
+  | { kind: "photoReel"; photos: number; mimes: string[]; overlay: boolean };
 
 export type InMemoryMediaProcessorOptions = {
   version?: string;
@@ -32,6 +34,8 @@ export type InMemoryMediaProcessorOptions = {
   discordVideoFails?: boolean;
   /** La pasada del video de Discord falla con `MEDIA_DECODE_FAILED` (las demás no). */
   discordVideoThrows?: boolean;
+  /** El reel con fotos falla con `MEDIA_DECODE_FAILED` (como si ffmpeg no pudiera armarlo). */
+  photoReelThrows?: boolean;
 };
 
 export type InMemoryMediaProcessor = MediaProcessor & { calls: MediaProcessorCall[] };
@@ -68,6 +72,21 @@ function throwIfAborted(signal: AbortSignalLike | undefined) {
     throw new AppError("MEDIA_ABORTED", "Se cortó el procesamiento de medios", { retriable: true });
   }
 }
+
+const video = (
+  out: Uint8Array,
+  size: { width: number; height: number; durationS: number },
+): VideoOutput => ({
+  ...size,
+  size: out.length,
+  sha256: fakeHash(decoder.decode(out)),
+  async *open() {
+    yield out;
+  },
+});
+
+/** Lo que dura cada foto en el reel con fotos (como `PHOTO_REEL_SPEC` del adaptador). */
+const PHOTO_REEL_SLIDE_S = 3;
 
 /**
  * Procesador de medios para los tests de core: deriva salidas deterministas de los bytes de entrada
@@ -136,17 +155,6 @@ export function createInMemoryMediaProcessor(
         discordVideo === null || options.discordVideoFails === true
           ? null
           : encoder.encode(`discord_video:v${version}:${decoder.decode(bytes)}`);
-      const video = (
-        out: Uint8Array,
-        size: { width: number; height: number; durationS: number },
-      ): VideoOutput => ({
-        ...size,
-        size: out.length,
-        sha256: fakeHash(decoder.decode(out)),
-        async *open() {
-          yield out;
-        },
-      });
       return {
         measurements,
         thumb: output("thumb", bytes, version),
@@ -169,6 +177,34 @@ export function createInMemoryMediaProcessor(
                 durationS: duration,
               }),
       };
+    },
+    async processPhotoReel(photos, { overlayPng }, signal): Promise<VideoOutput> {
+      throwIfAborted(signal);
+      calls.push({
+        kind: "photoReel",
+        photos: photos.length,
+        mimes: photos.map((photo) => photo.mime),
+        overlay: overlayPng !== null,
+      });
+      if (photos.length < REEL_PHOTOS.min || photos.length > REEL_PHOTOS.max) {
+        throw new AppError("MEDIA_REEL_PHOTOS_INVALID", "El reel con fotos pide entre 3 y 10");
+      }
+      // Se leen de a una, como el adaptador.
+      const sources: string[] = [];
+      for (const photo of photos) sources.push(decoder.decode(await photo.read()));
+      if (
+        options.photoReelThrows === true ||
+        sources.some((source) => source.startsWith("CORRUPTO"))
+      )
+        throw decodeFailed();
+      const out = encoder.encode(
+        `photo_reel:v${version}:${sources.join("|")}:${overlayPng?.length ?? 0}`,
+      );
+      return video(out, {
+        width: 1080,
+        height: 1920,
+        durationS: photos.length * PHOTO_REEL_SLIDE_S,
+      });
     },
   };
 }

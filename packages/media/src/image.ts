@@ -64,6 +64,18 @@ async function heicToJpeg(
   }
 }
 
+/** Los bytes de una foto como sharp los puede leer: un HEIC pasa antes a JPEG con ffmpeg. */
+export async function decodableSource(
+  input: Uint8Array,
+  mime: string,
+  options: ImageToolOptions,
+  signal?: AbortSignalLike,
+): Promise<Buffer> {
+  return HEIF_MIMES.has(mime.toLowerCase())
+    ? heicToJpeg(input, options, signal)
+    : Buffer.from(input.buffer, input.byteOffset, input.byteLength);
+}
+
 /**
  * Una foto (JPEG, PNG, WebP o HEIC) → sus medidas y las variantes pedidas (spec F2 §4.2): rotadas
  * según su orientación, en sRGB, **sin metadatos** (EXIF, GPS, XMP: sharp no los copia si no se
@@ -76,9 +88,7 @@ export async function processImage(
   signal?: AbortSignalLike,
 ): Promise<ProcessedImage> {
   throwIfAborted(signal);
-  const source = HEIF_MIMES.has(mime.toLowerCase())
-    ? await heicToJpeg(input, options, signal)
-    : Buffer.from(input.buffer, input.byteOffset, input.byteLength);
+  const source = await decodableSource(input, mime, options, signal);
 
   let width: number | undefined;
   let height: number | undefined;
