@@ -136,7 +136,7 @@ function renderIdea(idea: PlanIdeaView, c: Colors): string[] {
   const lines = [
     `  ${c.bold(when)}  ${idea.topic}  ${idea.status === "archived" ? c.dim(`(${status})`) : c.cyan(`[${status}]`)}`,
     c.dim(
-      `    ${idea.id} · ${POST_KIND_TEXT[idea.kind] ?? idea.kind} · ${networks}${idea.pillar === null ? "" : ` · línea ${idea.pillar}`}`,
+      `    ${idea.id} · ${POST_KIND_TEXT[idea.kind] ?? idea.kind} · ${networks}${idea.pillar === null ? "" : ` · tema ${idea.pillar}`}`,
     ),
   ];
   if (idea.rationale !== null) lines.push(`    Por qué: ${idea.rationale}`);

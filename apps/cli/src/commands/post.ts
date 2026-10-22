@@ -414,7 +414,7 @@ export function renderPostDetail(detail: PostDetailResponse, brandSlug: string, 
         : post.platforms.map((platform) => PLATFORM_TEXT[platform] ?? platform).join(", ")
     }`,
   );
-  if (post.pillar !== null) lines.push(`  Línea: ${post.pillar}`);
+  if (post.pillar !== null) lines.push(`  Tema: ${post.pillar}`);
   // F9-T16: la marca del operador que permite un enlace en X (sin ella, un texto con enlace no se aprueba).
   if (postPublishesOn(post, "x") || contents.some((content) => content.platform === "x")) {
     lines.push(

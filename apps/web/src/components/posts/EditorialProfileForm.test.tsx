@@ -90,6 +90,35 @@ describe("perfil editorial: lo que se guarda (sin pantalla)", () => {
       "casos",
       "casos-3",
     ]);
+    // Una clave escrita en mayúsculas choca igual (core las compara en minúsculas), y con el
+    // sufijo la clave no pasa de 40 caracteres.
+    const long = "Una frase larguísima que pasa de los cuarenta caracteres";
+    draft.pillars = [
+      { key: "CASOS", name: "Otros casos", description: "", weight: 1 },
+      { key: "", name: "Casos", description: "", weight: 1 },
+      { key: pillarKeyOf(long), name: "Otra", description: "", weight: 1 },
+      { key: "", name: long, description: "", weight: 1 },
+    ];
+    const keys = profileBody(draft).body.pillars.map((pillar) => pillar.key);
+    expect(keys).toEqual([
+      "CASOS",
+      "casos-2",
+      "una-frase-larguisima-que-pasa-de-los-cua",
+      "una-frase-larguisima-que-pasa-de-los-c-2",
+    ]);
+    expect(Math.max(...keys.map((key) => key.length))).toBeLessThanOrEqual(40);
+  });
+
+  it("un hecho con algo [entre corchetes] no se manda: hay que completarlo", () => {
+    const draft = draftOf(json(FULL));
+    draft.facts = "Corredor desde 2018\nCorredor de propiedades en [comuna] desde [año]";
+    expect(profileBody(draft).issues).toEqual([
+      {
+        field: "facts",
+        message:
+          "Completa lo que está entre corchetes antes de guardar: «Corredor de propiedades en [comuna] desde [año]»",
+      },
+    ]);
   });
 
   it("una hora escrita y sin agregar también se guarda, en orden y sin repetir", () => {
@@ -125,7 +154,12 @@ describe("perfil editorial en el panel (F9.5-T17)", () => {
     expect(
       (within(casos).getByLabelText("Cuánto del tema 4") as HTMLSelectElement).selectedOptions[0]
         ?.textContent,
-    ).toBe("Como está (peso 40)");
+    ).toBe("Como está (peso 40, de la CLI)");
+    expect(
+      within(s.form).getByText(
+        /Algunos temas tienen un peso puesto con la CLI \(40\); mezclado con Poco\/Normal\/Mucho/,
+      ),
+    ).toBeTruthy();
     const instagram = within(s.form).getByRole("listitem", { name: "Cadencia de Instagram" });
     expect(
       within(within(instagram).getByRole("list", { name: "Horas de Instagram" }))
@@ -184,16 +218,17 @@ describe("perfil editorial en el panel (F9.5-T17)", () => {
       target: { value: "1" },
     });
 
-    // Hechos y cosas que evitar: una línea por ejemplo, sin repetir.
+    // Hechos: una línea por ejemplo, sin repetir, con lo que hay que completar entre corchetes.
     const facts = within(s.form).getByRole("group", { name: "Ejemplos de hechos" });
     fireEvent.click(
-      within(facts).getByRole("button", { name: "Corredor de propiedades en Santiago desde 2018" }),
+      within(facts).getByRole("button", {
+        name: "Corredor de propiedades en [comuna] desde [año]",
+      }),
     );
-    fireEvent.click(
-      within(facts).getByRole("button", { name: "Trabajo en Providencia, Ñuñoa y Las Condes" }),
-    );
-    expect((within(s.form).getByLabelText(/^Hechos/) as HTMLTextAreaElement).value).toBe(
-      "Corredor de propiedades en Santiago desde 2018\nTrabajo en Providencia, Ñuñoa y Las Condes",
+    fireEvent.click(within(facts).getByRole("button", { name: "Trabajo en [comunas]" }));
+    const factsField = within(s.form).getByLabelText(/^Hechos/) as HTMLTextAreaElement;
+    expect(factsField.value).toBe(
+      "Corredor de propiedades en [comuna] desde [año]\nTrabajo en [comunas]",
     );
     const avoid = within(s.form).getByRole("group", { name: "Ejemplos de cosas que evitar" });
     for (const name of [
@@ -205,6 +240,23 @@ describe("perfil editorial en el panel (F9.5-T17)", () => {
       fireEvent.click(within(avoid).getByRole("button", { name }));
     }
 
+    // Sin completar los corchetes, no se guarda ni se llama a la API.
+    const before = s.requests.length;
+    fireEvent.click(within(s.form).getByRole("button", { name: "Guardar el perfil" }));
+    expect(
+      await within(s.form).findByText(
+        /Completa lo que está entre corchetes antes de guardar: «Trabajo en \[comunas\]»/,
+      ),
+    ).toBeTruthy();
+    expect(s.requests.slice(before).some((request) => request.startsWith("PUT"))).toBe(false);
+    expect(await s.deps.editorialProfiles.get(s.brand.id)).toBeNull();
+
+    fireEvent.change(factsField, {
+      target: {
+        value:
+          "Corredor de propiedades en Santiago desde 2018\nTrabajo en Providencia, Ñuñoa y Las Condes",
+      },
+    });
     fireEvent.click(within(s.form).getByRole("button", { name: "Guardar el perfil" }));
     expect(await within(s.form).findByText("Perfil guardado.")).toBeTruthy();
     expect(await saved(s)).toMatchObject({
@@ -241,10 +293,10 @@ describe("perfil editorial en el panel (F9.5-T17)", () => {
         ),
     ).toEqual(["L*", "M", "M*", "J", "V*", "S", "D"]);
     // Quitar el viernes y sumar el sábado.
-    fireEvent.click(within(days).getByRole("button", { name: "Instagram: vie" }));
-    fireEvent.click(within(days).getByRole("button", { name: "Instagram: sáb" }));
+    fireEvent.click(within(days).getByRole("button", { name: "Instagram: viernes" }));
+    fireEvent.click(within(days).getByRole("button", { name: "Instagram: sábado" }));
     expect(
-      within(days).getByRole("button", { name: "Instagram: sáb" }).getAttribute("aria-pressed"),
+      within(days).getByRole("button", { name: "Instagram: sábado" }).getAttribute("aria-pressed"),
     ).toBe("true");
 
     // Quitar las 19:00 con su x y agregar las 13:30 con el campo de hora.
@@ -275,13 +327,21 @@ describe("perfil editorial en el panel (F9.5-T17)", () => {
     // Con dos idiomas, las horas entre idiomas se explican.
     expect(within(instagram).getByText(/Cada post sale una vez por idioma/)).toBeTruthy();
 
-    // Una red nueva: X, con 2 posts por semana el martes a las 08:00.
+    // Una red nueva: X, con 2 posts por semana el martes a las 08:00. Sin días ni horas, dice lo
+    // que usa el plan.
     fireEvent.click(within(s.form).getByRole("checkbox", { name: "X" }));
     const x = within(s.form).getByRole("listitem", { name: "Cadencia de X" });
+    expect(within(x).getByText("Sin días elegidos: el plan usa de lunes a viernes.")).toBeTruthy();
+    expect(within(x).getByText("Sin horas elegidas: el plan usa las 10:00.")).toBeTruthy();
     fireEvent.change(within(x).getByLabelText("Posts por semana"), { target: { value: "2" } });
-    fireEvent.click(within(x).getByRole("button", { name: "X: mar" }));
+    fireEvent.click(within(x).getByRole("button", { name: "X: martes" }));
     fireEvent.change(within(x).getByLabelText("Hora nueva en X"), { target: { value: "08:00" } });
     fireEvent.click(within(x).getByRole("button", { name: "Agregar la hora en X" }));
+    // En LinkedIn, una hora escrita y sin agregar: se guarda y pasa a ser un chip.
+    const linkedin = within(s.form).getByRole("listitem", { name: "Cadencia de LinkedIn" });
+    fireEvent.change(within(linkedin).getByLabelText("Hora nueva en LinkedIn"), {
+      target: { value: "18:00" },
+    });
 
     fireEvent.click(within(s.form).getByRole("button", { name: "Guardar el perfil" }));
     expect(await within(s.form).findByText("Perfil guardado.")).toBeTruthy();
@@ -293,9 +353,66 @@ describe("perfil editorial en el panel (F9.5-T17)", () => {
           hours: ["10:00", "13:30"],
           languageGapHours: 6,
         },
-        linkedin: FULL.cadence.linkedin,
+        linkedin: { ...FULL.cadence.linkedin, hours: ["09:00", "18:00"] },
         x: { postsPerWeek: 2, days: ["tue"], hours: ["08:00"], languageGapHours: 6 },
       }),
+    );
+    expect(
+      (within(linkedin).getByLabelText("Hora nueva en LinkedIn") as HTMLInputElement).value,
+    ).toBe("");
+    expect(
+      within(within(linkedin).getByRole("list", { name: "Horas de LinkedIn" }))
+        .getAllByRole("listitem")
+        .map((chip) => chip.textContent?.replace("×", "")),
+    ).toEqual(["09:00", "18:00"]);
+  });
+
+  it("con 8 horas, «Agregar» queda desactivado", async () => {
+    const hours = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00"];
+    const s = await setup({
+      ...FULL,
+      cadence: { x: { postsPerWeek: 1, days: [], hours, languageGapHours: 6 } },
+    });
+    const x = within(s.form).getByRole("listitem", { name: "Cadencia de X" });
+    fireEvent.change(within(x).getByLabelText("Hora nueva en X"), { target: { value: "16:00" } });
+    expect(
+      (within(x).getByRole("button", { name: "Agregar la hora en X" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(within(x).getByText(/Son 8 horas como máximo/)).toBeTruthy();
+    fireEvent.click(within(x).getByRole("button", { name: "Quitar las 15:00 de X" }));
+    expect(
+      (within(x).getByRole("button", { name: "Agregar la hora en X" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  });
+
+  it("la clave que se armó sola no cambia al renombrar el tema después de guardar", async () => {
+    const s = await setup();
+    fireEvent.click(within(s.form).getByRole("button", { name: "Agregar un tema" }));
+    fireEvent.change(within(s.form).getByLabelText("Nombre del tema 1"), {
+      target: { value: "Propiedades disponibles" },
+    });
+    fireEvent.click(within(s.form).getByRole("button", { name: "Guardar el perfil" }));
+    expect(await within(s.form).findByText("Perfil guardado.")).toBeTruthy();
+    expect((await saved(s)).pillars).toMatchObject([
+      { key: "propiedades-disponibles", name: "Propiedades disponibles" },
+    ]);
+    await waitFor(() =>
+      expect(
+        (within(s.form).getByLabelText("Clave interna del tema 1") as HTMLInputElement).value,
+      ).toBe("propiedades-disponibles"),
+    );
+
+    fireEvent.change(within(s.form).getByLabelText("Nombre del tema 1"), {
+      target: { value: "Departamentos en arriendo" },
+    });
+    fireEvent.click(within(s.form).getByRole("button", { name: "Guardar el perfil" }));
+    expect(await within(s.form).findByText("Perfil guardado.")).toBeTruthy();
+    await waitFor(async () =>
+      expect((await saved(s)).pillars).toMatchObject([
+        { key: "propiedades-disponibles", name: "Departamentos en arriendo" },
+      ]),
     );
   });
 });

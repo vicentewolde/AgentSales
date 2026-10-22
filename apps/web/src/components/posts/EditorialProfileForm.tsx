@@ -1,11 +1,12 @@
 import type { EditorialProfileJson } from "@agentsales/api/contracts";
 import {
-  EDITORIAL_WEEKDAY_TEXT,
+  EDITORIAL_LIMITS,
   EDITORIAL_WEEKDAYS,
   type EditorialWeekday,
   LANGUAGE_TEXT,
   LANGUAGES,
   type Language,
+  PLAN_DEFAULT_SLOT,
   PLATFORM_TEXT,
   POST_PLATFORMS,
   type PostPlatform,
@@ -24,6 +25,7 @@ import {
   addHour,
   addLine,
   type CadenceRow,
+  cliWeights,
   DEFAULT_WEIGHT,
   type Draft,
   draftOf,
@@ -56,6 +58,21 @@ const DAY_LETTER: Readonly<Record<EditorialWeekday, string>> = {
   sat: "S",
   sun: "D",
 };
+
+/** El nombre completo de cada día, para la etiqueta de su botón («Instagram: lunes»). */
+const DAY_NAME: Readonly<Record<EditorialWeekday, string>> = {
+  mon: "lunes",
+  tue: "martes",
+  wed: "miércoles",
+  thu: "jueves",
+  fri: "viernes",
+  sat: "sábado",
+  sun: "domingo",
+};
+
+/** Lo que usa el plan cuando una red no tiene días u horas (core, `PLAN_DEFAULT_SLOT`). */
+const DEFAULT_DAYS_TEXT = `${DAY_NAME[PLAN_DEFAULT_SLOT.days[0] ?? "mon"]} a ${DAY_NAME[PLAN_DEFAULT_SLOT.days.at(-1) ?? "fri"]}`;
+const DEFAULT_HOURS_TEXT = PLAN_DEFAULT_SLOT.hours.join(", ");
 
 /** Los problemas que devolvió la API, por campo (`issues` de `EDITORIAL_PROFILE_INVALID`). */
 function issuesOf(error: Error | null): Issue[] {
@@ -146,8 +163,9 @@ function CadenceEditor({
   onChange: (change: Partial<CadenceRow>) => void;
 }) {
   const name = PLATFORM_TEXT[platform];
+  const full = row.hours.length >= EDITORIAL_LIMITS.hoursPerPlatform;
   const addPending = () => {
-    if (row.newHour.trim() === "") return;
+    if (row.newHour.trim() === "" || full) return;
     onChange({ hours: addHour(row.hours, row.newHour), newHour: "" });
   };
   return (
@@ -173,8 +191,8 @@ function CadenceEditor({
                 key={day}
                 type="button"
                 aria-pressed={on}
-                aria-label={`${name}: ${EDITORIAL_WEEKDAY_TEXT[day]}`}
-                title={EDITORIAL_WEEKDAY_TEXT[day]}
+                aria-label={`${name}: ${DAY_NAME[day]}`}
+                title={DAY_NAME[day]}
                 onClick={() =>
                   onChange({
                     days: on
@@ -196,13 +214,18 @@ function CadenceEditor({
             );
           })}
         </div>
+        {row.days.length === 0 && (
+          <Help>Sin días elegidos: el plan usa de {DEFAULT_DAYS_TEXT}.</Help>
+        )}
       </fieldset>
 
       <div>
         <span className="text-sm">Horas que prefieres (hora de Chile)</span>
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
           {row.hours.length === 0 ? (
-            <span className="text-xs text-fg-subtle">Sin horas: el plan elige.</span>
+            <span className="text-xs text-fg-subtle">
+              Sin horas elegidas: el plan usa las {DEFAULT_HOURS_TEXT}.
+            </span>
           ) : (
             <ul aria-label={`Horas de ${name}`} className="flex flex-wrap gap-1.5">
               {row.hours.map((hour) => (
@@ -241,12 +264,17 @@ function CadenceEditor({
             variant="secondary"
             size="sm"
             aria-label={`Agregar la hora en ${name}`}
-            disabled={row.newHour.trim() === ""}
+            disabled={row.newHour.trim() === "" || full}
             onClick={addPending}
           >
             Agregar
           </Button>
         </div>
+        {full && (
+          <Help>
+            Son {EDITORIAL_LIMITS.hoursPerPlatform} horas como máximo: quita una para agregar otra.
+          </Help>
+        )}
       </div>
 
       {languages.second !== "" && (
@@ -298,7 +326,28 @@ function ProfileForm({ brokerId, profile }: { brokerId: string; profile: Editori
       save.reset();
       return;
     }
-    save.mutate(body);
+    save.mutate(body, {
+      // Lo guardado manda: las claves que se armaron solas quedan fijas (los posts y los planes las
+      // guardan, y renombrar el tema no debe cambiarlas) y la hora pendiente ya es un chip.
+      onSuccess: (saved) =>
+        setDraft((current) => ({
+          ...current,
+          pillars: current.pillars.map((pillar, index) => ({
+            ...pillar,
+            key: saved.pillars[index]?.key ?? pillar.key,
+          })),
+          cadence: Object.fromEntries(
+            POST_PLATFORMS.map((platform) => {
+              const row = current.cadence[platform];
+              const entry = saved.cadence[platform];
+              return [
+                platform,
+                entry === undefined ? row : { ...row, hours: [...entry.hours], newHour: "" },
+              ];
+            }),
+          ) as Draft["cadence"],
+        })),
+    });
   };
   const otherIssues = issues.filter(
     (issue) =>
@@ -306,6 +355,7 @@ function ProfileForm({ brokerId, profile }: { brokerId: string; profile: Editori
         (field) => issue.field === field || issue.field.startsWith(field),
       ),
   );
+  const oddWeights = cliWeights(draft.pillars);
   const pillarNames = draft.pillars.map((pillar) => pillar.name.trim().toLowerCase());
   const factLines = lines(draft.facts);
   const avoidLines = lines(draft.avoid);
@@ -384,6 +434,12 @@ function ProfileForm({ brokerId, profile }: { brokerId: string; profile: Editori
           De qué publica tu marca y cuánto de cada tema. Al proponer ideas, la IA reparte según
           «cuánto»: un tema con «Mucho» recibe el triple de ideas que uno con «Poco».
         </Help>
+        {oddWeights.length > 0 && (
+          <p className="mt-1 text-xs text-warning-800">
+            Algunos temas tienen un peso puesto con la CLI ({oddWeights.join(", ")}); mezclado con
+            Poco/Normal/Mucho, el reparto no es el que dicen los nombres.
+          </p>
+        )}
         <ul className="mt-2 space-y-2">
           {draft.pillars.map((pillar, index) => {
             const n = index + 1;
@@ -412,7 +468,9 @@ function ProfileForm({ brokerId, profile }: { brokerId: string; profile: Editori
                     </option>
                   ))}
                   {level === null && (
-                    <option value={String(pillar.weight)}>Como está (peso {pillar.weight})</option>
+                    <option value={String(pillar.weight)}>
+                      Como está (peso {pillar.weight}, de la CLI)
+                    </option>
                   )}
                 </Select>
                 <Button
@@ -494,7 +552,8 @@ function ProfileForm({ brokerId, profile }: { brokerId: string; profile: Editori
         </label>
         <Help id={`${ids}-facts-help`}>
           La IA solo afirma lo que esté aquí. Escribe solo cosas verdaderas y comprobables. Los
-          ejemplos son de muestra: cámbialos por tus datos reales antes de guardar.
+          ejemplos llegan con [corchetes]: complétalos con tus datos reales (no se guardan sin
+          completar).
         </Help>
         <Textarea
           id={`${ids}-facts`}

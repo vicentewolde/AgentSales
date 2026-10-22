@@ -114,7 +114,7 @@ describe("panel: perfil editorial", () => {
       target: { value: "AgentSales publica en cuatro redes\n\nNació en 2026" },
     });
     fireEvent.click(within(form).getByRole("checkbox", { name: "X" }));
-    fireEvent.click(within(form).getByRole("button", { name: "X: lun" }));
+    fireEvent.click(within(form).getByRole("button", { name: "X: lunes" }));
     fireEvent.change(within(form).getByLabelText("Posts por semana"), { target: { value: "30" } });
     fireEvent.click(within(form).getByRole("button", { name: "Guardar el perfil" }));
 

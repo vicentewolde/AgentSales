@@ -125,20 +125,35 @@ export function draftOf(profile: EditorialProfileJson): Draft {
   };
 }
 
-/** Las claves de los temas: la escrita o, si está vacía, la del nombre, sin chocar con otra. */
+/**
+ * Las claves de los temas: la escrita o, si está vacía, la del nombre, sin chocar con otra (core las
+ * compara en minúsculas) y sin pasar del largo máximo con el sufijo (`-2`, `-3`…).
+ */
 function pillarKeys(pillars: readonly PillarRow[]): string[] {
-  const taken = new Set(pillars.map((pillar) => pillar.key.trim()).filter((key) => key !== ""));
+  const taken = new Set(
+    pillars.map((pillar) => pillar.key.trim().toLowerCase()).filter((key) => key !== ""),
+  );
   return pillars.map((pillar) => {
-    const written = pillar.key.trim();
-    if (written !== "") return pillar.key;
+    if (pillar.key.trim() !== "") return pillar.key;
     const base = pillarKeyOf(pillar.name);
     if (base === "") return "";
     let key = base;
-    for (let n = 2; taken.has(key); n++) key = `${base}-${n}`;
+    for (let n = 2; taken.has(key); n++) {
+      const suffix = `-${n}`;
+      key = `${base.slice(0, EDITORIAL_LIMITS.pillarKey - suffix.length).replace(/-+$/, "")}${suffix}`;
+    }
     taken.add(key);
     return key;
   });
 }
+
+/** Un ejemplo de hecho sin completar: lleva algo `[entre corchetes]`. */
+export const PLACEHOLDER = /\[[^\]]*\]/;
+
+/** Los pesos de los temas que no son Poco, Normal ni Mucho (puestos con la CLI), sin repetir. */
+export const cliWeights = (pillars: readonly PillarRow[]): number[] => [
+  ...new Set(pillars.map((pillar) => pillar.weight).filter((weight) => levelOf(weight) === null)),
+];
 
 /**
  * El cuerpo de `PUT /brokers/:id/editorial-profile` (core normaliza y valida) y, aparte, los números
@@ -156,6 +171,13 @@ export function profileBody(draft: Draft): { body: EditorialProfileBody; issues:
     return value;
   };
   const keys = pillarKeys(draft.pillars);
+  const facts = lines(draft.facts);
+  for (const fact of facts.filter((line) => PLACEHOLDER.test(line))) {
+    issues.push({
+      field: "facts",
+      message: `Completa lo que está entre corchetes antes de guardar: «${fact}»`,
+    });
+  }
   const body: EditorialProfileBody = {
     languages: [draft.primary, ...(draft.second === "" ? [] : [draft.second])],
     audience: draft.audience.trim() === "" ? null : draft.audience,
@@ -165,7 +187,7 @@ export function profileBody(draft: Draft): { body: EditorialProfileBody; issues:
       description: pillar.description,
       weight: pillar.weight,
     })),
-    facts: lines(draft.facts),
+    facts,
     avoid: lines(draft.avoid),
     cadence: Object.fromEntries(
       POST_PLATFORMS.filter((platform) => draft.cadence[platform].on).map((platform) => {
@@ -195,8 +217,8 @@ export function profileBody(draft: Draft): { body: EditorialProfileBody; issues:
 }
 
 // Los ejemplos de cada campo, de un corredor de propiedades (F9.5-T17): se insertan con un clic y
-// el operador los cambia por los suyos. Los hechos de ejemplo no son verdad para nadie hasta que
-// el operador los revise: por eso la ayuda lo dice.
+// el operador los cambia por los suyos. Un hecho de ejemplo no es verdad para nadie: por eso llega
+// con lo suyo `[entre corchetes]` y no se guarda hasta completarlo (`profileBody`).
 
 export const AUDIENCE_EXAMPLE =
   "Familias y profesionales que buscan arrendar o comprar departamento en Providencia, Ñuñoa y Las Condes, y propietarios que quieren arrendar su propiedad";
@@ -209,9 +231,9 @@ export const PILLAR_EXAMPLES: readonly { name: string; level: WeightLevel }[] = 
 ];
 
 export const FACT_EXAMPLES = [
-  "Corredor de propiedades en Santiago desde 2018",
-  "Trabajo en Providencia, Ñuñoa y Las Condes",
-  "Arriendos con contrato notarial y revisión de antecedentes",
+  "Corredor de propiedades en [comuna] desde [año]",
+  "Trabajo en [comunas]",
+  "Arriendos con [cómo trabajas]",
 ] as const;
 
 export const AVOID_EXAMPLES = [
