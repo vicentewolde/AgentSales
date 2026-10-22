@@ -51,7 +51,7 @@ function UploadStatus({ progress, onCancel }: { progress: UploadProgress; onCanc
         : `Subiendo ${progress.doneFiles} de ${progress.totalFiles} archivos (${percent(progress)} %)…`;
   return (
     <div aria-live="polite" className="space-y-2">
-      <p className="text-sm text-slate-700">{text}</p>
+      <p className="text-sm text-fg-muted">{text}</p>
       {progress.phase === "uploading" && (
         <progress
           aria-label="Avance de la subida"
@@ -229,7 +229,7 @@ function ImportForm() {
           {problem}
         </p>
       )}
-      {canceled && <p className="text-sm text-slate-700">Subida cancelada: no se cargó nada.</p>}
+      {canceled && <p className="text-sm text-fg-muted">Subida cancelada: no se cargó nada.</p>}
       {start.error && !canceled && <ErrorAlert error={start.error} />}
     </form>
   );

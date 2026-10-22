@@ -191,7 +191,7 @@ export function ImportReport({ run }: { run: ImportRunView }) {
     <>
       <Counts run={run} />
       {report.broker && (
-        <p className="mt-3 text-sm text-slate-700">
+        <p className="mt-3 text-sm text-fg-muted">
           Corredor: {report.broker.slug ?? "—"} ({IMPORT_BROKER_OUTCOME_TEXT[report.broker.outcome]}
           )
         </p>

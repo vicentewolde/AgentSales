@@ -31,7 +31,7 @@ export function ImportRunPage() {
       </Link>
       {run.isPending && <p className="mt-3 text-fg-muted">Cargando la carga…</p>}
       {notFound && (
-        <p role="alert" className="mt-3 text-slate-700">
+        <p role="alert" className="mt-3 text-fg-muted">
           Esta carga no existe.
         </p>
       )}
@@ -64,7 +64,7 @@ export function ImportRunPage() {
           )}
           <div aria-live="polite">
             {!isTerminalImportRun(data.status) && (
-              <p className="mt-4 text-slate-700">
+              <p className="mt-4 text-fg-muted">
                 {data.status === "awaiting_upload"
                   ? "Esperando que terminen de subir los archivos (si se cortó, vuelve a importar)…"
                   : data.status === "queued"

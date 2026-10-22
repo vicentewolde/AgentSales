@@ -6,7 +6,7 @@ export function SpendLine({ usage, brokerId }: { usage?: UsageResponse; brokerId
   const row = usage?.brokers.find((item) => item.brokerId === brokerId);
   if (usage === undefined || row === undefined) return null;
   return (
-    <p className="mt-2 text-sm text-slate-700">
+    <p className="mt-2 text-sm text-fg-muted">
       Gasto de IA de {usage.month}: <strong>{llmSpendText(row)}</strong>
       {row.capReached && (
         <span className="ml-1 font-medium text-danger-700">

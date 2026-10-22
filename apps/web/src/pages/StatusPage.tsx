@@ -34,7 +34,7 @@ function CheckCard({ name, result }: { name: HealthCheckName; result: HealthChec
           <Badge tone={result.ok ? "success" : "danger"}>{result.ok ? "OK" : "Falla"}</Badge>
         </div>
         {note && <p className="mt-1 text-xs text-fg-subtle">{note}</p>}
-        <p className="mt-3 text-sm text-slate-700">{result.latencyMs} ms</p>
+        <p className="mt-3 text-sm text-fg-muted">{result.latencyMs} ms</p>
         {!result.ok && result.error && (
           <p className="mt-2 break-words text-sm text-danger-700">{result.error}</p>
         )}
@@ -48,7 +48,7 @@ function WorkerLine({ worker }: { worker: HealthReport["worker"] }) {
   if (worker === undefined) return null;
   const running = worker?.running === true;
   return (
-    <p className="mt-4 text-sm text-slate-700">
+    <p className="mt-4 text-sm text-fg-muted">
       Worker:{" "}
       <strong className={running ? "text-success-700" : "text-warning-700"}>
         {workerStatusText(worker)}

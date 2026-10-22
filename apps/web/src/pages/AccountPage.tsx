@@ -129,11 +129,11 @@ export function AccountPage() {
 
         {status.data?.enabled === true && recoveryCodes === null && (
           <form onSubmit={submitDisable} className="mt-4 space-y-3">
-            <p className="text-sm text-slate-700">
+            <p className="text-sm text-fg-muted">
               Activo. Te quedan {status.data.recoveryCodesLeft} códigos de recuperación.
             </p>
             <div>
-              <label htmlFor={disableId} className="block text-sm font-medium text-slate-700">
+              <label htmlFor={disableId} className="block text-sm font-medium text-fg">
                 Código para desactivarlo
               </label>
               <Input
@@ -155,7 +155,7 @@ export function AccountPage() {
         {status.data?.enabled === false && setup === null && (
           <div className="mt-4">
             {disable.isSuccess && (
-              <p role="status" className="mb-2 text-sm text-slate-700">
+              <p role="status" className="mb-2 text-sm text-fg-muted">
                 El doble factor quedó desactivado.
               </p>
             )}
@@ -168,7 +168,7 @@ export function AccountPage() {
 
         {setup !== null && (
           <form onSubmit={submitConfirm} className="mt-4 space-y-3">
-            <ol className="list-decimal space-y-2 pl-5 text-sm text-slate-700">
+            <ol className="list-decimal space-y-2 pl-5 text-sm text-fg-muted">
               <li>
                 En el teléfono, abre{" "}
                 <a
@@ -191,7 +191,7 @@ export function AccountPage() {
               <li>Escribe el código de 6 dígitos que muestra la app.</li>
             </ol>
             <div>
-              <label htmlFor={codeId} className="block text-sm font-medium text-slate-700">
+              <label htmlFor={codeId} className="block text-sm font-medium text-fg">
                 Código de la app
               </label>
               <Input

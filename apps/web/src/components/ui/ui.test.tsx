@@ -73,6 +73,9 @@ describe("Button", () => {
     expect(buttonClasses("ghost")).not.toMatch(/(^|\s)bg-/);
     expect(buttonClasses("primary", "sm")).toContain("py-1.5");
     expect(buttonClasses("primary", "md")).toContain("py-2");
+    // El enlace: sin relleno lateral, con un área de clic razonable.
+    expect(buttonClasses("link")).toContain("py-1");
+    expect(buttonClasses("link")).not.toMatch(/(^|\s)px-/);
   });
 
   it("ButtonLink es un enlace con forma de botón", () => {
@@ -212,6 +215,31 @@ describe("Field", () => {
     expect(input.className).toContain("w-full");
     expect(screen.getByText("Una línea")).toBeTruthy();
     expect(screen.getByText("Falta el tema")).toBeTruthy();
+  });
+
+  it("la ayuda y el error describen al control, y el error lo marca inválido", () => {
+    render(
+      <Field label="Correo" hint="El de tu cuenta" error="Falta el correo">
+        <Input name="email" aria-describedby="otro" />
+      </Field>,
+    );
+    const input = screen.getByLabelText(/^Correo/);
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    const ids = (input.getAttribute("aria-describedby") ?? "").split(" ");
+    expect(ids[0]).toBe("otro");
+    const described = ids.slice(1).map((id) => document.getElementById(id)?.textContent);
+    expect(described).toEqual(["El de tu cuenta", "Falta el correo"]);
+  });
+
+  it("sin ayuda ni error, el control queda como venía", () => {
+    render(
+      <Field label="Tema" htmlFor="tema">
+        <Input id="tema" />
+      </Field>,
+    );
+    const input = screen.getByLabelText("Tema");
+    expect(input.getAttribute("aria-describedby")).toBeNull();
+    expect(input.getAttribute("aria-invalid")).toBeNull();
   });
 
   it("con htmlFor, la etiqueta apunta al control", () => {

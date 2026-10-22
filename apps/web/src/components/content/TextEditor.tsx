@@ -119,7 +119,7 @@ function Editor({
       className="space-y-3"
     >
       {!instagram && (
-        <label className="block text-sm font-medium text-slate-700">
+        <label className="block text-sm font-medium text-fg">
           Título
           <Input
             value={title}
@@ -130,7 +130,7 @@ function Editor({
           />
         </label>
       )}
-      <label className="block text-sm font-medium text-slate-700">
+      <label className="block text-sm font-medium text-fg">
         {instagram ? "Texto" : "Descripción"}
         <Textarea
           value={body}
@@ -143,7 +143,7 @@ function Editor({
       </label>
       {instagram && (
         <div>
-          <label className="block text-sm font-medium text-slate-700">
+          <label className="block text-sm font-medium text-fg">
             Hashtags
             <Input
               value={hashtags}

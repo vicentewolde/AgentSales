@@ -47,7 +47,7 @@ function InstagramPanel({
   return (
     <div className="grid gap-6 md:grid-cols-2">
       <div>
-        <h3 className="text-sm font-semibold text-slate-700">Carrusel ({carousel.length})</h3>
+        <h3 className="text-sm font-semibold text-fg">Carrusel ({carousel.length})</h3>
         {carousel.length === 0 ? (
           <p className="mt-2 text-sm text-fg-subtle">Sin imágenes todavía.</p>
         ) : (
@@ -70,7 +70,7 @@ function InstagramPanel({
             ))}
           </ul>
         )}
-        <h3 className="mt-4 text-sm font-semibold text-slate-700">Reel</h3>
+        <h3 className="mt-4 text-sm font-semibold text-fg">Reel</h3>
         {reel === null ? (
           <p className="mt-2 text-sm text-fg-subtle">Sin reel (la propiedad no tiene video).</p>
         ) : (
@@ -155,7 +155,7 @@ function ListingPanel({
           <p className="mt-2 whitespace-pre-line text-sm">{content.body}</p>
         </ApprovableText>
       )}
-      <h3 className="mt-4 text-sm font-semibold text-slate-700">Fotos ({photos.length})</h3>
+      <h3 className="mt-4 text-sm font-semibold text-fg">Fotos ({photos.length})</h3>
       <ul className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
         {photos.map((item, index) => (
           <li key={item.id}>

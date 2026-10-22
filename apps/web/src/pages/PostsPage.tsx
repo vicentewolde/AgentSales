@@ -80,7 +80,7 @@ function CreatePost({ scopedBrokerId }: { scopedBrokerId: string | undefined }) 
       <h2 className="text-lg font-semibold">Nuevo post</h2>
       <form onSubmit={submit} className="mt-2 grid gap-3 md:grid-cols-2">
         {pickBroker && (
-          <label className="block text-sm font-medium text-slate-700 md:col-span-2">
+          <label className="block text-sm font-medium text-fg md:col-span-2">
             Marca
             <Select name="brokerId" defaultValue="" className="mt-1">
               <option value="" disabled>
@@ -94,15 +94,15 @@ function CreatePost({ scopedBrokerId }: { scopedBrokerId: string | undefined }) 
             </Select>
           </label>
         )}
-        <label className="block text-sm font-medium text-slate-700 md:col-span-2">
+        <label className="block text-sm font-medium text-fg md:col-span-2">
           Tema
           <Input name="topic" required maxLength={200} className="mt-1" />
         </label>
-        <label className="block text-sm font-medium text-slate-700 md:col-span-2">
+        <label className="block text-sm font-medium text-fg md:col-span-2">
           Brief (lo que tú sabes; la IA puede afirmar lo que escribas aquí)
           <Textarea name="brief" rows={3} className="mt-1" />
         </label>
-        <label className="block text-sm font-medium text-slate-700">
+        <label className="block text-sm font-medium text-fg">
           Tipo
           <Select name="kind" defaultValue="text" className="mt-1">
             {POST_KINDS.map((kind) => (
@@ -112,7 +112,7 @@ function CreatePost({ scopedBrokerId }: { scopedBrokerId: string | undefined }) 
             ))}
           </Select>
         </label>
-        <label htmlFor={`${ids}-planned`} className="block text-sm font-medium text-slate-700">
+        <label htmlFor={`${ids}-planned`} className="block text-sm font-medium text-fg">
           Fecha planeada (Chile, opcional)
           <Input id={`${ids}-planned`} name="plannedAt" type="datetime-local" className="mt-1" />
         </label>

@@ -110,7 +110,7 @@ export function PublicationEvents({ publicationId }: { publicationId: string }) 
     );
   }
   return (
-    <ol aria-label="Bitácora" className="mt-2 space-y-1 text-xs text-slate-700">
+    <ol aria-label="Bitácora" className="mt-2 space-y-1 text-xs text-fg-muted">
       {events.data.map((event) => (
         <EventLine key={event.id} event={event} />
       ))}

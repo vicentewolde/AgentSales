@@ -64,7 +64,7 @@ function Channel({
   const headingId = useId();
   return (
     <section aria-labelledby={headingId} className="mt-3">
-      <h3 id={headingId} className="text-sm font-semibold text-slate-700">
+      <h3 id={headingId} className="text-sm font-semibold text-fg">
         {title}
       </h3>
       {accounts.length === 0 && (

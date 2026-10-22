@@ -196,7 +196,7 @@ export function MarketplacePanel({
           <p className="mt-2 whitespace-pre-line text-sm">{content.body}</p>
         </ApprovableText>
       )}
-      <h3 className="mt-4 text-sm font-semibold text-slate-700">Fotos ({photos.length})</h3>
+      <h3 className="mt-4 text-sm font-semibold text-fg">Fotos ({photos.length})</h3>
       <ul className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
         {photos.map((item, index) => (
           <li key={item.id}>

@@ -151,7 +151,7 @@ export function ListingActions({ id, status }: { id: string; status: ListingStat
       )}
       {change.error && <ErrorAlert error={change.error} />}
       {result !== null && (
-        <div role="status" className="mt-3 text-sm text-slate-700">
+        <div role="status" className="mt-3 text-sm text-fg-muted">
           <p>
             {DONE[result.choice.action]} Ahora: {LISTING_STATUS_TEXT[result.body.listing.status]}
             {result.body.listing.closeReason === null

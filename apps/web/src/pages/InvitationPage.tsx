@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from "react-router";
 import { ApiError } from "../api/client.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { Button } from "../components/ui/Button.js";
-import { Input } from "../components/ui/Field.js";
+import { Field, Input } from "../components/ui/Field.js";
 import { useAcceptInvitation } from "../queries/auth.js";
 import { AuthShell } from "./LoginPage.js";
 
@@ -54,10 +54,7 @@ export function InvitationPage() {
         <p className="text-sm text-fg-muted">
           Al menos {PASSWORD_MIN_LENGTH} caracteres. Con ella entras al panel y a la CLI.
         </p>
-        <div>
-          <label htmlFor={passwordId} className="block text-sm font-medium text-slate-700">
-            Contraseña
-          </label>
+        <Field label="Contraseña" htmlFor={passwordId}>
           <Input
             id={passwordId}
             type="password"
@@ -65,13 +62,9 @@ export function InvitationPage() {
             required
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            className="mt-1"
           />
-        </div>
-        <div>
-          <label htmlFor={repeatedId} className="block text-sm font-medium text-slate-700">
-            Repite la contraseña
-          </label>
+        </Field>
+        <Field label="Repite la contraseña" htmlFor={repeatedId}>
           <Input
             id={repeatedId}
             type="password"
@@ -79,9 +72,8 @@ export function InvitationPage() {
             required
             value={repeated}
             onChange={(event) => setRepeated(event.target.value)}
-            className="mt-1"
           />
-        </div>
+        </Field>
         {mismatch !== null && (
           <p role="alert" className="text-sm text-danger-700">
             {mismatch}

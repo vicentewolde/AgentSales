@@ -18,7 +18,7 @@ const BUTTON_VARIANT: Readonly<Record<ButtonVariant, string>> = {
     "border border-line-strong bg-surface text-fg shadow-xs not-disabled:hover:bg-slate-50 not-disabled:hover:border-slate-400",
   danger: "bg-danger-700 text-white shadow-xs not-disabled:hover:bg-danger-800",
   ghost: "text-fg-muted not-disabled:hover:bg-slate-100 not-disabled:hover:text-fg",
-  link: "inline text-brand-700 underline underline-offset-2 not-disabled:hover:text-brand-900",
+  link: "py-1 text-brand-700 underline underline-offset-2 not-disabled:hover:text-brand-900",
 };
 
 const BUTTON_SIZE: Readonly<Record<ButtonSize, string>> = {
@@ -27,8 +27,8 @@ const BUTTON_SIZE: Readonly<Record<ButtonSize, string>> = {
 };
 
 /**
- * Las clases de un botón (o de un enlace con forma de botón). `link` no lleva relleno ni tamaño de
- * letra: toma el del texto que lo rodea.
+ * Las clases de un botón (o de un enlace con forma de botón). `link` no lleva relleno lateral ni
+ * tamaño de letra (toma el del texto que lo rodea); su relleno vertical agranda el área del clic.
  */
 export const buttonClasses = (
   variant: ButtonVariant = "primary",
@@ -63,7 +63,7 @@ export const BADGE_BASE =
 
 /** Un campo de texto, una lista o un área de texto (sin el ancho: lo pone quien lo usa). */
 export const FIELD_CONTROL =
-  "block rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm text-fg shadow-xs placeholder:text-fg-subtle focus:border-brand-500 focus:outline-none focus:ring-3 focus:ring-brand-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-fg-subtle aria-invalid:border-danger-500";
+  "block rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm text-fg shadow-xs placeholder:text-fg-subtle focus:border-brand-500 focus:outline-none focus:ring-3 focus:ring-brand-300 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-fg-subtle aria-invalid:border-danger-500";
 
 /** Un selector de archivos: el botón con la forma de un botón secundario. */
 export const FILE_INPUT =

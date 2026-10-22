@@ -18,7 +18,7 @@ import { CopyCommand } from "./CopyCommand.js";
 function WaitText({ wait }: { wait: MarketplaceLoginWait }) {
   if (wait.outcome === "pending") {
     return (
-      <p className="mt-2 text-slate-700">
+      <p className="mt-2 text-fg-muted">
         Se abrirá una ventana de Chromium con Facebook: inicia sesión ahí a mano (también la
         verificación, si la pide). Espero hasta 10 min. Si cierras la ventana sin iniciar sesión,
         vuelve a intentarlo.

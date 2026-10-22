@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router";
 import { ApiError } from "../api/client.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { Button } from "../components/ui/Button.js";
-import { Input } from "../components/ui/Field.js";
+import { Field, Input } from "../components/ui/Field.js";
 import { LogoMark } from "../components/ui/icons.js";
 import { useLogin, useLoginTotp } from "../queries/auth.js";
 
@@ -100,19 +100,15 @@ export function LoginPage() {
             Tienes el doble factor activo: escribe el código de 6 dígitos de tu app de claves, o uno
             de tus códigos de recuperación.
           </p>
-          <div>
-            <label htmlFor={codeId} className="block text-sm font-medium text-slate-700">
-              Código
-            </label>
+          <Field label="Código" htmlFor={codeId}>
             <Input
               id={codeId}
               autoComplete="one-time-code"
               required
               value={totpCode}
               onChange={(event) => setTotpCode(event.target.value)}
-              className="mt-1"
             />
-          </div>
+          </Field>
           {errorView}
           <Button type="submit" disabled={loginTotp.isPending} className="w-full">
             {loginTotp.isPending ? "Revisando…" : "Verificar"}
@@ -135,10 +131,7 @@ export function LoginPage() {
   return (
     <AuthShell title="Entrar">
       <form onSubmit={submit} className="space-y-4">
-        <div>
-          <label htmlFor={emailId} className="block text-sm font-medium text-slate-700">
-            Correo
-          </label>
+        <Field label="Correo" htmlFor={emailId}>
           <Input
             id={emailId}
             type="email"
@@ -146,13 +139,9 @@ export function LoginPage() {
             required
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            className="mt-1"
           />
-        </div>
-        <div>
-          <label htmlFor={passwordId} className="block text-sm font-medium text-slate-700">
-            Contraseña
-          </label>
+        </Field>
+        <Field label="Contraseña" htmlFor={passwordId}>
           <Input
             id={passwordId}
             type="password"
@@ -160,9 +149,8 @@ export function LoginPage() {
             required
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            className="mt-1"
           />
-        </div>
+        </Field>
         {errorView}
         <Button type="submit" disabled={login.isPending} className="w-full">
           {login.isPending ? "Entrando…" : "Entrar"}

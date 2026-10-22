@@ -106,7 +106,7 @@ function AgendaEntry({ item }: { item: AgendaItem }) {
         </span>
       )}
       {item.code !== null && <span className="block text-danger-700">{item.code}</span>}
-      {item.advice !== null && <span className="block text-slate-700">{item.advice}</span>}
+      {item.advice !== null && <span className="block text-fg-muted">{item.advice}</span>}
       {item.action !== "none" && (
         <span className="block text-xs text-fg-muted">{ACTION_TEXT[item.action]}</span>
       )}
@@ -125,7 +125,7 @@ export function Agenda({ items }: { items: readonly AgendaItem[] }) {
     <div className="mt-2 space-y-4">
       {groups.map((group) => (
         <section key={group.kind} aria-label={AGENDA_KIND_TEXT[group.kind]}>
-          <h3 className="text-sm font-semibold text-slate-700">
+          <h3 className="text-sm font-semibold text-fg">
             {AGENDA_KIND_TEXT[group.kind]} ({group.items.length})
           </h3>
           <ul className="mt-1 space-y-2">

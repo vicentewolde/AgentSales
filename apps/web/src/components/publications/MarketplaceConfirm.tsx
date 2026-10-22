@@ -45,14 +45,14 @@ export function MarketplaceConfirm({
     <div className="mt-2 space-y-2 rounded-md border border-warning-200 bg-warning-50 p-2 text-sm">
       <p className="font-medium text-warning-800">{capitalize(manualWaitingText(manual))}</p>
       {manual !== null && (
-        <p className="text-slate-700">
+        <p className="text-fg-muted">
           {manual.byHand ? "Precio para publicar" : "Precio en el formulario"}:{" "}
           {marketplacePriceText(manual)}
         </p>
       )}
       {live ? (
         <div>
-          <label htmlFor={inputId} className="block text-xs text-slate-700">
+          <label htmlFor={inputId} className="block text-xs text-fg-muted">
             Enlace del aviso publicado (cópialo de la barra del navegador)
           </label>
           <Input

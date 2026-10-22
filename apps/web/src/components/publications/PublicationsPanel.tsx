@@ -124,7 +124,7 @@ export function PublicationsPanel({
 
   return (
     <div className="mt-6">
-      <h3 className="text-sm font-semibold text-slate-700">Publicaciones</h3>
+      <h3 className="text-sm font-semibold text-fg">Publicaciones</h3>
       {content?.status !== "approved" && publications.length === 0 && (
         <p className="mt-1 text-sm text-fg-subtle">Aprueba el texto para poder publicarlo.</p>
       )}
@@ -188,7 +188,7 @@ export function PublicationsPanel({
             <p
               key={`${row.listingId}-${row.platform ?? "todo"}`}
               role="status"
-              className={`mt-2 text-sm ${row.outcome === "scheduled" ? "text-slate-700" : "text-warning-800"}`}
+              className={`mt-2 text-sm ${row.outcome === "scheduled" ? "text-fg-muted" : "text-warning-800"}`}
             >
               {row.outcome === "scheduled"
                 ? `Programado para el ${row.at === undefined ? "" : formatChileTime(row.at)} (hora de Chile).`
@@ -240,7 +240,7 @@ export function PublicationsPanel({
         </>
       )}
       {backToReady && (
-        <p role="status" className="mt-2 text-sm text-slate-700">
+        <p role="status" className="mt-2 text-sm text-fg-muted">
           Era la última publicada en vivo: la propiedad volvió a lista.
         </p>
       )}

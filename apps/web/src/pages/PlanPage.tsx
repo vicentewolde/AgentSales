@@ -68,7 +68,7 @@ function NetworkChoices({
   legend: string;
 }) {
   return (
-    <fieldset className="text-sm text-slate-700">
+    <fieldset className="text-sm text-fg-muted">
       <legend className="font-medium">{legend}</legend>
       <div className="mt-1 flex flex-wrap gap-3">
         {options.map((platform) => (
@@ -131,7 +131,7 @@ function RequestPlan({
         gasta IA de la marca, aunque descartes todo.
       </p>
       <form onSubmit={submit} className="mt-3 grid gap-3 md:grid-cols-2">
-        <label htmlFor={`${ids}-days`} className="block text-sm font-medium text-slate-700">
+        <label htmlFor={`${ids}-days`} className="block text-sm font-medium text-fg">
           Días
           <Input
             id={`${ids}-days`}
@@ -143,7 +143,7 @@ function RequestPlan({
             className="mt-1"
           />
         </label>
-        <label htmlFor={`${ids}-count`} className="block text-sm font-medium text-slate-700">
+        <label htmlFor={`${ids}-count`} className="block text-sm font-medium text-fg">
           Cuántas ideas (vacío: según la cadencia)
           <Input
             id={`${ids}-count`}
@@ -189,7 +189,7 @@ function PlanStatus({ plan }: { plan: PlanRunView }) {
   }
   if (plan.status === "succeeded") return null;
   return (
-    <p role="status" className="mt-3 text-sm text-slate-700">
+    <p role="status" className="mt-3 text-sm text-fg-muted">
       {plan.status === "queued"
         ? "Plan en cola: esperando al worker…"
         : "La IA está proponiendo ideas…"}
@@ -246,7 +246,7 @@ function IdeaEditForm({
   );
   return (
     <form aria-label={`Editar «${idea.topic}»`} onSubmit={submit} className="mt-3 grid gap-3">
-      <label htmlFor={`${ids}-brief`} className="block text-sm font-medium text-slate-700">
+      <label htmlFor={`${ids}-brief`} className="block text-sm font-medium text-fg">
         Brief (lo que tú sabes; la IA puede afirmar lo que escribas aquí)
         <Textarea
           id={`${ids}-brief`}
@@ -256,7 +256,7 @@ function IdeaEditForm({
           className="mt-1"
         />
       </label>
-      <label htmlFor={`${ids}-planned`} className="block text-sm font-medium text-slate-700">
+      <label htmlFor={`${ids}-planned`} className="block text-sm font-medium text-fg">
         Fecha y hora (Chile)
         <Input
           id={`${ids}-planned`}
@@ -325,7 +325,7 @@ function IdeaCard({
       className={`rounded-xl border border-line bg-surface p-3 ${archived ? "opacity-60" : ""}`}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className="text-sm font-medium text-slate-700">
+        <span className="text-sm font-medium text-fg">
           {idea.plannedAt === null ? "sin fecha" : formatChileTime(idea.plannedAt)}
         </span>
         {idea.status === "idea" ? (
@@ -351,7 +351,7 @@ function IdeaCard({
         </p>
       )}
       {idea.brief !== null && (
-        <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
+        <p className="mt-1 whitespace-pre-wrap text-sm text-fg-muted">
           <span className="font-medium">Brief: </span>
           {idea.brief}
         </p>
@@ -362,7 +362,7 @@ function IdeaCard({
         </p>
       ))}
       {(idea.status === "draft" || idea.status === "ready") && (
-        <p role="status" className="mt-1 text-sm text-slate-700">
+        <p role="status" className="mt-1 text-sm text-fg-muted">
           {textsState(idea)}
         </p>
       )}
@@ -504,7 +504,7 @@ function PlanView({ detail, brandId }: { detail: PlanDetailResponse; brandId: st
             </div>
           ))}
           {report !== null && report.discarded.length > 0 && (
-            <details className="mt-4 text-sm text-slate-700">
+            <details className="mt-4 text-sm text-fg-muted">
               <summary>Descartadas por las revisiones ({report.discarded.length})</summary>
               <ul className="mt-2 list-disc pl-5">
                 {report.discarded.map((item, index) => (
@@ -566,7 +566,7 @@ export function PlanPage() {
         }
       />
       {role === "admin" && brandId === undefined && (
-        <p className="mt-4 text-slate-700">
+        <p className="mt-4 text-fg-muted">
           Elige una marca en el selector de arriba para pedir o ver su plan.
         </p>
       )}

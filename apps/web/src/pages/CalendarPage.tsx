@@ -207,7 +207,7 @@ function MovePanel({
       className="mt-4 rounded-xl border border-line bg-surface p-4 shadow-xs"
     >
       <h2 className="text-base font-semibold">Mover la fecha</h2>
-      <p className="mt-1 text-sm text-slate-700">
+      <p className="mt-1 text-sm text-fg-muted">
         {PLATFORM_TEXT[entry.platform]} {publicationFormatText(entry.platform, entry.format)} de{" "}
         <EntryTitle entry={entry} />, programada para el {formatChileTime(entry.at)} (hora de
         Chile).

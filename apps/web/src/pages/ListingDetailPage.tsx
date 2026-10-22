@@ -187,7 +187,7 @@ export function ListingDetailPage() {
       <div className="mt-3">
         {detail.isPending && <p className="text-fg-muted">Cargando la propiedad…</p>}
         {notFound && (
-          <p role="alert" className="text-slate-700">
+          <p role="alert" className="text-fg-muted">
             Esta propiedad no existe.
           </p>
         )}

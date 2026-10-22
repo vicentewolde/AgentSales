@@ -79,7 +79,7 @@ function ScheduleState({ publication }: { publication: ListingPublicationView })
     );
   }
   return (
-    <p className="mt-1 text-sm text-slate-700">
+    <p className="mt-1 text-sm text-fg-muted">
       Programada para el {at} (hora de Chile)
       {publication.platform === "fb_marketplace" ? ": a esa hora te toca publicarla a ti" : ""}.
     </p>
@@ -159,7 +159,7 @@ function RemoteState({ publication }: { publication: ListingPublicationView }) {
   const remote = publication.remoteState;
   if (remote === null) return null;
   return (
-    <div className="mt-1 text-sm text-slate-700">
+    <div className="mt-1 text-sm text-fg-muted">
       <p>
         En Mercado Libre: <span className="font-medium">{remoteStatusText(remote)}</span>
         {remote.stopTime !== null && <> · vence el {dateText(remote.stopTime)}</>}
@@ -357,7 +357,7 @@ export function PublicationItem({
         <span className="text-xs text-fg-subtle">{publicationModeText(publication.dryRun)}</span>
       </div>
       {/* Siempre montada: los lectores de pantalla anuncian los cambios de una región que ya estaba. */}
-      <p aria-live="polite" className="mt-1 text-sm text-slate-700">
+      <p aria-live="polite" className="mt-1 text-sm text-fg-muted">
         {isPublishing(publication.status) ? "Publicando…" : ""}
       </p>
       {link !== null && (
@@ -393,7 +393,7 @@ export function PublicationItem({
         <>
           <p className="mt-1 text-sm text-danger-700">{publication.lastError.message}</p>
           {publication.errorAdvice !== null && (
-            <p className="mt-1 text-sm text-slate-700">Qué hacer: {publication.errorAdvice}</p>
+            <p className="mt-1 text-sm text-fg-muted">Qué hacer: {publication.errorAdvice}</p>
           )}
         </>
       )}
@@ -727,7 +727,7 @@ export function PublicationItem({
         </fieldset>
       )}
       {notice !== null && (
-        <p role="status" className="mt-2 text-sm text-slate-700">
+        <p role="status" className="mt-2 text-sm text-fg-muted">
           {notice}
         </p>
       )}

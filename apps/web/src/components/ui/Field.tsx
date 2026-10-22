@@ -1,9 +1,23 @@
-import type { ComponentProps, ReactNode } from "react";
+import {
+  type ComponentProps,
+  cloneElement,
+  isValidElement,
+  type ReactElement,
+  type ReactNode,
+  useId,
+} from "react";
 import { cx, FIELD_CONTROL, FIELD_LABEL } from "./styles.js";
+
+type ControlProps = {
+  "aria-describedby"?: string;
+  "aria-invalid"?: ComponentProps<"input">["aria-invalid"];
+};
 
 /**
  * Un campo con su etiqueta, una ayuda y un error. Sin `htmlFor`, la etiqueta envuelve al control
- * (asociación implícita); con `htmlFor`, van uno sobre el otro.
+ * (asociación implícita); con `htmlFor`, van uno sobre el otro. La ayuda y el error quedan unidos
+ * al control (`aria-describedby`) y, con error, el control queda marcado (`aria-invalid`): por eso
+ * `children` es un solo control.
  */
 export function Field({
   label,
@@ -18,15 +32,34 @@ export function Field({
   hint?: ReactNode;
   error?: ReactNode;
   className?: string;
-  children: ReactNode;
+  children: ReactElement<ControlProps>;
 }) {
+  const id = useId();
+  const hasHint = hint !== undefined && hint !== null && hint !== false;
+  const hasError = error !== undefined && error !== null && error !== false;
+  const hintId = `${id}-ayuda`;
+  const errorId = `${id}-error`;
+  const own = isValidElement(children) ? children.props["aria-describedby"] : undefined;
+  const describedBy =
+    [own, hasHint ? hintId : undefined, hasError ? errorId : undefined].filter(Boolean).join(" ") ||
+    undefined;
+  const control = isValidElement(children)
+    ? cloneElement(children, {
+        ...(describedBy === undefined ? {} : { "aria-describedby": describedBy }),
+        ...(hasError ? { "aria-invalid": true } : {}),
+      })
+    : children;
   const notes = (
     <>
-      {hint !== undefined && (
-        <span className="mt-1 block text-xs font-normal text-fg-subtle">{hint}</span>
+      {hasHint && (
+        <span id={hintId} className="mt-1 block text-xs font-normal text-fg-subtle">
+          {hint}
+        </span>
       )}
-      {error !== undefined && error !== null && error !== false && (
-        <span className="mt-1 block text-xs font-medium text-danger-700">{error}</span>
+      {hasError && (
+        <span id={errorId} className="mt-1 block text-xs font-medium text-danger-700">
+          {error}
+        </span>
       )}
     </>
   );
@@ -35,7 +68,7 @@ export function Field({
       // biome-ignore lint/a11y/noLabelWithoutControl: el control llega en `children`, dentro de la etiqueta.
       <label className={cx(FIELD_LABEL, className)}>
         {label}
-        <span className="mt-1.5 block font-normal">{children}</span>
+        <span className="mt-1.5 block font-normal">{control}</span>
         {notes}
       </label>
     );
@@ -45,7 +78,7 @@ export function Field({
       <label htmlFor={htmlFor} className={FIELD_LABEL}>
         {label}
       </label>
-      <div className="mt-1.5">{children}</div>
+      <div className="mt-1.5">{control}</div>
       {notes}
     </div>
   );

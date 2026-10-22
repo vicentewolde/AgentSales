@@ -215,7 +215,7 @@ function ProfileForm({ brokerId, profile }: { brokerId: string; profile: Editori
   return (
     <form aria-label="Perfil editorial" className="mt-2 space-y-5" onSubmit={submit}>
       <fieldset>
-        <legend className="text-sm font-medium text-slate-700">Idiomas</legend>
+        <legend className="text-sm font-medium text-fg">Idiomas</legend>
         <div className="mt-1 flex flex-wrap items-center gap-3 text-sm">
           <label htmlFor={`${ids}-primary`}>Principal</label>
           <Select
@@ -253,7 +253,7 @@ function ProfileForm({ brokerId, profile }: { brokerId: string; profile: Editori
       </fieldset>
 
       <div>
-        <label className="block text-sm font-medium text-slate-700">
+        <label className="block text-sm font-medium text-fg">
           Público
           <Textarea
             value={draft.audience}
@@ -267,7 +267,7 @@ function ProfileForm({ brokerId, profile }: { brokerId: string; profile: Editori
       </div>
 
       <fieldset>
-        <legend className="text-sm font-medium text-slate-700">Líneas de contenido</legend>
+        <legend className="text-sm font-medium text-fg">Líneas de contenido</legend>
         <p className="text-xs text-fg-subtle">
           La clave va en minúsculas y con guiones (la usa cada post); el peso reparte las ideas del
           plan.
@@ -341,7 +341,7 @@ function ProfileForm({ brokerId, profile }: { brokerId: string; profile: Editori
       </fieldset>
 
       <div>
-        <label className="block text-sm font-medium text-slate-700">
+        <label className="block text-sm font-medium text-fg">
           Hechos que la IA puede afirmar (uno por línea)
           <Textarea
             value={draft.facts}
@@ -357,7 +357,7 @@ function ProfileForm({ brokerId, profile }: { brokerId: string; profile: Editori
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-slate-700">
+        <label className="block text-sm font-medium text-fg">
           Cosas que evitar (una por línea)
           <Textarea
             value={draft.avoid}
@@ -370,9 +370,7 @@ function ProfileForm({ brokerId, profile }: { brokerId: string; profile: Editori
       </div>
 
       <fieldset>
-        <legend className="text-sm font-medium text-slate-700">
-          Cadencia por red (hora de Chile)
-        </legend>
+        <legend className="text-sm font-medium text-fg">Cadencia por red (hora de Chile)</legend>
         <ul className="mt-2 space-y-2">
           {POST_PLATFORMS.map((platform) => {
             const row = draft.cadence[platform];
@@ -460,7 +458,7 @@ function ProfileForm({ brokerId, profile }: { brokerId: string; profile: Editori
       </fieldset>
 
       <div>
-        <label className="block text-sm font-medium text-slate-700">
+        <label className="block text-sm font-medium text-fg">
           Hashtags de la marca
           <Input
             value={draft.hashtags}
