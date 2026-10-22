@@ -1,13 +1,12 @@
 import { z } from "zod";
 import type { Broker } from "../broker.js";
-import { chileDateOf, chileDateStart, parseChileTime } from "../chile-time.js";
+import { chileDateOf, chileDateStart, formatChileTime } from "../chile-time.js";
 import { describeIssues, type Validated } from "../content/generate.js";
-import {
-  EDITORIAL_WEEKDAYS,
-  type EditorialCadence,
-  type EditorialPillar,
-  type EditorialProfileView,
-  type EditorialWeekday,
+import type {
+  EditorialCadence,
+  EditorialPillar,
+  EditorialProfileView,
+  EditorialWeekday,
 } from "../editorial-profile.js";
 import {
   LLM_PROVIDERS,
@@ -21,10 +20,27 @@ import { foldText } from "../listing-validator/normalizers.js";
 import type { Post } from "../post.js";
 import { hasMassMention, unsupportedFacts } from "./check.js";
 import { kindProblem } from "./networks.js";
+import {
+  addDays,
+  type PlanCadence,
+  type PlannedSlot,
+  type PlanSlotBook,
+  planSlotBook,
+  weekdayOf,
+  weekOf,
+} from "./plan-slots.js";
 
-// El plan de ideas de la IA (spec F9 §4.9, ADR-0030): el período, lo que ve la IA, la forma de su
-// respuesta, las verificaciones de cada idea, el reporte, qué hacer si falla y cómo se agrupan sus
-// ideas por semana. Funciones puras: las usan `requestPlanRun` y `runPlan` (use-cases), la
+export {
+  addDays,
+  type PlanCadence,
+  type PlannedSlot,
+  weekdayOf,
+  weekOf,
+} from "./plan-slots.js";
+
+// El plan de ideas de la IA (spec F9 §4.9, ADR-0030; desde F9.5, ADR-0034): el período, lo que ve
+// la IA, la forma de su respuesta, las verificaciones de cada idea y su ranura (`plan-slots.ts`), el
+// reporte, qué hacer si falla y cómo se agrupan sus ideas por semana. Funciones puras: las usan `requestPlanRun` y `runPlan` (use-cases), la
 // evaluación de T22 y, desde T21, la API, la CLI y el panel. Una idea que no pasa se **descarta** y
 // queda en el reporte; no tumba el plan. Los textos del estado de un plan están en `labels.ts`.
 
@@ -35,8 +51,11 @@ export const PLAN_MAX_DAYS = 31;
 export const PLAN_MAX_IDEAS = 20;
 /** Un período empieza, como mucho, a 60 días de hoy (como programar, F6). */
 export const PLAN_MAX_START_AHEAD_DAYS = 60;
-/** Posts por semana que se suponen si ninguna red pedida tiene cadencia. */
-export const PLAN_FALLBACK_PER_WEEK = 3;
+/**
+ * Posts por semana que se suponen si ninguna red pedida tiene cadencia: los de la ranura por defecto
+ * (`PLAN_DEFAULT_SLOT`, D7 de F9.5), así el plan no pide ideas que no caben (antes, 3).
+ */
+export const PLAN_FALLBACK_PER_WEEK = 1;
 /**
  * Los temas que no se repiten (ADR-0030, punto 5): los de los posts de los últimos 60 días y las
  * ideas descartadas en ese mismo plazo (decisión del operador, 2026-10-20: después, un tema vuelve
@@ -60,7 +79,6 @@ export const PLAN_IDEA_LIMITS = {
 } as const;
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
-const HOUR = /^([01]\d|2[0-3]):[0-5]\d$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const invalid = (message: string, details: Record<string, unknown> = {}) =>
@@ -75,23 +93,6 @@ function isDay(day: string): boolean {
   const date = new Date(Date.UTC(y, m - 1, d));
   return date.toISOString().slice(0, 10) === day;
 }
-
-/** El día de Chile `n` días después (o antes, con `n` negativo). */
-export function addDays(day: string, n: number): string {
-  const [y, m, d] = day.split("-").map(Number) as [number, number, number];
-  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
-}
-
-/** El día de la semana de un día de Chile (`mon` … `sun`). */
-export function weekdayOf(day: string): EditorialWeekday {
-  const [y, m, d] = day.split("-").map(Number) as [number, number, number];
-  // `getUTCDay`: 0 es domingo; `EDITORIAL_WEEKDAYS` empieza el lunes.
-  const index = (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7;
-  return EDITORIAL_WEEKDAYS[index] as EditorialWeekday;
-}
-
-/** El lunes de la semana (de lunes a domingo, como en Chile) de un día. */
-export const weekOf = (day: string) => addDays(day, -EDITORIAL_WEEKDAYS.indexOf(weekdayOf(day)));
 
 // --- Lo que se pide ---------------------------------------------------------------------------
 
@@ -154,8 +155,8 @@ export function planRunPeriod(run: { periodStart: Date; periodEnd: Date }): Plan
 
 /**
  * Cuántas ideas, si no se dice: los posts por semana de la red pedida que más publica (una idea
- * puede ir a varias redes) por las semanas del período, o `PLAN_FALLBACK_PER_WEEK` si ninguna
- * tiene cadencia; entre 1 y `PLAN_MAX_IDEAS`.
+ * puede ir a varias redes) por las semanas del período, o `PLAN_FALLBACK_PER_WEEK` (la ranura por
+ * defecto: 1) si ninguna tiene cadencia; entre 1 y `PLAN_MAX_IDEAS`.
  */
 export function defaultPlanCount(
   cadence: EditorialCadence,
@@ -184,6 +185,61 @@ export const topicKey = (topic: string): string =>
   foldText(topic)
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
+
+/**
+ * Desde cuánto se parecen dos temas del mismo plan (palabras con peso en común sobre todas): la
+ * segunda idea se descarta con `IDEA_TOO_SIMILAR` (D7 de F9.5). `eval:social` usa el mismo umbral
+ * para avisar las parecidas al historial.
+ */
+export const PLAN_SIMILAR_TOPIC_THRESHOLD = 0.6;
+
+/** Palabras de 4 letras o más que no distinguen un tema (plegadas: sin tildes ni mayúsculas). */
+const TOPIC_STOPWORDS = new Set([
+  "como",
+  "para",
+  "esta",
+  "este",
+  "estos",
+  "estas",
+  "sobre",
+  "desde",
+  "cuando",
+  "donde",
+  "porque",
+  "nuestro",
+  "nuestra",
+  "nuestros",
+  "nuestras",
+  "with",
+  "that",
+  "this",
+  "from",
+  "what",
+  "your",
+  "about",
+]);
+
+const topicWords = (topic: string): Set<string> =>
+  new Set(
+    topicKey(topic)
+      .toLowerCase()
+      .split(" ")
+      .filter((word) => word.length >= 4 && !TOPIC_STOPWORDS.has(word)),
+  );
+
+/**
+ * Cuánto se parecen dos temas (de 0 a 1): las palabras con peso (4 letras o más, sin "cómo",
+ * "para"…) en común sobre todas las de los dos. Desde F9.5 vive en core: la usan el plan
+ * (`IDEA_TOO_SIMILAR`) y `eval:social`.
+ */
+export function topicSimilarity(a: string, b: string): number {
+  const left = topicWords(a);
+  const right = topicWords(b);
+  if (left.size === 0 || right.size === 0) return 0;
+  let shared = 0;
+  for (const word of left) if (right.has(word)) shared += 1;
+  return shared / (left.size + right.size - shared);
+}
 
 /** Los temas que el plan no repite (ADR-0030, punto 5). */
 export type PlanHistory = {
@@ -234,9 +290,6 @@ export function planHistory(
   return { recentTopics: recent, discardedTopics: discarded };
 }
 
-/** Un post que ya ocupa un día del período en unas redes (cuenta para los posts por semana). */
-export type PlannedSlot = { date: string; platforms: PostPlatform[] };
-
 /**
  * Las semanas completas (de lunes a domingo, hora de Chile) que toca un período: desde el lunes de
  * su primer día hasta el fin del domingo de su último día, `[start, end)`. Lo planificado ahí ocupa
@@ -255,9 +308,9 @@ export function planWeeks(period: Pick<PlanPeriod, "firstDay" | "lastDay">): {
 /**
  * Los posts de la marca que ya están planificados en las semanas del período (`planWeeks`: del
  * lunes de la primera al domingo de la última, así una semana parcial del borde no pasa su tope):
- * ideas sin decidir, borradores y listos con `planned_at` (no los archivados), con sus redes entre
- * las pedidas; un post sin redes propias (`platforms = null`) cuenta en todas. Ocupan su cupo de la
- * semana en la cadencia.
+ * ideas sin decidir, borradores y listos con `planned_at` (no los archivados), con su día y hora de
+ * Chile y sus redes entre las pedidas; un post sin redes propias (`platforms = null`) cuenta en
+ * todas. Ocupan su cupo de la semana y del día en la cadencia, y su ranura (D7 de F9.5).
  */
 export function plannedSlots(
   posts: readonly Pick<Post, "status" | "plannedAt" | "platforms">[],
@@ -275,6 +328,7 @@ export function plannedSlots(
     )
     .map((post) => ({
       date: chileDateOf(post.plannedAt as Date),
+      time: formatChileTime(post.plannedAt as Date).slice(11),
       platforms: requested.filter(
         (platform) => post.platforms === null || post.platforms.includes(platform),
       ),
@@ -283,13 +337,12 @@ export function plannedSlots(
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
-/** La cadencia de una red tal como la ve la IA (las horas de espacio entre idiomas no aplican). */
-export type PlanCadence = { postsPerWeek: number; days: EditorialWeekday[]; hours: string[] };
-
 /**
- * Lo único que ve la IA para proponer un plan (ADR-0030, punto 1): el perfil editorial de **su**
- * marca, el tono, el período con sus días, las redes pedidas con su cadencia y los temas que no
- * repite. Nunca `internal_notes`, briefs de posts ni nada de otra marca.
+ * Lo que se usa para proponer y agendar un plan (ADR-0030, punto 1; ADR-0034): el perfil editorial
+ * de **su** marca, el tono, el período con sus días, las redes pedidas con su cadencia, los temas
+ * que no repite y lo ya planificado. La IA ve solo una parte (`planBriefData`: sin los días, las
+ * horas ni lo planificado, porque desde F9.5 las fechas las pone el código). Nunca
+ * `internal_notes`, briefs de posts ni nada de otra marca.
  */
 export type PlanBrief = {
   brandName: string;
@@ -302,7 +355,7 @@ export type PlanBrief = {
   avoid: string[];
   firstDay: string;
   lastDay: string;
-  /** Cada día del período con su día de la semana: la IA no calcula calendarios. */
+  /** Cada día del período con su día de la semana (las ranuras de la cadencia salen de aquí). */
   days: { date: string; weekday: EditorialWeekday }[];
   platforms: PostPlatform[];
   /** Solo de las redes pedidas que tienen cadencia. */
@@ -310,7 +363,7 @@ export type PlanBrief = {
   count: number;
   recentTopics: string[];
   discardedTopics: string[];
-  /** Lo que ya está planificado en el período: ocupa su cupo de la semana. */
+  /** Lo que ya está planificado en el período: ocupa su cupo de la semana y su ranura. */
   planned: PlannedSlot[];
 };
 
@@ -361,7 +414,7 @@ export function buildPlanBrief(params: {
 
 // --- Lo que responde la IA --------------------------------------------------------------------
 
-/** Una idea como la entrega la IA; con `limits`, con topes (la de validar). */
+/** Una idea como la entrega la IA; con `limits`, con topes (la de validar). Sin fecha ni hora. */
 function ideaShape(limits: boolean) {
   const text = (max: number) => (limits ? z.string().trim().min(1).max(max) : z.string());
   return z.strictObject({
@@ -371,18 +424,25 @@ function ideaShape(limits: boolean) {
       ? z.array(z.enum(POST_PLATFORMS)).min(1).max(POST_PLATFORMS.length)
       : z.array(z.enum(POST_PLATFORMS)),
     formato: z.enum(POST_KINDS),
-    fecha: limits ? z.string().regex(DAY) : z.string(),
-    hora: limits ? z.string().regex(HOUR) : z.string(),
     porque: text(PLAN_IDEA_LIMITS.rationale),
   });
 }
 
 /**
- * Una idea de la IA (ADR-0030, punto 2): tema, línea (`pillars[].key` o `null`), redes, formato
- * (`posts.kind`), fecha y hora sugeridas (hora de Chile) y el porqué. Esquema estricto.
+ * Una idea de la IA (ADR-0030, punto 2, modificado por ADR-0034): tema, línea (`pillars[].key` o
+ * `null`), redes preferidas, formato (`posts.kind`) y el porqué. **Sin fecha ni hora**: las pone el
+ * código (`planSlotBook`). Esquema estricto.
  */
 export const planIdeaSchema = ideaShape(true);
 export type PlanIdea = z.infer<typeof planIdeaSchema>;
+
+/**
+ * Lo que se valida de cada idea: `planIdeaSchema`, tolerando la `fecha` y la `hora` que la IA mande
+ * igual (las del prompt de F9), que se ignoran.
+ */
+const receivedIdeaSchema = planIdeaSchema
+  .extend({ fecha: z.unknown().optional(), hora: z.unknown().optional() })
+  .transform(({ fecha: _fecha, hora: _hora, ...idea }): PlanIdea => idea);
 
 /**
  * El sobre de la respuesta: las ideas se validan **una por una** (`checkPlanIdeas`), así una idea
@@ -408,9 +468,14 @@ export function validatePlanResponse(data: unknown): Validated<PlanResponse> {
     : { success: false, issues: describeIssues(parsed.error) };
 }
 
-// --- Las verificaciones -----------------------------------------------------------------------
+// --- Las verificaciones y la ranura -----------------------------------------------------------
 
-/** Por qué se descartó una idea (o se le quitó una red), en `plan_runs.report`. */
+/**
+ * Por qué se descartó una idea (o se le quitó una red), en `plan_runs.report`. **Solo crece**: los
+ * reportes guardados se leen con `z.enum` (ADR-0034, punto 4). Desde F9.5 la fecha la pone el
+ * código, así que `DATE_INVALID`, `OUT_OF_PERIOD`, `IN_THE_PAST` y `WEEK_FULL` ya no salen (quedan
+ * por los reportes de antes), y `OUT_OF_CADENCE` solo sale con 0 posts por semana.
+ */
 export const PLAN_DISCARD_CODES = [
   "FORMAT_INVALID",
   "DATE_INVALID",
@@ -427,6 +492,9 @@ export const PLAN_DISCARD_CODES = [
   "OUT_OF_CADENCE",
   "WEEK_FULL",
   "OVER_COUNT",
+  // F9.5 (ADR-0034): al final, sin quitar los de antes.
+  "IDEA_TOO_SIMILAR",
+  "NO_SLOT",
 ] as const;
 export type PlanDiscardCode = (typeof PLAN_DISCARD_CODES)[number];
 
@@ -436,6 +504,7 @@ export type CheckedPlanIdea = {
   pillar: string | null;
   platforms: PostPlatform[];
   kind: PostKind;
+  /** La ranura que le asignó el código (D7 de F9.5). */
   plannedAt: Date;
   rationale: string;
   /** Las redes que se le quitaron y por qué (la idea siguió con las demás). */
@@ -463,55 +532,60 @@ const WEEKDAY_TEXT: Readonly<Record<EditorialWeekday, string>> = {
   sun: "domingo",
 };
 
-/** Por qué una red no sirve para una idea, o `null` si sirve (sin contar la semana llena). */
+/** `Instagram`, `Instagram y X`, `Instagram, X y LinkedIn`. */
+function namesText(platforms: readonly PostPlatform[]): string {
+  const names = platforms.map((platform) => NAME[platform]);
+  return names.length <= 1
+    ? (names[0] ?? "")
+    : `${names.slice(0, -1).join(", ")} y ${names.at(-1)}`;
+}
+
+/** `jueves 22-10 a las 09:00`. */
+const slotText = (date: string, time: string) =>
+  `${WEEKDAY_TEXT[weekdayOf(date)]} ${date.slice(8, 10)}-${date.slice(5, 7)} a las ${time}`;
+
+/**
+ * Por qué una red no puede ser candidata de una idea (D7, paso 1), o `null` si puede: que se haya
+ * pedido, que admita el formato (`kindProblem`) y que su cadencia no sea de 0 posts por semana.
+ */
 function platformProblem(
   platform: PostPlatform,
-  idea: PlanIdea,
-  brief: Pick<PlanBrief, "platforms" | "cadence">,
+  kind: PostKind,
+  brief: Pick<PlanBrief, "platforms">,
+  book: PlanSlotBook,
 ): { code: PlanDiscardCode; message: string } | null {
   const name = NAME[platform];
   if (!brief.platforms.includes(platform)) {
     return { code: "PLATFORM_NOT_REQUESTED", message: `${name} no estaba entre las redes pedidas` };
   }
-  const unsupported = kindProblem(platform, idea.formato);
+  const unsupported = kindProblem(platform, kind);
   if (unsupported !== null) return { code: "FORMAT_NOT_SUPPORTED", message: unsupported };
-  const cadence = brief.cadence[platform];
-  if (cadence === undefined) return null;
-  if (cadence.postsPerWeek === 0) {
+  if (book.rules(platform).postsPerWeek === 0) {
     return { code: "OUT_OF_CADENCE", message: `La cadencia de ${name} es de 0 posts por semana` };
-  }
-  const weekday = weekdayOf(idea.fecha);
-  if (cadence.days.length > 0 && !cadence.days.includes(weekday)) {
-    return {
-      code: "OUT_OF_CADENCE",
-      message: `${name} publica otros días (no el ${WEEKDAY_TEXT[weekday]})`,
-    };
-  }
-  if (cadence.hours.length > 0 && !cadence.hours.includes(idea.hora)) {
-    return {
-      code: "OUT_OF_CADENCE",
-      message: `${name} publica a otras horas (${cadence.hours.join(", ")}), no a las ${idea.hora}`,
-    };
   }
   return null;
 }
 
 /**
- * Las verificaciones de las ideas de un plan (spec F9 §4.9, ADR-0030), en el orden en que llegan:
- * 1. la forma (`planIdeaSchema`) → `FORMAT_INVALID`;
- * 2. la fecha y la hora (de Chile) existen → `DATE_INVALID`; dentro del período → `OUT_OF_PERIOD`;
- *    no antes de `now` → `IN_THE_PAST`;
- * 3. la línea existe en el perfil (o `null`) → `PILLAR_UNKNOWN`;
- * 4. el tema y el porqué: sin `@everyone`/`@here` → `MASS_MENTION`; sin menciones, enlaces, cifras
+ * Las verificaciones de las ideas de un plan y su ranura (spec F9 §4.9, ADR-0030; spec F9.5 D7,
+ * ADR-0034), **en el orden en que llegan** (el de preferencia de la IA):
+ * 1. la forma (`planIdeaSchema`; una `fecha` y una `hora` de la IA se ignoran) → `FORMAT_INVALID`;
+ * 2. la línea existe en el perfil (o `null`) → `PILLAR_UNKNOWN`;
+ * 3. el tema y el porqué: sin `@everyone`/`@here` → `MASS_MENTION`; sin menciones, enlaces, cifras
  *    ni nombres que no estén en el perfil (`unsupportedFacts`, la regla de `checkPostContent`) →
  *    `FACT_NOT_IN_PROFILE`;
- * 5. el tema no repite uno reciente, una idea descartada ni otra idea del plan (`topicKey`) →
- *    `REPEATED_TOPIC`, `DISCARDED_TOPIC`, `DUPLICATE_IN_PLAN`;
- * 6. ya hay `count` ideas → `OVER_COUNT`;
- * 7. cada red: pedida, con un formato que admite (Instagram no publica solo texto; TikTok, solo
- *    video, `kindProblem`), en un día y hora de su cadencia y sin pasar sus posts por semana (de lunes
- *    a domingo, contando lo ya planificado, `brief.planned`, y las ideas de este plan). Una red que no sirve se le quita a la idea (queda en
- *    `notes`); si no le queda ninguna, la idea se descarta con el motivo de la primera.
+ * 4. el tema no repite uno reciente, una idea descartada ni otra idea del plan (`topicKey`) →
+ *    `REPEATED_TOPIC`, `DISCARDED_TOPIC`, `DUPLICATE_IN_PLAN`; ni se parece en un 60 % o más
+ *    (`topicSimilarity`) a otra idea anterior que quedó en el plan → `IDEA_TOO_SIMILAR`;
+ * 5. ya hay `count` ideas → `OVER_COUNT`;
+ * 6. las redes candidatas: las preferidas que se pidieron, que admiten el formato (Instagram no
+ *    publica solo texto; TikTok, solo video, `kindProblem`) y cuya cadencia no es de 0 por semana;
+ *    las demás se le quitan (a `notes`) y, si no queda ninguna, se descarta con el motivo de la
+ *    primera;
+ * 7. la ranura (`planSlotBook`): la más temprana libre entre las candidatas, primero en las semanas
+ *    con menos ideas, según la cadencia de cada red (o la ranura por defecto), sin chocar con lo ya
+ *    planificado (`brief.planned`) ni con las ideas anteriores del plan. Las redes de la idea son
+ *    las candidatas con esa ranura libre (las otras, a `notes`); sin ranura → `NO_SLOT`.
  * Las que pasan quedan en el orden de la respuesta.
  */
 export function checkPlanIdeas(params: {
@@ -520,6 +594,7 @@ export function checkPlanIdeas(params: {
   period: Pick<PlanPeriod, "start" | "end">;
   /** Las fuentes de hechos del perfil (`profileSources`). */
   sources: string;
+  /** Las ranuras empiezan desde aquí (no se agenda en el pasado). */
   now: Date;
 }): { ideas: CheckedPlanIdea[]; discarded: DiscardedPlanIdea[] } {
   const { brief, period } = params;
@@ -529,17 +604,17 @@ export function checkPlanIdeas(params: {
   const discardedBefore = new Set(brief.discardedTopics.map(topicKey));
   const planned = new Set<string>();
   const pillars = new Set(brief.pillars.map((pillar) => pillar.key));
-  /** Posts por red y por semana (el lunes): lo ya planificado y las ideas de este plan. */
-  const perWeek = new Map<string, number>();
-  for (const slot of brief.planned) {
-    for (const platform of slot.platforms) {
-      const key = `${platform}:${weekOf(slot.date)}`;
-      perWeek.set(key, (perWeek.get(key) ?? 0) + 1);
-    }
-  }
+  const book = planSlotBook({
+    days: brief.days.map((day) => day.date),
+    cadence: brief.cadence,
+    planned: brief.planned,
+    start: period.start,
+    end: period.end,
+    now: params.now,
+  });
 
   for (const raw of params.ideas) {
-    const parsed = planIdeaSchema.safeParse(raw);
+    const parsed = receivedIdeaSchema.safeParse(raw);
     if (!parsed.success) {
       const topic =
         typeof raw === "object" &&
@@ -558,22 +633,6 @@ export function checkPlanIdeas(params: {
     const drop = (code: PlanDiscardCode, message: string) =>
       discarded.push({ topic: idea.tema, code, message });
 
-    let plannedAt: Date;
-    try {
-      if (!isDay(idea.fecha)) throw new Error("día");
-      plannedAt = parseChileTime(`${idea.fecha} ${idea.hora}`);
-    } catch {
-      drop("DATE_INVALID", `La fecha ${idea.fecha} ${idea.hora} no existe en Chile`);
-      continue;
-    }
-    if (plannedAt < period.start || plannedAt >= period.end) {
-      drop("OUT_OF_PERIOD", `La fecha ${idea.fecha} está fuera del período`);
-      continue;
-    }
-    if (plannedAt < params.now) {
-      drop("IN_THE_PAST", `La fecha ${idea.fecha} ${idea.hora} ya pasó`);
-      continue;
-    }
     const pillar = idea.linea === null || idea.linea === "" ? null : idea.linea;
     if (pillar !== null && !pillars.has(pillar)) {
       drop("PILLAR_UNKNOWN", `La línea «${pillar}» no está en el perfil editorial`);
@@ -602,48 +661,59 @@ export function checkPlanIdeas(params: {
       drop("DUPLICATE_IN_PLAN", "Repite otra idea de este plan");
       continue;
     }
+    const similar = accepted.find(
+      (other) => topicSimilarity(idea.tema, other.topic) >= PLAN_SIMILAR_TOPIC_THRESHOLD,
+    );
+    if (similar !== undefined) {
+      drop("IDEA_TOO_SIMILAR", `Se parece demasiado a otra idea de este plan: «${similar.topic}»`);
+      continue;
+    }
     if (accepted.length >= brief.count) {
       drop("OVER_COUNT", `Ya hay ${brief.count} ideas`);
       continue;
     }
 
-    const week = weekOf(idea.fecha);
-    const platforms: PostPlatform[] = [];
+    const candidates: PostPlatform[] = [];
     const notes: string[] = [];
     let first: { code: PlanDiscardCode; message: string } | null = null;
     for (const platform of new Set(idea.redes)) {
-      let problem = platformProblem(platform, idea, brief);
-      const cadence = brief.cadence[platform];
-      if (
-        problem === null &&
-        cadence !== undefined &&
-        (perWeek.get(`${platform}:${week}`) ?? 0) >= cadence.postsPerWeek
-      ) {
-        problem = {
-          code: "WEEK_FULL",
-          message: `${NAME[platform]} ya tiene ${cadence.postsPerWeek} posts planificados esa semana`,
-        };
-      }
-      if (problem === null) platforms.push(platform);
+      const problem = platformProblem(platform, idea.formato, brief, book);
+      if (problem === null) candidates.push(platform);
       else {
         first ??= problem;
         notes.push(problem.message);
       }
     }
-    if (platforms.length === 0) {
+    if (candidates.length === 0) {
       drop(first?.code ?? "PLATFORM_NOT_REQUESTED", notes.join("; "));
       continue;
     }
-    for (const platform of platforms) {
-      perWeek.set(`${platform}:${week}`, (perWeek.get(`${platform}:${week}`) ?? 0) + 1);
+    const assigned = book.assign(candidates);
+    if (assigned === null) {
+      const verb = candidates.length === 1 ? "tiene" : "tienen";
+      drop(
+        "NO_SLOT",
+        [
+          `${namesText(candidates)} no ${verb} una ranura libre en el período (según su cadencia y lo ya planificado)`,
+          ...notes,
+        ].join("; "),
+      );
+      continue;
+    }
+    for (const platform of candidates) {
+      if (!assigned.platforms.includes(platform)) {
+        notes.push(
+          `${NAME[platform]} no tiene libre la ranura del ${slotText(assigned.slot.date, assigned.slot.time)}`,
+        );
+      }
     }
     planned.add(key);
     accepted.push({
       topic: idea.tema,
       pillar,
-      platforms,
+      platforms: assigned.platforms,
       kind: idea.formato,
-      plannedAt,
+      plannedAt: assigned.slot.at,
       rationale: idea.porque,
       notes,
     });
