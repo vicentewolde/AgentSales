@@ -343,7 +343,7 @@ describe("accountMissingReason (F9.5-T20)", () => {
     overrides: Partial<{
       brokerId: string;
       platform: "instagram" | "fb_marketplace";
-      status: "connected" | "disconnected" | "expired";
+      status: "connected" | "revoked" | "expired";
     }> = {},
   ) => ({
     brokerId: "corredor-1",
@@ -359,9 +359,9 @@ describe("accountMissingReason (F9.5-T20)", () => {
   it("sin cuenta, o desconectada, o de otro corredor, o de otra red: dice qué conectar", () => {
     const reason = "Conecta tu cuenta de Instagram en Cuentas para publicar.";
     expect(accountMissingReason("instagram", [], "corredor-1")).toBe(reason);
-    expect(
-      accountMissingReason("instagram", [account({ status: "disconnected" })], "corredor-1"),
-    ).toBe(reason);
+    expect(accountMissingReason("instagram", [account({ status: "revoked" })], "corredor-1")).toBe(
+      reason,
+    );
     expect(accountMissingReason("instagram", [account({ brokerId: "otro" })], "corredor-1")).toBe(
       reason,
     );
