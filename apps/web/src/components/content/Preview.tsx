@@ -39,12 +39,15 @@ function InstagramPanel({
   content,
   carousel,
   reel,
+  reelFromPhotos,
   edit,
   brokerId,
 }: {
   content: ContentView | undefined;
   carousel: ContentMedia[];
   reel: ContentMedia | null;
+  /** El reel salió de las fotos (F9.5-T18): la propiedad no tiene video. */
+  reelFromPhotos: boolean;
   edit: EditContext;
   brokerId: string | undefined;
 }) {
@@ -66,15 +69,24 @@ function InstagramPanel({
         />
         <h3 className="text-sm font-semibold text-fg">Reel</h3>
         {reel === null ? (
-          <p className="text-sm text-fg-subtle">Sin reel (la propiedad no tiene video).</p>
+          <p className="text-sm text-fg-subtle">
+            Sin reel: sube un video, o al menos 3 fotos para armarlo con ellas.
+          </p>
         ) : (
-          <InstagramReelPreview
-            label="Vista previa del reel de Instagram"
-            accountName={accountName}
-            video={{ id: reel.id, src: reel.url, poster: null }}
-            text={text}
-            draft={draft}
-          />
+          <>
+            {reelFromPhotos && (
+              <p className="text-sm text-fg-subtle">
+                Reel armado con tus fotos (la propiedad no tiene video).
+              </p>
+            )}
+            <InstagramReelPreview
+              label="Vista previa del reel de Instagram"
+              accountName={accountName}
+              video={{ id: reel.id, src: reel.url, poster: null }}
+              text={text}
+              draft={draft}
+            />
+          </>
         )}
       </div>
       <div className="min-w-0">
@@ -263,6 +275,7 @@ export function Preview({
               content={textOf("instagram")}
               carousel={content.carousel}
               reel={content.reel}
+              reelFromPhotos={content.reelFromPhotos}
               edit={edit}
               brokerId={brokerId}
             />

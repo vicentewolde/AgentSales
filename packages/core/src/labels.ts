@@ -354,8 +354,8 @@ export const PLATFORM_ACCOUNT_STATUS_TEXT: Readonly<Record<PlatformAccountStatus
 export const CONTENT_REEL_OUTCOME_TEXT: Readonly<Record<ContentReelOutcome, string>> = {
   created: "armado",
   existing: "ya estaba (sin cambios)",
-  none: "sin video",
-  skipped: "no se armó (video muy corto o ilegible)",
+  none: "sin video y con menos de 3 fotos",
+  skipped: "no se armó (video muy corto o medios ilegibles)",
 };
 
 /** El avance de una preparación: la etapa mientras corre y, si no, su estado. */

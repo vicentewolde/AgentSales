@@ -1,4 +1,5 @@
 import type { Media } from "../media.js";
+import { REEL_PHOTOS } from "../media-checks.js";
 
 /** El máximo de elementos de un carrusel de Instagram (límite de la API). */
 export const CAROUSEL_MAX_ITEMS = 10;
@@ -66,8 +67,33 @@ export function composePhotoSet(media: readonly Media[]): Media[] {
     .filter((variant): variant is Media => variant !== null);
 }
 
-/** El reel vigente: el `ig_reel` del primer video del aviso, si existe. */
+/**
+ * Las fotos del reel con fotos (F9.5-T18): las originales que se procesaron (tienen su `ig_4x5`),
+ * la portada primero y luego en el orden del aviso, hasta `REEL_PHOTOS.max`. Con menos de
+ * `REEL_PHOTOS.min`, vacío: no alcanzan para un reel.
+ */
+export function reelPhotos(media: readonly Media[]): Media[] {
+  const cover = coverPhoto(media);
+  const photos = photosOf(media);
+  const ordered = cover === null ? photos : [cover, ...photos.filter((p) => p.id !== cover.id)];
+  const ready = ordered
+    .filter((photo) => variantOf(media, photo.id, "ig_4x5") !== null)
+    .slice(0, REEL_PHOTOS.max);
+  return ready.length < REEL_PHOTOS.min ? [] : ready;
+}
+
+/**
+ * El reel vigente: el `ig_reel` del primer video del aviso; sin video, el armado con sus fotos
+ * (F9.5-T18), que cuelga de la primera foto del reel (`reelPhotos`). `null` si no hay.
+ */
 export function composeReel(media: readonly Media[]): Media | null {
-  const first = videosOf(media)[0];
+  const first = videosOf(media)[0] ?? reelPhotos(media)[0];
   return first === undefined ? null : variantOf(media, first.id, "ig_reel");
+}
+
+/** Si el reel salió de las fotos (F9.5-T18): cuelga de una foto, no de un video. */
+export function isPhotoReel(media: readonly Media[], reel: Media): boolean {
+  return media.some(
+    (item) => item.id === reel.parentMediaId && item.role === "original" && item.kind === "image",
+  );
 }

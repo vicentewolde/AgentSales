@@ -333,6 +333,7 @@ export {
   photoSizeWarnings,
   REEL_MAX_DURATION_S,
   REEL_MIN_DURATION_S,
+  REEL_PHOTOS,
   REEL_WARNING_CODES,
   REEL_WARNING_TEXT,
   type ReelWarningCode,
@@ -522,8 +523,10 @@ export type {
   ImageOutput,
   ImageVariant,
   MediaProcessor,
+  PhotoReelOptions,
   ProcessedImage,
   ProcessedVideo,
+  ReelPhotoInput,
   VideoOutput,
   VideoProcessOptions,
 } from "./ports/media-processor.js";

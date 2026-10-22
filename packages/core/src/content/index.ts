@@ -52,6 +52,8 @@ export {
   composePhotoSet,
   composeReel,
   coverPhoto,
+  isPhotoReel,
+  reelPhotos,
   variantOf,
   videosOf,
 } from "./compose.js";
@@ -69,6 +71,8 @@ export {
 } from "./draft-texts.js";
 export { type GenerateContentDraftResult, generateContentDraft } from "./generate.js";
 export {
+  photoReelInput,
+  photoReelPath,
   postObjectsPrefix,
   postOriginalPath,
   postOriginalsPrefix,

@@ -49,7 +49,7 @@ const NOTES = "el propietario acepta bajar hasta cinco mil quinientos";
  * Un aviso inventado con 2 fotos y un video, en memoria, servido por la API. `prepare` corre una
  * corrida completa con dobles (lo que hará el worker).
  */
-async function setup(options: { queueDown?: boolean } = {}) {
+async function setup(options: { queueDown?: boolean; originals?: string[] } = {}) {
   const listings = createInMemoryListingRepository({ nextId: randomUUID });
   const media = createInMemoryMediaRepository();
   const storage = createInMemoryMediaStorage();
@@ -76,7 +76,8 @@ async function setup(options: { queueDown?: boolean } = {}) {
     sourceHash: "h",
   });
   await listings.promoteToReady(listing.id);
-  for (const [index, name] of ["foto-1.heic", "foto-2.jpg", "video-1.mp4"].entries()) {
+  const originals = options.originals ?? ["foto-1.heic", "foto-2.jpg", "video-1.mp4"];
+  for (const [index, name] of originals.entries()) {
     const kind = name.startsWith("video") ? ("video" as const) : ("image" as const);
     const mime =
       kind === "video" ? "video/mp4" : name.endsWith(".heic") ? "image/heic" : "image/jpeg";
@@ -354,6 +355,8 @@ describe("GET /listings/:id/content", () => {
     expect(body.carousel.map((item) => item.variant)).toEqual(["cover", "ig_4x5", "spec_sheet"]);
     expect(body.photos.map((item) => item.variant)).toEqual(["pi_4x3", "pi_4x3"]);
     expect(body.reel).toMatchObject({ variant: "ig_reel", mime: "video/mp4" });
+    // Con video, el reel sale del video (F9.5-T18).
+    expect(body.reelFromPhotos).toBe(false);
     for (const item of [...body.carousel, ...body.photos]) {
       expect(item.url).toMatch(/^https:\/\/r2\.test\/brokers\/.+\?firma$/);
     }
@@ -365,6 +368,16 @@ describe("GET /listings/:id/content", () => {
     expect(raw).not.toMatch(/"(provider|model|llmProvider)"/);
     expect(raw).not.toContain("Secreta");
     expect(raw).not.toContain("quinientos");
+  });
+
+  it("sin video y con 3 fotos, el reel sale de las fotos y lo dice (F9.5-T18)", async () => {
+    const t = await setup({ originals: ["foto-1.heic", "foto-2.jpg", "foto-3.jpg"] });
+    await t.prepare();
+
+    const body = await t.content();
+    expect(body.reel).toMatchObject({ variant: "ig_reel", mime: "video/mp4" });
+    expect(body.reel?.url).toMatch(/\/processed\/ig_reel\/photos-.+\?firma$/);
+    expect(body.reelFromPhotos).toBe(true);
   });
 
   it("un texto con una fuga trae el error en checks, sin citar lo privado", async () => {
@@ -385,6 +398,7 @@ describe("GET /listings/:id/content", () => {
       carousel: [],
       photos: [],
       reel: null,
+      reelFromPhotos: false,
       latestRun: null,
       // Lo que le falta al aviso para Portal (F4-T19): la lista completa, con su motivo.
       portalReadiness: { ready: true, issues: [] },

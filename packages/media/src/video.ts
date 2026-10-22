@@ -6,15 +6,19 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import {
   type AbortSignalLike,
+  AppError,
   discordVideoBitrateKbps,
+  type PhotoReelOptions,
   type ProcessedVideo,
   REEL_MIN_DURATION_S,
+  type ReelPhotoInput,
   type VideoOutput,
   type VideoProcessOptions,
 } from "@agentsales/core";
+import sharp from "sharp";
 import { z } from "zod";
-import { decodeFailed, renderVariant } from "./image.js";
-import { DISCORD_VIDEO_SPEC, REEL_SPEC, X_VIDEO_SPEC } from "./pipeline.js";
+import { decodableSource, decodeFailed, renderVariant } from "./image.js";
+import { DISCORD_VIDEO_SPEC, PHOTO_REEL_SPEC, REEL_SPEC, X_VIDEO_SPEC } from "./pipeline.js";
 import { aborted, CommandFailedError, runTool, throwIfAborted } from "./run.js";
 
 export type VideoToolOptions = {
@@ -196,6 +200,42 @@ async function outputOf(
 }
 
 /**
+ * La pista de audio silenciosa de un reel sin audio (Instagram la espera), como entrada de ffmpeg.
+ * Es el único lugar por donde entra el audio de un reel sin sonido propio: la música (F9.5-T19)
+ * entrará aquí en vez del silencio.
+ */
+function silentAudioInput(durationS: number): string[] {
+  return [
+    ...["-f", "lavfi", "-t", durationS.toFixed(3)],
+    ...["-i", `anullsrc=channel_layout=stereo:sample_rate=${REEL_SPEC.audio.sampleRate}`],
+  ];
+}
+
+/** Hilos de ffmpeg (filtros y codificador): sin valor, ffmpeg usa todos los núcleos. */
+const threadsOf = (options: VideoToolOptions) =>
+  options.threads === undefined ? null : String(options.threads);
+
+/**
+ * Lo que comparten los dos reels (el de un video y el de fotos) después de los filtros: duración,
+ * codificador (`REEL_SPEC`), audio AAC y el contenedor que pide Instagram.
+ */
+function reelOutputArgs(durationS: number, threads: string | null, outPath: string): string[] {
+  const { x264, audio, fps } = REEL_SPEC;
+  const gop = x264.gop;
+  return [
+    ...["-t", durationS.toFixed(3), "-r", String(fps)],
+    ...["-c:v", "libx264", "-preset", x264.preset, "-profile:v", "high", "-crf", String(x264.crf)],
+    ...(threads === null ? [] : ["-threads", threads]),
+    ...["-maxrate", x264.maxrate, "-bufsize", x264.bufsize],
+    // GOP cerrado y fijo: un cuadro clave cada 2 s, sin cortes por cambio de escena.
+    ...["-g", String(gop), "-keyint_min", String(gop), "-sc_threshold", "0", "-flags", "+cgop"],
+    ...["-c:a", "aac", "-b:a", audio.bitrate, "-ac", "2", "-ar", String(audio.sampleRate)],
+    // `moov` al inicio y sin edit lists (requisitos de la API de Instagram).
+    ...["-movflags", "+faststart", "-use_editlist", "0", "-map_metadata", "-1", outPath],
+  ];
+}
+
+/**
  * Arma el reel en el temporal; lo sube quien lo pide, con `open()` y `putStream`. Con
  * `overlayPng = null`, sin texto encima.
  */
@@ -211,21 +251,9 @@ async function encodeReel(
   const reelPath = join(options.workDir, `${id}-reel.mp4`);
   if (overlayPath !== null && overlayPng !== null) await writeFile(overlayPath, overlayPng);
   const durationS = Math.min(source.durationS, REEL_SPEC.maxDurationS);
-  const { x264, audio, fps } = REEL_SPEC;
-  const gop = x264.gop;
-  // Filtros (global) y codificador (opción de salida): sin valor, ffmpeg usa todos los núcleos.
-  const threads = options.threads === undefined ? null : String(options.threads);
+  const threads = threadsOf(options);
   // Un video sin audio recibe una pista silenciosa: Instagram la espera.
-  const silence = source.hasAudio
-    ? []
-    : [
-        "-f",
-        "lavfi",
-        "-t",
-        durationS.toFixed(3),
-        "-i",
-        `anullsrc=channel_layout=stereo:sample_rate=${audio.sampleRate}`,
-      ];
+  const silence = source.hasAudio ? [] : silentAudioInput(durationS);
   // La pista silenciosa va después del video y, si hay, del texto.
   const silenceInput = overlayPath === null ? 1 : 2;
   const args = [
@@ -240,15 +268,7 @@ async function encodeReel(
       "-map",
       source.hasAudio ? "0:a:0" : `${silenceInput}:a:0`,
     ],
-    ...["-t", durationS.toFixed(3), "-r", String(fps)],
-    ...["-c:v", "libx264", "-preset", x264.preset, "-profile:v", "high", "-crf", String(x264.crf)],
-    ...(threads === null ? [] : ["-threads", threads]),
-    ...["-maxrate", x264.maxrate, "-bufsize", x264.bufsize],
-    // GOP cerrado y fijo: un cuadro clave cada 2 s, sin cortes por cambio de escena.
-    ...["-g", String(gop), "-keyint_min", String(gop), "-sc_threshold", "0", "-flags", "+cgop"],
-    ...["-c:a", "aac", "-b:a", audio.bitrate, "-ac", "2", "-ar", String(audio.sampleRate)],
-    // `moov` al inicio y sin edit lists (requisitos de la API de Instagram).
-    ...["-movflags", "+faststart", "-use_editlist", "0", "-map_metadata", "-1", reelPath],
+    ...reelOutputArgs(durationS, threads, reelPath),
   ];
   try {
     // Un fallo al armar el reel (también del codificador o del disco) es MEDIA_DECODE_FAILED: la
@@ -258,6 +278,139 @@ async function encodeReel(
     await rm(reelPath, { force: true });
     throw error;
   } finally {
+    if (overlayPath !== null) await rm(overlayPath, { force: true });
+  }
+  return outputOf(reelPath, options, signal);
+}
+
+/**
+ * Un cuadro 1080×1920 del reel con fotos (`PHOTO_REEL_SPEC`): la foto entera al centro (sin
+ * recorte; una chica se amplía hasta el ancho o el alto) sobre ella misma recortada a 9:16,
+ * desenfocada en chico y ampliada. Girada según su EXIF, sobre blanco si es transparente, en sRGB.
+ */
+async function photoReelFrame(source: Buffer): Promise<Buffer> {
+  const { width, height } = REEL_SPEC;
+  const { blur, frameQuality } = PHOTO_REEL_SPEC;
+  const base = () =>
+    sharp(source).rotate().flatten({ background: "#ffffff" }).toColourspace("srgb");
+  try {
+    const front = await base()
+      .resize(width, height, { fit: "inside" })
+      .jpeg({ quality: frameQuality })
+      .toBuffer();
+    const small = await base()
+      .resize(blur.width, blur.height, { fit: "cover", position: "centre" })
+      .blur(blur.sigma)
+      .png()
+      .toBuffer();
+    return await sharp(small)
+      .resize(width, height, { fit: "fill" })
+      .composite([{ input: front, gravity: "centre" }])
+      .jpeg({ quality: frameQuality })
+      .toBuffer();
+  } catch (error) {
+    throw decodeFailed(error);
+  }
+}
+
+/**
+ * El grafo del reel con fotos: cada cuadro fijo (una entrada por foto) a 30 fps, unidos con
+ * fundidos (`xfade`) y, si hay, el texto encima los primeros 2 s, como en el reel de un video.
+ */
+function photoReelFilter(count: number, withText: boolean): string {
+  const { width, height, fps, overlayS } = REEL_SPEC;
+  const { slideS, fadeS } = PHOTO_REEL_SPEC;
+  // Un JPEG llega en rango completo (yuvj420p): pasa al rango de video (yuv420p), como un video.
+  const parts = Array.from(
+    { length: count },
+    (_, index) =>
+      `[${index}:v]scale=in_range=full:out_range=tv,format=yuv420p,fps=${fps},setsar=1,settb=AVTB[p${index}]`,
+  );
+  let last = "p0";
+  for (let index = 1; index < count; index++) {
+    const out = `x${index}`;
+    const offset = (index * slideS).toFixed(3);
+    parts.push(
+      `[${last}][p${index}]xfade=transition=fade:duration=${fadeS}:offset=${offset}[${out}]`,
+    );
+    last = out;
+  }
+  if (withText) {
+    parts.push(`[${count}:v]scale=${width}:${height},format=rgba[text]`);
+    parts.push(`[${last}][text]overlay=0:0:enable='lt(t,${overlayS})',format=yuv420p,setsar=1[v]`);
+  } else {
+    parts.push(`[${last}]format=yuv420p,setsar=1[v]`);
+  }
+  return parts.join(";");
+}
+
+/**
+ * El reel de una propiedad sin video, armado con sus fotos (F9.5-T18, `PHOTO_REEL_SPEC`), en el
+ * temporal; lo sube quien lo pide (`open()`). Las fotos van en el orden recibido (core pone la
+ * portada primero); cada una se lee, se vuelve un cuadro JPEG en el temporal y se suelta antes de
+ * leer la siguiente. Dura `slideS` por foto, con una pista silenciosa (Instagram espera audio).
+ * Una foto ilegible o un fallo de ffmpeg es `MEDIA_DECODE_FAILED`.
+ */
+export async function encodeReelFromPhotos(
+  photos: readonly ReelPhotoInput[],
+  { overlayPng }: PhotoReelOptions,
+  options: VideoToolOptions,
+  signal?: AbortSignalLike,
+): Promise<VideoOutput> {
+  throwIfAborted(signal);
+  const { minPhotos, maxPhotos, slideS, fadeS } = PHOTO_REEL_SPEC;
+  if (photos.length < minPhotos || photos.length > maxPhotos) {
+    throw new AppError(
+      "MEDIA_REEL_PHOTOS_INVALID",
+      `El reel con fotos pide entre ${minPhotos} y ${maxPhotos} fotos`,
+      { details: { photos: photos.length } },
+    );
+  }
+  await options.ensureTools(signal);
+  const id = randomUUID();
+  // Cada foto con la ruta de su cuadro en el temporal.
+  const frames = photos.map((photo, index) => ({
+    photo,
+    path: join(options.workDir, `${id}-foto-${index}.jpg`),
+  }));
+  const framePaths = frames.map((frame) => frame.path);
+  const overlayPath = overlayPng === null ? null : join(options.workDir, `${id}-texto.png`);
+  const reelPath = join(options.workDir, `${id}-reel.mp4`);
+  const durationS = photos.length * slideS;
+  const threads = threadsOf(options);
+  const imageOptions = { ...options, ensureFfmpeg: options.ensureTools };
+  try {
+    for (const { photo, path } of frames) {
+      throwIfAborted(signal);
+      const source = await decodableSource(await photo.read(), photo.mime, imageOptions, signal);
+      await writeFile(path, await photoReelFrame(source));
+    }
+    if (overlayPath !== null && overlayPng !== null) await writeFile(overlayPath, overlayPng);
+    // Cada cuadro dura su parte más el fundido hacia la siguiente; el último, solo su parte. Un
+    // hilo por decodificador: son cuadros fijos, y con uno por núcleo la memoria se multiplica.
+    const inputs = framePaths.flatMap((path, index) => [
+      ...["-threads", "1", "-loop", "1", "-framerate", String(REEL_SPEC.fps)],
+      ...["-t", (index < framePaths.length - 1 ? slideS + fadeS : slideS).toFixed(3)],
+      ...["-i", path],
+    ]);
+    // La pista silenciosa va después de las fotos y, si hay, del texto.
+    const audioInput = photos.length + (overlayPath === null ? 0 : 1);
+    const args = [
+      ...["-hide_banner", "-loglevel", "error", "-nostdin", "-y"],
+      ...(threads === null ? [] : ["-filter_complex_threads", threads]),
+      ...inputs,
+      ...(overlayPath === null ? [] : ["-i", overlayPath]),
+      ...silentAudioInput(durationS),
+      ...["-filter_complex", photoReelFilter(photos.length, overlayPath !== null)],
+      ...["-map", "[v]", "-map", `${audioInput}:a:0`],
+      ...reelOutputArgs(durationS, threads, reelPath),
+    ];
+    await runOrDecodeFailed(options.ffmpegPath, args, signal);
+  } catch (error) {
+    await rm(reelPath, { force: true });
+    throw error;
+  } finally {
+    for (const path of framePaths) await rm(path, { force: true });
     if (overlayPath !== null) await rm(overlayPath, { force: true });
   }
   return outputOf(reelPath, options, signal);

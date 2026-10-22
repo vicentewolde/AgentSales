@@ -390,6 +390,11 @@ export const listingContentResponseSchema = z.object({
   /** Portal Inmobiliario y Marketplace: fotos 4:3, la portada primero. */
   photos: z.array(contentMediaSchema),
   reel: contentMediaSchema.nullable(),
+  /**
+   * Si el reel salió de las fotos (F9.5-T18: la propiedad no tiene video); `false` sin reel. Un
+   * servidor anterior no lo manda: vale `false`.
+   */
+  reelFromPhotos: z.boolean().default(false),
   latestRun: contentRunViewSchema.nullable(),
   /** Lo que le falta al aviso para Portal (la pestaña Portal; desde F4-T19). */
   portalReadiness: portalReadinessSchema,
