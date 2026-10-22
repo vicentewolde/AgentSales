@@ -15,6 +15,7 @@ import type { PostRepository } from "../ports/post-repository.js";
 import { postPlatforms } from "../social/brief.js";
 import {
   defaultPlanCount,
+  normalizePlanBrief,
   PLAN_MAX_IDEAS,
   type PlanRunReport,
   type PlanRunRequest,
@@ -71,6 +72,11 @@ export type RequestPlanRunInput = {
   platforms?: readonly string[] | undefined;
   /** Cuántas ideas (1 a 20); por defecto, según la cadencia (`defaultPlanCount`). */
   count?: number | undefined;
+  /**
+   * El pedido del operador (F9.5-T23): «¿Qué quieres que trate este plan?», hasta 500 caracteres
+   * (`normalizePlanBrief`). Guía temas y tono, nunca es fuente de hechos (ADR-0030).
+   */
+  brief?: string | null | undefined;
 };
 
 export type RequestPlanRunResult = {
@@ -87,6 +93,8 @@ export type RequestPlanRunResult = {
  *   en su perfil), o todas las suyas. Sin ninguna, `POST_NO_PLATFORMS` (409);
  * - el período (`planPeriod`) y cuántas ideas (`defaultPlanCount`); fuera de rango,
  *   `PLAN_RUN_INVALID` (400);
+ * - el pedido del operador (`normalizePlanBrief`, F9.5-T23), que se guarda en `request.brief`; más
+ *   de 500 caracteres o con caracteres de control, `PLAN_RUN_INVALID` (400);
  * - con la marca en su tope de IA del mes, `LLM_BUDGET_EXCEEDED` (409; el worker lo revisa otra vez
  *   antes de llamar);
  * - si la marca ya tiene un plan en `queued` o `running`, lo devuelve (`reused`) y lo vuelve a
@@ -140,10 +148,17 @@ export async function requestPlanRun(
   if (!Number.isInteger(count) || count < 1 || count > PLAN_MAX_IDEAS) {
     throw invalid(`Un plan pide de 1 a ${PLAN_MAX_IDEAS} ideas`, { count });
   }
+  const brief = normalizePlanBrief(input.brief);
   await assertLlmBudget(deps, broker, now);
 
   const owner: string = brokerId;
-  const request: PlanRunRequest = { platforms, count, days: period.days, requestedBy: actor.id };
+  const request: PlanRunRequest = {
+    platforms,
+    count,
+    days: period.days,
+    requestedBy: actor.id,
+    brief,
+  };
   const result = (await activePlanOf(deps, owner)) ?? (await createPlan());
 
   /** Crea el plan; si otro pedido ganó la carrera (`PLAN_RUN_CONFLICT`), devuelve ese. */

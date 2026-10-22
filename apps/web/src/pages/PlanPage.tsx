@@ -6,6 +6,7 @@ import {
   ideaNeedsDraft,
   isAppError,
   isTerminalContentRun,
+  PLAN_BRIEF_MAX,
   PLAN_DEFAULT_DAYS,
   PLAN_MAX_DAYS,
   PLAN_MAX_IDEAS,
@@ -20,7 +21,10 @@ import { type FormEvent, useId, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { useBrandPlatforms } from "../components/posts/brand-platforms.js";
+import { Examples } from "../components/posts/EditorialProfileForm.js";
+import { addLine, lines } from "../components/posts/editorial-profile-draft.js";
 import { POST_KIND_LABEL, PostStatusBadge } from "../components/posts/labels.js";
+import { EmptyProfileNotice } from "../components/posts/ProfileWizard.js";
 import { Button } from "../components/ui/Button.js";
 import { Input, Select, Textarea } from "../components/ui/Field.js";
 import { PageHeader } from "../components/ui/PageHeader.js";
@@ -93,7 +97,17 @@ const checkedNetworks = (form: FormData, name: string): PostPlatform[] =>
     .map(String)
     .flatMap((value) => POST_PLATFORMS.filter((platform) => platform === value));
 
-/** Pedir un plan: días, redes y cuántas ideas. */
+/** Ejemplos del pedido del operador (F9.5-T23), que se insertan con un clic. */
+const PLAN_BRIEF_EXAMPLES = [
+  "Lanzamiento del 3 de noviembre",
+  "Solo ideas para principiantes",
+  "Evita hablar de precios",
+] as const;
+
+/**
+ * Pedir un plan: días, redes, cuántas ideas y, desde F9.5-T23, qué quieres que trate (una guía de
+ * temas y tono, nunca una fuente de hechos: ADR-0030). Con el perfil vacío, antes avisa.
+ */
 function RequestPlan({
   brandId,
   onRequested,
@@ -105,6 +119,7 @@ function RequestPlan({
   const role = useRole();
   const request = useRequestPlan();
   const options = useBrandPlatforms(brandId);
+  const [brief, setBrief] = useState("");
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -116,6 +131,7 @@ function RequestPlan({
         days: Number(text("days") || PLAN_DEFAULT_DAYS),
         ...(platforms.length === 0 ? {} : { platforms }),
         ...(text("count") === "" ? {} : { count: Number(text("count")) }),
+        ...(brief.trim() === "" ? {} : { brief: brief.trim() }),
       },
       { onSuccess: ({ plan, reused }) => onRequested(plan.id, reused) },
     );
@@ -130,7 +146,40 @@ function RequestPlan({
         La IA propone ideas con fecha desde mañana, con el perfil editorial de la marca. Cada plan
         gasta IA de la marca, aunque descartes todo.
       </p>
+      <EmptyProfileNotice brandId={brandId} />
       <form onSubmit={submit} className="mt-3 grid gap-3 md:grid-cols-2">
+        <div className="md:col-span-2">
+          <label htmlFor={`${ids}-brief`} className="block text-sm font-medium text-fg">
+            ¿Qué quieres que trate este plan? (opcional)
+          </label>
+          <p id={`${ids}-brief-help`} className="mt-0.5 text-xs text-fg-subtle">
+            Guía los temas y el tono de las ideas. No es fuente de datos: si traes una fecha, una
+            cifra o un cliente, agrégalo a los hechos de tu perfil para que la IA pueda afirmarlo.
+          </p>
+          <Textarea
+            id={`${ids}-brief`}
+            name="brief"
+            aria-describedby={`${ids}-brief-help`}
+            rows={2}
+            maxLength={PLAN_BRIEF_MAX}
+            value={brief}
+            onChange={(event) => setBrief(event.target.value)}
+            className="mt-1.5"
+          />
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <Examples
+              label="Ejemplos de pedido"
+              items={PLAN_BRIEF_EXAMPLES.map((example) => ({
+                text: example,
+                used: lines(brief).includes(example),
+                onPick: () => setBrief((current) => addLine(current, example)),
+              }))}
+            />
+            <span className="mt-1.5 text-xs text-fg-subtle">
+              {brief.length}/{PLAN_BRIEF_MAX}
+            </span>
+          </div>
+        </div>
         <label htmlFor={`${ids}-days`} className="block text-sm font-medium text-fg">
           Días
           <Input
@@ -467,6 +516,12 @@ function PlanView({ detail, brandId }: { detail: PlanDetailResponse; brandId: st
         Del {plan.firstDay} al {plan.lastDay} · {networksText(plan.platforms)} ·{" "}
         {PLAN_RUN_STATUS_TEXT[plan.status]}
       </p>
+      {plan.brief !== null && (
+        <p className="mt-1 whitespace-pre-wrap text-sm text-fg-muted">
+          <span className="font-medium">Tu pedido: </span>
+          {plan.brief}
+        </p>
+      )}
       <PlanStatus plan={plan} />
       {plan.status === "succeeded" && (
         <>

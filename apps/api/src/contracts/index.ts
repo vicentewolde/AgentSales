@@ -1749,8 +1749,10 @@ export type PublicationResolveBody = z.infer<typeof publicationResolveBodySchema
 /**
  * `POST /plans`: la marca (el administrador la manda; un corredor la omite o manda la suya), el
  * primer día (`AAAA-MM-DD`, hora de Chile; por defecto mañana), los días (por defecto 14), las
- * redes (por defecto, todas las de la marca) y cuántas ideas (por defecto, según la cadencia). Los
- * rangos los revisa core (`PLAN_RUN_INVALID`, con su mensaje).
+ * redes (por defecto, todas las de la marca), cuántas ideas (por defecto, según la cadencia) y,
+ * desde F9.5-T23, el pedido del operador (`brief`: «¿Qué quieres que trate este plan?», hasta 500
+ * caracteres; guía temas y tono, nunca es fuente de hechos). Los rangos y el largo los revisa core
+ * (`PLAN_RUN_INVALID`, con su mensaje); aquí solo se acota lo que entra.
  */
 export const planRequestBodySchema = z
   .object({
@@ -1759,6 +1761,7 @@ export const planRequestBodySchema = z
     days: z.number().int().optional(),
     platforms: z.array(z.enum(POST_PLATFORMS)).max(POST_PLATFORMS.length).optional(),
     count: z.number().int().optional(),
+    brief: z.string().max(4000).nullable().optional(),
   })
   .strict();
 export type PlanRequestBody = z.infer<typeof planRequestBodySchema>;
@@ -1771,8 +1774,8 @@ export const planQuerySchema = z.object({ brokerId: z.uuid().optional() });
 
 /**
  * Un plan como lo ven la CLI y el panel: su período (en días de Chile, los dos incluidos), su
- * estado, lo pedido (redes y cuántas ideas) y, si falló, el error con qué hacer (`errorAdvice`).
- * Sin el gasto ni el proveedor de IA (eso lo muestra `usage`).
+ * estado, lo pedido (redes, cuántas ideas y el pedido del operador) y, si falló, el error con qué
+ * hacer (`errorAdvice`). Sin el gasto ni el proveedor de IA (eso lo muestra `usage`).
  */
 export const planRunViewSchema = z.object({
   id: z.string(),
@@ -1784,6 +1787,8 @@ export const planRunViewSchema = z.object({
   status: z.enum(PLAN_RUN_STATUSES),
   platforms: z.array(z.enum(POST_PLATFORMS)),
   count: z.number().int().nullable(),
+  /** El pedido del operador (F9.5-T23); `null` si no pidió nada (o es un plan de antes). */
+  brief: z.string().nullable().default(null),
   error: z.object({ code: z.string(), message: z.string() }).nullable(),
   errorAdvice: z.string().nullable(),
   promptVersion: z.string().nullable(),

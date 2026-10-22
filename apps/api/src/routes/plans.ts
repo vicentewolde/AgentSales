@@ -58,6 +58,7 @@ export function planRunView(run: PlanRun): PlanRunView {
     status: run.status,
     platforms: request.success ? request.data.platforms : [],
     count: request.success ? request.data.count : null,
+    brief: request.success ? (request.data.brief ?? null) : null,
     error: run.error === null ? null : { code: run.error.code, message: run.error.message },
     errorAdvice: run.error === null ? null : planRunErrorAdvice(run.error.code),
     promptVersion: run.promptVersion,

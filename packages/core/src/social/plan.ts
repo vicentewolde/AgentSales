@@ -168,6 +168,41 @@ export function defaultPlanCount(
   return Math.min(PLAN_MAX_IDEAS, Math.max(1, Math.round((weekly * days) / 7)));
 }
 
+/**
+ * El largo máximo del pedido del operador para un plan (F9.5-T23): «¿Qué quieres que trate este
+ * plan?». Corto a propósito: es una guía de temas y tono, no un brief con datos.
+ */
+export const PLAN_BRIEF_MAX = 500;
+
+// Controles C0 y C1 (salvo el salto de línea), separadores de línea y párrafo Unicode y controles
+// bidireccionales: el pedido viaja al prompt de la IA y no debe esconder texto (como el perfil).
+// biome-ignore lint/suspicious/noControlCharactersInRegex: justamente los que se rechazan
+const BRIEF_CONTROL_CHARS = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e]/;
+
+/**
+ * El pedido del operador como se guarda (F9.5-T23): sin espacios de sobra al inicio ni al final,
+ * con los saltos de línea como `\n` y sin líneas vacías repetidas; vacío es `null`. Más de
+ * `PLAN_BRIEF_MAX` caracteres, o con caracteres de control, es `PLAN_RUN_INVALID` (400).
+ */
+export function normalizePlanBrief(raw: string | null | undefined): string | null {
+  if (raw === null || raw === undefined) return null;
+  const text = raw
+    .replace(/\r\n?/g, "\n")
+    .replace(/\t/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  if (text === "") return null;
+  if (BRIEF_CONTROL_CHARS.test(text)) {
+    throw invalid("El pedido del plan tiene caracteres de control: escríbelo de nuevo");
+  }
+  if (text.length > PLAN_BRIEF_MAX) {
+    throw invalid(`El pedido del plan va hasta ${PLAN_BRIEF_MAX} caracteres`, {
+      length: text.length,
+    });
+  }
+  return text;
+}
+
 /** Lo pedido, como queda en `plan_runs.request` (sin secretos). */
 export const planRunRequestSchema = z.object({
   platforms: z.array(z.enum(POST_PLATFORMS)).min(1),
@@ -175,8 +210,74 @@ export const planRunRequestSchema = z.object({
   days: z.number().int().min(1).max(PLAN_MAX_DAYS),
   /** Quién lo pidió (los posts de las ideas quedan con su `created_by`); `null` si fue el sistema. */
   requestedBy: z.string().nullable(),
+  /**
+   * El pedido del operador (F9.5-T23): una guía de temas y tono, **nunca una fuente de hechos**
+   * (ADR-0030, punto 1). Los planes de antes no lo tienen.
+   */
+  brief: z.string().max(PLAN_BRIEF_MAX).nullable().optional(),
 });
 export type PlanRunRequest = z.infer<typeof planRunRequestSchema>;
+
+/**
+ * El aviso del panel y de la CLI antes de pedir un plan con el perfil vacío (F9.5-T23): sin temas
+ * ni hechos, la IA no tiene de qué hablar ni qué afirmar.
+ */
+export const PLAN_EMPTY_PROFILE_WARNING = "Tu perfil está vacío: las ideas saldrán genéricas";
+
+/** `true` si el perfil de la marca no tiene temas (líneas) ni hechos (F9.5-T23). */
+export const planProfileIsEmpty = (
+  profile: Pick<EditorialProfileView, "pillars" | "facts">,
+): boolean => profile.pillars.length === 0 && profile.facts.length === 0;
+
+// --- La voz: «nosotros» solo si la marca es un equipo (F9.5-T23) ------------------------------
+
+/**
+ * Las palabras de primera persona del plural que la verificación reconoce (plegadas: sin tildes ni
+ * mayúsculas): pronombres y posesivos en español e inglés. Los verbos («aprendimos», «trabajamos»)
+ * no se reconocen: confundirían «últimos» o «ramos»; quedan a cargo de la regla del prompt.
+ */
+const FIRST_PERSON_PLURAL: ReadonlySet<string> = new Set([
+  "nosotros",
+  "nosotras",
+  "nuestro",
+  "nuestra",
+  "nuestros",
+  "nuestras",
+  "nos",
+  "we",
+  "our",
+  "ours",
+  "ourselves",
+]);
+
+/** Lo que dice, en un hecho del perfil, que la marca es un equipo. */
+const TEAM_WORDS: ReadonlySet<string> = new Set([
+  ...FIRST_PERSON_PLURAL,
+  "equipo",
+  "somos",
+  "team",
+]);
+
+const foldedWords = (text: string): string[] =>
+  foldText(text)
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((word) => word !== "");
+
+/**
+ * `true` si un **hecho** del perfil dice que la marca es un equipo («Somos un equipo de 4
+ * corredores», «Nuestra oficina…», «We are a team…»): solo entonces las ideas pueden hablar de
+ * «nosotros». Se miran los hechos porque son lo que la IA puede afirmar (ADR-0030, punto 1).
+ */
+export function profileSpeaksAsTeam(profile: Pick<EditorialProfileView, "facts">): boolean {
+  return profile.facts.some((fact) => foldedWords(fact).some((word) => TEAM_WORDS.has(word)));
+}
+
+/** Las palabras de primera persona del plural de un texto, sin repetir y como aparecen plegadas. */
+export function firstPersonPluralWords(text: string): string[] {
+  return [...new Set(foldedWords(text).filter((word) => FIRST_PERSON_PLURAL.has(word)))];
+}
 
 // --- Lo que ve la IA --------------------------------------------------------------------------
 
@@ -365,6 +466,13 @@ export type PlanBrief = {
   discardedTopics: string[];
   /** Lo que ya está planificado en el período: ocupa su cupo de la semana y su ranura. */
   planned: PlannedSlot[];
+  /**
+   * El pedido del operador (F9.5-T23): guía los temas y el tono, nunca es fuente de hechos (no
+   * entra en `profileSources`); `null` si no pidió nada.
+   */
+  operatorBrief: string | null;
+  /** Si un hecho del perfil dice que la marca es un equipo (`profileSpeaksAsTeam`). */
+  speaksAsTeam: boolean;
 };
 
 /** Arma lo que ve la IA con el perfil de **su** marca y su corredor. */
@@ -377,6 +485,8 @@ export function buildPlanBrief(params: {
   history: PlanHistory;
   /** Lo ya planificado en el período (`plannedSlots`); por defecto, nada. */
   planned?: readonly PlannedSlot[];
+  /** El pedido del operador (`plan_runs.request.brief`); por defecto, ninguno. */
+  operatorBrief?: string | null;
 }): PlanBrief {
   const { broker, profile, period } = params;
   const cadence: Partial<Record<PostPlatform, PlanCadence>> = {};
@@ -409,6 +519,8 @@ export function buildPlanBrief(params: {
     recentTopics: [...params.history.recentTopics],
     discardedTopics: [...params.history.discardedTopics],
     planned: (params.planned ?? []).map((slot) => ({ ...slot, platforms: [...slot.platforms] })),
+    operatorBrief: params.operatorBrief ?? null,
+    speaksAsTeam: profileSpeaksAsTeam(profile),
   };
 }
 
@@ -495,6 +607,8 @@ export const PLAN_DISCARD_CODES = [
   // F9.5 (ADR-0034): al final, sin quitar los de antes.
   "IDEA_TOO_SIMILAR",
   "NO_SLOT",
+  // F9.5-T23: al final, sin quitar los de antes.
+  "FIRST_PERSON_PLURAL",
 ] as const;
 export type PlanDiscardCode = (typeof PLAN_DISCARD_CODES)[number];
 
@@ -577,6 +691,9 @@ function platformProblem(
  * 4. el tema no repite uno reciente, una idea descartada ni otra idea del plan (`topicKey`) →
  *    `REPEATED_TOPIC`, `DISCARDED_TOPIC`, `DUPLICATE_IN_PLAN`; ni se parece en un 60 % o más
  *    (`topicSimilarity`) a otra idea anterior que quedó en el plan → `IDEA_TOO_SIMILAR`;
+ * 4b. si el perfil no dice que la marca es un equipo (`speaksAsTeam`), el tema no habla en primera
+ *    persona del plural (`firstPersonPluralWords`: «nosotros», «nuestro», «nos», «we», «our») →
+ *    `FIRST_PERSON_PLURAL` (F9.5-T23; el porqué no se mira: se lo dice la IA al operador);
  * 5. ya hay `count` ideas → `OVER_COUNT`;
  * 6. las redes candidatas: las preferidas que se pidieron, que admiten el formato (Instagram no
  *    publica solo texto; TikTok, solo video, `kindProblem`) y cuya cadencia no es de 0 por semana;
@@ -666,6 +783,14 @@ export function checkPlanIdeas(params: {
     );
     if (similar !== undefined) {
       drop("IDEA_TOO_SIMILAR", `Se parece demasiado a otra idea de este plan: «${similar.topic}»`);
+      continue;
+    }
+    const plural = brief.speaksAsTeam ? [] : firstPersonPluralWords(idea.tema);
+    if (plural.length > 0) {
+      drop(
+        "FIRST_PERSON_PLURAL",
+        `Habla en plural («${plural.join("», «")}») y el perfil no dice que la marca es un equipo: si lo es, agrégalo a los hechos (por ejemplo, «Somos un equipo de…»)`,
+      );
       continue;
     }
     if (accepted.length >= brief.count) {

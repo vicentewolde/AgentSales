@@ -314,6 +314,8 @@ Si no sabes qué publicar, la IA te propone **ideas con fecha** para las próxim
 # 1. Pedir el plan (por defecto, 14 días desde mañana, todas las redes de la marca y las ideas que
 #    pide su cadencia) y esperar: imprime las ideas por semana, cada una con su id y su comando
 pnpm -s cli plan --broker agentpey --days 14 --platform linkedin,x --count 8
+#    (opcional) con lo que quieres que trate: temas y tono, hasta 500 caracteres
+pnpm -s cli plan --broker agentpey --brief "Solo ideas para principiantes; evita hablar de precios"
 
 # 2. Decidir cada idea
 pnpm -s cli post accept <id_idea>      # pasa a borrador y la IA redacta sus textos (--wait los espera)
@@ -326,6 +328,8 @@ pnpm -s cli post approve <id_idea>
 pnpm -s cli post schedule <id_idea> --at "2026-10-23 10:00"
 ```
 
+- **Qué quieres que trate el plan** (F9.5-T23): en el panel, el campo «¿Qué quieres que trate este plan?» de **Plan** (con ejemplos); en la CLI, `--brief`. Guía los temas y el tono, pero **no es fuente de datos**: si escribes una fecha, una cifra o un cliente que no está en los hechos del perfil, la idea que lo afirme se descarta. Si el dato es verdad, agrégalo primero a los hechos (Mi marca o `brand edit --add-fact`).
+- **Perfil vacío:** si la marca no tiene temas ni hechos, el panel y la CLI avisan «Tu perfil está vacío: las ideas saldrán genéricas». En el panel puedes ir a **Mi marca** o responder 4 preguntas (qué haces, para quién, de qué temas hablas, qué no dices): llenan el perfil para que lo revises y lo guardes; no se guarda solo. Si la marca es un equipo, dilo en un hecho («Somos un equipo de 4 corredores»): solo así las ideas hablan de «nosotros».
 - **`plan show <id>`** vuelve a mostrar un plan con el estado de cada idea; **`plan list`** muestra los planes de la marca (`--broker` va antes o después de `list`: `plan list --broker agentpey` o `plan --broker agentpey list`). `--no-wait` pide el plan y sale con su id.
 - **Esperar los textos de una idea:** `post accept <id> --wait` acepta y espera esa redacción, con su revisión al final. Sin `--wait` no espera (puedes aceptar varias seguidas) y los textos aparecen en `post show <id>` al terminar. **No uses `post draft` para esperar:** pide textos nuevos y vuelve a gastar IA; sirve solo si la idea quedó aceptada sin textos (por ejemplo, con el worker apagado).
 - **Un plan a la vez por marca:** si ya hay uno en curso, pedir otro te muestra ese.

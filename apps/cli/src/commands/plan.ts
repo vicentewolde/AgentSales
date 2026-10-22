@@ -1,4 +1,5 @@
 import {
+  editorialProfileResponseSchema,
   type PlanDetailResponse,
   type PlanIdeaView,
   type PlanRunView,
@@ -10,9 +11,12 @@ import {
   formatChileTime,
   groupByPlanWeek,
   ideaNeedsDraft,
+  PLAN_BRIEF_MAX,
   PLAN_DEFAULT_DAYS,
+  PLAN_EMPTY_PROFILE_WARNING,
   PLAN_RUN_STATUS_TEXT,
   PLATFORM_TEXT,
+  planProfileIsEmpty,
   planWeekText,
 } from "@agentsales/core";
 import type { Command } from "commander";
@@ -62,8 +66,7 @@ function integerOption(option: string, text: string | undefined): number | undef
 function planHint(error: ApiCallError): string | undefined {
   const hints: Record<string, string> = {
     PLAN_RUN_NOT_FOUND: "Mira los planes de la marca con agentsales plan list",
-    PLAN_RUN_INVALID:
-      "Días de 1 a 31, de 1 a 20 ideas, y un inicio entre hoy y 60 días más (--start AAAA-MM-DD)",
+    PLAN_RUN_INVALID: `Días de 1 a 31, de 1 a 20 ideas, un inicio entre hoy y 60 días más (--start AAAA-MM-DD) y el pedido (--brief) hasta ${PLAN_BRIEF_MAX} caracteres`,
     POST_NO_PLATFORMS:
       "Conecta una cuenta de la marca (agentsales accounts) o define la cadencia de una red en su perfil (agentsales brand edit)",
     LLM_BUDGET_EXCEEDED:
@@ -151,6 +154,8 @@ export function renderPlanDetail(detail: PlanDetailResponse, brandSlug: string, 
   const lines = [
     `${c.bold(`Plan ${plan.id}`)}  ${paintStatus(plan, c)} · ${brandSlug} · ${periodText(plan)}`,
   ];
+  // El pedido del operador (F9.5-T23): guía temas y tono; los hechos salen del perfil.
+  if (plan.brief !== null) lines.push(`  Pedido: ${plan.brief.replace(/\n+/g, " · ")}`);
   if (plan.error !== null) {
     lines.push(`  ${c.red(`${plan.error.code}: ${plan.error.message}`)}`);
     if (plan.errorAdvice !== null) lines.push(`  ${c.dim(`→ ${plan.errorAdvice}`)}`);
@@ -192,13 +197,35 @@ export type PlanRequestOptions = {
   platform?: string[];
   count?: string;
   start?: string;
+  brief?: string;
   wait?: boolean;
 };
 
 /**
+ * Antes de pedir el plan (F9.5-T23): si el perfil de la marca no tiene temas ni hechos, avisa que
+ * las ideas saldrán genéricas y sugiere `brand edit`. Solo avisa: el plan se pide igual. Si el
+ * perfil no se puede leer, no dice nada (el pedido sigue y dirá su propio error).
+ */
+async function warnIfEmptyProfile(deps: PlanDeps, brandId: string, slug: string): Promise<void> {
+  const response = await unwrap(
+    deps.client.brokers[":id"]["editorial-profile"].$get({ param: { id: brandId } }),
+    editorialProfileResponseSchema,
+  ).catch(() => null);
+  if (response === null || !planProfileIsEmpty(response.profile)) return;
+  const c = deps.colors;
+  deps.printError(c.yellow(`⚠ ${PLAN_EMPTY_PROFILE_WARNING}`));
+  deps.printError(
+    c.dim(
+      `→ Cuenta de qué hablas y qué puede afirmar la IA: agentsales brand edit --broker ${slug} --audience "…" --pillar "clave|nombre|1|descripción" --add-fact "…" --add-avoid "…"`,
+    ),
+  );
+}
+
+/**
  * `agentsales plan [--broker] [--days 14] [--platform …] [--count N] [--start AAAA-MM-DD]
- * [--no-wait]`: pide un plan de ideas y lo espera como `prepare` (`RUN_WAIT`); al final, las ideas
- * por semana con su id y el comando para aceptarlas o descartarlas. Sale con 1 si el plan falla.
+ * [--brief "<texto>"] [--no-wait]`: pide un plan de ideas y lo espera como `prepare` (`RUN_WAIT`);
+ * al final, las ideas por semana con su id y el comando para aceptarlas o descartarlas. Sale con 1
+ * si el plan falla. Con el perfil vacío, antes avisa (F9.5-T23).
  */
 export function runPlanRequest(deps: PlanDeps, options: PlanRequestOptions = {}) {
   const c = deps.colors;
@@ -209,6 +236,7 @@ export function runPlanRequest(deps: PlanDeps, options: PlanRequestOptions = {})
       ?.flatMap((option) => collect(option))
       .map((option) => postPlatformOption(option));
     const brand = await brandOf(deps.client, options.broker);
+    await warnIfEmptyProfile(deps, brand.id, brand.slug);
     const { plan, reused } = await unwrap(
       deps.client.plans.$post({
         json: {
@@ -217,6 +245,7 @@ export function runPlanRequest(deps: PlanDeps, options: PlanRequestOptions = {})
           ...(count === undefined ? {} : { count }),
           ...(platforms === undefined ? {} : { platforms: [...new Set(platforms)] }),
           ...(options.start === undefined ? {} : { startDay: options.start.trim() }),
+          ...(options.brief === undefined ? {} : { brief: options.brief }),
         },
       }),
       planRequestResponseSchema,
@@ -326,6 +355,10 @@ export function register(program: Command, ctx: CliContext): void {
     )
     .option("--count <n>", "cuántas ideas (por defecto, según la cadencia del perfil)")
     .option("--start <día>", "el primer día del período (AAAA-MM-DD, Chile; por defecto mañana)")
+    .option(
+      "--brief <texto>",
+      `qué quieres que trate el plan, hasta ${PLAN_BRIEF_MAX} caracteres (temas y tono: los datos salen del perfil)`,
+    )
     .option("--no-wait", "imprime el id del plan y sale sin esperar")
     .action((options: PlanRequestOptions) => exitWith(() => runPlanRequest(deps(), options)));
   plan

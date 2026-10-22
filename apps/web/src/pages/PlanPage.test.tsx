@@ -237,6 +237,129 @@ describe("panel: Plan", () => {
   });
 });
 
+describe("panel: el plan que obedece (F9.5-T23)", () => {
+  it("el pedido del operador va con el plan, con ejemplos y su largo; la idea de ejemplo lo refleja", async () => {
+    const s = await setup();
+    s.signInAsBroker(s.brand.id);
+    s.renderApp("/plan");
+    const form = await screen.findByRole("region", { name: "Pedir un plan" });
+    await screen.findByText("Esta marca todavía no tiene planes.");
+    // El perfil tiene temas: no avisa que está vacío.
+    expect(screen.queryByRole("region", { name: "Perfil vacío" })).toBeNull();
+    const field = within(form).getByLabelText(/^¿Qué quieres que trate este plan\?/);
+    expect(field.getAttribute("maxlength")).toBe("500");
+    // Un ejemplo se inserta con un clic.
+    fireEvent.click(within(form).getByRole("button", { name: /Solo ideas para principiantes/ }));
+    expect((field as HTMLTextAreaElement).value).toBe("Solo ideas para principiantes");
+    expect(within(form).getByText("29/500")).toBeTruthy();
+    fireEvent.change(within(form).getByLabelText(/^Cuántas ideas/), { target: { value: "2" } });
+    fireEvent.click(within(form).getByRole("button", { name: "Pedir el plan" }));
+
+    expect(await screen.findByText("Plan en cola…")).toBeTruthy();
+    const [run] = await s.deps.planRuns.listByBroker(s.brand.id);
+    expect(run?.request).toMatchObject({ brief: "Solo ideas para principiantes" });
+    expect(screen.getByText("Tu pedido:").parentElement?.textContent).toBe(
+      "Tu pedido: Solo ideas para principiantes",
+    );
+    await s.work();
+    expect(
+      await screen.findByRole(
+        "listitem",
+        { name: "Según tu pedido: Solo ideas para principiantes" },
+        { timeout: 4_000 },
+      ),
+    ).toBeTruthy();
+  });
+
+  it("con el perfil vacío avisa, lleva a Mi marca y el asistente llena el perfil para revisarlo, sin guardar solo", async () => {
+    const s = await setup();
+    await s.deps.editorialProfiles.upsert(s.brand.id, {
+      ...editorialProfileView(s.brand.id, null),
+      cadence: { linkedin: { postsPerWeek: 2, days: [], hours: [], languageGapHours: 6 } },
+    });
+    s.signInAsBroker(s.brand.id);
+    s.renderApp("/plan");
+    const notice = await screen.findByRole("region", { name: "Perfil vacío" });
+    expect(
+      within(notice).getByText(/^Tu perfil está vacío: las ideas saldrán genéricas/),
+    ).toBeTruthy();
+    expect(within(notice).getByRole("link", { name: "Ir a Mi marca" }).getAttribute("href")).toBe(
+      "/mi-marca",
+    );
+    // Solo avisa: el plan se puede pedir igual.
+    expect(screen.getByRole("button", { name: "Pedir el plan" })).toHaveProperty("disabled", false);
+
+    fireEvent.click(within(notice).getByRole("button", { name: "Responder 4 preguntas" }));
+    const wizard = within(notice).getByRole("form", { name: "Asistente del perfil" });
+    fireEvent.change(within(wizard).getByLabelText("¿Qué haces?"), {
+      target: { value: "Corredora de propiedades en Ñuñoa" },
+    });
+    fireEvent.change(within(wizard).getByLabelText("¿Para quién?"), {
+      target: { value: "Familias que buscan arrendar en Ñuñoa" },
+    });
+    fireEvent.change(within(wizard).getByLabelText("¿De qué temas hablas?"), {
+      target: { value: "Consejos para arrendar, El barrio" },
+    });
+    // Los ejemplos de Mi marca (F9.5-T17) también sirven aquí.
+    fireEvent.click(
+      within(wizard).getByRole("button", { name: /Prometer plusvalía o rentabilidad/ }),
+    );
+    fireEvent.click(within(wizard).getByRole("button", { name: "Llenar el perfil" }));
+
+    // El formulario del perfil, lleno con las respuestas para revisarlo.
+    const review = within(notice).getByRole("form", { name: "Perfil editorial" });
+    expect(
+      within(notice).getByText(/nada se guarda hasta que aprietes «Guardar el perfil»/),
+    ).toBeTruthy();
+    expect(
+      (within(review).getByLabelText(/^Hechos que la IA puede afirmar/) as HTMLTextAreaElement)
+        .value,
+    ).toBe("Corredora de propiedades en Ñuñoa");
+    expect((within(review).getByLabelText("Público") as HTMLTextAreaElement).value).toBe(
+      "Familias que buscan arrendar en Ñuñoa",
+    );
+    expect((within(review).getByLabelText("Nombre del tema 2") as HTMLInputElement).value).toBe(
+      "El barrio",
+    );
+    expect((within(review).getByLabelText(/^Cosas que evitar/) as HTMLTextAreaElement).value).toBe(
+      "Prometer plusvalía o rentabilidad",
+    );
+    // Nada se guardó todavía.
+    expect((await s.deps.editorialProfiles.get(s.brand.id))?.pillars).toEqual([]);
+
+    fireEvent.click(within(review).getByRole("button", { name: "Guardar el perfil" }));
+    expect(await within(notice).findByText("Perfil guardado.")).toBeTruthy();
+    const saved = await s.deps.editorialProfiles.get(s.brand.id);
+    expect(saved).toMatchObject({
+      audience: "Familias que buscan arrendar en Ñuñoa",
+      facts: ["Corredora de propiedades en Ñuñoa"],
+      avoid: ["Prometer plusvalía o rentabilidad"],
+    });
+    expect(saved?.pillars.map((pillar) => pillar.name)).toEqual([
+      "Consejos para arrendar",
+      "El barrio",
+    ]);
+    // La cadencia que tenía sigue igual.
+    expect(Object.keys(saved?.cadence ?? {})).toEqual(["linkedin"]);
+    // Ya no está vacío: el aviso se va.
+    await waitFor(() => expect(screen.queryByText(/^Tu perfil está vacío/)).toBeNull());
+  });
+
+  it("al administrador, el aviso lo lleva a la ficha de la marca", async () => {
+    const s = await setup();
+    await s.deps.editorialProfiles.upsert(s.brand.id, {
+      ...editorialProfileView(s.brand.id, null),
+      cadence: { x: { postsPerWeek: 1, days: [], hours: [], languageGapHours: 6 } },
+    });
+    sessionStorage.setItem(BROKER_SCOPE_STORAGE_KEY, "agentpey");
+    s.renderApp("/plan");
+    const notice = await screen.findByRole("region", { name: "Perfil vacío" });
+    expect(
+      within(notice).getByRole("link", { name: "Ir a la ficha de la marca" }).getAttribute("href"),
+    ).toBe(`/corredores/${s.brand.id}`);
+  });
+});
+
 describe("panel: las redes de un post (F9-T21)", () => {
   /** Un post de la marca con un texto por red, ya redactado (la corrida terminada). */
   const postWithTexts = async (
