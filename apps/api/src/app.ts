@@ -269,11 +269,22 @@ export function createApp(input: AppDeps) {
     // Lo que publicar necesita saber de Marketplace: la configuración y lo que permite el ambiente.
     marketplace: { ...input.marketplace, automation: input.marketplaceAutomation },
   };
+  // La renovación de los tokens que rotan (X, F9-T16; TikTok, F9-T26; ADR-0029 punto 11), en un
+  // solo lugar de la API: la usan el refresco a pedido de Cuentas y retirar borrando en X
+  // (F9.5-T09), con la misma función del worker (`ensureRotatingAccessToken`, siempre bajo el
+  // candado de credenciales de la base, que comparten la API y el worker: renovar el mismo token
+  // en dos lugares a la vez lo invalida, S4). Sin el par de la app de una red, una cuenta suya por
+  // renovar es TOKEN_REFRESH_NOT_CONFIGURED sin llamar ni cambiarla.
+  const tokenRefreshers = {
+    ...(deps.x.configured ? { x: deps.x.auth } : {}),
+    ...(deps.tiktok.configured ? { tiktok: deps.tiktok.auth } : {}),
+  };
   // El refresco del token de Portal, solo con el par de la app (sin él, uno por vencer es
   // `MERCADOLIBRE_NOT_CONFIGURED` sin llamar).
   const publicationDeps = {
     ...deps,
     mercadoLibreRefresh: deps.mercadoLibre.configured ? deps.mercadoLibre.auth : null,
+    tokenRefreshers,
   };
   // Lo que le falta al aviso para Marketplace depende de si se puede convertir la UF (spec F5 §4.6).
   const contentDeps = { ...deps, ufConfigured: deps.marketplace?.ufConfigured ?? false };
@@ -397,10 +408,7 @@ export function createApp(input: AppDeps) {
         // X (F9-T16) y TikTok (F9-T26): el refresco a pedido renueva con la misma función que el
         // intento. Sin el par de la app de una red, una cuenta suya a la que le toca es
         // TOKEN_REFRESH_NOT_CONFIGURED (503) sin llamar ni cambiarla.
-        refreshers: {
-          ...(deps.x.configured ? { x: deps.x.auth } : {}),
-          ...(deps.tiktok.configured ? { tiktok: deps.tiktok.auth } : {}),
-        },
+        refreshers: tokenRefreshers,
         stateHash: (nonce) => deps.auth.tokens.hash(nonce),
         instagram: deps.instagram.auth,
         instagramOAuth: deps.instagram.oauthConfigured && deps.instagram.secureCookie,

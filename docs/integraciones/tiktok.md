@@ -37,7 +37,7 @@ Convención: **DOC** = página oficial leída; **SNIPPET** = visto solo en un re
 - **Sin auditoría de la app, Direct Post deja todo privado** (`SELF_ONLY`) y solo 5 usuarios pueden publicar por 24 horas (DOC). Upload no menciona esa restricción en la doc; tres blogs dicen que funciona sin auditoría (PISTA): **NO VERIFICADO**, es la prueba S6.
 - **La auditoría tarda semanas** (1 a 2, 2 a 4 o hasta 6 semanas con más de 12 envíos, según tres blogs: PISTA) y la doc dice que los clientes «no deben limitarse a uso de prueba o interno»: una app que solo publica en las cuentas del operador podría rechazarse (DOC + INFERENCIA).
 - **Programar:** no hay parámetro de programación en la API (INFERENCIA); la hora la maneja el calendario de AgentSales.
-- **Borrar:** no vi ningún endpoint para borrar un post publicado (INFERENCIA: no existe).
+- **Borrar:** no vi ningún endpoint para borrar un post publicado (INFERENCIA: no existe). Por eso (F9.5-T09, D9) `publications retire <id> --delete` en TikTok responde `TIKTOK_DELETE_UNSUPPORTED` sin llamar: el video se borra a mano en la app de TikTok y después se marca con `publications retire <id>`, sin `--delete`.
 - **Fotos y carruseles:** solo por `PULL_FROM_URL`, que exige un dominio o prefijo de URL verificado en DNS. Las URLs prefirmadas de R2 probablemente no sirven (NO VERIFICADO).
 
 ## 2. Direct Post frente a Upload

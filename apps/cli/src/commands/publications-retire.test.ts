@@ -148,3 +148,87 @@ describe("publications retire --delete (F9-T19)", () => {
     expect(s.removed).toEqual([]);
   });
 });
+
+// F9.5-T09: `--delete` también borra un post de X (el token que rota lo asegura la API) y en
+// TikTok dice, sin preguntar ni llamar, que se borra a mano en la app (D9). X es un doble.
+describe("publications retire --delete en X y TikTok (F9.5-T09)", () => {
+  async function publishedOn(platform: "x" | "tiktok") {
+    const t = await createPostPublicationScenario({
+      ...(platform === "tiktok" ? { kind: "video" as const, images: 0, video: true } : {}),
+      texts: [{ platform, language: "es" }],
+      accounts: [
+        {
+          platform,
+          meta: {
+            mode: "api",
+            accessTokenExpiresAt: new Date(Date.now() + 2 * 60 * 60_000).toISOString(),
+          },
+        },
+      ],
+    });
+    const started = await t.toPublishing(t.publicationOf(platform));
+    const publication = await t.publications.transition(
+      started.id,
+      { from: "publishing", to: "published", changes: { externalId: "1850000000000000001" } },
+      { actor: "system", payload: { mode: "live" } },
+    );
+    const removed: string[] = [];
+    const h = harness({
+      deps: {
+        brokers: t.repos.brokers,
+        posts: t.posts,
+        publications: t.publications,
+        platformAccounts: t.platformAccounts,
+        lock: t.lock,
+        postLock: t.postLock,
+        publishMode: "live",
+        operationsFor: (name) =>
+          name === platform
+            ? {
+                async remove(ref) {
+                  removed.push(ref.externalId);
+                },
+              }
+            : undefined,
+      },
+    });
+    return { t, h, publication, removed };
+  }
+
+  it("en X pregunta antes de borrar y, con el sí, la borra y queda retirada", async () => {
+    const { t, h, publication, removed } = await publishedOn("x");
+    const questions: string[] = [];
+    const confirm = async (question: string) => {
+      questions.push(question);
+      return true;
+    };
+
+    expect(
+      await runRetirePublication({ ...h.io, client: h.client, confirm }, publication.id, {
+        delete: true,
+      }),
+    ).toBe(0);
+    expect(questions[0]).toContain("¿Borrar en X");
+    expect(removed).toEqual(["1850000000000000001"]);
+    expect(t.current(publication.id)?.status).toBe("unpublished");
+    expect(h.text()).toContain("Se borró en X (o ya no estaba)");
+  });
+
+  it("en TikTok dice que se borra a mano en la app, sin preguntar ni llamar a la API", async () => {
+    const { t, h, publication, removed } = await publishedOn("tiktok");
+    const confirm = async () => {
+      throw new Error("no debía preguntar");
+    };
+
+    expect(
+      await runRetirePublication({ ...h.io, client: h.client, confirm }, publication.id, {
+        delete: true,
+      }),
+    ).toBe(1);
+    expect(h.errors()).toContain("TIKTOK_DELETE_UNSUPPORTED");
+    expect(h.errors()).toContain("Bórralo a mano en la app de TikTok");
+    expect(h.errors()).toContain(`agentsales publications retire ${publication.id}`);
+    expect(removed).toEqual([]);
+    expect(t.current(publication.id)?.status).toBe("published");
+  });
+});

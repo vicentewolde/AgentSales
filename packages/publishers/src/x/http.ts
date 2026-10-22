@@ -5,7 +5,7 @@ import { networkCodeOf, PRE_CONNECT_ERROR_CODES, X_ERRORS, xHttpError } from "./
 export type XCallOptions = { signal?: AbortSignalLike };
 
 export type XRequestSpec = {
-  method: "GET" | "POST";
+  method: "GET" | "POST" | "DELETE";
   /** `Bearer <token>` o `Basic <par de la app>`. Nunca va a un error. */
   authorization: string;
   body?: FormData | string | URLSearchParams;
