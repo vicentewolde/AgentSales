@@ -26,6 +26,11 @@ export type VideoOutput = {
   height: number;
   durationS: number;
   open(): AsyncIterable<Uint8Array>;
+  /**
+   * Se pidió música (F9.5-T19) y ffmpeg no pudo mezclarla (la pista no se lee): el video salió
+   * igual, sin música. Quien lo guarda lo hace con la clave sin música y avisa.
+   */
+  withoutMusic?: boolean;
 };
 
 export type ProcessedImage = {
@@ -65,7 +70,20 @@ export type VideoProcessOptions = {
   reel: { overlayPng: Uint8Array | null } | null;
   xVideo?: boolean;
   discordVideo?: { maxBytes: number } | null;
+  /**
+   * La música de fondo (F9.5-T19) de todo lo que se arme en esta pasada (el reel, el video para X y
+   * el de Discord): con sonido propio, detrás de él; sin sonido, sola. Sin ella, como antes.
+   */
+  music?: MusicInput | null;
 };
+
+/**
+ * Una pista de la biblioteca de música (F9.5-T19), ya leída de R2 (un MP3 de pocos MB). El
+ * procesador la recorta a la duración del video (o la repite si es más corta), le pone un fundido
+ * al final y, si el video trae sonido, la mezcla más baja detrás de él (`MUSIC_SPEC` de
+ * `packages/media`).
+ */
+export type MusicInput = { bytes: Uint8Array };
 
 /**
  * Una foto del reel armado con fotos (F9.5-T18): su tipo y cómo leer el original. El procesador
@@ -75,10 +93,10 @@ export type ReelPhotoInput = { mime: string; read: () => Promise<Uint8Array> };
 
 /**
  * Lo que se pide del reel armado con fotos: `overlayPng` es el texto que va encima los primeros
- * 2 s, como en el reel de un video (o `null`, sin texto). La música (F9.5-T19) se agregará aquí
- * como `music` (opcional: sin ella, la pista silenciosa de hoy).
+ * 2 s, como en el reel de un video (o `null`, sin texto); `music`, la pista de fondo (F9.5-T19;
+ * sin ella, una pista silenciosa).
  */
-export type PhotoReelOptions = { overlayPng: Uint8Array | null };
+export type PhotoReelOptions = { overlayPng: Uint8Array | null; music?: MusicInput | null };
 
 /**
  * Procesador de medios (spec F2 §4.2): el worker lo crea por intento, con el directorio temporal

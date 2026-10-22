@@ -10,6 +10,7 @@ import {
   discordVideoBitrateKbps,
   REEL_MIN_DURATION_S,
 } from "../media-checks.js";
+import { resolveReelMusic } from "../music/reel-music.js";
 import type {
   ImageOutput,
   ImageVariant,
@@ -29,7 +30,8 @@ import { postSubject } from "../subject.js";
 // procesador: una vuelta solo arma lo que falta, así reintentar o encolar dos veces no repite.
 // Desde F9.5 (D8), si el post va a Discord y el video más liviano (`x_video` o `ig_reel`) de su
 // primer video no cabe en sus 20 MiB, además el video liviano para Discord (`discord_video`, bajo
-// 19 MiB).
+// 19 MiB). Desde F9.5-T19, la música elegida del post va en todos esos videos (todas las redes) y
+// en su clave: cambiarla los rehace; sin música, las claves de siempre.
 
 /** Las variantes JPEG de una foto de un post. */
 export const POST_PHOTO_VARIANTS = ["thumb", "ig_4x5"] as const satisfies readonly ImageVariant[];
@@ -40,7 +42,7 @@ export type ProcessPostMediaDeps = {
     MediaRepository,
     "listBySubject" | "updateMeasurements" | "upsertDerivative" | "deleteDerivative"
   >;
-  storage: Pick<MediaStorage, "get" | "getStream" | "put" | "putStream" | "delete">;
+  storage: Pick<MediaStorage, "get" | "getStream" | "head" | "put" | "putStream" | "delete">;
   /** El procesador del intento, con su directorio temporal (el worker lo borra al terminar). */
   processor: MediaProcessor;
   /** Un objeto viejo que no se pudo borrar de R2 (queda sin uso); solo para el log. */
@@ -72,6 +74,11 @@ export type ProcessPostMediaResult =
       media: { processed: number; existing: number; failed: number };
       /** Los originales que no se pudieron leer (formato no válido o archivo dañado). */
       failedMediaIds: string[];
+      /**
+       * Avisos para el operador (F9.5-T19): la música elegida no está en la biblioteca o no se
+       * subió a R2, y los videos quedaron sin música. El job los deja en el log.
+       */
+      warnings: string[];
     };
 
 const isDecodeFailed = (error: unknown) =>
@@ -107,6 +114,16 @@ export async function processPostMedia(
     videoMaxBytes: DISCORD_VIDEO_MAX_BYTES,
   };
   const forDiscord = postPublishesOn(post, "discord");
+  // La música de sus videos (F9.5-T19), solo si tiene videos: si no se puede usar, sin música y un
+  // aviso. Va en la clave de cada video derivado (sin música, la clave de siempre).
+  const warnings: string[] = [];
+  const resolved = originals.some((item) => item.kind === "video")
+    ? await resolveReelMusic(deps.storage, post.musicTrackId)
+    : { music: null, warning: null };
+  if (resolved.warning !== null) warnings.push(resolved.warning);
+  const music = resolved.music;
+  const musicId = music?.track.id ?? null;
+  const musicOption = async () => (music === null ? {} : { music: await music.input() });
 
   /** Sube un derivado, lo registra y borra el objeto anterior si la clave cambió. */
   const save = async (upload: () => Promise<void>, derivative: NewDerivative) => {
@@ -140,7 +157,19 @@ export async function processPostMedia(
     });
   };
   const saveVideo = (original: Media, variant: VideoMediaVariant, output: VideoOutput) => {
-    const storagePath = postVideoPath(postId, variant, original.checksum, version);
+    // ffmpeg no pudo mezclar la música (F9.5-T19): la clave sin música y un aviso (uno por post).
+    const dropped = output.withoutMusic === true;
+    if (dropped && music !== null) {
+      const text = `La música «${music.track.title}» no se pudo mezclar (el archivo no se lee): los videos quedaron sin música. Vuelve a subir la pista con pnpm music:upload`;
+      if (!warnings.includes(text)) warnings.push(text);
+    }
+    const storagePath = postVideoPath(
+      postId,
+      variant,
+      original.checksum,
+      version,
+      dropped ? null : musicId,
+    );
     return save(
       () =>
         deps.storage.putStream(storagePath, output.open(), {
@@ -186,7 +215,7 @@ export async function processPostMedia(
     lightest: number | null,
     durationS: number | null,
   ): Promise<boolean> => {
-    const path = postVideoPath(postId, "discord_video", original.checksum, version);
+    const path = postVideoPath(postId, "discord_video", original.checksum, version, musicId);
     if (!forDiscord || variantOf(all, original.id, "discord_video")?.storagePath === path) {
       return false;
     }
@@ -210,7 +239,12 @@ export async function processPostMedia(
       );
       const result = await deps.processor.processVideo(
         stream,
-        { reel: null, xVideo: false, discordVideo: { maxBytes: discordLimits.videoMaxBytes } },
+        {
+          reel: null,
+          xVideo: false,
+          discordVideo: { maxBytes: discordLimits.videoMaxBytes },
+          ...(await musicOption()),
+        },
         signal,
       );
       if (result.discordVideo === null) {
@@ -259,8 +293,8 @@ export async function processPostMedia(
 
       // Un video ya medido y de menos de 3 s no da reel (como el de un aviso).
       const tooShort = original.durationS !== null && original.durationS < REEL_MIN_DURATION_S;
-      const reelPath = postVideoPath(postId, "ig_reel", original.checksum, version);
-      const xPath = postVideoPath(postId, "x_video", original.checksum, version);
+      const reelPath = postVideoPath(postId, "ig_reel", original.checksum, version, musicId);
+      const xPath = postVideoPath(postId, "x_video", original.checksum, version, musicId);
       const thumbOk = current(
         "thumb",
         postVariantPath(postId, "thumb", original.checksum, version),
@@ -291,7 +325,11 @@ export async function processPostMedia(
         );
         const result = await deps.processor.processVideo(
           stream,
-          { reel: reelOk ? null : { overlayPng: null }, xVideo: !xOk },
+          {
+            reel: reelOk ? null : { overlayPng: null },
+            xVideo: !xOk,
+            ...(reelOk && xOk ? {} : await musicOption()),
+          },
           signal,
         );
         await deps.media.updateMeasurements(original.id, result.measurements);
@@ -330,5 +368,5 @@ export async function processPostMedia(
     if (video.worked || discordRead) counts.processed += 1;
     else counts.existing += 1;
   }
-  return { outcome: "processed", media: counts, failedMediaIds };
+  return { outcome: "processed", media: counts, failedMediaIds, warnings };
 }

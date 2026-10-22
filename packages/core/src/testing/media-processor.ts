@@ -22,9 +22,14 @@ export type MediaProcessorCall =
       /** El tope pedido para el video de Discord, o `null` si no se pidió. */
       discordMaxBytes: number | null;
       inputBytes: number;
+      /** La música recibida (F9.5-T19), como texto, o `null` sin música. */
+      music: string | null;
     }
-  /** El reel con fotos (F9.5-T18): cuántas fotos recibió, sus tipos y si llevaba texto. */
-  | { kind: "photoReel"; photos: number; mimes: string[]; overlay: boolean };
+  /**
+   * El reel con fotos (F9.5-T18): cuántas fotos recibió, sus tipos, si llevaba texto y la música
+   * (F9.5-T19, como texto, o `null`).
+   */
+  | { kind: "photoReel"; photos: number; mimes: string[]; overlay: boolean; music: string | null };
 
 export type InMemoryMediaProcessorOptions = {
   version?: string;
@@ -36,6 +41,11 @@ export type InMemoryMediaProcessorOptions = {
   discordVideoThrows?: boolean;
   /** El reel con fotos falla con `MEDIA_DECODE_FAILED` (como si ffmpeg no pudiera armarlo). */
   photoReelThrows?: boolean;
+  /**
+   * ffmpeg no puede leer la pista (F9.5-T19): los videos salen sin música y con `withoutMusic`,
+   * como el adaptador al rehacerlos sin ella.
+   */
+  musicFails?: boolean;
 };
 
 export type InMemoryMediaProcessor = MediaProcessor & { calls: MediaProcessorCall[] };
@@ -76,7 +86,9 @@ function throwIfAborted(signal: AbortSignalLike | undefined) {
 const video = (
   out: Uint8Array,
   size: { width: number; height: number; durationS: number },
+  withoutMusic = false,
 ): VideoOutput => ({
+  ...(withoutMusic ? { withoutMusic: true } : {}),
   ...size,
   size: out.length,
   sha256: fakeHash(decoder.decode(out)),
@@ -119,7 +131,7 @@ export function createInMemoryMediaProcessor(
     },
     async processVideo(
       input,
-      { reel, xVideo = false, discordVideo = null },
+      { reel, xVideo = false, discordVideo = null, music = null },
       signal,
     ): Promise<ProcessedVideo> {
       throwIfAborted(signal);
@@ -137,7 +149,11 @@ export function createInMemoryMediaProcessor(
         xVideo,
         discordMaxBytes: discordVideo?.maxBytes ?? null,
         inputBytes: bytes.length,
+        music: music === null ? null : decoder.decode(music.bytes),
       });
+      // Con música, cada video la lleva (otro contenido, otro sha256); sin ella, como antes.
+      const dropped = music !== null && options.musicFails === true;
+      const withMusic = music === null || dropped ? "" : `:m=${decoder.decode(music.bytes)}`;
       if (isCorrupt(bytes)) throw decodeFailed();
       if (discordVideo !== null && options.discordVideoThrows === true) throw decodeFailed();
       const measurements = measure(bytes, "video");
@@ -147,44 +163,49 @@ export function createInMemoryMediaProcessor(
         reel === null || duration < REEL_MIN_DURATION_S
           ? null
           : encoder.encode(
-              `reel:v${version}:${decoder.decode(bytes)}:${reel.overlayPng?.length ?? 0}`,
+              `reel:v${version}:${decoder.decode(bytes)}:${reel.overlayPng?.length ?? 0}${withMusic}`,
             );
       // El video para X: con la duración completa (sin el tope del reel), como el adaptador.
-      const xBytes = xVideo ? encoder.encode(`x_video:v${version}:${decoder.decode(bytes)}`) : null;
+      const xBytes = xVideo
+        ? encoder.encode(`x_video:v${version}:${decoder.decode(bytes)}${withMusic}`)
+        : null;
       const discordBytes =
         discordVideo === null || options.discordVideoFails === true
           ? null
-          : encoder.encode(`discord_video:v${version}:${decoder.decode(bytes)}`);
+          : encoder.encode(`discord_video:v${version}:${decoder.decode(bytes)}${withMusic}`);
       return {
         measurements,
         thumb: output("thumb", bytes, version),
         reel:
           reelBytes === null
             ? null
-            : video(reelBytes, {
-                width: 1080,
-                height: 1920,
-                durationS: Math.min(duration, REEL_MAX_DURATION_S),
-              }),
+            : video(
+                reelBytes,
+                {
+                  width: 1080,
+                  height: 1920,
+                  durationS: Math.min(duration, REEL_MAX_DURATION_S),
+                },
+                dropped,
+              ),
         xVideo:
-          xBytes === null ? null : video(xBytes, { width: 1280, height: 720, durationS: duration }),
+          xBytes === null
+            ? null
+            : video(xBytes, { width: 1280, height: 720, durationS: duration }, dropped),
         discordVideo:
           discordBytes === null
             ? null
-            : video(discordBytes, {
-                width: 1280,
-                height: 720,
-                durationS: duration,
-              }),
+            : video(discordBytes, { width: 1280, height: 720, durationS: duration }, dropped),
       };
     },
-    async processPhotoReel(photos, { overlayPng }, signal): Promise<VideoOutput> {
+    async processPhotoReel(photos, { overlayPng, music = null }, signal): Promise<VideoOutput> {
       throwIfAborted(signal);
       calls.push({
         kind: "photoReel",
         photos: photos.length,
         mimes: photos.map((photo) => photo.mime),
         overlay: overlayPng !== null,
+        music: music === null ? null : decoder.decode(music.bytes),
       });
       if (photos.length < REEL_PHOTOS.min || photos.length > REEL_PHOTOS.max) {
         throw new AppError("MEDIA_REEL_PHOTOS_INVALID", "El reel con fotos pide entre 3 y 10");
@@ -197,14 +218,15 @@ export function createInMemoryMediaProcessor(
         sources.some((source) => source.startsWith("CORRUPTO"))
       )
         throw decodeFailed();
+      const dropped = music !== null && options.musicFails === true;
       const out = encoder.encode(
-        `photo_reel:v${version}:${sources.join("|")}:${overlayPng?.length ?? 0}`,
+        `photo_reel:v${version}:${sources.join("|")}:${overlayPng?.length ?? 0}${music === null || dropped ? "" : `:m=${decoder.decode(music.bytes)}`}`,
       );
-      return video(out, {
-        width: 1080,
-        height: 1920,
-        durationS: photos.length * PHOTO_REEL_SLIDE_S,
-      });
+      return video(
+        out,
+        { width: 1080, height: 1920, durationS: photos.length * PHOTO_REEL_SLIDE_S },
+        dropped,
+      );
     },
   };
 }

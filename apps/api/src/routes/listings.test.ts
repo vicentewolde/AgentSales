@@ -18,6 +18,7 @@ import {
   errorBodySchema,
   listingDetailResponseSchema,
   listingListResponseSchema,
+  listingResponseSchema,
   listingStatusResponseSchema,
 } from "../contracts/index.js";
 import { adminApp, testDeps } from "../testing/index.js";
@@ -382,6 +383,51 @@ describe("POST /listings/:id/status (F6-T10)", () => {
       body: JSON.stringify({ status: "archived" }),
     });
     expect(old.status).toBe(404);
+  });
+});
+
+describe("PATCH /listings/:id (F9.5-T19: la música del reel)", () => {
+  const patch = (app: Awaited<ReturnType<typeof setup>>["app"], id: string, body: unknown) =>
+    app.request(`/listings/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  it("elige una pista y la quita; el detalle la muestra", async () => {
+    const { app, addListing } = await setup();
+    const listing = await addListing("M001");
+
+    const chosen = await patch(app, listing.id, { musicTrackId: "calm-piano" });
+    expect(chosen.status).toBe(200);
+    expect(listingResponseSchema.parse(await chosen.json()).listing.musicTrackId).toBe(
+      "calm-piano",
+    );
+    const detail = listingDetailResponseSchema.parse(
+      await (await app.request(`/listings/${listing.id}`)).json(),
+    );
+    expect(detail.listing.musicTrackId).toBe("calm-piano");
+
+    const cleared = await patch(app, listing.id, { musicTrackId: null });
+    expect(listingResponseSchema.parse(await cleared.json()).listing.musicTrackId).toBeNull();
+  });
+
+  it.each([{ musicTrackId: "no-existe" }, {}, { musicTrackId: "calm-piano", priceAmount: 1 }])(
+    "un cuerpo inválido (%j) es 400 REQUEST_INVALID",
+    async (body) => {
+      const { app, addListing } = await setup();
+      const listing = await addListing("M002");
+      const response = await patch(app, listing.id, body);
+      expect(response.status).toBe(400);
+      expect((await errorOf(response)).error.code).toBe("REQUEST_INVALID");
+    },
+  );
+
+  it("una propiedad que no existe es 404", async () => {
+    const { app } = await setup();
+    const response = await patch(app, randomUUID(), { musicTrackId: null });
+    expect(response.status).toBe(404);
+    expect((await errorOf(response)).error.code).toBe("LISTING_NOT_FOUND");
   });
 });
 

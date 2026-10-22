@@ -343,6 +343,24 @@ export {
   reelWarnings,
 } from "./media-checks.js";
 export {
+  checkMusicTrackId,
+  MUSIC_LICENSES,
+  MUSIC_STYLE_TEXT,
+  MUSIC_STYLES,
+  MUSIC_TRACK_IDS,
+  MUSIC_TRACKS,
+  type MusicLicense,
+  type MusicStyle,
+  type MusicTrack,
+  type MusicTrackId,
+  musicTrackIdSchema,
+  musicTrackOf,
+  musicTrackPath,
+  musicTrackText,
+  NO_MUSIC_TEXT,
+} from "./music/catalog.js";
+export { type ReelMusic, resolveReelMusic } from "./music/reel-music.js";
+export {
   ONBOARDING_STEPS,
   type OnboardingOwner,
   type OnboardingStep,
@@ -526,6 +544,7 @@ export type {
   ImageOutput,
   ImageVariant,
   MediaProcessor,
+  MusicInput,
   PhotoReelOptions,
   ProcessedImage,
   ProcessedVideo,
@@ -1010,6 +1029,7 @@ export {
   ingestMedia,
   listingMediaPath,
 } from "./use-cases/ingest-media.js";
+export { setListingMusic } from "./use-cases/listing-music.js";
 export {
   getMetaDeletionRequest,
   handleMetaDataDeletion,

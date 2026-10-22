@@ -399,6 +399,41 @@ describe("panel: detalle de un post", () => {
     expect(s.requests).toContain(`PATCH /posts/${s.post.id}`);
   });
 
+  it("la música del reel (F9.5-T19): solo con un video; elegirla manda el PATCH y encola post.media", async () => {
+    const plain = await setup();
+    await plain.open();
+    await screen.findByRole("region", { name: "Textos" });
+    // Sin video, no se ofrece.
+    expect(screen.queryByRole("combobox", { name: "Música del reel" })).toBeNull();
+    cleanup();
+
+    const s = await setup();
+    await s.deps.posts.update(s.post.id, { kind: "video" });
+    await s.media.create({
+      listingId: null,
+      postId: s.post.id,
+      brokerId: s.brand.id,
+      kind: "video",
+      storagePath: `posts/${s.post.id}/original/${"a".repeat(64)}.mp4`,
+      mime: "video/mp4",
+      bytes: 1000,
+      checksum: "a".repeat(64),
+      sortOrder: 0,
+      isCover: false,
+    });
+    await s.open();
+    const select = (await screen.findByRole("combobox", {
+      name: "Música del reel",
+    })) as HTMLSelectElement;
+    await screen.findByRole("option", { name: /Up in the Sky · Moderna/ });
+    fireEvent.change(select, { target: { value: "up-in-the-sky" } });
+    await waitFor(async () =>
+      expect((await s.deps.posts.get(s.post.id))?.musicTrackId).toBe("up-in-the-sky"),
+    );
+    expect(screen.getByText(/los videos del post se rehacen solos/)).toBeTruthy();
+    expect(s.requests).toContain(`PATCH /posts/${s.post.id}`);
+  });
+
   it("un post archivado no se edita, ni pide textos ni recibe medios", async () => {
     const s = await setup();
     await s.deps.posts.archive(s.post.id);

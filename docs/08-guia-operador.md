@@ -288,6 +288,24 @@ Cada texto, el de un post (en su pestaña de red e idioma) y el de una propiedad
 
 **Al editar**, la vista previa cambia mientras escribes, antes de guardar; cuando el borrador ya es distinto del texto guardado, lo dice arriba («con tu borrador, sin guardar»). Si cancelas, vuelve al texto guardado. Si la cuenta de la red no está conectada, aparece «tu cuenta» en vez del nombre.
 
+## Música en los reels (F9.5-T19)
+
+Cada propiedad y cada post con video puede llevar **música de fondo** de una biblioteca de 5 pistas libres de derechos (CC0: no hay que dar crédito). Por defecto, **sin música**.
+
+**Una vez, antes de ofrecerla (lo haces tú):**
+1. Baja las 5 pistas de sus páginas en OpenGameArt (la lista, con el enlace de cada una, está en `docs/integraciones/musica-reels.md`, sección «Las 5 pistas»), **escúchalas** y guarda la evidencia de su licencia (una captura de la página con «CC0» y la fecha).
+2. Déjalas en una carpeta, cada una con el nombre de su pista en el catálogo y en MP3: `calm-piano.mp3`, `sunny-side-up.mp3`, `champ-de-tournesol.mp3`, `serenade-guitar.mp3` y `up-in-the-sky.mp3`. Dos vienen en WAV u OGG: conviértelas con `ffmpeg -i <original> -codec:a libmp3lame -b:a 192k <id>.mp3`.
+3. Súbelas: `pnpm music:upload <carpeta>` (al bucket de desarrollo); para el servidor, `ENV_FILE=.env.production pnpm music:upload <carpeta>`. Dice qué subió (con su sha256) y qué rechazó (un nombre que no es del catálogo, o un archivo que no es MP3). Cada pista pasa antes por ffmpeg: si no se lee entera, no se sube. Repetirlo reemplaza las que vuelvas a subir, pero los reels ya armados no cambian hasta que elijas la pista de nuevo.
+4. Antes de publicar de verdad con música en Instagram, prueba cada pista con tu cuenta (`copyright_check_status`, en la nota): si alguna da coincidencias, no la ofrezcas.
+
+**Elegirla:**
+- **Propiedad:** en **Contenido**, el selector **«Música del reel»** (con **Escuchar** si la pista ya está subida). Después toca **Rehacer imágenes** para armar el reel con ella (tus textos no cambian). CLI: `pnpm -s cli listing music <propiedad> <pista|ninguna>` y luego `pnpm -s cli prepare <propiedad> --no-texts`.
+- **Post:** en su detalle, el mismo selector aparece si el post es de video y tiene un video (en un post de otro tipo, la música se rechaza); los videos (el reel, el de X y el de Discord) se rehacen solos en unos minutos. CLI: `pnpm -s cli post edit <id> --music <pista|ninguna>`.
+
+**Cómo suena:** si el video trae sonido (alguien hablando), ese sonido va al frente y la música más baja, detrás; sin sonido (o el reel armado con fotos), la música va sola. Al final baja con un fundido. El mismo video con música va a todas las redes (Instagram, X, TikTok, Discord y LinkedIn).
+
+**Si una pista no está subida:** se puede elegir igual, pero el reel sale **sin música** y la preparación lo avisa («todavía no está subida a la biblioteca»). Cuando la subas, prepara de nuevo y el reel sale con ella.
+
 ## Pedir a la IA un plan de ideas (F9)
 
 Si no sabes qué publicar, la IA te propone **ideas con fecha** para las próximas semanas, con el perfil editorial de la marca (sus temas, sus hechos y su cadencia). **Una idea no se publica sola:** tú decides cuáles aceptar; al aceptar una, la IA redacta sus textos, y después los revisas, apruebas y programas como cualquier post. Cada plan gasta IA de la marca (entra a su tope del mes), aunque descartes todo.

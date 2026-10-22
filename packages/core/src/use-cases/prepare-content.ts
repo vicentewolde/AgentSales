@@ -24,6 +24,7 @@ import { assertLlmBudget, llmProviderFor } from "../llm-budget.js";
 import { llmCallCost } from "../llm-usage.js";
 import type { Media } from "../media.js";
 import { photoSizeWarnings, REEL_MIN_DURATION_S, reelWarnings } from "../media-checks.js";
+import { type ReelMusic, resolveReelMusic } from "../music/reel-music.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { ContentRunRepository, NewContent } from "../ports/content-repository.js";
 import type { FieldDefinitionRepository } from "../ports/field-definition-repository.js";
@@ -489,26 +490,49 @@ async function reelStage(state: Run): Promise<void> {
     }
   }
 
-  if (firstVideo !== null) return videoReel(state, media, firstVideo);
-  if (photos.length > 0) return photoReel(state, media, photos);
-  state.report.reel = "none";
+  if (firstVideo === null && photos.length === 0) {
+    state.report.reel = "none";
+    return;
+  }
+  // La música elegida (F9.5-T19): si no se puede usar, el reel sale sin ella y se avisa.
+  const { music, warning } = await resolveReelMusic(deps.storage, state.listing.musicTrackId);
+  if (warning !== null) state.report.warnings.push(warning);
+  if (firstVideo !== null) return videoReel(state, media, firstVideo, music);
+  return photoReel(state, media, photos, music);
 }
 
 /**
  * El texto del reel y su hash (con las versiones de las plantillas y del procesador). Es la parte
- * de la clave que comparten el reel de un video y el de fotos: la música (F9.5-T19) sumará aquí el
- * id de la pista, omitido sin música para no cambiar las claves de los reels ya armados.
+ * de la clave que comparten el reel de un video y el de fotos; con música (F9.5-T19) suma el id de
+ * la pista, omitido sin música para no cambiar las claves de los reels ya armados. Cambiar la
+ * pista cambia la clave: la corrida rehace el reel.
  */
-function reelText(state: Run) {
+function reelText(state: Run, music: ReelMusic | null) {
   const { deps, ctx } = state;
   const overlay = reelOverlayData(ctx.brief);
   const textKey = deps.sha256(
     reelTextInput(overlay, {
       templates: deps.templates.version,
       processor: deps.processor.version,
+      ...(music === null ? {} : { music: music.track.id }),
     }),
   );
   return { overlay, textKey };
+}
+
+/**
+ * ffmpeg no pudo mezclar la música (la pista no se lee) y el reel salió sin ella (F9.5-T19): se
+ * guarda con la clave sin música (la siguiente corrida lo intenta de nuevo) y se avisa.
+ */
+function musicDropped(
+  state: Run,
+  music: ReelMusic | null,
+  pathOf: (textKey: string) => string,
+): string {
+  state.report.warnings.push(
+    `La música «${music?.track.title ?? ""}» no se pudo mezclar (el archivo no se lee): el reel quedó sin música. Vuelve a subir la pista con pnpm music:upload`,
+  );
+  return pathOf(reelText(state, null).textKey);
 }
 
 /** El PNG transparente del texto que va encima del reel. */
@@ -557,7 +581,12 @@ async function saveReel(
 }
 
 /** El reel del primer video (como desde F2). */
-async function videoReel(state: Run, media: readonly Media[], first: Media): Promise<void> {
+async function videoReel(
+  state: Run,
+  media: readonly Media[],
+  first: Media,
+  music: ReelMusic | null,
+): Promise<void> {
   const { deps, ids, signal } = state;
   for (const warning of reelWarnings(first.durationS))
     state.report.warnings.push(`Video 1: ${warning.message}`);
@@ -568,7 +597,7 @@ async function videoReel(state: Run, media: readonly Media[], first: Media): Pro
     return;
   }
 
-  const { overlay, textKey } = reelText(state);
+  const { overlay, textKey } = reelText(state, music);
   const storagePath = reelPath(ids, first.checksum, textKey);
   if (currentReel?.storagePath === storagePath) {
     state.report.reel = "existing";
@@ -581,14 +610,25 @@ async function videoReel(state: Run, media: readonly Media[], first: Media): Pro
       first.storagePath,
       signal === undefined ? {} : { signal },
     );
-    const result = await deps.processor.processVideo(stream, { reel: { overlayPng } }, signal);
+    const result = await deps.processor.processVideo(
+      stream,
+      { reel: { overlayPng }, ...(music === null ? {} : { music: await music.input() }) },
+      signal,
+    );
     const reel = result.reel;
     if (reel === null) {
       state.report.reel = "skipped";
       await dropDerivative(state, currentReel);
       return;
     }
-    await saveReel(state, storagePath, first.id, reel);
+    await saveReel(
+      state,
+      reel.withoutMusic === true
+        ? musicDropped(state, music, (key) => reelPath(ids, first.checksum, key))
+        : storagePath,
+      first.id,
+      reel,
+    );
     state.report.reel = "created";
   } catch (error) {
     // El video no se pudo armar como reel: aviso de ese video; la siguiente corrida lo reintenta.
@@ -610,12 +650,13 @@ async function photoReel(
   state: Run,
   media: readonly Media[],
   photos: readonly Media[],
+  music: ReelMusic | null,
 ): Promise<void> {
   const { deps, ids, signal } = state;
   const first = photos[0];
   if (first === undefined) return;
   const currentReel = variantOf(media, first.id, "ig_reel");
-  const { overlay, textKey } = reelText(state);
+  const { overlay, textKey } = reelText(state, music);
   const photosKey = deps.sha256(photoReelInput(photos.map((photo) => photo.checksum)));
   const storagePath = photoReelPath(ids, photosKey, textKey);
   if (currentReel?.storagePath === storagePath) {
@@ -630,10 +671,17 @@ async function photoReel(
         mime: photo.mime,
         read: () => deps.storage.get(photo.storagePath),
       })),
-      { overlayPng },
+      { overlayPng, ...(music === null ? {} : { music: await music.input() }) },
       signal,
     );
-    await saveReel(state, storagePath, first.id, reel);
+    await saveReel(
+      state,
+      reel.withoutMusic === true
+        ? musicDropped(state, music, (key) => photoReelPath(ids, photosKey, key))
+        : storagePath,
+      first.id,
+      reel,
+    );
     state.report.reel = "created";
   } catch (error) {
     // Las fotos no se pudieron armar como reel: un aviso; la siguiente corrida lo reintenta.

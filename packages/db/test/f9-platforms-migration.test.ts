@@ -1,13 +1,8 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
-import { drizzle } from "drizzle-orm/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { SchemaDatabase } from "../src/client.js";
 import { MIGRATIONS_FOLDER } from "../src/migrations.js";
-import { createListingRepository } from "../src/repositories/listings.js";
-import * as schema from "../src/schema.js";
-import { newListing } from "./import-repositories.contract.js";
 
 // Migración 0014 (F9-T01, ADR-0029): las plataformas `x`, `linkedin`, `discord` y `tiktok`, el
 // estado `outcome_unknown` (solo `ALTER TYPE … ADD VALUE`, nunca recrear el tipo como la 0006) y
@@ -80,10 +75,17 @@ describe("migración 0014 sobre una base con avisos y publicaciones", () => {
         )
       ).rows[0]?.id ?? "";
     const brokers = [await broker("propio-0014", true), await broker("cliente-0014", false)];
-    const db = drizzle(client, { schema }) as unknown as SchemaDatabase;
-    const listingId = (
-      await createListingRepository(db).create(newListing(brokers[0] ?? "", "P-0014"))
-    ).id;
+    // A mano: el repositorio de hoy pide columnas posteriores (`listings.music_track_id`, F9.5-T19).
+    const listingId =
+      (
+        await client.query<{ id: string }>(
+          `INSERT INTO listings (broker_id, external_ref, category, operation, property_type, region,
+                 comuna, address, price_amount, price_currency, attributes, source, source_hash)
+               VALUES ($1, $2, 'real_estate', 'sale', 'Departamento', 'Metropolitana', 'Ñuñoa',
+                 'Calle Inventada 123', 5800, 'UF', '{"dormitorios": 3}', 'xlsx', 'hash-1') RETURNING id`,
+          [brokers[0], "P-0014"],
+        )
+      ).rows[0]?.id ?? "";
     const account = async (platform: string) =>
       (
         await client.query<{ id: string }>(

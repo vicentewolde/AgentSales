@@ -622,6 +622,32 @@ describe("errores con su consejo y permisos", () => {
     expect(s.h.errors()).toContain("--date");
   });
 
+  it("--music (F9.5-T19): elige y quita la música de los videos; una pista que no existe no llama", async () => {
+    const s = await setup();
+    await runPostCreate(s.deps(), "Recorrido en video", { broker: "agentpey", kind: "video" });
+    const post = await s.created();
+    expect(await runPostEdit(s.deps(), post.id, { music: "up-in-the-sky" })).toBe(0);
+    expect(s.h.text()).toContain("música: Up in the Sky · Moderna (los videos se rehacen solos)");
+    expect((await s.h.posts.get(post.id))?.musicTrackId).toBe("up-in-the-sky");
+    s.h.out.length = 0;
+    expect(await runPostShow(s.deps(), post.id)).toBe(0);
+    expect(s.h.text()).toContain("Música de los videos: Up in the Sky · Moderna");
+
+    expect(await runPostEdit(s.deps(), post.id, { music: "ninguna" })).toBe(0);
+    expect((await s.h.posts.get(post.id))?.musicTrackId).toBeNull();
+
+    expect(await runPostEdit(s.deps(), post.id, { music: "reggaeton" })).toBe(1);
+    expect(s.h.errors()).toContain("MUSIC_TRACK_INVALID");
+
+    // Un post que no es de video: la API lo rechaza y la CLI dice por qué.
+    await runPostCreate(s.deps(), "Solo texto", { broker: "agentpey" });
+    const text = (await s.h.posts.list({}, ALL_SCOPE)).find((item) => item.topic === "Solo texto");
+    if (text === undefined) throw new Error("sin el post de texto");
+    expect(await runPostEdit(s.deps(), text.id, { music: "calm-piano" })).toBe(1);
+    expect(s.h.errors()).toContain("La música es solo para los posts de video");
+    expect((await s.h.posts.get(text.id))?.musicTrackId).toBeNull();
+  });
+
   it("approve sin --platform aprueba solo las redes del post; con todas quitadas, lo explica", async () => {
     const s = await setup();
     await runPostCreate(s.deps(), "Dos redes", { broker: "agentpey" });

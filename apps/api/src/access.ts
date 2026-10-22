@@ -44,6 +44,8 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   // Propiedades y su contenido.
   "GET /listings": "session",
   "GET /listings/:id": "session",
+  // F9.5-T19: la música del reel de la propiedad (lo ajeno es 404: `ownedBy`).
+  "PATCH /listings/:id": "session",
   "POST /listings/:id/status": "session",
   "POST /listings/:id/content-runs": "session",
   "GET /listings/:id/content": "session",
@@ -120,6 +122,8 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "GET /plans/:id": "session",
   "POST /posts/:id/accept": "session",
   "POST /posts/:id/discard": "session",
+  // F9.5-T19: la biblioteca de música de los reels (el mismo catálogo para todos).
+  "GET /music/tracks": "session",
   // F8 (spec §4.4, ADR-0025): pedir la carga con sus URLs de subida y empezarla.
   "POST /imports/uploads": "session",
   "POST /imports/:id/start": "session",
