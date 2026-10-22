@@ -28,6 +28,8 @@ export type CalendarEntry = {
   language: Language;
   status: PublicationStatus;
   dryRun: boolean;
+  /** Los medios fijos de la publicación (un `post` de Instagram con uno es una imagen). */
+  mediaCount: number;
   /** En qué está una programada (`upcoming`, `due`, `overdue`); `null` en una publicada. */
   schedule: ScheduleState | null;
   /** El aviso (`null` en un post). */
@@ -93,6 +95,7 @@ export function calendarEntries(input: CalendarInput): CalendarEntry[] {
       language: publication.language,
       status: publication.status,
       dryRun: publication.dryRun,
+      mediaCount: publication.mediaIds.length,
       schedule: scheduleState(publication, input.now),
       listingId: subject.kind === "listing" ? subject.id : null,
       postId: subject.kind === "post" ? subject.id : null,

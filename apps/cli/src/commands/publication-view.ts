@@ -37,9 +37,11 @@ export function paintPublicationStatus(
   return c.dim(text);
 }
 
-/** `carrusel de Instagram`, `aviso de Portal Inmobiliario`. */
-export const publicationName = (publication: Pick<PublicationView, "format" | "platform">) =>
-  `${publicationFormatText(publication.platform, publication.format)} de ${PLATFORM_TEXT[publication.platform]}`;
+/** `carrusel de Instagram`, `imagen de Instagram`, `aviso de Portal Inmobiliario`. */
+export const publicationName = (
+  publication: Pick<PublicationView, "format" | "platform" | "mediaIds">,
+) =>
+  `${publicationFormatText(publication.platform, publication.format, publication.mediaIds.length)} de ${PLATFORM_TEXT[publication.platform]}`;
 
 /** Un motivo de lo que le falta al aviso para un canal, con su columna del Excel: `  • Falta … (dormitorios)`. */
 export const readinessIssueLine = (issue: ReadinessIssueView) =>
@@ -131,7 +133,7 @@ export function renderPublications(publications: readonly PublicationView[], c: 
     publications.map((publication) => [
       publication.id,
       PLATFORM_TEXT[publication.platform],
-      publicationFormatText(publication.platform, publication.format),
+      publicationFormatText(publication.platform, publication.format, publication.mediaIds.length),
       paintPublicationStatus(publication, c),
       publicationModeText(publication.dryRun),
       String(publication.attempts),

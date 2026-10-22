@@ -154,6 +154,8 @@ export {
   PLAN_RUN_STATUS_TEXT,
   PLATFORM_ACCOUNT_STATUS_TEXT,
   PLATFORM_TEXT,
+  POST_KIND_TEXT,
+  POST_STATUS_TEXT,
   PUBLICATION_ACTOR_TEXT,
   PUBLICATION_FORMAT_TEXT,
   PUBLICATION_QUEUED_WARNING_TEXT,
@@ -668,6 +670,7 @@ export {
   type PublishAttemptResult,
   publicationErrorSchema,
   publicationEventSchema,
+  publicationModeFixed,
   publicationSchema,
   publishAttemptPayloadSchema,
   publishAttemptRecordSchema,
@@ -682,6 +685,7 @@ export {
   type SyncPayload,
   scheduleChangedPayloadSchema,
   scheduledPayloadSchema,
+  shownPublicationMode,
   syncPayloadSchema,
 } from "./publication.js";
 export {
