@@ -14,7 +14,7 @@ import { formatDateTime } from "../output.js";
 
 /** Estado con color: verde si terminó, rojo si falló, amarillo mientras corre. */
 export function paintContentRunStatus(run: Pick<ContentRunView, "status">, c: Colors): string {
-  const text = CONTENT_RUN_STATUS_TEXT[run.status];
+  const text = CONTENT_RUN_STATUS_TEXT[run.status] ?? run.status;
   if (run.status === "succeeded") return c.green(text);
   if (run.status === "failed") return c.red(text);
   return c.yellow(text);
@@ -46,7 +46,7 @@ export function renderContentRun(run: ContentRunView, c: Colors): string {
       `  Portada y ficha: armadas ${report.renders.rendered} · sin cambios ${report.renders.existing}`,
     );
   }
-  if (report.reel) lines.push(`  Reel: ${CONTENT_REEL_OUTCOME_TEXT[report.reel]}`);
+  if (report.reel) lines.push(`  Reel: ${CONTENT_REEL_OUTCOME_TEXT[report.reel] ?? report.reel}`);
   if (report.llm) {
     const seconds = Math.round(report.llm.durationMs / 1000);
     lines.push(
@@ -90,7 +90,7 @@ export function renderChecksSummary(contents: readonly ContentView[], c: Colors)
     const hasErrors = content.checks.some((check) => check.severity === "error");
     const counts = checkCounts(content);
     lines.push(
-      `  ${PLATFORM_TEXT[content.platform]}: ${
+      `  ${PLATFORM_TEXT[content.platform] ?? content.platform}: ${
         hasErrors ? c.red(counts) : content.checks.length > 0 ? c.yellow(counts) : c.green(counts)
       }`,
     );
@@ -102,8 +102,8 @@ export function renderChecksSummary(contents: readonly ContentView[], c: Colors)
 /** Un texto completo: canal, estado, título, cuerpo, hashtags y revisión. */
 export function renderContent(content: ContentView, c: Colors): string {
   const lines = [
-    `${c.bold(PLATFORM_TEXT[content.platform])}  ${c.dim(
-      `${CONTENT_STATUS_TEXT[content.status]} · ${content.promptVersion} · ${formatDateTime(content.updatedAt)}`,
+    `${c.bold(PLATFORM_TEXT[content.platform] ?? content.platform)}  ${c.dim(
+      `${CONTENT_STATUS_TEXT[content.status] ?? content.status} · ${content.promptVersion} · ${formatDateTime(content.updatedAt)}`,
     )}`,
   ];
   if (content.title !== null) lines.push(`  ${c.bold(content.title)}`);

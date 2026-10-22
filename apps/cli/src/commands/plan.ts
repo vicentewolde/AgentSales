@@ -93,12 +93,12 @@ const periodText = (plan: PlanRunView) =>
   `del ${plan.firstDay} al ${plan.lastDay}${
     plan.platforms.length === 0
       ? ""
-      : ` · ${plan.platforms.map((platform) => PLATFORM_TEXT[platform]).join(", ")}`
+      : ` · ${plan.platforms.map((platform) => PLATFORM_TEXT[platform] ?? platform).join(", ")}`
   }`;
 
 /** El estado del plan, con su color. */
 function paintStatus(plan: PlanRunView, c: Colors): string {
-  const text = PLAN_RUN_STATUS_TEXT[plan.status];
+  const text = PLAN_RUN_STATUS_TEXT[plan.status] ?? plan.status;
   if (plan.status === "succeeded") return c.green(text);
   if (plan.status === "failed") return c.red(text);
   return c.yellow(text);
@@ -131,12 +131,12 @@ function renderIdea(idea: PlanIdeaView, c: Colors): string[] {
   const networks =
     idea.platforms === null
       ? "todas las redes de la marca"
-      : idea.platforms.map((platform) => PLATFORM_TEXT[platform]).join(", ");
-  const status = POST_STATUS_TEXT[idea.status];
+      : idea.platforms.map((platform) => PLATFORM_TEXT[platform] ?? platform).join(", ");
+  const status = POST_STATUS_TEXT[idea.status] ?? idea.status;
   const lines = [
     `  ${c.bold(when)}  ${idea.topic}  ${idea.status === "archived" ? c.dim(`(${status})`) : c.cyan(`[${status}]`)}`,
     c.dim(
-      `    ${idea.id} · ${POST_KIND_TEXT[idea.kind]} · ${networks}${idea.pillar === null ? "" : ` · línea ${idea.pillar}`}`,
+      `    ${idea.id} · ${POST_KIND_TEXT[idea.kind] ?? idea.kind} · ${networks}${idea.pillar === null ? "" : ` · línea ${idea.pillar}`}`,
     ),
   ];
   if (idea.rationale !== null) lines.push(`    Por qué: ${idea.rationale}`);
@@ -231,12 +231,14 @@ export function runPlanRequest(deps: PlanDeps, options: PlanRequestOptions = {})
       deps.printError(c.dim(`→ Míralo con: ${show(plan.id)}`));
       return 0;
     }
-    deps.print(`Plan ${plan.id} (${periodText(plan)}): ${PLAN_RUN_STATUS_TEXT[plan.status]}…`);
+    deps.print(
+      `Plan ${plan.id} (${periodText(plan)}): ${PLAN_RUN_STATUS_TEXT[plan.status] ?? plan.status}…`,
+    );
     const done = await waitForRun<PlanRunView>(deps, {
       run: plan,
       fetch: async () => (await fetchPlan(deps.client, plan.id)).plan,
       isTerminal: (run) => run.status === "succeeded" || run.status === "failed",
-      progress: (run) => PLAN_RUN_STATUS_TEXT[run.status],
+      progress: (run) => PLAN_RUN_STATUS_TEXT[run.status] ?? run.status,
       laterCommand: show(plan.id),
       noun: "el plan",
     });
@@ -293,7 +295,7 @@ export function runPlanList(deps: PlanDeps, options: { broker?: string; json?: b
           plan.id,
           paintStatus(plan, c),
           `${plan.firstDay} a ${plan.lastDay}`,
-          plan.platforms.map((platform) => PLATFORM_TEXT[platform]).join(", "),
+          plan.platforms.map((platform) => PLATFORM_TEXT[platform] ?? platform).join(", "),
           formatChileTime(plan.createdAt),
         ]),
         c,

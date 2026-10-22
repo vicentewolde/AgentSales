@@ -17,8 +17,8 @@ describe("localAccess", () => {
 });
 
 describe("readApiVersion", () => {
-  it("lee la versión del package.json de la API", () => {
-    const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  it("lee la versión del package.json raíz (spec F9.5 §4.2)", () => {
+    const pkg = JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8"));
 
     expect(readApiVersion()).toBe(pkg.version);
   });

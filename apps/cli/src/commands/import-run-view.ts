@@ -9,7 +9,8 @@ import { formatDateTime, renderTable } from "../output.js";
 
 /** Estado con color: verde si terminó, rojo si falló, amarillo mientras corre. */
 export function paintStatus(run: Pick<ImportRunView, "status" | "dryRun">, c: Colors): string {
-  const text = IMPORT_RUN_STATUS_TEXT[run.status] + (run.dryRun ? " (simulación)" : "");
+  const text =
+    (IMPORT_RUN_STATUS_TEXT[run.status] ?? run.status) + (run.dryRun ? " (simulación)" : "");
   if (run.status === "succeeded") return c.green(text);
   if (run.status === "failed") return c.red(text);
   return c.yellow(text);
@@ -38,7 +39,7 @@ export function renderImportRun(run: ImportRunView, c: Colors): string {
   }
   if (report?.broker) {
     lines.push(
-      `  Corredor: ${report.broker.slug ?? "—"} (${IMPORT_BROKER_OUTCOME_TEXT[report.broker.outcome]})`,
+      `  Corredor: ${report.broker.slug ?? "—"} (${IMPORT_BROKER_OUTCOME_TEXT[report.broker.outcome] ?? report.broker.outcome})`,
     );
   }
   if (report !== null) {

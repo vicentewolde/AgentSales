@@ -63,7 +63,7 @@ function expiryText(account: PlatformAccountView, now: Date, c: Colors): string 
 }
 
 function paintStatus(account: PlatformAccountView, c: Colors): string {
-  const text = PLATFORM_ACCOUNT_STATUS_TEXT[account.status];
+  const text = PLATFORM_ACCOUNT_STATUS_TEXT[account.status] ?? account.status;
   if (account.status === "connected") return c.green(text);
   if (account.status === "revoked") return c.dim(text);
   return c.red(text);
@@ -94,7 +94,9 @@ export function runAccounts(deps: AccountsDeps) {
     if (accounts.length === 0) {
       deps.print(c.yellow("No hay cuentas conectadas"));
       for (const platform of CONNECT_ORDER) {
-        deps.print(c.dim(`→ Conecta ${PLATFORM_TEXT[platform]} con: ${CONNECT_HINT[platform]}`));
+        deps.print(
+          c.dim(`→ Conecta ${PLATFORM_TEXT[platform] ?? platform} con: ${CONNECT_HINT[platform]}`),
+        );
       }
       return 0;
     }
@@ -107,8 +109,8 @@ export function runAccounts(deps: AccountsDeps) {
           brokers.get(account.brokerId)?.slug ?? account.brokerId,
           // F9-T15: una red con modo por cuenta dice si publica a mano.
           account.publishingMode === "manual"
-            ? `${PLATFORM_TEXT[account.platform]} (a mano)`
-            : PLATFORM_TEXT[account.platform],
+            ? `${PLATFORM_TEXT[account.platform] ?? account.platform} (a mano)`
+            : (PLATFORM_TEXT[account.platform] ?? account.platform),
           account.displayName,
           paintStatus(account, c),
           expiryText(account, now, c),
@@ -148,10 +150,12 @@ export function runAccounts(deps: AccountsDeps) {
     );
     if (missing.length > 0) {
       deps.print(
-        c.dim(`Sin cuenta: ${missing.map((platform) => PLATFORM_TEXT[platform]).join(", ")}`),
+        c.dim(
+          `Sin cuenta: ${missing.map((platform) => PLATFORM_TEXT[platform] ?? platform).join(", ")}`,
+        ),
       );
       for (const platform of missing) {
-        deps.print(c.dim(`→ ${PLATFORM_TEXT[platform]}: ${CONNECT_HINT[platform]}`));
+        deps.print(c.dim(`→ ${PLATFORM_TEXT[platform] ?? platform}: ${CONNECT_HINT[platform]}`));
       }
     }
     return 0;
@@ -892,8 +896,8 @@ export function runMode(deps: AccountsDeps, id: string, mode: string, options: M
     const text = wanted === "manual" ? "a mano" : "por API";
     deps.print(
       changed
-        ? `${c.green("✓")} ${account.displayName} (${PLATFORM_TEXT[account.platform]}) publica ${text}`
-        : `Sin cambios: ${account.displayName} (${PLATFORM_TEXT[account.platform]}) ya publicaba ${text}`,
+        ? `${c.green("✓")} ${account.displayName} (${PLATFORM_TEXT[account.platform] ?? account.platform}) publica ${text}`
+        : `Sin cambios: ${account.displayName} (${PLATFORM_TEXT[account.platform] ?? account.platform}) ya publicaba ${text}`,
     );
     return 0;
   });
@@ -939,7 +943,7 @@ export function runDisconnect(deps: AccountsDeps, id: string, options: Disconnec
     const marketplace = account.platform === "fb_marketplace";
     if (!options.yes) {
       const confirmed = await deps.confirm(
-        `¿Desconectar ${account.displayName} (${PLATFORM_TEXT[account.platform]})? ${accountDisconnectText(account.platform, account.marketplaceMode, connect.marketplace.automation)}`,
+        `¿Desconectar ${account.displayName} (${PLATFORM_TEXT[account.platform] ?? account.platform})? ${accountDisconnectText(account.platform, account.marketplaceMode, connect.marketplace.automation)}`,
       );
       if (!confirmed) {
         deps.printError(c.yellow("No se desconectó: confirma en la terminal o usa --yes"));

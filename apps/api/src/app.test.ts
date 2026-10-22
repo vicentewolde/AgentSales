@@ -4,7 +4,7 @@ import type { HealthReport } from "@agentsales/core";
 import { AppError, healthReportSchema } from "@agentsales/core";
 import { HTTPException } from "hono/http-exception";
 import { describe, expect, it } from "vitest";
-import { type AppDeps, createApp, mountApi } from "./app.js";
+import { type AppDeps, createApp, mountApi, VERSION_HEADER } from "./app.js";
 import type { ErrorBody } from "./errors.js";
 import { adminApp, TEST_ADMIN_TOKEN, testDeps } from "./testing/index.js";
 
@@ -434,5 +434,35 @@ describe("acceso local", () => {
     });
 
     expect(response.status).toBe(200);
+  });
+});
+
+// F9.5-T11 (spec §4.2): la versión va en toda respuesta, también en errores y rechazos, para que
+// la CLI avise si es de otra versión.
+describe("cabecera X-AgentSales-Version", () => {
+  it("la llevan las respuestas buenas, los errores, los 404 y los rechazos de los guardias", async () => {
+    const app = appWith({}, { version: "1.2.3" });
+    app.get("/boom", () => {
+      throw new AppError("INVALID_TRANSITION", "Transición inválida");
+    });
+    app.get("/crash", () => {
+      throw new Error("interno");
+    });
+    const responses = [
+      await app.request("/health"),
+      await app.request("/boom"),
+      await app.request("/crash"),
+      await app.request("/no-existe"),
+      await app.request("http://evil.example/listings"),
+      // Montada bajo `/api`, como la sirve `server.ts`, y sin sesión.
+      await mountApi(
+        createApp(testDeps({ logger: silentLogger, access, version: "1.2.3" })),
+      ).request("/api/listings"),
+    ];
+
+    expect(responses.map((response) => response.status)).toEqual([200, 409, 500, 404, 403, 401]);
+    for (const response of responses) {
+      expect(response.headers.get(VERSION_HEADER)).toBe("1.2.3");
+    }
   });
 });
