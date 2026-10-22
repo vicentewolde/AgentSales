@@ -4,6 +4,40 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 
 ## [Sin publicar]
 
+## [1.4.0] - 2026-10-22 · F9.5 Lista para mostrar
+**El panel queda presentable para la demo con la oficina del piloto.** Tiene un diseño propio y una portada que resume el día, habla como un corredor, muestra cómo se verá cada publicación antes de aprobarla y deja resolver «salió / no salió» también en Instagram y Portal. Los textos e ideas de la IA son más humanos y variados. Además se cerró la deuda interna de F9.
+
+Probado contra simulaciones (CI en verde en cada PR, #217 a #230). **Nada se publicó de verdad.**
+
+### Añadido
+- **Sistema visual del panel** (T01): colores, letras, botones, insignias, tarjetas y tablas iguales en todas las pantallas, sin dependencias nuevas.
+- **La portada «Hoy»** (T03): lo que te toca, lo próximo de 7 días y lo publicado en los últimos 7 días (lo simulado dice «simulación»). La salud del sistema pasa a **Estado** (`/estado`, solo el administrador).
+- **Vista previa por red** (T07): Instagram (imagen, carrusel y reel), X, LinkedIn, Discord, TikTok, Portal y Marketplace, con el texto y las fotos tal como saldrán, y con tu borrador mientras editas. Avisa lo que la red rechazaría (un carrusel con una foto, TikTok sin video) y los medios que todavía se procesan.
+- **«Salió / no salió» en Instagram y Portal** (T04a y T04b): un resultado dudoso queda «no se sabe si salió» (`outcome_unknown`), sin reintento solo, y se resuelve en la sección Contenido de la propiedad. En Portal en vivo, «salió» pide el enlace o el número `MLC…` y lee su estado en Mercado Libre; «no salió» pide confirmar que no quedaron avisos abiertos.
+- **Retirar borrando en X** (T09): `publications retire <id> --delete` borra el post en X (solo en vivo). TikTok no tiene cómo borrar por API: el mensaje te dice que lo borres en la app.
+- **Video para Discord que quepa** (T10): si el video no cabe en 20 MiB, se prepara una versión más liviana (hasta unos 4,6 minutos).
+- **CLI y servidor de versiones distintas** (T11): la API dice su versión (`X-AgentSales-Version`) y la CLI avisa si difiere; un valor nuevo que la CLI no conoce se muestra tal como llega en vez de fallar.
+
+### Cambiado
+- **Textos que no suenan a IA** (T05): los prompts de avisos (`listing-content-v3`) y posts (`social-post-v2`) piden frases concretas, sin clichés ni muletillas; la revisión marca las muletillas como advertencia (`AI_TELL`) y `eval:content` y `eval:social` las cuentan.
+- **El plan de ideas** (T06, ADR-0034): la IA propone ideas distintas y en orden de preferencia; el día, la hora y las redes los pone el código según la cadencia de cada red. Las parecidas se descartan (`IDEA_TOO_SIMILAR`) y las que no caben, con `NO_SLOT`. Sin cadencia, 1 idea por semana.
+- **Lenguaje claro** (T02): estados y mensajes sin jerga; «simulación» solo cuando corresponde (D4); un post de una foto es «imagen», no «carrusel»; Publicar y Programar desaparecen cuando no queda nada por publicar.
+- **De quién es una cuenta** (T12): una sola regla (`accountOwnedBy`); el detalle de un post muestra las redes de su marca aunque tengas otro corredor elegido.
+- La versión del producto es la del `package.json` raíz (`1.4.0`).
+
+### Corregido
+- **X** (T08): el tope de gasto del mes ya no se puede pasar con dos publicaciones a la vez, y el video se sube por partes sin cargarlo entero en memoria.
+- El panel del Mac responde también en `127.0.0.1` (lo que pide la vuelta de X).
+
+### Límites conocidos
+- Agregar Discord a un post después de subir su video no prepara la versión liviana: sube el video de nuevo.
+- Un aviso de Portal republicado y resuelto «salió» se lee, pero se pausa, reactiva o cierra a mano en Mercado Libre (le faltan las fotos y el contacto guardados).
+- La primera respuesta real de X al borrar (y si cobra) está sin verificar.
+
+### Pendiente fuera del código
+- **Desplegar `v1.4.0`** (tú) y la guía de la demo del 30: `docs/12-demo-oficina.md`.
+- Medir con la IA real `eval:content` y `eval:social` (criterio 5 de la fase).
+
 ## [1.3.0] - 2026-10-20 · F9 Contenido de marca, entrega 3 (cierre de la fase)
 **La IA propone qué publicar y cuándo; tú decides.** Pides un plan para las próximas semanas y la IA propone ideas con fecha, línea de contenido, redes y el porqué, a partir del perfil editorial de tu marca. Una idea no gasta IA en textos ni se publica sola: la aceptas (y recién ahí se redactan sus textos), la apruebas y la programas. Con esto F9 queda completa.
 

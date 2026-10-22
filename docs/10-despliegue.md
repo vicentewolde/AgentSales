@@ -180,6 +180,23 @@ La API se apaga sola sin tráfico. **El worker hay que apagarlo a mano al termin
 
 `pnpm -s cli doctor` (con la CLI apuntando al servidor) y la página **Estado** del panel dicen si el worker está encendido y desde cuándo. No uses `fly scale count worker=0`: borra la máquina y obliga a desplegar de nuevo.
 
+### En vivo solo durante una demo (F9.5)
+
+El servidor corre en simulación (`PUBLISH_MODE = "dry-run"` en `fly.toml`). Para publicar de verdad durante una demo, **tú** cambias el modo de las dos máquinas, la API y el worker, que deben quedar iguales (si no, publicar da `PUBLISH_MODE_MISMATCH`). Es una decisión tuya, por esa vez, y la dices en el chat.
+
+1. Pasar a vivo (cada comando reinicia esa máquina, unos segundos):
+   ```bash
+   fly machine update <id_api> -a agentsales --env PUBLISH_MODE=live --yes
+   ```
+   ```bash
+   fly machine update <id_worker> -a agentsales --env PUBLISH_MODE=live --yes
+   ```
+2. Comprobar: `pnpm -s cli status` dice `PUBLISH_MODE: live`, y el panel muestra la franja roja «En vivo».
+3. **Al terminar, volver a simulación** con los mismos dos comandos y `PUBLISH_MODE=dry-run`, y comprobar de nuevo. Antes, mira en **Hoy** o en `pnpm -s cli agenda` que no quede nada programado en vivo: lo programado en vivo sale en vivo a su hora aunque después vuelvas a simulación (desprográmalo con `pnpm -s cli unschedule <id>`).
+4. Un despliegue nuevo deja las dos máquinas otra vez en `dry-run` (el valor de `fly.toml`).
+
+NO VERIFICADO: que `fly machine update --env` conserve el resto del entorno y los secretos de la máquina (así lo describe Fly). Compruébalo con `pnpm -s cli status` y `pnpm -s cli doctor` después del primer cambio, en el ensayo del jueves.
+
 ## Paso 9 · Volver a una versión anterior
 
 Cada despliegue queda con la etiqueta de su commit (`sha-…`).

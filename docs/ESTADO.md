@@ -3,14 +3,15 @@
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
 **Actualizado:** 2026-10-22
-**Fase actual:** F9.5 · Lista para mostrar **en curso** (spec aprobado el 2026-10-22, ADR-0034). Fase corta para la demo con la oficina del piloto del **viernes 2026-10-30**; corte de código el miércoles 28 (D1). F9 cerrada con `v1.3.0`; después, F10
-**Última tarea:** spec de F9.5 (`/fase-plan 9.5`): entrevista con el operador, revisión del `arquitecto` (5 bloqueantes aplicados) y ADR-0034 (el código agenda las ideas del plan). Limpieza: las 28 worktrees de F9 ya integradas, borradas
-**Siguiente paso:** tanda 1 en paralelo (T01 sistema visual, T05 textos humanos, T08 X); después las tandas 2 a 5 según §5 del spec
+**Fase actual:** F9.5 · Lista para mostrar **cerrada** el 2026-10-22 (`v1.4.0`, la etiqueta con tu permiso). Falta desplegarla (tú) y la demo con la oficina del **viernes 2026-10-30** (`docs/12-demo-oficina.md`). Siguiente: F10 · piloto con una oficina
+**Última tarea:** **cierre de F9.5** (T13). Las 12 tareas integradas en 14 PR (#217 a #230), con agentes en paralelo, el `revisor` en cada PR y el `arquitecto` en el spec y en los que cambiaban contratos: sistema visual, portada «Hoy», lenguaje claro, vista previa por red, «salió / no salió» en Instagram y Portal, textos e ideas de la IA más humanos (ADR-0034), y la deuda de F9 (X, Discord, versiones de la CLI, dueño de una cuenta)
+**Siguiente paso:** tú: desplegar `v1.4.0` y el ensayo corto del jueves 29 (`docs/12-demo-oficina.md`); la demo el 30. Después, `/fase-plan 10`
 
 ## Pendiente tuyo para la demo del 30 (F9.5)
-- [ ] **Las fotos de la propiedad de ejemplo** (la publicas en `@vicentewoldec` en la demo y la borras después)
-- [ ] **Jueves 29:** desplegar `v1.4.0`; crear tu corredor para propiedades y conectarle `@vicentewoldec` (te dejo los comandos); recomendado, una prueba corta de una publicación programada en simulación con el worker encendido
-- [ ] **Viernes 30:** encender el worker, pasar a `live` durante la demo (tu instrucción en el chat) y volver a `dry-run`; revisar en la agenda que no quede nada programado en vivo
+La guía paso a paso está en `docs/12-demo-oficina.md`.
+- [ ] **Jueves 29:** desplegar `v1.4.0`; la CLI contra el servidor (`login --api`); crear tu corredor para propiedades y conectarle `@vicentewoldec`; la propiedad de ejemplo con sus fotos; recomendado, el ensayo corto (una publicación programada en simulación con el worker encendido y el cambio a vivo y de vuelta, que nunca se probó con `fly machine update`)
+- [ ] **Viernes 30:** encender el worker, pasar a vivo durante la demo (tu instrucción en el chat), volver a simulación, apagar el worker y borrar la propiedad de ejemplo de Instagram
+- [ ] Medir con la IA real `pnpm eval:content` y `pnpm eval:social --profile dos-idiomas` (criterio 5 de F9.5: a lo más una muletilla cada diez textos)
 
 ## Pendiente tuyo de F9 (cerrada con `v1.3.0`)
 - [ ] **Tu CLI apunta a tu Mac** desde el ensayo: para volver al servidor, `pnpm -s cli login --api https://agentsales.agentpey.com --email <tu correo>`
@@ -108,25 +109,25 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
   - [ ] Confirmar si la portada del reel de P002 fue el cuadro del segundo 1 (nota de Instagram §8, punto 8)
 
 ## Progreso de la fase
-F9.5 · Lista para mostrar (`docs/specs/fase-9.5-lista-para-mostrar.md`), con agentes en paralelo (máximo 3 con código a la vez) y la CI como juez.
+F9.5 · Lista para mostrar (`docs/specs/fase-9.5-lista-para-mostrar.md`): **cerrada** el 2026-10-22.
 
 | Tarea | Estado | PR |
 |---|---|---|
-| Spec F9.5 y ADR-0034 | 🔨 en curso | |
-| T01 · Sistema visual del panel | 🔨 en curso (tanda 1) | |
-| T05 · Textos que no suenan a IA | 🔨 en curso (tanda 1) | |
-| T08 · X: tope atómico y video en streaming | 🔨 en curso (tanda 1) | |
-| T02 · Lenguaje claro y detalles de F9 | ⏳ pendiente (tras T01) | |
-| T04a · Resultado dudoso IG y Portal (core) | ⏳ pendiente | |
-| T06 · Ideas variadas y fechas con sentido | ⏳ pendiente (tras T05) | |
-| T07 · Vista previa por red | ⏳ pendiente (tras T02) | |
-| T04b · Salió / no salió en una propiedad (panel) | ⏳ pendiente (tras T02 y T04a) | |
-| T09 · Retirar borrando en X | ⏳ pendiente (tras T08) | |
-| T03 · Portada «Hoy» | ⏳ pendiente (tras T02) | |
-| T10 · Video para Discord | ⏳ pendiente | |
-| T12 · De quién es una cuenta | ⏳ pendiente | |
-| T11 · CLI y servidor de versiones distintas | ⏳ pendiente (tras T03) | |
-| T13 · Cierre (`v1.4.0`) | ⏳ jueves 29 | |
+| Spec F9.5 y ADR-0034 | ✅ | #217 |
+| T01 · Sistema visual del panel | ✅ | #220 |
+| T02 · Lenguaje claro y detalles de F9 | ✅ | #226 |
+| T03 · Portada «Hoy» | ✅ | #227 |
+| T04a · Resultado dudoso IG y Portal (core) | ✅ | #222 |
+| T04b · Salió / no salió en una propiedad (panel) | ✅ | #228 |
+| T05 · Textos que no suenan a IA | ✅ | #218 |
+| T06 · Ideas variadas y fechas con sentido | ✅ | #224 |
+| T07 · Vista previa por red | ✅ | #230 |
+| T08 · X: tope atómico y video en streaming | ✅ | #219 |
+| T09 · Retirar borrando en X | ✅ | #223 |
+| T10 · Video para Discord | ✅ | #221 |
+| T11 · CLI y servidor de versiones distintas | ✅ | #229 |
+| T12 · De quién es una cuenta | ✅ | #225 |
+| T13 · Cierre (`v1.4.0`) | ✅ | este PR |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
@@ -203,6 +204,17 @@ Resueltas en el spec (§4.13, D1–D13), ADR-0015 y ADR-0016:
 Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de cada canal y las publicaciones nacen aprobadas, una por formato (carrusel y reel), con lo aprobado fijo; sin corridas mientras haya publicaciones pendientes y con un candado por aviso (cierra la ventana de edición de F2); el modo `dry-run`/`live` lo decide cada publicación; en F3 la cuenta se conecta con el token del panel de Meta (Meta rechazó `http://localhost`; el OAuth queda listo para F7 con HTTPS); sin `DELETE` (se borra a mano y se marca como retirada).
 
 ## Deuda técnica
+- **F9.5 (de las revisiones):**
+  - Agregar Discord a un post después de subir su video no prepara `discord_video` (solo `post.media` la arma, al subir). Con `platforms = null` se arma aunque la marca no tenga Discord.
+  - Un aviso de Portal republicado (`relist`) y resuelto «salió» no tiene fotos ni contacto guardados: pausar, reactivar, cerrar y actualizar fallan con `PORTAL_PROGRESS_UNUSABLE` y se hacen a mano en Mercado Libre. Arreglo posible: que el sync lea el ítem y complete el progreso.
+  - El panel no sabe si Mercado Libre encontró varios ítems («many»): `lastErrorOf` no guarda `details`; por eso «No salió» en Portal en vivo pide confirmación siempre.
+  - `hasSomethingToPublish` no mira por formato (un carrusel publicado y un reel descartado no muestran Publicar).
+  - La CLI aplica D4 solo en la agenda y el seguimiento: `publications`, `post show` y `publish` muestran el modo guardado (una aprobada dice «simulación» con el servidor en vivo).
+  - X: el 404 al borrar cuenta como borrado y el costo de borrar no está verificado; anotar la primera respuesta real (`x.md` §8). `sumCostUsdSince` quedó solo de lectura.
+  - El candado de la reserva de gasto de X no se probó con dos conexiones reales (PGlite tiene una sola).
+  - La vista previa elige para Discord el video `x_video` o `ig_reel` sin saber cuál pesa menos (el panel no conoce los tamaños).
+  - `CAROUSEL_MIN_ITEMS` está duplicado en el panel (`preview/preview.ts`) porque core no lo reexporta.
+  - La CI se cortó dos veces por los 15 minutos del job `check` con la máquina de GitHub lenta (instalar Chromium); si vuelve a pasar, subir el `timeout-minutes` o poner un límite propio al paso de Chromium.
 - **F9, de T15, T16 y T26:** faltan en `.env.example` `LINKEDIN_CLIENT_ID/SECRET/REDIRECT_URI`, `X_CLIENT_ID/SECRET/REDIRECT_URI` y `TIKTOK_CLIENT_KEY/SECRET/REDIRECT_URI` (los agentes no tocan `.env*`; los agregas tú). Ninguna de las tres redes publica de verdad hasta S2, S3, S4 y S6.
 - **F9, de T14:** un video de más de 20 MiB no se publica en Discord (sale solo el texto): no hay enlace seguro porque R2 no tiene un dominio público (spec D8 cambiada). Se resuelve con un dominio de medios (`media.agentpey.com`), el mismo que pedirá TikTok para fotos. `social:smoke --platform discord` no existe: S5 se hace a mano.
 - **F9, de T23 (revisión de docs contra el código):**

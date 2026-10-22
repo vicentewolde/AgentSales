@@ -2,7 +2,7 @@
 
 Publica avisos inmobiliarios (y luego productos en general) en Instagram, Portal Inmobiliario y Facebook Marketplace: la IA redacta, procesa fotos y videos, y el sistema publica, programa y hace seguimiento. Desde F9 hace lo mismo con el contenido de marca (posts) en Instagram, X, LinkedIn, Discord y TikTok, con una IA que propone ideas y el operador aprobando todo.
 
-> Estado: **F9 · Contenido de marca**: entregas 1 y 2 cerradas (`v1.1.0` y `v1.2.0`); la 3 (el plan de ideas) está construida y faltan la prueba en vivo de cada red y el cierre (`v1.3.0`). El MVP (`v1.0.0`, F8) corre en `https://agentsales.agentpey.com` (simulación). Pendientes del operador: el App Review de Meta y las pruebas de entrada de las redes (S1 a S6). Ver `docs/ESTADO.md`.
+> Estado: **F9.5 · Lista para mostrar** cerrada (`v1.4.0`): el panel presentable para la demo con la oficina del piloto. F9 (contenido de marca) cerrada con `v1.3.0`; sigue F10 (el piloto). El MVP (`v1.0.0`, F8) corre en `https://agentsales.agentpey.com` (simulación). Pendientes del operador: el App Review de Meta y las pruebas de entrada de las redes (S1 a S6). Ver `docs/ESTADO.md`.
 
 ## Requisitos
 - Node.js 26 (`.nvmrc`) y pnpm 11 (`npm i -g pnpm@11`; Node 26 ya no trae corepack)

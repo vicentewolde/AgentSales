@@ -1,6 +1,6 @@
 # Spec F9.5 · Lista para mostrar
 
-- **Estado:** **Aprobado** el 2026-10-22 por el operador (revisado por el `arquitecto`; ADR-0034 nuevo)
+- **Estado:** **Cerrado** el 2026-10-22 (`v1.4.0`, la etiqueta con permiso del operador). **Aprobado** el 2026-10-22 por el operador (revisado por el `arquitecto`; ADR-0034 nuevo)
 - **Rama base:** `main`, con F9 cerrada (`v1.3.0`)
 - **Tag al cerrar:** `v1.4.0`
 - **Referencias:** `docs/06-roadmap.md#f95`, `docs/specs/fase-9-contenido-de-marca.md` (deuda de su cierre), ADR-0011, ADR-0016, ADR-0022, ADR-0028, ADR-0029, ADR-0030, ADR-0034 (nuevo), `docs/01-arquitectura.md`, `docs/04-formato-publicaciones.md`, `docs/05-convenciones.md`, `docs/integraciones/x.md`, `discord.md`, `tiktok.md`, `instagram.md`, `mercadolibre.md`
@@ -241,6 +241,11 @@ Dependencias por archivos: T02 y T04b (`PublicationItem.tsx`, `PublicationsPanel
 6. Los avisos y posts de F1 a F9 funcionan igual: sus tests pasan.
 7. `pnpm check` y la CI pasan.
 
+**Verificación del cierre (2026-10-22, sobre `main` con #217 a #230, CI en verde en cada PR):**
+- **Demostrados con pruebas:** 1 (los componentes base en todas las páginas, sin clases propias sueltas, y la portada: `ui.test.tsx`, `HomePage.test.tsx`), 2 (etiquetas de todos los estados y D4: `labels.test.ts`, `publication.test.ts`, `PublicationsPanel.test.tsx`), 3 (`previews.test.tsx`, `preview.test.ts`, `ContentSection.test.tsx`, `PostDetailPage.test.tsx`), 4 (`resolve-listing-outcome.test.ts`, `publications-portal.test.ts`, `OutcomeResolve.test.tsx`), 6 (las pruebas de F1 a F9 pasan; las que cambiaron solo cambian textos o donde ADR-0034 cambia el comportamiento) y 7.
+- **Parcial, del operador:** 5 con la IA real (las pruebas con `fake` cuentan las muletillas y el plan no repite ideas ni sale de la cadencia: `ai-tells.test.ts`, `plan-slots.test.ts`; falta la corrida real de `eval:content` y `eval:social`).
+- **Visual:** revisado por el coordinador en el navegador con datos de prueba; el recorrido real queda para el ensayo del jueves 29 (`docs/12-demo-oficina.md`).
+
 ## 7. Plan de demo (viernes 2026-10-30, en el servidor)
 Antes (jueves 29, el operador): desplegar; crear su corredor para propiedades y conectarle `@vicentewoldec`; cargar la propiedad de ejemplo; encender el worker el viernes; pasar a `live` solo durante la demo y volver a `dry-run`.
 1. Entrar al panel: la portada «Hoy».
@@ -271,4 +276,5 @@ Antes (jueves 29, el operador): desplegar; crear su corredor para propiedades y 
 | 2026-10-22 | Borrador tras la entrevista con el operador; alcance y nombre aprobados por él |
 | 2026-10-22 | Revisión del `arquitecto` (5 bloqueantes, aplicados): Portal al resolver un resultado dudoso (id `MLC…`, enlace obligatorio en `live`, sync, «many») y T04 partida en T04a y T04b; la reserva de gasto de X con candado sobre la cuenta; D7 definida y ADR-0034; dependencias por archivos y tandas rearmadas; T11 sin tocar `contracts`. No bloqueantes también aplicados: D4 por estado, `publicationFormatText` con el número de medios, el renovador de X en la API, `discord_video` sin migración, `useAccounts()` en T12, `publishedAt` en la portada, criterios verificables y riesgos de la demo |
 | 2026-10-22 | **Aprobado por el operador** (el alcance, el nombre y el trabajo en paralelo) |
+| 2026-10-22 | **Cierre de la fase** (T13, `v1.4.0`): 12 tareas en 14 PR (#217 a #230); la guía de la demo en `docs/12-demo-oficina.md` y el paso «En vivo solo durante una demo» en `docs/10-despliegue.md` |
 | 2026-10-22 | T06 (PR #224, revisión del `revisor`): D7 precisada con lo implementado: una red con 0 posts por semana no es candidata (`OUT_OF_CADENCE`); con días u horas vacíos solo se completa lo que falta y se conservan sus posts por semana; el espacio mínimo es como máximo `ceil(posts por semana / días)` posts por día; las semanas con menos ideas cuentan también lo ya planificado. Nota de implementación en T06 (`PLAN_FALLBACK_PER_WEEK` de 3 a 1) |
