@@ -23,10 +23,10 @@ export const initialScheduleAt = (initial: Date | null | undefined, now: Date = 
 /** El modo con que se programa, en palabras. */
 const modeLine = (mode: PublishMode | undefined) =>
   mode === undefined
-    ? "Todavía no se sabe si la API está en simulación o en vivo: se pedirá confirmar."
+    ? "Todavía no se sabe si el sistema está en simulación o en vivo: se pedirá confirmar."
     : mode === "live"
-      ? "Se programa en vivo: a la hora se publica de verdad (con el worker corriendo)."
-      : "Se programa en simulación: a la hora sale sola con el worker corriendo, sin publicar de verdad.";
+      ? "Se programa en vivo: a la hora se publica de verdad."
+      : "Se programa en simulación: a la hora se simula, sin publicar nada en las redes.";
 
 /**
  * El selector de fecha y hora (Chile) de programar (`<input type="datetime-local">`, leído con
@@ -119,8 +119,8 @@ export function ScheduleForm({
         <div role="alert" className="rounded-lg border border-danger-200 bg-danger-50 p-3">
           <p className="font-semibold text-danger-800">
             {mode === "live"
-              ? "La API está en vivo: a la hora se publica de verdad, sin volver a preguntar."
-              : "No se pudo saber si la API está en vivo: si lo está, a la hora se publica de verdad."}
+              ? "El sistema está en vivo: a la hora se publica de verdad, sin volver a preguntar."
+              : "No se pudo saber si el sistema está en vivo: si lo está, a la hora se publica de verdad."}
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             <Button variant="danger" size="sm" disabled={pending} onClick={() => void submit(true)}>

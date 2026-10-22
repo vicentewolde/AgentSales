@@ -72,8 +72,9 @@ describe("la agenda", () => {
       `${AGENDA_KIND_TEXT.backup} (1)`,
     ]);
     const failed = screen.getByRole("region", { name: AGENDA_KIND_TEXT.failed });
-    expect(failed.textContent).toContain("IG_AUTH_INVALID");
+    // F9.5-T02: el consejo dice qué hacer; el código técnico no se muestra si hay consejo.
     expect(failed.textContent).toContain("Reconecta");
+    expect(failed.textContent).not.toContain("IG_AUTH_INVALID");
     const backup = screen.getByRole("region", { name: AGENDA_KIND_TEXT.backup });
     expect(backup.textContent).toContain("nunca");
     expect(backup.textContent).toContain("más de 48 h");
@@ -208,7 +209,11 @@ describe("la matriz", () => {
                     ...base,
                     id: "d",
                     status: "failed",
-                    lastError: { code: "MARKETPLACE_X", message: "m", retriable: false },
+                    lastError: {
+                      code: "MARKETPLACE_X",
+                      message: "Facebook cerró la ventana",
+                      retriable: false,
+                    },
                   },
                 ],
               },
@@ -223,7 +228,9 @@ describe("la matriz", () => {
     expect(row.textContent).toContain("tarea a mano");
     expect(row.textContent).toContain("atrasada");
     expect(row.textContent).toContain("vence en 3 d");
-    expect(row.textContent).toContain("MARKETPLACE_X");
+    // F9.5-T02: el motivo legible, no el código.
+    expect(row.textContent).toContain("Facebook cerró la ventana");
+    expect(row.textContent).not.toContain("MARKETPLACE_X");
     // Un enlace que no es `https` no se vuelve enlace.
     expect(within(row).queryByRole("link", { name: "Ver" })).toBeNull();
   });

@@ -50,3 +50,11 @@ export const IMPORT_RUN_STATUS_TONE: Readonly<Record<ImportRunStatus, BadgeTone>
   succeeded: "success",
   failed: "danger",
 };
+
+/** Lo que dice el banner del modo de publicación, en palabras del corredor (F9.5-T02). */
+export const PUBLISH_MODE_BANNER_TEXT = {
+  live: "En vivo: lo que publiques sale de verdad en las redes",
+  "dry-run": "Modo simulación: nada se publica en las redes",
+  pending: "Consultando el modo…",
+  unknown: "No se sabe si está en simulación o en vivo: el sistema no responde",
+} as const;

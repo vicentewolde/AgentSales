@@ -7,7 +7,6 @@ import {
   PLATFORM_TEXT,
   type PublishMode,
   publicationFormatText,
-  publicationModeText,
   remoteStatusText,
 } from "@agentsales/core";
 import { useEffect, useRef, useState } from "react";
@@ -29,9 +28,11 @@ import { Badge } from "../ui/Badge.js";
 import { Button } from "../ui/Button.js";
 import { MarketplaceConfirm } from "./MarketplaceConfirm.js";
 import { PublicationEvents } from "./PublicationEvents.js";
+import { PublicationMode } from "./PublicationMode.js";
 import {
   needsLiveConfirm,
   publicationActions,
+  publicationModeOf,
   retryBlockedReason,
   safeExternalUrl,
 } from "./publications.js";
@@ -139,8 +140,8 @@ const SIMULATION_TEXT: Readonly<Record<ListingPublicationView["platform"], strin
 /** La confirmación de reintentar en vivo según el canal (Marketplace: quien publica es el operador). */
 const liveRetryText = (publication: ListingPublicationView, format: string, channel: string) =>
   publication.platform === "fb_marketplace"
-    ? "La API está en vivo: se abrirá Chromium con un formulario nuevo de Facebook Marketplace; tú haces Siguiente y Publicar."
-    : `La API está en vivo: el ${format} se publicará de verdad en ${channel}${publication.platform === "portal_inmobiliario" ? " y usará un cupo de tu paquete" : ""}.`;
+    ? "El sistema está en vivo: se abrirá Chromium con un formulario nuevo de Facebook Marketplace; tú haces Siguiente y Publicar."
+    : `El sistema está en vivo: el ${format} se publicará de verdad en ${channel}${publication.platform === "portal_inmobiliario" ? " y usará un cupo de tu paquete" : ""}.`;
 
 /** Una fecha en hora de Chile (el vencimiento en la plataforma). */
 const dateText = (iso: string) =>
@@ -172,7 +173,11 @@ function RemoteState({ publication }: { publication: ListingPublicationView }) {
 /** Las miniaturas de una pendiente (imágenes, o el reel en video, que es el MP4 completo). */
 function Thumbnails({ publication }: { publication: ListingPublicationView }) {
   if (publication.media.length === 0) return null;
-  const format = publicationFormatText(publication.platform, publication.format);
+  const format = publicationFormatText(
+    publication.platform,
+    publication.format,
+    publication.mediaIds.length,
+  );
   return (
     <ul aria-label={`Medios del ${format}`} className="mt-2 flex gap-1 overflow-x-auto">
       {publication.media.map((media, index) => (
@@ -254,7 +259,11 @@ export function PublicationItem({
   const [retryReason, setRetryReason] = useState<"retry" | "publish-now">("retry");
   // Lo sondeado (de esta misma versión del listado) es lo más nuevo mientras se publica.
   const publication = poll.data === undefined ? listed : { ...listed, ...poll.data };
-  const format = publicationFormatText(publication.platform, publication.format);
+  const format = publicationFormatText(
+    publication.platform,
+    publication.format,
+    publication.mediaIds.length,
+  );
   const channel = PLATFORM_TEXT[publication.platform];
   const portal = publication.platform === "portal_inmobiliario";
   const actions = publicationActions(
@@ -307,7 +316,7 @@ export function PublicationItem({
         if (next.kind === "sync") {
           setNotice(
             result.queued
-              ? "Se pidió leer el estado en Mercado Libre: se actualiza en unos segundos (con el worker corriendo)."
+              ? "Se pidió leer el estado en Mercado Libre: se actualiza en unos segundos."
               : "Ya hay una lectura programada: el estado se actualiza en un momento.",
           );
           setSyncRequestedAt(Date.now());
@@ -354,7 +363,11 @@ export function PublicationItem({
       <div className="flex flex-wrap items-center gap-2">
         <h4 className="font-semibold capitalize">{format}</h4>
         <PublicationStatusBadge status={publication.status} />
-        <span className="text-xs text-fg-subtle">{publicationModeText(publication.dryRun)}</span>
+        <PublicationMode
+          publication={publicationModeOf(publication)}
+          publishMode={publishMode}
+          className="text-xs"
+        />
       </div>
       {/* Siempre montada: los lectores de pantalla anuncian los cambios de una región que ya estaba. */}
       <p aria-live="polite" className="mt-1 text-sm text-fg-muted">
@@ -584,7 +597,7 @@ export function PublicationItem({
       )}
       {actions.retry && modeUnknown && (
         <p className="mt-1 text-xs text-warning-800">
-          Todavía no se sabe si la API está en simulación o en vivo.
+          Todavía no se sabe si el sistema está en simulación o en vivo.
         </p>
       )}
       {isPublishing(publication.status) && (

@@ -47,9 +47,9 @@ export function AutoPublishToggle({
         >
           <p className={live ? "font-semibold text-danger-800" : "text-fg"}>
             {publishMode === "live"
-              ? "La API está en vivo: publicará sin tu revisión en Instagram y Portal (Marketplace queda como recordatorio)."
+              ? "El sistema está en vivo: publicará sin tu revisión en Instagram y Portal (Marketplace queda como recordatorio)."
               : publishMode === undefined
-                ? "No se sabe si la API está en vivo: si lo está, publicará sin tu revisión."
+                ? "No se sabe si el sistema está en vivo: si lo está, publicará sin tu revisión."
                 : "En simulación no publica nada de verdad; en vivo publicará sin tu revisión."}
           </p>
           <div className="mt-2 flex flex-wrap gap-2">

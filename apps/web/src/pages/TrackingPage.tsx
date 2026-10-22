@@ -8,14 +8,17 @@ import {
   LISTING_PLATFORMS,
   PLATFORM_TEXT,
   type Platform,
+  type PublishMode,
   publicationFormatText,
 } from "@agentsales/core";
 import { useState } from "react";
 import { Link } from "react-router";
 import { ErrorAlert } from "../components/ErrorAlert.js";
+import { PublicationMode } from "../components/publications/PublicationMode.js";
 import { safeExternalUrl } from "../components/publications/publications.js";
 import { PublicationStatusBadge, StatusBadge } from "../components/StatusBadge.js";
 import { PageHeader } from "../components/ui/PageHeader.js";
+import { useHealth } from "../queries/health.js";
 import { useAgenda, useTracking } from "../queries/tracking.js";
 import { useBrokerFilter } from "../scope/broker-scope.js";
 
@@ -30,7 +33,7 @@ type Cell = Row["cells"]["instagram"][number];
 const ACTION_TEXT: Readonly<Record<AgendaAction, string>> = {
   publish: "Publícala desde Contenido",
   reschedule: "Reprográmala",
-  requeue: "Vuelve a encolarla desde Contenido",
+  requeue: "Retómala desde Contenido",
   retry: "Reintenta desde Contenido",
   retire: "Bórrala en la plataforma y márcala como retirada",
   review: "Revisa y aprueba el texto en Contenido",
@@ -55,7 +58,13 @@ function itemWhen(item: AgendaItem): string | null {
   return formatChileTime(item.at);
 }
 
-function AgendaEntry({ item }: { item: AgendaItem }) {
+function AgendaEntry({
+  item,
+  publishMode,
+}: {
+  item: AgendaItem;
+  publishMode: PublishMode | undefined;
+}) {
   if (item.kind === "backup") {
     return (
       <li className="text-sm">
@@ -73,7 +82,7 @@ function AgendaEntry({ item }: { item: AgendaItem }) {
   const channel =
     item.platform === null
       ? null
-      : `${PLATFORM_TEXT[item.platform]}${item.format === null ? "" : ` ${publicationFormatText(item.platform, item.format)}`}`;
+      : `${PLATFORM_TEXT[item.platform]}${item.format === null ? "" : ` ${publicationFormatText(item.platform, item.format, item.mediaCount)}`}`;
   const when = itemWhen(item);
   return (
     <li className="text-sm">
@@ -100,13 +109,18 @@ function AgendaEntry({ item }: { item: AgendaItem }) {
       {channel && <> · {channel}</>}
       {when && <> · {when}</>}
       {item.dryRun !== null && (
-        <span className={item.dryRun ? "text-fg-subtle" : "font-semibold text-danger-700"}>
-          {" "}
-          · {item.dryRun ? "simulación" : "en vivo"}
-        </span>
+        <PublicationMode
+          publication={{ dryRun: item.dryRun, modeFixed: item.modeFixed }}
+          publishMode={publishMode}
+          prefix=" · "
+        />
       )}
-      {item.code !== null && <span className="block text-danger-700">{item.code}</span>}
-      {item.advice !== null && <span className="block text-fg-muted">{item.advice}</span>}
+      {/* El consejo dice qué hacer; el código, solo si no hay consejo (y como tal). */}
+      {item.advice !== null ? (
+        <span className="block text-fg-muted">{item.advice}</span>
+      ) : (
+        item.code !== null && <span className="block text-danger-700">Error: {item.code}</span>
+      )}
       {item.action !== "none" && (
         <span className="block text-xs text-fg-muted">{ACTION_TEXT[item.action]}</span>
       )}
@@ -115,7 +129,14 @@ function AgendaEntry({ item }: { item: AgendaItem }) {
 }
 
 /** La agenda en su orden (`AGENDA_KINDS`), una sección por clase. */
-export function Agenda({ items }: { items: readonly AgendaItem[] }) {
+export function Agenda({
+  items,
+  publishMode,
+}: {
+  items: readonly AgendaItem[];
+  /** El modo del sistema: lo aprobado sin publicar dice el suyo (D4 del spec F9.5). */
+  publishMode?: PublishMode | undefined;
+}) {
   const groups = AGENDA_KINDS.map((kind) => ({
     kind,
     items: items.filter((item) => item.kind === kind),
@@ -133,6 +154,7 @@ export function Agenda({ items }: { items: readonly AgendaItem[] }) {
               <AgendaEntry
                 key={`${item.kind}-${item.publicationId ?? item.listingId ?? "x"}-${item.platform ?? ""}`}
                 item={item}
+                publishMode={publishMode}
               />
             ))}
           </ul>
@@ -142,7 +164,15 @@ export function Agenda({ items }: { items: readonly AgendaItem[] }) {
   );
 }
 
-function CellPublication({ platform, publication }: { platform: Platform; publication: Cell }) {
+function CellPublication({
+  platform,
+  publication,
+  publishMode,
+}: {
+  platform: Platform;
+  publication: Cell;
+  publishMode: PublishMode | undefined;
+}) {
   const notes = [
     publication.schedule === "overdue" ? "atrasada" : null,
     publication.scheduledAt !== null && publication.status === "scheduled"
@@ -151,15 +181,18 @@ function CellPublication({ platform, publication }: { platform: Platform; public
     publication.manualTask ? "tarea a mano" : null,
     publication.expiry?.soon ? `vence en ${publication.expiry.daysLeft} d` : null,
     publication.expiry?.expired ? "venció" : null,
-    publication.lastError === null ? null : publication.lastError.code,
+    publication.lastError === null ? null : publication.lastError.message,
   ].filter(Boolean);
   return (
     <li>
-      {publicationFormatText(platform, publication.format)}{" "}
+      {publicationFormatText(platform, publication.format, publication.mediaCount)}{" "}
       <PublicationStatusBadge status={publication.status} />
-      {!publication.dryRun && (
-        <span className="ml-1 text-xs font-semibold text-danger-700">vivo</span>
-      )}
+      <PublicationMode
+        publication={publication}
+        publishMode={publishMode}
+        liveOnly
+        className="ml-1 text-xs"
+      />
       {notes.length > 0 && <span className="block text-xs text-fg-muted">{notes.join(" · ")}</span>}
       {safeExternalUrl(publication.externalUrl) !== null && (
         <a
@@ -176,7 +209,13 @@ function CellPublication({ platform, publication }: { platform: Platform; public
 }
 
 /** La matriz: una fila por propiedad, una columna por plataforma. */
-export function TrackingMatrix({ rows }: { rows: readonly Row[] }) {
+export function TrackingMatrix({
+  rows,
+  publishMode,
+}: {
+  rows: readonly Row[];
+  publishMode?: PublishMode | undefined;
+}) {
   if (rows.length === 0) return <p className="mt-2 text-sm text-fg-muted">Sin propiedades.</p>;
   return (
     <div className="mt-2 overflow-x-auto rounded-xl border border-line bg-surface shadow-xs">
@@ -221,6 +260,7 @@ export function TrackingMatrix({ rows }: { rows: readonly Row[] }) {
                           key={publication.id}
                           platform={platform}
                           publication={publication}
+                          publishMode={publishMode}
                         />
                       ))}
                     </ul>
@@ -241,6 +281,7 @@ export function TrackingPage() {
   const broker = useBrokerFilter();
   const agenda = useAgenda(broker);
   const tracking = useTracking(archived, broker);
+  const publishMode = useHealth().data?.publishMode;
   return (
     <section className="mx-auto max-w-6xl">
       <PageHeader title="Seguimiento" />
@@ -257,7 +298,7 @@ export function TrackingPage() {
           />
         )}
         {agenda.isPending && <p className="mt-2 text-sm text-fg-muted">Cargando la agenda…</p>}
-        {agenda.data && <Agenda items={agenda.data} />}
+        {agenda.data && <Agenda items={agenda.data} publishMode={publishMode} />}
       </section>
 
       <section aria-labelledby="matriz-titulo" className="mt-8">
@@ -282,7 +323,7 @@ export function TrackingPage() {
           />
         )}
         {tracking.isPending && <p className="mt-2 text-sm text-fg-muted">Cargando…</p>}
-        {tracking.data && <TrackingMatrix rows={tracking.data} />}
+        {tracking.data && <TrackingMatrix rows={tracking.data} publishMode={publishMode} />}
       </section>
     </section>
   );

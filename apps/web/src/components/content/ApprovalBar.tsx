@@ -51,9 +51,9 @@ export function ApprovalBar({
       {blocked !== null && <p className="mt-1 text-xs text-warning-800">{blocked}</p>}
       {approval.data?.skipped.map((skipped) => (
         <p key={skipped.publicationId} className="mt-1 text-xs text-warning-800">
-          El {publicationFormatText(content.platform, skipped.format)} ya tiene una publicación
-          activa de un texto anterior: {retireVerb(content.platform)} o descártala para publicar
-          este.
+          El {publicationFormatText(content.platform, skipped.format, null)} ya tiene una
+          publicación activa de un texto anterior: {retireVerb(content.platform)} o descártala para
+          publicar este.
         </p>
       ))}
       {approval.error && <ErrorAlert error={approval.error} />}
