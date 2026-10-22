@@ -12,6 +12,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { unwrap } from "../api/client.js";
 import { useApiClient } from "../api/context.js";
+import { clearAllOneTimeLinks } from "../components/brokers/one-time-link-store.js";
 
 // Entrar, salir y quién soy en el panel (spec F7 §4.11, ADR-0021). La sesión va en una cookie
 // `HttpOnly`: el panel nunca ve el token.
@@ -141,6 +142,10 @@ export function useLogout() {
     mutationFn: async () => {
       await client.auth.logout.$post();
     },
-    onSuccess: () => queryClient.clear(),
+    onSuccess: () => {
+      // Los enlaces de invitación guardados en esta pestaña son secretos del administrador.
+      clearAllOneTimeLinks();
+      queryClient.clear();
+    },
   });
 }

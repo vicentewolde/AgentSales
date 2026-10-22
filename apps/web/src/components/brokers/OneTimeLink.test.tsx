@@ -3,7 +3,7 @@ import type { UserLinkResponse } from "@agentsales/api/contracts";
 import { INVITATION_TTL_MS } from "@agentsales/core";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { invitationMailto, OneTimeLink } from "./OneTimeLink.js";
+import { invitationMailto, invitationMessage, OneTimeLink } from "./OneTimeLink.js";
 
 // F9.5-T15: «Enviar por correo» arma un `mailto:` con el correo del invitado, el asunto y un
 // mensaje breve con el enlace (que nunca va a la URL de la página).
@@ -113,5 +113,29 @@ describe("enviar el enlace por correo", () => {
     expect(onDone).toHaveBeenCalledOnce();
     // El enlace no pasa a la dirección de la página.
     expect(window.location.href).not.toContain("token-de-prueba");
+  });
+
+  it("dice que se queda hasta ocultarlo y que, si se perdió, se usa Restablecer (F9.5-T20)", () => {
+    render(<OneTimeLink link={link} kind="invitation" onDone={() => {}} />);
+    const box = screen.getByText(/Si perdiste el enlace, usa Restablecer/);
+    expect(box.textContent).toContain("Queda aquí hasta que lo ocultes");
+  });
+
+  it("Copiar mensaje completo copia el mismo texto del correo, y avisa si no pudo", async () => {
+    const writeText = vi.fn(async (_text: string) => {});
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+    render(<OneTimeLink link={link} kind="reset" onDone={() => {}} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Copiar mensaje completo" }));
+    expect(await screen.findByText("Mensaje copiado")).toBeTruthy();
+    expect(writeText).toHaveBeenCalledWith(invitationMessage(link, "reset"));
+    // Es el cuerpo del correo, sin el codificado de la URL.
+    const mailBody = new URLSearchParams(invitationMailto(link, "reset").split("?")[1]).get("body");
+    expect(writeText.mock.calls[0]?.[0]).toBe(mailBody);
+
+    writeText.mockRejectedValueOnce(new Error("sin permiso"));
+    fireEvent.click(screen.getByRole("button", { name: "Copiar mensaje completo" }));
+    expect(await screen.findByText(/No se pudo copiar: usa Enviar por correo/)).toBeTruthy();
+    vi.unstubAllGlobals();
   });
 });
