@@ -57,7 +57,6 @@ const PHRASES: readonly (readonly [label: string, pattern: string])[] = [
   ["un sinfín de", "un sinfin de"],
   ["el hogar que mereces", "que (?:te )?mereces"],
   ["sin precedentes", "sin precedentes"],
-  ["a tan solo", "a tan solo"],
   // Inglés.
   ["discover", "discover(?:s)?"],
   ["Experience…", "(?:(?<=^\\s*)|(?<=[.!?…]\\s+))experience"],
@@ -83,7 +82,7 @@ const PHRASES: readonly (readonly [label: string, pattern: string])[] = [
   ["whether you're", "whether you'?re"],
   ["embark on", "embark(?:s|ing)? on"],
   ["in the heart of", "in the (?:very )?heart of"],
-  ["a haven", "haven"],
+  ["a haven", "a haven"],
   ["dream home", "dream (?:home|house|property)"],
   ["don't miss", "don'?t miss"],
   ["unparalleled", "unparall?eled"],
@@ -219,8 +218,11 @@ const TRIAD = new RegExp(
   "gu",
 );
 
-/** Un guion largo como pausa entre palabras («la vista — y el silencio»), o uno corto con espacios. */
-const DASH_PAUSE = /[\p{L}\p{N},.)][ \t]*—[ \t]*[\p{L}\p{N}¿¡(]|\p{L} – \p{L}/u;
+/**
+ * Un guion largo como pausa entre palabras («la vista — y el silencio»). El guion corto (`–`) no
+ * cuenta: con espacios también separa rangos («Lunes – Viernes», «9 – 18 h»).
+ */
+const DASH_PAUSE = /[\p{L}\p{N},.)][ \t]*—[ \t]*[\p{L}\p{N}¿¡(]/u;
 
 /** Un emoji con sus modificadores y uniones, o una bandera; sin `©`, `®` ni `™`. */
 const EMOJI = String.raw`(?:(?![©®™])\p{Extended_Pictographic}|\p{Regional_Indicator}{2})(?:️|\p{Emoji_Modifier}|‍(?![©®™])\p{Extended_Pictographic}️?)*`;

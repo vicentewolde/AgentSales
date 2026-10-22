@@ -37,6 +37,7 @@ describe("findAiTells en español", () => {
     expect(findAiTells("No solo tiene terraza, sino también bodega.")).toEqual([]);
     expect(findAiTells("Departamento de 3 dormitorios con cocina, living y comedor.")).toEqual([]);
     expect(findAiTells("Esperamos tu visita el sábado.")).toEqual([]);
+    expect(findAiTells("Avenida Revolución, a tan solo 5 minutos del metro.")).toEqual([]);
   });
 
   it("más de 2 signos de exclamación, no 2", () => {
@@ -49,9 +50,11 @@ describe("findAiTells en español", () => {
   it("el guion largo como pausa, no al inicio de una línea ni en un rango", () => {
     expect(kinds("La terraza — con vista al cerro — da al oriente.")).toEqual(["dash"]);
     expect(kinds("La terraza—con vista al cerro—da al oriente.")).toEqual(["dash"]);
-    expect(kinds("Lo que importa – la luz de la tarde.")).toEqual(["dash"]);
     expect(findAiTells("Lista:\n— terraza\n— bodega")).toEqual([]);
     expect(findAiTells("Horario de 9 – 18 h y de 9-13 h.")).toEqual([]);
+    // El guion corto con espacios separa rangos: no se marca.
+    expect(findAiTells("Atención de Lunes – Viernes.")).toEqual([]);
+    expect(findAiTells("Lo que importa – la luz de la tarde.")).toEqual([]);
   });
 
   it("tres adjetivos seguidos, con el trozo original", () => {
@@ -106,6 +109,9 @@ describe("findAiTells en inglés", () => {
     expect(findAiTells("An elevated lot with years of experience in sales.")).toEqual([]);
     expect(findAiTells("It is not just about price; buyers ask about light.")).toEqual([]);
     expect(findAiTells("Not only fast, but reliable.")).toEqual([]);
+    expect(findAiTells("We haven't decided yet.")).toEqual([]);
+    expect(findAiTells("Haven Street, near the park.")).toEqual([]);
+    expect(texts("A haven for remote work.")).toEqual(["a haven"]);
   });
 
   it("tres adjetivos seguidos, con coma de Oxford o sin ella", () => {
