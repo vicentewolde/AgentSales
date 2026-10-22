@@ -34,7 +34,10 @@ export function prepareBlockedReason(publications: readonly PublicationView[]): 
 export const retireVerb = (platform: Platform) =>
   OPERATION_PLATFORMS.has(platform) ? "ciérrala" : "retírala";
 
-/** Por qué no se puede editar un texto: tiene una publicación activa (pendiente o publicada). */
+/**
+ * Por qué no se puede editar un texto: tiene una publicación activa (pendiente o publicada). En
+ * lenguaje simple (F9.5-T15): es un aviso de qué hacer, no un error.
+ */
 export function editBlockedReason(
   content: ContentView,
   publications: readonly PublicationView[],
@@ -42,7 +45,7 @@ export function editBlockedReason(
   return publications.some(
     (publication) => publication.contentId === content.id && active.has(publication.status),
   )
-    ? `Este texto tiene publicaciones activas: es el registro de lo aprobado. Para cambiarlo, descarta o ${OPERATION_PLATFORMS.has(content.platform) ? "cierra" : "retira"} sus publicaciones.`
+    ? `Ya se publicó o está por publicarse con este texto. Para cambiarlo, primero ${OPERATION_PLATFORMS.has(content.platform) ? "cierra" : "retira"} o descarta esas publicaciones.`
     : null;
 }
 
