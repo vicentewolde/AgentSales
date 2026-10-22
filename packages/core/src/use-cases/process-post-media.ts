@@ -3,7 +3,11 @@ import { postVariantPath, postVideoPath } from "../content/media-keys.js";
 import type { ProcessedMediaVariant, VideoMediaVariant } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
 import type { Media } from "../media.js";
-import { REEL_MIN_DURATION_S } from "../media-checks.js";
+import {
+  DISCORD_FILE_MAX_BYTES,
+  DISCORD_VIDEO_MAX_BYTES,
+  REEL_MIN_DURATION_S,
+} from "../media-checks.js";
 import type {
   ImageOutput,
   ImageVariant,
@@ -13,6 +17,7 @@ import type {
 import type { MediaRepository, NewDerivative } from "../ports/media-repository.js";
 import type { MediaStorage } from "../ports/media-storage.js";
 import type { PostRepository } from "../ports/post-repository.js";
+import { postPublishesOn } from "../social/post-networks.js";
 import { postSubject } from "../subject.js";
 
 // Las variantes de los medios de un post (spec F9 §4.5, F9-T10), con el procesador de siempre
@@ -20,6 +25,8 @@ import { postSubject } from "../subject.js";
 // texto encima y hasta 90 s; desde 3 s) y el video reducido para X (`x_video`). Sin `pi_4x3`: un
 // post no va a Portal ni a Marketplace. Lo vigente es lo de la clave de la versión actual del
 // procesador: una vuelta solo arma lo que falta, así reintentar o encolar dos veces no repite.
+// Desde F9.5 (D8), si el post va a Discord y el video más liviano (`x_video` o `ig_reel`) no cabe
+// en sus 20 MiB, además el video liviano para Discord (`discord_video`, bajo 19 MiB).
 
 /** Las variantes JPEG de una foto de un post. */
 export const POST_PHOTO_VARIANTS = ["thumb", "ig_4x5"] as const satisfies readonly ImageVariant[];
@@ -35,6 +42,12 @@ export type ProcessPostMediaDeps = {
   processor: MediaProcessor;
   /** Un objeto viejo que no se pudo borrar de R2 (queda sin uso); solo para el log. */
   onCleanupFailed?: (objectPath: string, error: unknown) => void;
+  /**
+   * Los topes del video para Discord (D8 de F9.5): desde cuánto pesa el video más liviano para que
+   * haga falta (`fileMaxBytes`) y bajo cuánto debe quedar (`videoMaxBytes`). Por defecto, los de
+   * Discord (`DISCORD_FILE_MAX_BYTES` y `DISCORD_VIDEO_MAX_BYTES`); los tests los achican.
+   */
+  discordLimits?: { fileMaxBytes: number; videoMaxBytes: number };
 };
 
 export type ProcessPostMediaResult =
@@ -75,6 +88,11 @@ export async function processPostMedia(
     .sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
   const counts = { processed: 0, existing: 0, failed: 0 };
   const failedMediaIds: string[] = [];
+  const discordLimits = deps.discordLimits ?? {
+    fileMaxBytes: DISCORD_FILE_MAX_BYTES,
+    videoMaxBytes: DISCORD_VIDEO_MAX_BYTES,
+  };
+  const forDiscord = postPublishesOn(post, "discord");
 
   /** Sube un derivado, lo registra y borra el objeto anterior si la clave cambió. */
   const save = async (upload: () => Promise<void>, derivative: NewDerivative) => {
@@ -173,35 +191,83 @@ export async function processPostMedia(
 
       // Un video ya medido y de menos de 3 s no da reel (como el de un aviso).
       const tooShort = original.durationS !== null && original.durationS < REEL_MIN_DURATION_S;
+      const reelPath = postVideoPath(postId, "ig_reel", original.checksum, version);
+      const xPath = postVideoPath(postId, "x_video", original.checksum, version);
       const thumbOk = current(
         "thumb",
         postVariantPath(postId, "thumb", original.checksum, version),
       );
-      const reelOk =
-        tooShort ||
-        current("ig_reel", postVideoPath(postId, "ig_reel", original.checksum, version));
-      const xOk = current("x_video", postVideoPath(postId, "x_video", original.checksum, version));
-      if (thumbOk && reelOk && xOk && original.durationS !== null) {
-        if (tooShort) await drop(variantOf(all, original.id, "ig_reel"));
-        counts.existing += 1;
-        continue;
+      const reelOk = tooShort || current("ig_reel", reelPath);
+      const xOk = current("x_video", xPath);
+      // El peso de los videos vigentes (`x_video` e `ig_reel`): el más liviano decide si hace falta
+      // el de Discord. Los que se arman en esta vuelta lo actualizan.
+      const sizes = new Map<VideoMediaVariant, number>();
+      for (const [variant, path] of [
+        ["ig_reel", reelPath],
+        ["x_video", xPath],
+      ] as const) {
+        const existing = variantOf(all, original.id, variant);
+        if (existing?.storagePath === path) sizes.set(variant, existing.bytes);
       }
-      const stream = await deps.storage.getStream(
-        original.storagePath,
-        signal === undefined ? {} : { signal },
+      let worked = false;
+      if (thumbOk && reelOk && xOk && original.durationS !== null) {
+        if (tooShort) {
+          await drop(variantOf(all, original.id, "ig_reel"));
+          sizes.delete("ig_reel");
+        }
+      } else {
+        const stream = await deps.storage.getStream(
+          original.storagePath,
+          signal === undefined ? {} : { signal },
+        );
+        const result = await deps.processor.processVideo(
+          stream,
+          { reel: reelOk ? null : { overlayPng: null }, xVideo: !xOk },
+          signal,
+        );
+        await deps.media.updateMeasurements(original.id, result.measurements);
+        if (!thumbOk) await saveImage(original, result.thumb);
+        const reel = result.reel;
+        if (reel !== null) {
+          await saveVideo(original, "ig_reel", reel);
+          sizes.set("ig_reel", reel.size);
+        } else if (!reelOk) {
+          await drop(variantOf(all, original.id, "ig_reel"));
+          sizes.delete("ig_reel");
+        }
+        if (result.xVideo !== null) {
+          await saveVideo(original, "x_video", result.xVideo);
+          sizes.set("x_video", result.xVideo.size);
+        }
+        worked = true;
+      }
+
+      // El video liviano para Discord (D8 de F9.5): solo si el post va a Discord, el más liviano
+      // no cabe y no está ya armado. Se pide aparte (otra lectura del original) porque el peso de
+      // los demás se sabe recién después de armarlos. Si no se puede (el bitrate quedaría bajo el
+      // mínimo legible o igual no cupo), no queda variante y Discord publica el texto solo.
+      const lightest = sizes.size === 0 ? null : Math.min(...sizes.values());
+      const discordOk = current(
+        "discord_video",
+        postVideoPath(postId, "discord_video", original.checksum, version),
       );
-      const result = await deps.processor.processVideo(
-        stream,
-        { reel: reelOk ? null : { overlayPng: null }, xVideo: !xOk },
-        signal,
-      );
-      await deps.media.updateMeasurements(original.id, result.measurements);
-      if (!thumbOk) await saveImage(original, result.thumb);
-      const reel = result.reel;
-      if (reel !== null) await saveVideo(original, "ig_reel", reel);
-      else if (!reelOk) await drop(variantOf(all, original.id, "ig_reel"));
-      if (result.xVideo !== null) await saveVideo(original, "x_video", result.xVideo);
-      counts.processed += 1;
+      if (forDiscord && !discordOk && lightest !== null && lightest > discordLimits.fileMaxBytes) {
+        const stream = await deps.storage.getStream(
+          original.storagePath,
+          signal === undefined ? {} : { signal },
+        );
+        const result = await deps.processor.processVideo(
+          stream,
+          { reel: null, xVideo: false, discordVideo: { maxBytes: discordLimits.videoMaxBytes } },
+          signal,
+        );
+        if (result.discordVideo !== null) {
+          await saveVideo(original, "discord_video", result.discordVideo);
+        }
+        worked = true;
+      }
+      if (worked) counts.processed += 1;
+      else counts.existing += 1;
     } catch (error) {
       if (!isDecodeFailed(error)) throw error;
       counts.failed += 1;

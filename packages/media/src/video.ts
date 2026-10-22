@@ -13,7 +13,7 @@ import {
 } from "@agentsales/core";
 import { z } from "zod";
 import { decodeFailed, renderVariant } from "./image.js";
-import { REEL_SPEC, X_VIDEO_SPEC } from "./pipeline.js";
+import { DISCORD_VIDEO_SPEC, REEL_SPEC, X_VIDEO_SPEC } from "./pipeline.js";
 import { aborted, CommandFailedError, runTool, throwIfAborted } from "./run.js";
 
 export type VideoToolOptions = {
@@ -276,7 +276,21 @@ export function xVideoSize(source: { width: number; height: number }): {
   width: number;
   height: number;
 } {
-  const { longSide, shortSide } = X_VIDEO_SPEC;
+  return fitInside(source, X_VIDEO_SPEC);
+}
+
+/** Las medidas del video para Discord: como las de X, caben en 720p sin ampliar. */
+export function discordVideoSize(source: { width: number; height: number }): {
+  width: number;
+  height: number;
+} {
+  return fitInside(source, DISCORD_VIDEO_SPEC);
+}
+
+function fitInside(
+  source: { width: number; height: number },
+  { longSide, shortSide }: { longSide: number; shortSide: number },
+): { width: number; height: number } {
   const [maxWidth, maxHeight] =
     source.width > source.height
       ? [longSide, shortSide]
@@ -325,16 +339,94 @@ async function encodeXVideo(
 }
 
 /**
+ * El bitrate del video para Discord (kbps) que deja el archivo bajo `maxBytes` según su duración
+ * (`DISCORD_VIDEO_SPEC`): el presupuesto menos el margen del contenedor y el audio, repartido en la
+ * duración más el búfer del VBV, hasta `maxVideoKbps`. `null` si queda bajo `minVideoKbps` (se
+ * vería ilegible): ese video no se arma.
+ */
+export function discordVideoBitrateKbps({
+  durationS,
+  hasAudio,
+  maxBytes,
+}: {
+  durationS: number;
+  hasAudio: boolean;
+  maxBytes: number;
+}): number | null {
+  const { audio, bufferS, containerOverhead, minVideoKbps, maxVideoKbps } = DISCORD_VIDEO_SPEC;
+  if (!(durationS > 0) || !(maxBytes > 0)) return null;
+  const budgetKbits = (maxBytes * 8 * (1 - containerOverhead)) / 1000;
+  const audioKbits = hasAudio ? audio.kbps * durationS : 0;
+  const kbps = Math.floor((budgetKbits - audioKbits) / (durationS + bufferS));
+  if (kbps < minVideoKbps) return null;
+  return Math.min(kbps, maxVideoKbps);
+}
+
+/**
+ * Arma el video liviano para Discord en el temporal (`DISCORD_VIDEO_SPEC`, D8 de F9.5) bajo
+ * `maxBytes`; lo sube quien lo pide. `null` sin codificar si el bitrate quedaría bajo el mínimo, o
+ * si el resultado igual pasa del tope (se borra).
+ */
+async function encodeDiscordVideo(
+  path: string,
+  source: Probe,
+  maxBytes: number,
+  options: VideoToolOptions,
+  signal?: AbortSignalLike,
+): Promise<VideoOutput | null> {
+  const kbps = discordVideoBitrateKbps({
+    durationS: source.durationS,
+    hasAudio: source.hasAudio,
+    maxBytes,
+  });
+  if (kbps === null) return null;
+  const outPath = join(options.workDir, `${randomUUID()}-discord.mp4`);
+  const { fps, x264, audio, bufferS } = DISCORD_VIDEO_SPEC;
+  const size = discordVideoSize(source);
+  const threads = options.threads === undefined ? null : String(options.threads);
+  const rate = `${kbps}k`;
+  const args = [
+    ...["-hide_banner", "-loglevel", "error", "-nostdin", "-y"],
+    ...(threads === null ? [] : ["-filter_threads", threads]),
+    ...["-i", path, "-map", "0:v:0", ...(source.hasAudio ? ["-map", "0:a:0"] : [])],
+    ...["-vf", `fps=${fps},scale=${size.width}:${size.height},format=yuv420p,setsar=1`],
+    ...["-r", String(fps)],
+    ...["-c:v", "libx264", "-preset", x264.preset, "-profile:v", "high"],
+    ...(threads === null ? [] : ["-threads", threads]),
+    // Bitrate medio = tope, con un búfer de `bufferS` segundos: el VBV acota el peso del video.
+    ...["-b:v", rate, "-maxrate", rate, "-bufsize", `${Math.round(kbps * bufferS)}k`],
+    ...["-g", String(x264.gop), "-keyint_min", String(x264.gop), "-sc_threshold", "0"],
+    ...["-flags", "+cgop"],
+    ...(source.hasAudio
+      ? ["-c:a", "aac", "-b:a", `${audio.kbps}k`, "-ac", "2", "-ar", String(audio.sampleRate)]
+      : ["-an"]),
+    ...["-movflags", "+faststart", "-map_metadata", "-1", outPath],
+  ];
+  try {
+    await runOrDecodeFailed(options.ffmpegPath, args, signal);
+  } catch (error) {
+    await rm(outPath, { force: true });
+    throw error;
+  }
+  // Se mide: si igual pasó del tope, no sirve (Discord lo rechazaría).
+  if ((await stat(outPath)).size > maxBytes) {
+    await rm(outPath, { force: true });
+    return null;
+  }
+  return outputOf(outPath, options, signal);
+}
+
+/**
  * Un video → sus medidas, su `thumb` y, con `reel`, el reel de Instagram (spec F2 §4.2, D5); con
  * `xVideo`, el video reducido para X (spec F9 §4.5). Un video de menos de 3 s no da reel (sí video
  * para X, desde 0,5 s); el reel de uno de más de 90 s se corta (los avisos son de core), y el video
- * para X sale entero. Todo queda en el
- * temporal del intento, que el worker borra al terminar (los videos también: se suben antes con
- * `open()`).
+ * para X sale entero. Con `discordVideo`, el video liviano para Discord bajo su tope (F9.5 D8), o
+ * `null` si no se puede. Todo queda en el temporal del intento, que el worker borra al terminar
+ * (los videos también: se suben antes con `open()`).
  */
 export async function processVideo(
   input: AsyncIterable<Uint8Array>,
-  { reel, xVideo = false }: VideoProcessOptions,
+  { reel, xVideo = false, discordVideo = null }: VideoProcessOptions,
   options: VideoToolOptions,
   signal?: AbortSignalLike,
 ): Promise<ProcessedVideo> {
@@ -361,11 +453,16 @@ export async function processVideo(
       !xVideo || source.durationS < X_VIDEO_MIN_DURATION_S
         ? null
         : await encodeXVideo(path, source, options, signal);
+    const forDiscord =
+      discordVideo === null
+        ? null
+        : await encodeDiscordVideo(path, source, discordVideo.maxBytes, options, signal);
     return {
       measurements: { width: source.width, height: source.height, durationS: source.durationS },
       thumb,
       reel: output,
       xVideo: forX,
+      discordVideo: forDiscord,
     };
   } finally {
     await rm(path, { force: true });

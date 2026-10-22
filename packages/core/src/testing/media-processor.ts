@@ -7,6 +7,7 @@ import type {
   MediaProcessor,
   ProcessedImage,
   ProcessedVideo,
+  VideoOutput,
 } from "../ports/media-processor.js";
 import type { MediaMeasurements } from "../ports/media-repository.js";
 import { fakeHash } from "./fake-hash.js";
@@ -14,12 +15,21 @@ import { fakeHash } from "./fake-hash.js";
 /** Una llamada recibida por el procesador falso (sin los bytes). */
 export type MediaProcessorCall =
   | { kind: "image"; mime: string; variants: ImageVariant[]; inputBytes: number }
-  | { kind: "video"; reel: boolean; xVideo: boolean; inputBytes: number };
+  | {
+      kind: "video";
+      reel: boolean;
+      xVideo: boolean;
+      /** El tope pedido para el video de Discord, o `null` si no se pidió. */
+      discordMaxBytes: number | null;
+      inputBytes: number;
+    };
 
 export type InMemoryMediaProcessorOptions = {
   version?: string;
   /** Medidas de cada entrada (por defecto, 2000×1500 en fotos y 1920×1080 de 30 s en videos). */
   measure?: (input: Uint8Array, kind: "image" | "video") => MediaMeasurements;
+  /** El video de Discord no se puede (como el adaptador bajo el bitrate mínimo): `null`. */
+  discordVideoFails?: boolean;
 };
 
 export type InMemoryMediaProcessor = MediaProcessor & { calls: MediaProcessorCall[] };
@@ -86,7 +96,11 @@ export function createInMemoryMediaProcessor(
         outputs: variants.map((variant) => output(variant, input, version)),
       };
     },
-    async processVideo(input, { reel, xVideo = false }, signal): Promise<ProcessedVideo> {
+    async processVideo(
+      input,
+      { reel, xVideo = false, discordVideo = null },
+      signal,
+    ): Promise<ProcessedVideo> {
       throwIfAborted(signal);
       const chunks: Uint8Array[] = [];
       for await (const chunk of input) chunks.push(chunk);
@@ -96,7 +110,13 @@ export function createInMemoryMediaProcessor(
         bytes.set(chunk, offset);
         offset += chunk.length;
       }
-      calls.push({ kind: "video", reel: reel !== null, xVideo, inputBytes: bytes.length });
+      calls.push({
+        kind: "video",
+        reel: reel !== null,
+        xVideo,
+        discordMaxBytes: discordVideo?.maxBytes ?? null,
+        inputBytes: bytes.length,
+      });
       if (isCorrupt(bytes)) throw decodeFailed();
       const measurements = measure(bytes, "video");
       // Como el adaptador (F2-T08): menos de 3 s no da reel; más de 90 s se corta.
@@ -109,35 +129,42 @@ export function createInMemoryMediaProcessor(
             );
       // El video para X: con la duración completa (sin el tope del reel), como el adaptador.
       const xBytes = xVideo ? encoder.encode(`x_video:v${version}:${decoder.decode(bytes)}`) : null;
+      const discordBytes =
+        discordVideo === null || options.discordVideoFails === true
+          ? null
+          : encoder.encode(`discord_video:v${version}:${decoder.decode(bytes)}`);
+      const video = (
+        out: Uint8Array,
+        size: { width: number; height: number; durationS: number },
+      ): VideoOutput => ({
+        ...size,
+        size: out.length,
+        sha256: fakeHash(decoder.decode(out)),
+        async *open() {
+          yield out;
+        },
+      });
       return {
         measurements,
         thumb: output("thumb", bytes, version),
         reel:
           reelBytes === null
             ? null
-            : {
-                size: reelBytes.length,
-                sha256: fakeHash(decoder.decode(reelBytes)),
+            : video(reelBytes, {
                 width: 1080,
                 height: 1920,
                 durationS: Math.min(duration, REEL_MAX_DURATION_S),
-                async *open() {
-                  yield reelBytes;
-                },
-              },
+              }),
         xVideo:
-          xBytes === null
+          xBytes === null ? null : video(xBytes, { width: 1280, height: 720, durationS: duration }),
+        discordVideo:
+          discordBytes === null
             ? null
-            : {
-                size: xBytes.length,
-                sha256: fakeHash(decoder.decode(xBytes)),
+            : video(discordBytes, {
                 width: 1280,
                 height: 720,
                 durationS: duration,
-                async *open() {
-                  yield xBytes;
-                },
-              },
+              }),
       };
     },
   };

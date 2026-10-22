@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { PostPlatform } from "../enums.js";
 import {
   createInMemoryMediaProcessor,
   createInMemoryMediaRepository,
@@ -14,7 +15,13 @@ import { processPostMedia } from "./process-post-media.js";
 const encode = (text: string) => Uint8Array.from(text, (char) => char.charCodeAt(0));
 const sha = (n: number) => n.toString(16).padStart(64, "0");
 
-async function setup(options: { videoDurationS?: number } = {}) {
+async function setup(
+  options: {
+    videoDurationS?: number;
+    platforms?: PostPlatform[] | null;
+    discordVideoFails?: boolean;
+  } = {},
+) {
   const posts = createInMemoryPostRepository();
   const media = createInMemoryMediaRepository();
   const storage = createInMemoryMediaStorage();
@@ -24,8 +31,16 @@ async function setup(options: { videoDurationS?: number } = {}) {
       kind === "image"
         ? { width: 2000, height: 1500, durationS: null }
         : { width: 1920, height: 1080, durationS: options.videoDurationS ?? 30 },
+    ...(options.discordVideoFails === undefined
+      ? {}
+      : { discordVideoFails: options.discordVideoFails }),
   });
-  const post = await posts.create({ brokerId: "brand-1", topic: "Bastidores", kind: "video" });
+  const post = await posts.create({
+    brokerId: "brand-1",
+    topic: "Bastidores",
+    kind: "video",
+    ...(options.platforms === undefined ? {} : { platforms: options.platforms }),
+  });
   const original = async (n: number, kind: "image" | "video", body: string) => {
     const ext = kind === "image" ? "jpg" : "mp4";
     const storagePath = `posts/${post.id}/original/${sha(n)}.${ext}`;
@@ -68,7 +83,7 @@ describe("processPostMedia", () => {
     // Sin pi_4x3 (un post no va a Portal) y el reel sin el PNG del texto.
     expect(s.processor.calls).toEqual([
       { kind: "image", mime: "image/jpeg", variants: ["thumb", "ig_4x5"], inputBytes: 4 },
-      { kind: "video", reel: true, xVideo: true, inputBytes: 5 },
+      { kind: "video", reel: true, xVideo: true, discordMaxBytes: null, inputBytes: 5 },
     ]);
 
     const all = await s.media.listBySubject({ kind: "post", id: s.post.id });
@@ -112,6 +127,7 @@ describe("processPostMedia", () => {
       kind: "video",
       reel: false,
       xVideo: true,
+      discordMaxBytes: null,
       inputBytes: 5,
     });
     const variants = (await s.media.listBySubject({ kind: "post", id: s.post.id }))
@@ -154,6 +170,88 @@ describe("processPostMedia", () => {
       outcome: "skipped",
       reason: "archived",
     });
+  });
+
+  // F9.5-T10 (D8): con topes chicos (los bytes de prueba del procesador falso pesan unos 30), el
+  // video más liviano "no cabe" en Discord y se pide aparte el video liviano.
+  const smallLimits = { fileMaxBytes: 10, videoMaxBytes: 9 };
+
+  it("va a Discord y el video más liviano no cabe: arma discord_video aparte, con el tope", async () => {
+    const s = await setup({ platforms: ["discord", "x"] });
+    const video = await s.original(1, "video", "video");
+    const result = await processPostMedia(
+      { ...s.deps, discordLimits: smallLimits },
+      { postId: s.post.id },
+    );
+    expect(result).toMatchObject({ media: { processed: 1, existing: 0, failed: 0 } });
+    expect(s.processor.calls).toEqual([
+      { kind: "video", reel: true, xVideo: true, discordMaxBytes: null, inputBytes: 5 },
+      { kind: "video", reel: false, xVideo: false, discordMaxBytes: 9, inputBytes: 5 },
+    ]);
+    const discord = (await s.media.listBySubject({ kind: "post", id: s.post.id })).find(
+      (item) => item.variant === "discord_video",
+    );
+    expect(discord).toMatchObject({
+      parentMediaId: video.id,
+      kind: "video",
+      mime: "video/mp4",
+      storagePath: `posts/${s.post.id}/processed/discord_video/${sha(1)}-v7.mp4`,
+    });
+    expect(s.storage.objects.has(discord?.storagePath ?? "")).toBe(true);
+
+    // Ya está: la segunda vuelta no la repite.
+    expect(
+      await processPostMedia({ ...s.deps, discordLimits: smallLimits }, { postId: s.post.id }),
+    ).toMatchObject({ media: { processed: 0, existing: 1 } });
+    expect(s.processor.calls).toHaveLength(2);
+  });
+
+  it("con los demás ya armados, solo pide el de Discord (sin reel ni video para X)", async () => {
+    const s = await setup({ platforms: null });
+    await s.original(1, "video", "video");
+    await processPostMedia(s.deps, { postId: s.post.id });
+    expect(s.processor.calls).toHaveLength(1);
+    await processPostMedia({ ...s.deps, discordLimits: smallLimits }, { postId: s.post.id });
+    expect(s.processor.calls.at(-1)).toEqual({
+      kind: "video",
+      reel: false,
+      xVideo: false,
+      discordMaxBytes: 9,
+      inputBytes: 5,
+    });
+  });
+
+  it("sin Discord entre las redes del post, o si el video más liviano cabe, no se arma", async () => {
+    const sinDiscord = await setup({ platforms: ["x", "linkedin"] });
+    await sinDiscord.original(1, "video", "video");
+    await processPostMedia(
+      { ...sinDiscord.deps, discordLimits: smallLimits },
+      { postId: sinDiscord.post.id },
+    );
+    // Con los topes de Discord (20 MiB), el video de prueba cabe.
+    const cabe = await setup({ platforms: ["discord"] });
+    await cabe.original(1, "video", "video");
+    await processPostMedia(cabe.deps, { postId: cabe.post.id });
+    for (const s of [sinDiscord, cabe]) {
+      expect(s.processor.calls).toHaveLength(1);
+      const variants = (await s.media.listBySubject({ kind: "post", id: s.post.id })).map(
+        (item) => item.variant,
+      );
+      expect(variants).not.toContain("discord_video");
+    }
+  });
+
+  it("si el video para Discord no se puede (bitrate bajo el mínimo), no queda variante y sigue", async () => {
+    const s = await setup({ platforms: ["discord"], discordVideoFails: true });
+    await s.original(1, "video", "video");
+    expect(
+      await processPostMedia({ ...s.deps, discordLimits: smallLimits }, { postId: s.post.id }),
+    ).toMatchObject({ media: { processed: 1, failed: 0 }, failedMediaIds: [] });
+    const variants = (await s.media.listBySubject({ kind: "post", id: s.post.id }))
+      .filter((item) => item.role === "processed")
+      .map((item) => item.variant)
+      .sort();
+    expect(variants).toEqual(["ig_reel", "thumb", "x_video"]);
   });
 
   it("cortado por el apagado: MEDIA_ABORTED reintentable", async () => {

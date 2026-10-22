@@ -65,3 +65,19 @@ export function reelWarnings(
         : null;
   return code === null ? [] : [{ code, message: REEL_WARNING_TEXT[code] }];
 }
+
+const MIB = 1024 * 1024;
+
+/**
+ * Lo que acepta Discord por archivo adjunto de un webhook: 20 MiB desde el 2026-09-03 (DOC,
+ * `docs/integraciones/discord.md` §5.2). Lo usan el publisher (qué se adjunta) y `post.media` (si
+ * hace falta el video liviano).
+ */
+export const DISCORD_FILE_MAX_BYTES = 20 * MIB;
+
+/**
+ * El tope del video liviano para Discord (`discord_video`, spec F9.5 D8): 19 MiB, 1 MiB bajo el
+ * límite por archivo para no rozarlo. `post.media` lo arma solo si el post va a Discord y el video
+ * más liviano (`x_video` o `ig_reel`) pesa más de `DISCORD_FILE_MAX_BYTES`.
+ */
+export const DISCORD_VIDEO_MAX_BYTES = 19 * MIB;
