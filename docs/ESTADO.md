@@ -3,11 +3,14 @@
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
 **Actualizado:** 2026-10-22
-**Fase actual:** F9.5 · Lista para mostrar **cerrada** el 2026-10-22 (`v1.4.0`, la etiqueta con tu permiso). Falta desplegarla (tú) y la demo con la oficina del **viernes 2026-10-30** (`docs/12-demo-oficina.md`). Siguiente: F10 · piloto con una oficina
-**Última tarea:** **cierre de F9.5** (T13). Las 12 tareas integradas en 14 PR (#217 a #230), con agentes en paralelo, el `revisor` en cada PR y el `arquitecto` en el spec y en los que cambiaban contratos: sistema visual, portada «Hoy», lenguaje claro, vista previa por red, «salió / no salió» en Instagram y Portal, textos e ideas de la IA más humanos (ADR-0034), y la deuda de F9 (X, Discord, versiones de la CLI, dueño de una cuenta)
-**Siguiente paso:** tú: desplegar `v1.4.0` y el ensayo corto del jueves 29 (`docs/12-demo-oficina.md`); la demo el 30. Después, `/fase-plan 10`
+**Fase actual:** F9.5 · Lista para mostrar: lote 1 cerrado (`v1.4.0`) y **lote 2 cerrado** el 2026-10-22 (`v1.5.0`, la etiqueta con tu permiso), con lo que viste en tu primera prueba. Demo con la oficina el **viernes 2026-10-30** (`docs/12-demo-oficina.md`). Siguiente: F10
+**Última tarea:** **lote 2 de F9.5** (T14 a T19, #232 a #239): borrar un corredor de verdad (ADR-0035), crear un corredor fácil, invitación y sesión claras con «Enviar por correo», perfil editorial que se entiende, reel desde las fotos y música libre de derechos. Además, la CI con más margen (#237)
+**Siguiente paso:** tú: desplegar `v1.5.0`; después, borrar los 4 corredores de prueba viendo antes el resumen (`brokers delete <slug>`); subir las pistas de música. Luego, el ensayo del jueves 29
 
 ## Pendiente tuyo para la demo del 30 (F9.5)
+- [ ] **Desplegar `v1.5.0`** y, con el resumen a la vista, borrar los corredores de prueba `corredor-demo`, `agentsales-pruebas`, `demo-meta` y `demo` (`pnpm -s cli brokers delete <slug>`, después `--confirm <slug>`). Se quedan tu corredor `18862631`, vinny y AgentPey. Al borrar `agentsales-pruebas` se desconecta tu Mercado Libre (`VICENTEWOLDE`), y al borrar `demo-meta` se van el usuario `revisor-meta` y su DEMO-1 del App Review de Meta: hay que rehacerlos antes de enviarlo
+- [ ] **Música:** bajar las 5 pistas CC0, escucharlas, confirmar la licencia de «Champ de tournesol», subirlas (`pnpm music:upload <carpeta>` y `ENV_FILE=.env.production pnpm music:upload <carpeta>`) y probar una con tu Instagram antes de publicar de verdad (`docs/integraciones/musica-reels.md`)
+- [ ] **El worker del servidor quedó encendido desde el 2026-10-22 15:35** (la prueba): apágalo si no estás probando (`docs/10-despliegue.md`, paso 8)
 La guía paso a paso está en `docs/12-demo-oficina.md`.
 - [ ] **Jueves 29:** desplegar `v1.4.0`; la CLI contra el servidor (`login --api`); crear tu corredor para propiedades y conectarle `@vicentewoldec`; la propiedad de ejemplo con sus fotos; recomendado, el ensayo corto (una publicación programada en simulación con el worker encendido y el cambio a vivo y de vuelta, que nunca se probó con `fly machine update`)
 - [ ] **Viernes 30:** encender el worker, pasar a vivo durante la demo (tu instrucción en el chat), volver a simulación, apagar el worker y borrar la propiedad de ejemplo de Instagram
@@ -127,7 +130,15 @@ F9.5 · Lista para mostrar (`docs/specs/fase-9.5-lista-para-mostrar.md`): **cerr
 | T10 · Video para Discord | ✅ | #221 |
 | T11 · CLI y servidor de versiones distintas | ✅ | #229 |
 | T12 · De quién es una cuenta | ✅ | #225 |
-| T13 · Cierre (`v1.4.0`) | ✅ | este PR |
+| T13 · Cierre (`v1.4.0`) | ✅ | #231 |
+| **Lote 2** · spec y ADR-0035 | ✅ | #232 |
+| T14 · Borrar un corredor de verdad | ✅ | #234 |
+| T15 · Invitación, sesión y textos | ✅ | #233 |
+| T16 · Crear un corredor fácil | ✅ | #238 |
+| T17 · Perfil editorial que se entienda | ✅ | #235 |
+| T18 · Reel desde las fotos | ✅ | #236 |
+| T19 · Música en los reels | ✅ | #239 |
+| Cierre del lote 2 (`v1.5.0`) | ✅ | este PR |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 

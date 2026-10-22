@@ -4,6 +4,26 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 
 ## [Sin publicar]
 
+## [1.5.0] - 2026-10-22 · F9.5 Lista para mostrar, lote 2
+**Lo que viste en tu primera prueba, arreglado.** Probaste la demo en el servidor y anotaste lo que confundía o faltaba; este lote lo resuelve.
+
+### Añadido
+- **Borrar un corredor de verdad** (T14, ADR-0035): `brokers delete <slug>` muestra primero el resumen (propiedades, medios, publicaciones, usuarios, cuentas y cuántas siguen publicadas en las redes) y borra solo con `--confirm <slug>`: todo lo suyo en la base, en una transacción, y sus archivos en R2. Se niega si hay algo publicándose, programado o dudoso. No borra nada en las redes.
+- **Crear un corredor fácil** (T16): el formulario pide solo el nombre y la marca (el identificador se arma solo); el resto va en **Opciones avanzadas**. **Llenar desde una planilla** lee la hoja Corredor y completa el formulario para revisarlo, sin guardar.
+- **Reel desde las fotos** (T18): una propiedad sin video y con 3 o más fotos tiene su reel (la portada primero, 3 s por foto con fundido). También abre la publicación del reel en Instagram.
+- **Música en los reels** (T19): 5 pistas libres de derechos (CC0, sin crédito) para elegir por propiedad o post con video; va de fondo bajo el sonido del video, en todas las redes. Por defecto, sin música. Las pistas las sube el operador con `pnpm music:upload <carpeta>`.
+- **Enviar la invitación por correo** (T15): abre tu programa de correo con el mensaje y el enlace listos.
+
+### Cambiado
+- **La invitación** explica que creas tu usuario y avisa antes de cerrar una sesión abierta en el mismo navegador (T15).
+- **El perfil editorial** (T17): «Líneas de contenido» pasa a **Temas de la marca** con peso Poco, Normal o Mucho; cada campo trae ayuda y ejemplos (los de **Hechos** con huecos entre corchetes que hay que completar); la cadencia con botones para los días y chips para las horas.
+- El aviso de un texto con publicaciones activas dice en simple qué hacer y va en amarillo, no en rojo (T15).
+- La CI tiene más margen cuando instalar Chromium tarda (#237).
+
+### Pendiente fuera del código
+- **Desplegar `v1.5.0`** (tú), y después borrar los corredores de prueba con el resumen a la vista.
+- **La música:** bajar las 5 pistas, escucharlas, confirmar la licencia de «Champ de tournesol», subirlas con `pnpm music:upload` y probar una con tu Instagram antes de publicar de verdad (`docs/integraciones/musica-reels.md`).
+
 ## [1.4.0] - 2026-10-22 · F9.5 Lista para mostrar
 **El panel queda presentable para la demo con la oficina del piloto.** Tiene un diseño propio y una portada que resume el día, habla como un corredor, muestra cómo se verá cada publicación antes de aprobarla y deja resolver «salió / no salió» también en Instagram y Portal. Los textos e ideas de la IA son más humanos y variados. Además se cerró la deuda interna de F9.
 
