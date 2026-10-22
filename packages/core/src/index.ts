@@ -319,6 +319,8 @@ export { type Media, mediaSchema } from "./media.js";
 export {
   DISCORD_FILE_MAX_BYTES,
   DISCORD_VIDEO_MAX_BYTES,
+  DISCORD_VIDEO_RATE,
+  discordVideoBitrateKbps,
   PHOTO_MIN_WIDTH,
   PHOTO_SIZE_WARNING_CODES,
   PHOTO_SIZE_WARNING_TEXT,

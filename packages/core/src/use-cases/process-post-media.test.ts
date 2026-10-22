@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PostPlatform } from "../enums.js";
+import { DISCORD_VIDEO_MAX_BYTES } from "../media-checks.js";
 import {
   createInMemoryMediaProcessor,
   createInMemoryMediaRepository,
@@ -20,6 +21,7 @@ async function setup(
     videoDurationS?: number;
     platforms?: PostPlatform[] | null;
     discordVideoFails?: boolean;
+    discordVideoThrows?: boolean;
   } = {},
 ) {
   const posts = createInMemoryPostRepository();
@@ -34,6 +36,9 @@ async function setup(
     ...(options.discordVideoFails === undefined
       ? {}
       : { discordVideoFails: options.discordVideoFails }),
+    ...(options.discordVideoThrows === undefined
+      ? {}
+      : { discordVideoThrows: options.discordVideoThrows }),
   });
   const post = await posts.create({
     brokerId: "brand-1",
@@ -172,9 +177,10 @@ describe("processPostMedia", () => {
     });
   });
 
-  // F9.5-T10 (D8): con topes chicos (los bytes de prueba del procesador falso pesan unos 30), el
-  // video más liviano "no cabe" en Discord y se pide aparte el video liviano.
-  const smallLimits = { fileMaxBytes: 10, videoMaxBytes: 9 };
+  // F9.5-T10 (D8): con un límite por archivo chico (los bytes de prueba del procesador falso pesan
+  // unos 30), el video más liviano "no cabe" en Discord y se pide aparte el video liviano, con el
+  // tope de siempre (19 MiB: con 30 s, el bitrate queda sobre el mínimo).
+  const smallLimits = { fileMaxBytes: 10, videoMaxBytes: DISCORD_VIDEO_MAX_BYTES };
 
   it("va a Discord y el video más liviano no cabe: arma discord_video aparte, con el tope", async () => {
     const s = await setup({ platforms: ["discord", "x"] });
@@ -186,7 +192,13 @@ describe("processPostMedia", () => {
     expect(result).toMatchObject({ media: { processed: 1, existing: 0, failed: 0 } });
     expect(s.processor.calls).toEqual([
       { kind: "video", reel: true, xVideo: true, discordMaxBytes: null, inputBytes: 5 },
-      { kind: "video", reel: false, xVideo: false, discordMaxBytes: 9, inputBytes: 5 },
+      {
+        kind: "video",
+        reel: false,
+        xVideo: false,
+        discordMaxBytes: DISCORD_VIDEO_MAX_BYTES,
+        inputBytes: 5,
+      },
     ]);
     const discord = (await s.media.listBySubject({ kind: "post", id: s.post.id })).find(
       (item) => item.variant === "discord_video",
@@ -216,7 +228,7 @@ describe("processPostMedia", () => {
       kind: "video",
       reel: false,
       xVideo: false,
-      discordMaxBytes: 9,
+      discordMaxBytes: DISCORD_VIDEO_MAX_BYTES,
       inputBytes: 5,
     });
   });
@@ -252,6 +264,77 @@ describe("processPostMedia", () => {
       .map((item) => item.variant)
       .sort();
     expect(variants).toEqual(["ig_reel", "thumb", "x_video"]);
+  });
+
+  it("si la pasada de Discord falla, el original no queda ilegible: sin variante y con aviso", async () => {
+    const s = await setup({ platforms: ["discord"], discordVideoThrows: true });
+    const video = await s.original(1, "video", "video");
+    const missing: unknown[][] = [];
+    const result = await processPostMedia(
+      {
+        ...s.deps,
+        discordLimits: smallLimits,
+        onDiscordVideoMissing: (mediaId, reason, error) =>
+          missing.push([mediaId, reason, (error as { code?: string } | undefined)?.code]),
+      },
+      { postId: s.post.id },
+    );
+    expect(result).toEqual({
+      outcome: "processed",
+      media: { processed: 1, existing: 0, failed: 0 },
+      failedMediaIds: [],
+    });
+    expect(missing).toEqual([[video.id, "failed", "MEDIA_DECODE_FAILED"]]);
+    const variants = (await s.media.listBySubject({ kind: "post", id: s.post.id }))
+      .filter((item) => item.role === "processed")
+      .map((item) => item.variant)
+      .sort();
+    expect(variants).toEqual(["ig_reel", "thumb", "x_video"]);
+  });
+
+  it("un video demasiado largo para el mínimo legible no se vuelve a leer para Discord", async () => {
+    // Una hora: con 19 MiB, el bitrate queda bajo el mínimo aun sin audio.
+    const s = await setup({ platforms: ["discord"], videoDurationS: 3600 });
+    const video = await s.original(1, "video", "video");
+    const missing: unknown[][] = [];
+    await processPostMedia(
+      {
+        ...s.deps,
+        discordLimits: smallLimits,
+        onDiscordVideoMissing: (mediaId, reason) => missing.push([mediaId, reason]),
+      },
+      { postId: s.post.id },
+    );
+    // Solo la pasada de siempre: la de Discord no se pidió.
+    expect(s.processor.calls.map((call) => call.kind === "video" && call.discordMaxBytes)).toEqual([
+      null,
+    ]);
+    expect(missing).toEqual([[video.id, "too_long"]]);
+    // Ya medido, la siguiente vuelta tampoco lo lee.
+    expect(
+      await processPostMedia({ ...s.deps, discordLimits: smallLimits }, { postId: s.post.id }),
+    ).toMatchObject({ media: { processed: 0, existing: 1 } });
+    expect(s.processor.calls).toHaveLength(1);
+  });
+
+  it("un post con dos videos arma discord_video solo del primero (el único que usa Discord)", async () => {
+    const s = await setup({ platforms: ["discord"] });
+    const first = await s.original(1, "video", "primero");
+    const second = await s.original(2, "video", "segundo");
+    await processPostMedia({ ...s.deps, discordLimits: smallLimits }, { postId: s.post.id });
+    const discord = (await s.media.listBySubject({ kind: "post", id: s.post.id })).filter(
+      (item) => item.variant === "discord_video",
+    );
+    expect(discord.map((item) => item.parentMediaId)).toEqual([first.id]);
+    expect(
+      s.processor.calls.filter((call) => call.kind === "video" && call.discordMaxBytes !== null),
+    ).toHaveLength(1);
+    // El segundo tiene sus variantes de siempre.
+    const ofSecond = (await s.media.listBySubject({ kind: "post", id: s.post.id }))
+      .filter((item) => item.parentMediaId === second.id)
+      .map((item) => item.variant)
+      .sort();
+    expect(ofSecond).toEqual(["ig_reel", "thumb", "x_video"]);
   });
 
   it("cortado por el apagado: MEDIA_ABORTED reintentable", async () => {

@@ -81,3 +81,41 @@ export const DISCORD_FILE_MAX_BYTES = 20 * MIB;
  * más liviano (`x_video` o `ig_reel`) pesa más de `DISCORD_FILE_MAX_BYTES`.
  */
 export const DISCORD_VIDEO_MAX_BYTES = 19 * MIB;
+
+/**
+ * Cómo se reparte el tope del video para Discord (D8 de F9.5): AAC a `audioKbps` si hay audio, un
+ * margen del contenedor (`containerOverhead`) y el video en la duración más el búfer del VBV
+ * (`bufferS`), entre `minVideoKbps` (bajo eso se vería ilegible: no se arma) y `maxVideoKbps`. Los
+ * usan el procesador (`DISCORD_VIDEO_SPEC` de `packages/media`) y `post.media`, que no lee el
+ * original si ya sabe que no se puede.
+ */
+export const DISCORD_VIDEO_RATE = {
+  audioKbps: 64,
+  minVideoKbps: 500,
+  maxVideoKbps: 5000,
+  bufferS: 1,
+  containerOverhead: 0.03,
+} as const;
+
+/**
+ * El bitrate del video para Discord (kbps) que deja el archivo bajo `maxBytes` según su duración
+ * (`DISCORD_VIDEO_RATE`): el presupuesto menos el margen del contenedor y el audio, repartido en la
+ * duración más el búfer, hasta `maxVideoKbps`. `null` si queda bajo `minVideoKbps`.
+ */
+export function discordVideoBitrateKbps({
+  durationS,
+  hasAudio,
+  maxBytes,
+}: {
+  durationS: number;
+  hasAudio: boolean;
+  maxBytes: number;
+}): number | null {
+  const { audioKbps, bufferS, containerOverhead, minVideoKbps, maxVideoKbps } = DISCORD_VIDEO_RATE;
+  if (!(durationS > 0) || !(maxBytes > 0)) return null;
+  const budgetKbits = (maxBytes * 8 * (1 - containerOverhead)) / 1000;
+  const audioKbits = hasAudio ? audioKbps * durationS : 0;
+  const kbps = Math.floor((budgetKbits - audioKbits) / (durationS + bufferS));
+  if (kbps < minVideoKbps) return null;
+  return Math.min(kbps, maxVideoKbps);
+}

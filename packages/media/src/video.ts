@@ -6,6 +6,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import {
   type AbortSignalLike,
+  discordVideoBitrateKbps,
   type ProcessedVideo,
   REEL_MIN_DURATION_S,
   type VideoOutput,
@@ -336,30 +337,6 @@ async function encodeXVideo(
     throw error;
   }
   return outputOf(outPath, options, signal);
-}
-
-/**
- * El bitrate del video para Discord (kbps) que deja el archivo bajo `maxBytes` según su duración
- * (`DISCORD_VIDEO_SPEC`): el presupuesto menos el margen del contenedor y el audio, repartido en la
- * duración más el búfer del VBV, hasta `maxVideoKbps`. `null` si queda bajo `minVideoKbps` (se
- * vería ilegible): ese video no se arma.
- */
-export function discordVideoBitrateKbps({
-  durationS,
-  hasAudio,
-  maxBytes,
-}: {
-  durationS: number;
-  hasAudio: boolean;
-  maxBytes: number;
-}): number | null {
-  const { audio, bufferS, containerOverhead, minVideoKbps, maxVideoKbps } = DISCORD_VIDEO_SPEC;
-  if (!(durationS > 0) || !(maxBytes > 0)) return null;
-  const budgetKbits = (maxBytes * 8 * (1 - containerOverhead)) / 1000;
-  const audioKbits = hasAudio ? audio.kbps * durationS : 0;
-  const kbps = Math.floor((budgetKbits - audioKbits) / (durationS + bufferS));
-  if (kbps < minVideoKbps) return null;
-  return Math.min(kbps, maxVideoKbps);
 }
 
 /**

@@ -1,13 +1,14 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { discordVideoBitrateKbps } from "@agentsales/core";
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createMediaProcessor, DISCORD_VIDEO_SPEC, REEL_SPEC, X_VIDEO_SPEC } from "../src/index.js";
-import { discordVideoBitrateKbps, discordVideoSize, xVideoSize } from "../src/video.js";
+import { discordVideoSize, xVideoSize } from "../src/video.js";
 import { alive, errorOf, FFMPEG, FFPROBE, fakeFfmpeg, TEST_THREADS, waitFor } from "./images.js";
 
 // Videos generados con ffmpeg (`testsrc`, `color` y `sine`; spec F2-T08), sin archivos de clientes.
@@ -453,6 +454,36 @@ describe("processVideo: video liviano para Discord (F9.5-T10, D8)", () => {
     expect(result.discordVideo).toBeNull();
     // Medidas y thumb igual salen.
     expect(result.measurements).toMatchObject({ width: 640, height: 360 });
+    expect(await readdir(work)).toEqual([]);
+  }, 60_000);
+
+  it("si tras codificar igual pasa del tope, se borra y no hay variante", async () => {
+    // Un ffmpeg que llama al de verdad y, al video de Discord, le agrega bytes de más (como si el
+    // VBV no hubiera alcanzado): el procesador lo mide, lo borra y devuelve `null`.
+    const wrapperDir = await mkdtemp(join(dir, "ffmpeg-gordo-"));
+    const wrapper = join(wrapperDir, "ffmpeg");
+    await writeFile(
+      wrapper,
+      `#!/usr/bin/env node
+const { spawnSync } = require("node:child_process");
+const args = process.argv.slice(2);
+const run = spawnSync(${JSON.stringify(FFMPEG)}, args, { stdio: "inherit" });
+const out = args.at(-1) ?? "";
+if (run.status === 0 && out.endsWith("-discord.mp4")) {
+  require("node:fs").appendFileSync(out, Buffer.alloc(${maxBytes}));
+}
+process.exit(run.status ?? 1);
+`,
+    );
+    await chmod(wrapper, 0o755);
+    const work = await workDir();
+    const result = await createMediaProcessor({
+      ffmpegPath: wrapper,
+      ffprobePath: FFPROBE,
+      workDir: work,
+      threads: TEST_THREADS,
+    }).processVideo(video("horizontal"), { reel: null, discordVideo: { maxBytes } });
+    expect(result.discordVideo).toBeNull();
     expect(await readdir(work)).toEqual([]);
   }, 60_000);
 

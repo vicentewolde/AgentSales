@@ -1,4 +1,9 @@
-import { type ImageVariant, REEL_MAX_DURATION_S, REEL_MIN_DURATION_S } from "@agentsales/core";
+import {
+  DISCORD_VIDEO_RATE,
+  type ImageVariant,
+  REEL_MAX_DURATION_S,
+  REEL_MIN_DURATION_S,
+} from "@agentsales/core";
 
 /**
  * Versión de los parámetros de las variantes y del reel (spec F2 §4.2). Va en la clave de R2 de
@@ -79,17 +84,18 @@ export const X_VIDEO_SPEC = {
  * sola pasada con `-b:v` = `-maxrate` y un búfer de `bufferS` segundos (el VBV de x264 asegura que
  * el video no pase de `maxrate × duración + búfer`), menos el audio y un margen del contenedor
  * (`containerOverhead`). Sobre `maxVideoKbps` no se gasta más (un video corto no lo necesita); bajo
- * `minVideoKbps` no se arma: se vería ilegible. El resultado se mide y, si igual pasa del tope, se
- * descarta.
+ * `minVideoKbps` no se arma: se vería ilegible. Esas cifras y el cálculo son de core
+ * (`DISCORD_VIDEO_RATE`, `discordVideoBitrateKbps`): `post.media` las usa para no leer el original
+ * cuando ya sabe que no se puede. El resultado se mide y, si igual pasa del tope, se descarta.
  */
 export const DISCORD_VIDEO_SPEC = {
   longSide: 1280,
   shortSide: 720,
   fps: 30,
   x264: { preset: "veryfast", gop: 60 },
-  audio: { kbps: 64, sampleRate: 48000 },
-  minVideoKbps: 500,
-  maxVideoKbps: 5000,
-  bufferS: 1,
-  containerOverhead: 0.03,
+  audio: { kbps: DISCORD_VIDEO_RATE.audioKbps, sampleRate: 48000 },
+  minVideoKbps: DISCORD_VIDEO_RATE.minVideoKbps,
+  maxVideoKbps: DISCORD_VIDEO_RATE.maxVideoKbps,
+  bufferS: DISCORD_VIDEO_RATE.bufferS,
+  containerOverhead: DISCORD_VIDEO_RATE.containerOverhead,
 } as const;

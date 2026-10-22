@@ -30,6 +30,8 @@ export type InMemoryMediaProcessorOptions = {
   measure?: (input: Uint8Array, kind: "image" | "video") => MediaMeasurements;
   /** El video de Discord no se puede (como el adaptador bajo el bitrate mínimo): `null`. */
   discordVideoFails?: boolean;
+  /** La pasada del video de Discord falla con `MEDIA_DECODE_FAILED` (las demás no). */
+  discordVideoThrows?: boolean;
 };
 
 export type InMemoryMediaProcessor = MediaProcessor & { calls: MediaProcessorCall[] };
@@ -118,6 +120,7 @@ export function createInMemoryMediaProcessor(
         inputBytes: bytes.length,
       });
       if (isCorrupt(bytes)) throw decodeFailed();
+      if (discordVideo !== null && options.discordVideoThrows === true) throw decodeFailed();
       const measurements = measure(bytes, "video");
       // Como el adaptador (F2-T08): menos de 3 s no da reel; más de 90 s se corta.
       const duration = measurements.durationS ?? 0;
