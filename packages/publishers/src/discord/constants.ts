@@ -2,6 +2,8 @@
 // doc oficial (DOC en la nota); lo marcado NO VERIFICADO lo confirma la prueba S5 del operador antes
 // de publicar de verdad.
 
+import { DISCORD_FILE_MAX_BYTES } from "@agentsales/core";
+
 /** El host de la API. Los tests lo dejan igual: msw intercepta `discord.com`. */
 export const DISCORD_API_ORIGIN = "https://discord.com";
 
@@ -19,8 +21,11 @@ export const DISCORD_LIMITS = {
   contentChars: 2000,
   /** Archivos por mensaje: la doc leída no lo fija; se usa 10 (NO VERIFICADO, `discord.md` §5.2). */
   files: 10,
-  /** Por archivo: 20 MiB para webhooks desde el 2026-09-03 (DOC). */
-  fileBytes: 20 * MIB,
+  /**
+   * Por archivo: 20 MiB para webhooks desde el 2026-09-03 (DOC). La cifra vive en core: `post.media`
+   * la usa para decidir si arma el video liviano para Discord (F9.5 D8).
+   */
+  fileBytes: DISCORD_FILE_MAX_BYTES,
   /**
    * La solicitud completa: 25 MiB (DOC, Create Message). Se deja 1 MiB para el `payload_json` y
    * los separadores del `multipart`.

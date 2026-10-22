@@ -129,7 +129,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Únic
 | broker_id | uuid FK | |
 | kind | enum `media_kind` | `image`, `video` |
 | role | enum `media_role` | `original`, `processed`, `rendered` |
-| variant | text null | `MEDIA_VARIANTS` (core): de un `processed`, `thumb`, `ig_4x5`, `pi_4x3`, `ig_reel` o, desde F9-T10 (solo posts, sin migración), `x_video` (el video reducido para X); de un `rendered`, `cover` o `spec_sheet`. `null` en un original. `ig_reel` y `x_video` son `kind = video` |
+| variant | text null | `MEDIA_VARIANTS` (core): de un `processed`, `thumb`, `ig_4x5`, `pi_4x3`, `ig_reel` o, desde F9-T10 (solo posts, sin migración), `x_video` (el video reducido para X) y, desde F9.5-T10 (solo posts que van a Discord, sin migración), `discord_video` (el video liviano para Discord, bajo 19 MiB); de un `rendered`, `cover` o `spec_sheet`. `null` en un original. `ig_reel`, `x_video` y `discord_video` son `kind = video` |
 | parent_media_id | uuid null | Derivado de qué original |
 | storage_path | text | Ruta en el bucket |
 | mime | text | |
