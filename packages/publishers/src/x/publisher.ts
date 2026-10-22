@@ -20,7 +20,7 @@ import {
   xWeightedLength,
 } from "@agentsales/core";
 import { z } from "zod";
-import { createXApi, type XApiClient, type XUploadFile } from "./api.js";
+import { createXApi, type XApiClient, type XUploadStream } from "./api.js";
 import {
   X_IMAGE_TYPES,
   X_LIMITS,
@@ -43,6 +43,14 @@ export type XPublisherOptions = {
    * `fetch` y un tope. Nunca pone la URL en un error.
    */
   download?: (item: PublishMediaItem, options: { signal?: AbortSignalLike }) => Promise<Uint8Array>;
+  /**
+   * Abre el video de R2 como flujo para subirlo por partes sin tenerlo entero en memoria
+   * (F9.5-T08); por defecto `openXVideo`, con `fetch`. Un reintento tras un 401 lo vuelve a abrir.
+   */
+  openVideo?: (
+    item: PublishMediaItem,
+    options: { signal?: AbortSignalLike },
+  ) => Promise<XUploadStream>;
   now?: () => Date;
   onNote?: (note: XPublishNote) => void;
 };
@@ -132,50 +140,160 @@ export function validateXInput(input: PublishInput): PublishValidation {
 export const xCostNote = (caption: string): string =>
   `En X costaría ${formatXUsd(xPostCostUsd(caption))} (estimado; el saldo real está en la consola de X)`;
 
+/** Un medio de R2 abierto como flujo: el tamaño anunciado (o `null`) y sus trozos. */
+export type XMediaStream = {
+  /** El `content-length` de R2, o `null` si no vino. */
+  totalBytes: number | null;
+  /** Se leen una vez; `return()` cierra la descarga (también si nunca se empezó a leer). */
+  chunks: AsyncIterable<Uint8Array>;
+};
+
 /**
- * Baja un medio por su URL firmada, con tope de tiempo y de tamaño. Ningún error lleva la URL:
- * `X_MEDIA_UNAVAILABLE` (reintentable; no se envió nada).
+ * Abre un medio por su URL firmada como flujo (F9.5-T08), con tope de tamaño y de tiempo: la
+ * respuesta tiene que llegar en `X_MEDIA_DOWNLOAD_TIMEOUT_MS`, y cada trozo también (la espera entre
+ * trozos, no el total: el video se lee a medida que sube a X, parte por parte). Un `content-length`
+ * mayor que el tope falla sin leer. Ningún error lleva la URL: `X_MEDIA_UNAVAILABLE` (reintentable;
+ * no se envió nada) o `X_ABORTED`.
  */
-export async function downloadXMedia(
+export async function openXMedia(
   item: PublishMediaItem,
   { signal }: { signal?: AbortSignalLike } = {},
-): Promise<Uint8Array> {
+): Promise<XMediaStream> {
   if (signal?.aborted) throw X_ERRORS.aborted();
   const limit = item.kind === "video" ? X_LIMITS.videoBytes : X_LIMITS.imageBytes;
   const caller = new AbortController();
+  const idle = new AbortController();
   const onAbort = () => caller.abort();
   signal?.addEventListener("abort", onAbort, { once: true });
-  const timeout = AbortSignal.timeout(X_MEDIA_DOWNLOAD_TIMEOUT_MS);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const arm = () => {
+    timer = setTimeout(() => idle.abort(), X_MEDIA_DOWNLOAD_TIMEOUT_MS);
+  };
+  const disarm = () => clearTimeout(timer);
+  const failure = (reason: "network" | "timeout") =>
+    caller.signal.aborted
+      ? X_ERRORS.aborted()
+      : X_ERRORS.mediaUnavailable(item.mediaId, idle.signal.aborted ? "timeout" : reason);
+  let closed = false;
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  const close = async () => {
+    if (closed) return;
+    closed = true;
+    disarm();
+    signal?.removeEventListener("abort", onAbort);
+    await reader?.cancel().catch(() => undefined);
+  };
   try {
     let response: Response;
+    arm();
     try {
       response = await fetch(item.url, {
         redirect: "error",
-        signal: AbortSignal.any([caller.signal, timeout]),
+        signal: AbortSignal.any([caller.signal, idle.signal]),
       });
     } catch {
-      if (caller.signal.aborted) throw X_ERRORS.aborted();
-      throw X_ERRORS.mediaUnavailable(item.mediaId, timeout.aborted ? "timeout" : "network");
+      throw failure("network");
+    } finally {
+      disarm();
     }
-    if (!response.ok) throw X_ERRORS.mediaUnavailable(item.mediaId, `http_${response.status}`);
-    const declared = Number(response.headers.get("content-length") ?? Number.NaN);
-    if (Number.isFinite(declared) && declared > limit) {
-      throw X_ERRORS.mediaUnavailable(item.mediaId, "too_large");
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined);
+      throw X_ERRORS.mediaUnavailable(item.mediaId, `http_${response.status}`);
     }
-    let bytes: Uint8Array;
-    try {
-      bytes = new Uint8Array(await response.arrayBuffer());
-    } catch {
-      if (caller.signal.aborted) throw X_ERRORS.aborted();
-      throw X_ERRORS.mediaUnavailable(item.mediaId, "network");
+    const header = response.headers.get("content-length");
+    const declared = header === null || header.trim() === "" ? Number.NaN : Number(header);
+    const totalBytes = Number.isSafeInteger(declared) && declared >= 0 ? declared : null;
+    if (totalBytes !== null && (totalBytes === 0 || totalBytes > limit)) {
+      await response.body?.cancel().catch(() => undefined);
+      throw X_ERRORS.mediaUnavailable(item.mediaId, totalBytes === 0 ? "size" : "too_large");
     }
-    if (bytes.byteLength === 0 || bytes.byteLength > limit) {
-      throw X_ERRORS.mediaUnavailable(item.mediaId, "size");
-    }
-    return bytes;
-  } finally {
-    signal?.removeEventListener("abort", onAbort);
+    if (response.body === null) throw X_ERRORS.mediaUnavailable(item.mediaId, "size");
+    reader = response.body.getReader();
+    const body = reader;
+    let read = 0;
+    const iterator: AsyncIterator<Uint8Array> = {
+      async next() {
+        if (closed) return { done: true, value: undefined };
+        let next: Awaited<ReturnType<typeof body.read>>;
+        arm();
+        try {
+          next = await body.read();
+        } catch {
+          const error = failure("network");
+          await close();
+          throw error;
+        } finally {
+          disarm();
+        }
+        if (next.done) {
+          await close();
+          return { done: true, value: undefined };
+        }
+        read += next.value.byteLength;
+        if (read > limit) {
+          await close();
+          throw X_ERRORS.mediaUnavailable(item.mediaId, "too_large");
+        }
+        return { done: false, value: next.value };
+      },
+      async return() {
+        await close();
+        return { done: true, value: undefined };
+      },
+    };
+    return { totalBytes, chunks: { [Symbol.asyncIterator]: () => iterator } };
+  } catch (error) {
+    await close();
+    throw error;
   }
+}
+
+/**
+ * Baja una imagen entera por su URL firmada (hasta 5 MB), con `openXMedia`: su mismo tope de
+ * tiempo y de tamaño, y ningún error lleva la URL.
+ */
+export async function downloadXMedia(
+  item: PublishMediaItem,
+  options: { signal?: AbortSignalLike } = {},
+): Promise<Uint8Array> {
+  const opened = await openXMedia(item, options);
+  const parts: Uint8Array[] = [];
+  let size = 0;
+  for await (const chunk of opened.chunks) {
+    parts.push(chunk);
+    size += chunk.byteLength;
+  }
+  if (size === 0 || (opened.totalBytes !== null && size !== opened.totalBytes)) {
+    throw X_ERRORS.mediaUnavailable(item.mediaId, "size");
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const part of parts) {
+    bytes.set(part, offset);
+    offset += part.byteLength;
+  }
+  return bytes;
+}
+
+/**
+ * Abre el video por su URL firmada para subirlo a X por partes (F9.5-T08): sin el `content-length`
+ * de R2 no se puede hacer el INIT, y es `X_MEDIA_UNAVAILABLE` (`no_length`) sin leer nada.
+ */
+export async function openXVideo(
+  item: PublishMediaItem,
+  options: { signal?: AbortSignalLike } = {},
+): Promise<XUploadStream> {
+  const opened = await openXMedia(item, options);
+  if (opened.totalBytes === null) {
+    await opened.chunks[Symbol.asyncIterator]().return?.();
+    throw X_ERRORS.mediaUnavailable(item.mediaId, "no_length");
+  }
+  return {
+    mediaId: item.mediaId,
+    mime: item.mime,
+    totalBytes: opened.totalBytes,
+    chunks: opened.chunks,
+  };
 }
 
 /** El usuario de la cuenta (para el enlace del post), o `null` si la `meta` no lo trae. */
@@ -196,8 +314,9 @@ const isUnauthorized = (error: unknown) =>
  *    (`cost_usd`) los revisa core **antes** de llamar aquí (`publishPublication`);
  * 2. si el progreso no tiene un envío anterior: pide el token (`ctx.accessToken`, que lo renueva con
  *    `ensureRotatingAccessToken` si le quedan menos de 30 min) y sube los medios **antes** de
- *    marcar "enviando" (un fallo al subir no deja nada dudoso): las imágenes de una vez y el video
- *    por partes (INIT, APPEND de 4 MB, FINALIZE y el estado hasta `succeeded`), bajándolos de R2.
+ *    marcar "enviando" (un fallo al subir no deja nada dudoso): las imágenes de una vez, bajadas de
+ *    R2, y el video por partes (INIT, APPEND de 4 MB, FINALIZE y el estado hasta `succeeded`),
+ *    leyéndolo de R2 como flujo mientras sube (F9.5-T08: nunca entero en memoria).
  *    Guarda sus ids en el progreso (`xMedia`, al lado de `send` y `manual`); un reintento los
  *    reutiliza si son los mismos medios y no vencen en la próxima hora;
  * 3. publica **una vez** con `sendOnce` (ADR-0029 punto 8): `POST /2/tweets` con el texto y los
@@ -213,6 +332,7 @@ const isUnauthorized = (error: unknown) =>
 export function createXPublisher(options: XPublisherOptions = {}): DirectPublisher {
   let api = options.api;
   const download = options.download ?? downloadXMedia;
+  const openVideo = options.openVideo ?? openXVideo;
   const now = options.now ?? (() => new Date());
 
   /** Sube los medios del post (o reutiliza los del progreso) y deja el progreso con sus ids. */
@@ -244,15 +364,16 @@ export function createXPublisher(options: XPublisherOptions = {}): DirectPublish
     const items: XMediaProgress["items"] = [];
     const expirations: number[] = [];
     for (const item of input.media) {
-      const file: XUploadFile = {
-        mediaId: item.mediaId,
-        mime: item.mime,
-        bytes: await download(item, signal),
-      };
-      const upload = (accessToken: string) =>
+      // La imagen (hasta 5 MB) se baja una vez; el video se lee de R2 mientras sube, y un reintento
+      // tras un 401 lo vuelve a abrir (el flujo ya se consumió).
+      const image =
         item.kind === "video"
-          ? client.uploadVideo(accessToken, file, signal)
-          : client.uploadImage(accessToken, file, signal);
+          ? null
+          : { mediaId: item.mediaId, mime: item.mime, bytes: await download(item, signal) };
+      const upload = async (accessToken: string) =>
+        image === null
+          ? client.uploadVideo(accessToken, await openVideo(item, signal), signal)
+          : client.uploadImage(accessToken, image, signal);
       let uploaded: Awaited<ReturnType<typeof upload>>;
       try {
         uploaded = await upload(token.current);
