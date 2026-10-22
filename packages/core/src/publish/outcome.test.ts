@@ -210,10 +210,16 @@ describe("sendOnce", () => {
     expect(socialProgressSchema.safeParse({ send: {} }).success).toBe(false);
   });
 
-  it("solo OUTCOME_UNKNOWN cuenta como dudoso (IG_PUBLISH_OUTCOME_UNKNOWN sigue en failed hasta T12)", () => {
-    expect([...OUTCOME_UNKNOWN_CODES]).toEqual([OUTCOME_UNKNOWN]);
+  it("el genérico, Instagram y Portal cuentan como dudosos (F9.5-T04a); un Error suelto no", () => {
+    expect([...OUTCOME_UNKNOWN_CODES]).toEqual([
+      OUTCOME_UNKNOWN,
+      "IG_PUBLISH_OUTCOME_UNKNOWN",
+      "ML_PUBLISH_OUTCOME_UNKNOWN",
+    ]);
     expect(isOutcomeUnknown(new AppError(OUTCOME_UNKNOWN))).toBe(true);
-    expect(isOutcomeUnknown(new AppError("IG_PUBLISH_OUTCOME_UNKNOWN"))).toBe(false);
+    expect(isOutcomeUnknown(new AppError("IG_PUBLISH_OUTCOME_UNKNOWN"))).toBe(true);
+    expect(isOutcomeUnknown(new AppError("ML_PUBLISH_OUTCOME_UNKNOWN"))).toBe(true);
+    expect(isOutcomeUnknown(new AppError("IG_UNAVAILABLE", "x", { retriable: true }))).toBe(false);
     expect(isOutcomeUnknown(new Error(OUTCOME_UNKNOWN))).toBe(false);
   });
 });
@@ -288,6 +294,67 @@ describe("parsePublishedUrl", () => {
         details: { platform: "discord" },
       });
       expect((error as Error).message).not.toContain(value);
+    }
+  });
+
+  it("Portal: el id del ítem (MLC…) desde un enlace de Portal Inmobiliario o Mercado Libre, o solo el id", () => {
+    const cases: Array<[string, string, string | null]> = [
+      [
+        "https://www.portalinmobiliario.com/MLC-1234567890-depto-en-nunoa-_JM?utm=1#fotos",
+        "MLC1234567890",
+        "https://www.portalinmobiliario.com/MLC-1234567890-depto-en-nunoa-_JM",
+      ],
+      [
+        " https://departamento.mercadolibre.cl/MLC-1234567890-_JM ",
+        "MLC1234567890",
+        "https://departamento.mercadolibre.cl/MLC-1234567890-_JM",
+      ],
+      [
+        "https://articulo.mercadolibre.cl/MLC1234567890",
+        "MLC1234567890",
+        "https://articulo.mercadolibre.cl/MLC1234567890",
+      ],
+      [
+        "https://www.mercadolibre.cl/publicaciones/MLC1234567890/modificar",
+        "MLC1234567890",
+        "https://www.mercadolibre.cl/publicaciones/MLC1234567890/modificar",
+      ],
+      [
+        "https://portalinmobiliario.com/venta/departamento/nunoa/mlc-1234567890",
+        "MLC1234567890",
+        "https://portalinmobiliario.com/venta/departamento/nunoa/mlc-1234567890",
+      ],
+      ["MLC1234567890", "MLC1234567890", null],
+      [" mlc-1234567890 ", "MLC1234567890", null],
+    ];
+    for (const [pasted, externalId, url] of cases) {
+      expect(parsePublishedUrl("portal_inmobiliario", pasted), pasted).toEqual({ externalId, url });
+    }
+  });
+
+  it("Portal: otro host, un enlace sin el id o algo que no es un id es PUBLISHED_URL_INVALID, sin repetirlo", () => {
+    for (const value of [
+      "https://www.instagram.com/p/MLC1234567890/",
+      "https://portalinmobiliario.com.evil.com/MLC-1234567890",
+      "https://www.portalinmobiliario.com/venta/departamento/nunoa",
+      "https://www.mercadolibre.cl/?item=MLC1234567890",
+      "http://www.portalinmobiliario.com/MLC-1234567890",
+      "MLA1234567890",
+      "1234567890",
+    ]) {
+      const error = (() => {
+        try {
+          parsePublishedUrl("portal_inmobiliario", value);
+          return null;
+        } catch (caught) {
+          return caught;
+        }
+      })();
+      expect(error, value).toMatchObject({
+        code: "PUBLISHED_URL_INVALID",
+        details: { platform: "portal_inmobiliario" },
+      });
+      expect((error as Error).message).not.toContain(value.trim());
     }
   });
 

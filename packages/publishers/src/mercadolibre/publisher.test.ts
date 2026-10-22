@@ -1,6 +1,7 @@
 import {
   AppError,
   type EnsureAccessTokenOptions,
+  isAppError,
   MERCADOLIBRE_REJECTED_AFTER_REFRESH,
   type PlatformAccount,
   type PlatformContext,
@@ -9,10 +10,14 @@ import {
   type PortalLocationMatch,
   type PortalProgress,
   type PublishContext,
+  type Publisher,
   type PublishInput,
   type PublishMediaItem,
+  publishListing,
+  publishPublication,
   withDryRun,
 } from "@agentsales/core";
+import { createPublicationScenario } from "@agentsales/core/testing";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 import { errorText, usePlatformServer } from "../../test/msw-server.js";
@@ -1585,4 +1590,95 @@ describe("createPortalPublisher · actualizar", () => {
       }),
     ).rejects.toMatchObject({ code: "PORTAL_PROGRESS_UNUSABLE" });
   });
+});
+
+describe("resultado dudoso en el intento completo (F9.5-T04a)", () => {
+  /**
+   * Un aviso de Portal en vivo con el publisher real contra Mercado Libre simulado (msw), dentro de
+   * `publishPublication` de core. El input del escenario se cambia por el de estas pruebas (con el
+   * id de la publicación): el catálogo falso calza con este.
+   */
+  async function scenario() {
+    const t = await createPublicationScenario({ platform: "portal_inmobiliario" });
+    const { started } = await publishListing(t.deps, {
+      listingId: t.listingId,
+      platform: "portal_inmobiliario",
+      dryRun: false,
+      actor: "operator",
+    });
+    const publication = started[0];
+    if (publication === undefined) throw new Error("falta la publicación");
+    const real = createPortalPublisher({
+      items: createMercadoLibreItems(),
+      pictures: createMercadoLibrePictures(),
+      validator: createMercadoLibreValidator(),
+      catalog: fakeCatalog().catalog,
+      readPicture: async () => JPEG,
+      now: () => NOW,
+    });
+    const portal: Publisher = {
+      platform: "portal_inmobiliario",
+      formats: ["post"],
+      validate: () => ({ ok: true }),
+      publish: (coreInput, ctx) =>
+        real.publish(input({ publicationId: coreInput.publicationId }), ctx),
+    };
+    const deps = {
+      publications: t.publications,
+      platformAccounts: t.platformAccounts,
+      contents: t.contents,
+      media: t.media,
+      listings: t.listings,
+      brokers: t.brokers,
+      storage: t.storage,
+      publishers: { portal_inmobiliario: portal },
+      workerMode: "live" as const,
+      marketplaceAutomation: true,
+      mercadoLibre: null,
+    };
+    const attempt = (retryCount: number) =>
+      publishPublication(deps, { publicationId: publication.id, isLastAttempt: false, retryCount });
+    const current = () => t.publications.all().find((item) => item.id === publication.id);
+    return { attempt, current };
+  }
+
+  it.each([
+    ["ninguno", 1, "none"],
+    ["más de uno", 2, "many"],
+  ] as const)(
+    "POST /items sin respuesta y la búsqueda encuentra %s: outcome_unknown, sin crear de nuevo",
+    async (_name, created, found) => {
+      const ml = useMercadoLibre({
+        create: { 1: "createdThenLost" },
+        ...(found === "none" ? { searchEmpty: true } : {}),
+      });
+      const { attempt, current } = await scenario();
+
+      // El corte: Mercado Libre creó el ítem y respondió 503. Pasajero: la cola reintenta.
+      const first = await attempt(0).catch((error: unknown) => error);
+      expect(isAppError(first) && first.retriable).toBe(true);
+      expect(current()).toMatchObject({
+        status: "publishing",
+        progress: { createRequestedAt: expect.any(String) },
+      });
+      if (found === "many") {
+        // Otro ítem con la misma marca de la publicación (por ejemplo, de un intento a mano).
+        const [item] = [...ml.items.values()];
+        if (item === undefined) throw new Error("falta el ítem");
+        ml.items.set("MLC1999999999", { ...item, id: "MLC1999999999" });
+      }
+      expect(ml.items.size).toBe(created);
+
+      // El reintento no encuentra exactamente un ítem: dudoso, sin reintento y sin otro POST /items.
+      await expect(attempt(1)).resolves.toMatchObject({
+        outcome: "outcome_unknown",
+        publication: {
+          status: "outcome_unknown",
+          lastError: { code: "ML_PUBLISH_OUTCOME_UNKNOWN", retriable: false },
+        },
+      });
+      expect(ml.counts.create).toBe(1);
+      expect(current()?.lastError?.message).not.toMatch(/descart/i);
+    },
+  );
 });
