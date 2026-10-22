@@ -1,14 +1,11 @@
 import { chileInputValue, isAppError, type PublishMode, parseChileTime } from "@agentsales/core";
 import { useId, useState } from "react";
 import { useFreshPublishMode } from "../../queries/health.js";
+import { Button } from "../ui/Button.js";
+import { Input } from "../ui/Field.js";
 import { needsLiveConfirm } from "./publications.js";
 
 // F6-T12 (spec F6 §4.3): la hora de programar, en hora de Chile, con el modo a la vista.
-
-const PRIMARY =
-  "rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50";
-const DANGER =
-  "rounded-md bg-red-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50";
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -87,66 +84,61 @@ export function ScheduleForm({
 
   return (
     <form
-      className="mt-2 space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm"
+      className="mt-3 space-y-3 rounded-lg border border-line bg-slate-50 p-4 text-sm"
       onSubmit={(event) => {
         event.preventDefault();
         void submit(false);
       }}
     >
       <div className="flex flex-col gap-1">
-        <label htmlFor={id} className="font-medium text-slate-700">
+        <label htmlFor={id} className="font-medium text-fg">
           Fecha y hora (Chile)
         </label>
-        <input
+        <Input
           id={id}
           type="datetime-local"
+          width="auto"
           value={value}
           onChange={(event) => {
             setValue(event.target.value);
             setConfirmLive(false);
           }}
-          className="w-fit rounded-md border border-slate-300 bg-white px-2 py-1"
+          className="w-fit"
         />
       </div>
       {extra}
-      <p className={mode === "live" ? "font-semibold text-red-700" : "text-slate-600"}>
+      <p className={mode === "live" ? "font-semibold text-danger-700" : "text-fg-muted"}>
         {modeLine(mode)}
       </p>
       {problem !== null && (
-        <p role="alert" className="text-red-700">
+        <p role="alert" className="font-medium text-danger-700">
           {problem}
         </p>
       )}
       {confirmLive ? (
-        <div role="alert" className="rounded-md border border-red-300 bg-red-50 p-2">
-          <p className="font-semibold text-red-800">
+        <div role="alert" className="rounded-lg border border-danger-200 bg-danger-50 p-3">
+          <p className="font-semibold text-danger-800">
             {mode === "live"
               ? "La API está en vivo: a la hora se publica de verdad, sin volver a preguntar."
               : "No se pudo saber si la API está en vivo: si lo está, a la hora se publica de verdad."}
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              type="button"
-              className={DANGER}
-              disabled={pending}
-              onClick={() => void submit(true)}
-            >
+            <Button variant="danger" size="sm" disabled={pending} onClick={() => void submit(true)}>
               Sí, programar en vivo
-            </button>
-            {/* biome-ignore lint/a11y/noAutofocus: el foco va a la opción segura al abrir la confirmación */}
-            <button type="button" autoFocus className="underline" onClick={onCancel}>
+            </Button>
+            <Button variant="ghost" size="sm" autoFocus onClick={onCancel}>
               Cancelar
-            </button>
+            </Button>
           </div>
         </div>
       ) : (
         <div className="flex flex-wrap gap-2">
-          <button type="submit" className={PRIMARY} disabled={pending}>
+          <Button type="submit" size="sm" loading={pending}>
             {submitLabel}
-          </button>
-          <button type="button" className="underline" onClick={onCancel}>
+          </Button>
+          <Button variant="ghost" size="sm" onClick={onCancel}>
             Cancelar
-          </button>
+          </Button>
         </div>
       )}
     </form>

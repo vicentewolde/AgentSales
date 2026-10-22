@@ -1,4 +1,5 @@
 import type { Broker } from "@agentsales/core";
+import { buttonClasses } from "../ui/styles.js";
 import { CopyCommand } from "./CopyCommand.js";
 
 /** Las redes de contenido de marca que se conectan con su OAuth en el navegador (F9-T19). */
@@ -55,9 +56,9 @@ export function OAuthConnectBox({
   const label = `${reconnect ? "Reconectar" : "Conectar"} ${name}`;
   if (!configured) {
     return (
-      <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
+      <div className="mt-3 rounded-lg border border-warning-200 bg-warning-50 p-3 text-sm">
         <p className="font-medium">{label}</p>
-        <p className="mt-1 text-amber-800">
+        <p className="mt-1 text-warning-800">
           A la API le faltan {env} en el .env: agrégalos y reiníciala para conectar {name} ({guide}
           ).
         </p>
@@ -70,13 +71,13 @@ export function OAuthConnectBox({
       <a
         href={`${startUrl}?broker=${encodeURIComponent(broker.slug)}`}
         aria-label={`${label} de ${broker.brandName}`}
-        className="inline-block rounded-md bg-slate-900 px-3 py-1.5 font-medium text-white"
+        className={buttonClasses("primary", "sm")}
       >
         {label}
       </a>
-      <p className="mt-1 text-slate-600">{note}</p>
+      <p className="mt-1 text-fg-muted">{note}</p>
       {start.hostname !== hostname && (
-        <p role="note" className="mt-1 text-amber-800">
+        <p role="note" className="mt-1 text-warning-800">
           La conexión empieza en {start.hostname}: abre el panel en esa dirección (con tu sesión) y
           conecta desde ahí.
         </p>
@@ -95,12 +96,12 @@ export const discordConnectCommand = (slug: string) =>
  */
 export function DiscordConnectBox({ broker, reconnect }: { broker: Broker; reconnect: boolean }) {
   return (
-    <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+    <div className="mt-3 rounded-lg border border-line bg-slate-50 p-3 text-sm">
       <p className="font-medium">{reconnect ? "Reconectar Discord" : "Conectar Discord"}</p>
-      <p className="mt-1 text-slate-600">
+      <p className="mt-1 text-fg-muted">
         La URL del webhook es secreta: se conecta desde la terminal, sin pegarla aquí.
       </p>
-      <ol className="mt-1 list-decimal pl-5 text-slate-600">
+      <ol className="mt-1 list-decimal pl-5 text-fg-muted">
         <li>
           En Discord: Ajustes del servidor, Integraciones, Webhooks, Nuevo webhook (elige el canal)
           y Copiar URL del webhook.

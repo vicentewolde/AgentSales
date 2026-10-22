@@ -9,6 +9,8 @@ import {
 import { useId, useState } from "react";
 import { useScheduleListings } from "../../queries/publications.js";
 import { ErrorAlert } from "../ErrorAlert.js";
+import { Button } from "../ui/Button.js";
+import { Input } from "../ui/Field.js";
 import { ScheduleForm } from "./ScheduleForm.js";
 
 // F6-T12 (spec F6 §4.3): programar varias propiedades de una vez desde la lista.
@@ -47,25 +49,24 @@ export function BatchSchedule({
   return (
     <section
       aria-label="Programar seleccionadas"
-      className="mt-4 rounded-lg border border-slate-200 bg-white p-3"
+      className="mt-4 rounded-xl border border-brand-200 bg-brand-50/60 p-4 shadow-xs"
     >
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="font-medium">{selected.length} seleccionada(s)</span>
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <span className="font-semibold text-brand-800">{selected.length} seleccionada(s)</span>
         {!open && (
-          <button
-            type="button"
-            className="rounded-md bg-slate-900 px-3 py-1.5 font-medium text-white hover:bg-slate-700"
+          <Button
+            size="sm"
             onClick={() => {
               schedule.reset();
               setOpen(true);
             }}
           >
             Programar seleccionadas
-          </button>
+          </Button>
         )}
-        <button type="button" className="underline" onClick={onClear}>
+        <Button variant="ghost" size="sm" onClick={onClear}>
           Quitar selección
-        </button>
+        </Button>
       </div>
       {open && (
         <ScheduleForm
@@ -76,12 +77,12 @@ export function BatchSchedule({
           submitLabel={`Programar ${selected.length} propiedad(es)`}
           extra={
             <>
-              <fieldset className="flex flex-wrap gap-3">
-                <legend className="font-medium text-slate-700">
+              <fieldset className="flex flex-wrap gap-x-5 gap-y-2">
+                <legend className="mb-2 font-medium text-fg">
                   Canales (sin marcar: todos los que tengan texto aprobado)
                 </legend>
                 {LISTING_PLATFORMS.map((platform) => (
-                  <label key={platform} className="flex items-center gap-1">
+                  <label key={platform} className="flex items-center gap-2">
                     <input
                       type="checkbox"
                       checked={platforms.includes(platform)}
@@ -92,20 +93,21 @@ export function BatchSchedule({
                 ))}
               </fieldset>
               <div className="flex flex-col gap-1">
-                <label htmlFor={spacingId} className="font-medium text-slate-700">
+                <label htmlFor={spacingId} className="font-medium text-fg">
                   Minutos entre una propiedad y la siguiente
                 </label>
-                <input
+                <Input
                   id={spacingId}
                   type="number"
+                  width="auto"
                   min={0}
                   max={MAX_SCHEDULE_SPACING_MINUTES}
                   value={spacing}
                   onChange={(event) => setSpacing(event.target.value)}
-                  className="w-24 rounded-md border border-slate-300 bg-white px-2 py-1"
+                  className="w-24 tabular-nums"
                 />
                 {!spacingValid && (
-                  <p className="text-red-700">
+                  <p className="font-medium text-danger-700">
                     Un número de minutos entre 0 y {MAX_SCHEDULE_SPACING_MINUTES}.
                   </p>
                 )}
@@ -136,7 +138,7 @@ export function BatchSchedule({
               return (
                 <li
                   key={`${row.listingId}-${row.platform ?? "todo"}`}
-                  className={row.outcome === "scheduled" ? "text-slate-700" : "text-amber-800"}
+                  className={row.outcome === "scheduled" ? "text-fg" : "text-warning-800"}
                 >
                   {row.outcome === "scheduled"
                     ? `${name}: programada para el ${row.at === undefined ? "" : formatChileTime(row.at)}`
@@ -146,7 +148,7 @@ export function BatchSchedule({
             })}
           </ul>
           {schedule.data.notes.map((note) => (
-            <p key={note} className="mt-1 text-amber-800">
+            <p key={note} className="mt-1 text-warning-800">
               {note}
             </p>
           ))}

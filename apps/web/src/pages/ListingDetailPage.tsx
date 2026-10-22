@@ -6,6 +6,7 @@ import { ContentSection } from "../components/content/ContentSection.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { ListingActions } from "../components/listing/ListingActions.js";
 import { StatusBadge } from "../components/StatusBadge.js";
+import { PageHeader } from "../components/ui/PageHeader.js";
 import { useListing } from "../queries/listings.js";
 
 type Detail = ListingDetailResponse;
@@ -13,7 +14,7 @@ type Detail = ListingDetailResponse;
 function Gallery({ media, externalRef }: { media: Detail["media"]; externalRef: string }) {
   if (media.length === 0) {
     return (
-      <p className="mt-2 text-sm text-amber-700">
+      <p className="mt-2 text-sm text-warning-700">
         Sin fotos ni videos. Agrégalos a su carpeta y vuelve a importar.
       </p>
     );
@@ -44,7 +45,7 @@ function Gallery({ media, externalRef }: { media: Detail["media"]; externalRef: 
             />
           )}
           {item.isCover && (
-            <span className="absolute top-2 left-2 rounded bg-slate-900/80 px-2 py-0.5 text-xs font-medium text-white">
+            <span className="absolute top-2 left-2 rounded-md bg-brand-900/80 px-2 py-0.5 text-xs font-medium text-white">
               Portada
             </span>
           )}
@@ -69,34 +70,45 @@ function DetailView({ detail }: { detail: Detail }) {
 
   return (
     <>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium text-slate-500">{listing.externalRef}</p>
-          <h1 className="text-2xl font-semibold tracking-tight">
+      <PageHeader
+        title={
+          <>
             {title}
             {listing.comuna ? ` · ${listing.comuna}` : ""}
-          </h1>
-          <p className="mt-1 text-xl font-semibold">{formatListingPrice(listing)}</p>
-        </div>
-        <StatusBadge status={listing.status} />
-      </div>
+          </>
+        }
+        meta={<StatusBadge status={listing.status} />}
+        description={
+          <>
+            <p className="font-medium tabular-nums text-fg-subtle">{listing.externalRef}</p>
+            <p className="mt-1 text-xl font-semibold tabular-nums tracking-tight text-fg">
+              {formatListingPrice(listing)}
+            </p>
+          </>
+        }
+      />
       <ListingActions id={listing.id} status={listing.status} />
 
-      <h2 className="mt-8 text-lg font-semibold">Fotos y videos ({media.length})</h2>
-      <Gallery media={media} externalRef={listing.externalRef} />
+      <div className="mt-6 rounded-xl border border-line bg-surface p-5 shadow-xs">
+        <h2 className="text-lg font-semibold">Fotos y videos ({media.length})</h2>
+        <Gallery media={media} externalRef={listing.externalRef} />
+      </div>
 
-      <div className="mt-8 grid gap-6 md:grid-cols-2">
-        <section aria-labelledby="datos">
+      <div className="mt-6 grid gap-6 md:grid-cols-2">
+        <section
+          aria-labelledby="datos"
+          className="rounded-xl border border-line bg-surface p-5 shadow-xs"
+        >
           <h2 id="datos" className="text-lg font-semibold">
             Datos
           </h2>
           <dl className="mt-2 space-y-2 text-sm">
             <div>
-              <dt className="font-medium text-slate-600">Dirección</dt>
+              <dt className="font-medium text-fg-muted">Dirección</dt>
               <dd>
                 {address || "—"}
                 {!listing.showExactAddress && (
-                  <span className="block text-xs text-slate-500">
+                  <span className="block text-xs text-fg-subtle">
                     No se publica la dirección exacta.
                   </span>
                 )}
@@ -104,16 +116,16 @@ function DetailView({ detail }: { detail: Detail }) {
             </div>
             {listing.highlights && (
               <div>
-                <dt className="font-medium text-slate-600">Destacados</dt>
+                <dt className="font-medium text-fg-muted">Destacados</dt>
                 <dd>{listing.highlights}</dd>
               </div>
             )}
             {listing.internalNotes && (
               <div>
-                <dt className="font-medium text-slate-600">Notas internas</dt>
+                <dt className="font-medium text-fg-muted">Notas internas</dt>
                 <dd>
                   {listing.internalNotes}
-                  <span className="block text-xs text-slate-500">
+                  <span className="block text-xs text-fg-subtle">
                     Solo para ti: no se publican.
                   </span>
                 </dd>
@@ -122,19 +134,22 @@ function DetailView({ detail }: { detail: Detail }) {
           </dl>
         </section>
 
-        <section aria-labelledby="atributos">
+        <section
+          aria-labelledby="atributos"
+          className="rounded-xl border border-line bg-surface p-5 shadow-xs"
+        >
           <h2 id="atributos" className="text-lg font-semibold">
             Atributos
           </h2>
           {attributes.length === 0 ? (
-            <p className="mt-2 text-sm text-slate-500">Sin atributos.</p>
+            <p className="mt-2 text-sm text-fg-subtle">Sin atributos.</p>
           ) : (
             <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
               {attributes.map((entry) => (
                 <div key={`${entry.extra}-${entry.key}`} className="contents">
-                  <dt className="font-medium text-slate-600">
+                  <dt className="font-medium text-fg-muted">
                     {entry.label}
-                    {entry.extra && <span className="ml-1 text-xs text-slate-400">(extra)</span>}
+                    {entry.extra && <span className="ml-1 text-xs text-fg-subtle">(extra)</span>}
                   </dt>
                   <dd>{entry.value}</dd>
                 </div>
@@ -166,13 +181,13 @@ export function ListingDetailPage() {
 
   return (
     <section className="mx-auto max-w-5xl">
-      <Link to="/propiedades" className="text-sm text-slate-600 underline">
+      <Link to="/propiedades" className="text-sm font-medium text-fg-muted hover:text-fg">
         ← Propiedades
       </Link>
       <div className="mt-3">
-        {detail.isPending && <p className="text-slate-600">Cargando la propiedad…</p>}
+        {detail.isPending && <p className="text-fg-muted">Cargando la propiedad…</p>}
         {notFound && (
-          <p role="alert" className="text-slate-700">
+          <p role="alert" className="text-fg-muted">
             Esta propiedad no existe.
           </p>
         )}

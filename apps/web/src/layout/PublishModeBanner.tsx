@@ -1,9 +1,16 @@
 import { useHealth } from "../queries/health.js";
 
+// En simulación, una franja discreta; en vivo, roja y en negrita: tiene que verse siempre.
 const TONE = {
-  live: "bg-red-700 font-bold",
-  "dry-run": "bg-emerald-700 font-medium",
-  unknown: "bg-slate-600 font-medium",
+  live: { bar: "bg-danger-700 font-semibold text-white", dot: "bg-surface" },
+  "dry-run": {
+    bar: "border-b border-success-200 bg-success-50 font-medium text-success-800",
+    dot: "bg-success-500",
+  },
+  unknown: {
+    bar: "border-b border-line bg-slate-100 font-medium text-fg-muted",
+    dot: "bg-slate-400",
+  },
 } as const;
 
 /**
@@ -37,12 +44,14 @@ export function PublishModeBanner() {
           ? `Publicación automática EN VIVO: publica sin tu revisión (${brokers.join(", ")})`
           : null;
 
+  const tone = TONE[mode ?? "unknown"];
   return (
     <div
       role="status"
       aria-live={mode === "live" ? "assertive" : "polite"}
-      className={`px-4 py-2 text-center text-sm text-white ${TONE[mode ?? "unknown"]}`}
+      className={`px-4 py-1.5 text-center text-xs sm:text-sm ${tone.bar}`}
     >
+      <span aria-hidden="true" className={`mr-2 inline-block size-2 rounded-full ${tone.dot}`} />
       {text}
       {autoPublish !== null && <span className="block font-bold underline">{autoPublish}</span>}
     </div>

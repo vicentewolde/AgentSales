@@ -2,6 +2,9 @@ import type { HealthCheckName, HealthCheckResult, HealthReport } from "@agentsal
 import { HEALTH_CHECK_NAMES, workerStatusText } from "@agentsales/core";
 import { useId } from "react";
 import { ErrorAlert } from "../components/ErrorAlert.js";
+import { Badge } from "../components/ui/Badge.js";
+import { Button } from "../components/ui/Button.js";
+import { PageHeader } from "../components/ui/PageHeader.js";
 import { useHealth } from "../queries/health.js";
 
 const CHECKS: Record<HealthCheckName, { label: string; note?: string }> = {
@@ -22,24 +25,18 @@ function CheckCard({ name, result }: { name: HealthCheckName; result: HealthChec
     <li>
       <section
         aria-labelledby={titleId}
-        className={`h-full rounded-lg border bg-white p-4 shadow-sm ${result.ok ? "border-slate-200" : "border-red-300"}`}
+        className={`h-full rounded-xl border bg-surface p-4 shadow-xs ${result.ok ? "border-line" : "border-danger-200"}`}
       >
         <div className="flex items-center justify-between gap-2">
           <h2 id={titleId} className="font-semibold">
             {label}
           </h2>
-          <span
-            className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-              result.ok ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"
-            }`}
-          >
-            {result.ok ? "OK" : "Falla"}
-          </span>
+          <Badge tone={result.ok ? "success" : "danger"}>{result.ok ? "OK" : "Falla"}</Badge>
         </div>
-        {note && <p className="mt-1 text-xs text-slate-500">{note}</p>}
-        <p className="mt-3 text-sm text-slate-700">{result.latencyMs} ms</p>
+        {note && <p className="mt-1 text-xs text-fg-subtle">{note}</p>}
+        <p className="mt-3 text-sm text-fg-muted">{result.latencyMs} ms</p>
         {!result.ok && result.error && (
-          <p className="mt-2 break-words text-sm text-red-700">{result.error}</p>
+          <p className="mt-2 break-words text-sm text-danger-700">{result.error}</p>
         )}
       </section>
     </li>
@@ -51,13 +48,13 @@ function WorkerLine({ worker }: { worker: HealthReport["worker"] }) {
   if (worker === undefined) return null;
   const running = worker?.running === true;
   return (
-    <p className="mt-4 text-sm text-slate-700">
+    <p className="mt-4 text-sm text-fg-muted">
       Worker:{" "}
-      <strong className={running ? "text-emerald-700" : "text-amber-700"}>
+      <strong className={running ? "text-success-700" : "text-warning-700"}>
         {workerStatusText(worker)}
       </strong>
       {!running && worker !== null && (
-        <span className="text-slate-600">
+        <span className="text-fg-muted">
           {" "}
           · sin él no se preparan ni se publican avisos, ni corre lo programado
         </span>
@@ -72,34 +69,31 @@ export function StatusPage() {
 
   return (
     <section className="mx-auto max-w-4xl">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">Estado del sistema</h1>
-        <button
-          type="button"
-          onClick={() => void refetch()}
-          disabled={isFetching}
-          className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {isFetching ? "Actualizando…" : "Actualizar"}
-        </button>
-      </div>
+      <PageHeader
+        title="Estado del sistema"
+        actions={
+          <Button size="sm" onClick={() => void refetch()} disabled={isFetching}>
+            {isFetching ? "Actualizando…" : "Actualizar"}
+          </Button>
+        }
+      />
 
-      {isPending && <p className="mt-6 text-slate-600">Consultando la API…</p>}
+      {isPending && <p className="mt-6 text-fg-muted">Consultando la API…</p>}
 
       {error && <ErrorAlert error={error} />}
 
       {data && (
         <>
-          <p className="mt-4 text-sm text-slate-600">
+          <p className="mt-4 text-sm text-fg-muted">
             Estado general:{" "}
-            <strong className={data.status === "ok" ? "text-emerald-700" : "text-amber-700"}>
+            <strong className={data.status === "ok" ? "text-success-700" : "text-warning-700"}>
               {data.status === "ok" ? "ok" : "degradado"}
             </strong>
             {data.version !== undefined && <> · API {data.version}</>}
             {" · "}actualizado {timeFormat.format(dataUpdatedAt)}
           </p>
           {checks === undefined ? (
-            <p className="mt-4 text-sm text-slate-600">
+            <p className="mt-4 text-sm text-fg-muted">
               El detalle de cada servicio lo ve el administrador.
             </p>
           ) : (
