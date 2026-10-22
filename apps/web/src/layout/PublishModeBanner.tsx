@@ -1,3 +1,4 @@
+import { PUBLISH_MODE_BANNER_TEXT } from "../labels.js";
 import { useHealth } from "../queries/health.js";
 
 // En simulación, una franja discreta; en vivo, roja y en negrita: tiene que verse siempre.
@@ -14,9 +15,9 @@ const TONE = {
 } as const;
 
 /**
- * Banner permanente con el `PUBLISH_MODE` de la API en ejecución (fuente de verdad). Un solo nodo
- * `role="status"` que cambia de texto, para que los lectores de pantalla anuncien el cambio;
- * `live` se anuncia de inmediato.
+ * Banner permanente con el modo de publicación del sistema (`PUBLISH_MODE` de la API en ejecución,
+ * la fuente de verdad). Un solo nodo `role="status"` que cambia de texto, para que los lectores de
+ * pantalla anuncien el cambio; en vivo se anuncia de inmediato.
  */
 export function PublishModeBanner() {
   const { data, isError, isPending } = useHealth();
@@ -24,13 +25,10 @@ export function PublishModeBanner() {
 
   let text: string;
   if (!mode) {
-    text = isPending ? "Consultando PUBLISH_MODE…" : "PUBLISH_MODE desconocido: la API no responde";
+    text = isPending ? PUBLISH_MODE_BANNER_TEXT.pending : PUBLISH_MODE_BANNER_TEXT.unknown;
   } else {
-    const label =
-      mode === "live"
-        ? "PUBLISH_MODE: LIVE — las publicaciones son reales"
-        : "PUBLISH_MODE: dry-run — no se publica nada";
-    text = isError ? `${label} (último dato; la API no responde)` : label;
+    const label = PUBLISH_MODE_BANNER_TEXT[mode];
+    text = isError ? `${label} (último dato; el sistema no responde)` : label;
   }
 
   // `auto_publish` en vivo (spec F6 §4.10): publica sin revisión. En vivo, no saberlo también se dice.

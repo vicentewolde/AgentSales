@@ -1,13 +1,14 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { discordVideoBitrateKbps } from "@agentsales/core";
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createMediaProcessor, REEL_SPEC, X_VIDEO_SPEC } from "../src/index.js";
-import { xVideoSize } from "../src/video.js";
+import { createMediaProcessor, DISCORD_VIDEO_SPEC, REEL_SPEC, X_VIDEO_SPEC } from "../src/index.js";
+import { discordVideoSize, xVideoSize } from "../src/video.js";
 import { alive, errorOf, FFMPEG, FFPROBE, fakeFfmpeg, TEST_THREADS, waitFor } from "./images.js";
 
 // Videos generados con ffmpeg (`testsrc`, `color` y `sine`; spec F2-T08), sin archivos de clientes.
@@ -391,6 +392,131 @@ describe("processVideo: reel sin texto y video para X (F9-T10)", () => {
     expect(xVideoSize({ width: 3840, height: 1600 })).toEqual({ width: 1280, height: 532 });
     expect(xVideoSize({ width: 2000, height: 2000 })).toEqual({ width: 720, height: 720 });
     expect(xVideoSize({ width: 641, height: 361 })).toEqual({ width: 640, height: 360 });
+  });
+});
+
+describe("processVideo: video liviano para Discord (F9.5-T10, D8)", () => {
+  // Un tope chico (el parámetro de core) para probar con un video corto: 4 s con audio bajo
+  // 500 kB dan unos 720 kbps de video, sobre el mínimo legible.
+  const maxBytes = 500_000;
+
+  it("con un tope chico, un video corto sale bajo el tope: H.264 High, 30 fps, AAC a bitrate bajo, moov al inicio", async () => {
+    const result = await (await processor()).processVideo(video("horizontal"), {
+      reel: null,
+      discordVideo: { maxBytes },
+    });
+    expect(result.reel).toBeNull();
+    expect(result.xVideo).toBeNull();
+    const discord = result.discordVideo;
+    if (discord === null) throw new Error("falta el video para Discord");
+    const { path, bytes } = await saveReel(discord.open);
+    expect(bytes.length).toBeLessThanOrEqual(maxBytes);
+    const info = probeFile(path);
+    expect(info.streams.find((stream) => stream.codec_type === "video")).toMatchObject({
+      codec_name: "h264",
+      profile: "High",
+      pix_fmt: "yuv420p",
+      // 640×360 cabe en 720p: no se amplía.
+      width: 640,
+      height: 360,
+      r_frame_rate: `${DISCORD_VIDEO_SPEC.fps}/1`,
+    });
+    const audio = info.streams.find((stream) => stream.codec_type === "audio");
+    expect(audio).toMatchObject({ codec_name: "aac", channels: 2 });
+    expect(Number(audio?.bit_rate)).toBeLessThanOrEqual(DISCORD_VIDEO_SPEC.audio.kbps * 1000 * 1.1);
+    expect(bytes.indexOf("moov")).toBeLessThan(bytes.indexOf("mdat"));
+    expect(Number(info.format.duration)).toBeGreaterThan(3.5);
+    expect({ size: discord.size, sha256: discord.sha256 }).toEqual({
+      size: bytes.length,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    });
+  }, 60_000);
+
+  it("sin audio, va sin pista de audio y también bajo el tope", async () => {
+    const result = await (await processor()).processVideo(video("sinAudio"), {
+      reel: null,
+      discordVideo: { maxBytes },
+    });
+    if (result.discordVideo === null) throw new Error("falta el video para Discord");
+    const { path, bytes } = await saveReel(result.discordVideo.open);
+    expect(bytes.length).toBeLessThanOrEqual(maxBytes);
+    expect(probeFile(path).streams.map((stream) => stream.codec_type)).toEqual(["video"]);
+  }, 60_000);
+
+  it("bajo el bitrate mínimo no se arma (null), sin dejar nada en el temporal", async () => {
+    const work = await workDir();
+    const result = await createMediaProcessor({
+      ffmpegPath: FFMPEG,
+      ffprobePath: FFPROBE,
+      workDir: work,
+      threads: TEST_THREADS,
+    }).processVideo(video("horizontal"), { reel: null, discordVideo: { maxBytes: 200_000 } });
+    expect(result.discordVideo).toBeNull();
+    // Medidas y thumb igual salen.
+    expect(result.measurements).toMatchObject({ width: 640, height: 360 });
+    expect(await readdir(work)).toEqual([]);
+  }, 60_000);
+
+  it("si tras codificar igual pasa del tope, se borra y no hay variante", async () => {
+    // Un ffmpeg que llama al de verdad y, al video de Discord, le agrega bytes de más (como si el
+    // VBV no hubiera alcanzado): el procesador lo mide, lo borra y devuelve `null`.
+    const wrapperDir = await mkdtemp(join(dir, "ffmpeg-gordo-"));
+    const wrapper = join(wrapperDir, "ffmpeg");
+    await writeFile(
+      wrapper,
+      `#!/usr/bin/env node
+const { spawnSync } = require("node:child_process");
+const args = process.argv.slice(2);
+const run = spawnSync(${JSON.stringify(FFMPEG)}, args, { stdio: "inherit" });
+const out = args.at(-1) ?? "";
+if (run.status === 0 && out.endsWith("-discord.mp4")) {
+  require("node:fs").appendFileSync(out, Buffer.alloc(${maxBytes}));
+}
+process.exit(run.status ?? 1);
+`,
+    );
+    await chmod(wrapper, 0o755);
+    const work = await workDir();
+    const result = await createMediaProcessor({
+      ffmpegPath: wrapper,
+      ffprobePath: FFPROBE,
+      workDir: work,
+      threads: TEST_THREADS,
+    }).processVideo(video("horizontal"), { reel: null, discordVideo: { maxBytes } });
+    expect(result.discordVideo).toBeNull();
+    expect(await readdir(work)).toEqual([]);
+  }, 60_000);
+
+  it("el bitrate sale de la duración: con 19 MiB, 30 s caben; 10 min con audio quedan bajo el mínimo", () => {
+    const MIB = 1024 * 1024;
+    const thirty = discordVideoBitrateKbps({ durationS: 30, hasAudio: true, maxBytes: 19 * MIB });
+    expect(thirty).not.toBeNull();
+    // El video (30 s más 1 s de búfer del VBV) y el audio caben con el margen del contenedor.
+    const total = (((thirty ?? 0) * 31 + DISCORD_VIDEO_SPEC.audio.kbps * 30) * 1000) / 8;
+    expect(total).toBeLessThan(19 * MIB * (1 - DISCORD_VIDEO_SPEC.containerOverhead));
+    expect(
+      discordVideoBitrateKbps({ durationS: 600, hasAudio: true, maxBytes: 19 * MIB }),
+    ).toBeNull();
+    // Un video corto no gasta más que el máximo.
+    expect(discordVideoBitrateKbps({ durationS: 5, hasAudio: false, maxBytes: 19 * MIB })).toBe(
+      DISCORD_VIDEO_SPEC.maxVideoKbps,
+    );
+    // Sin audio, el mismo tope da más bitrate de video.
+    expect(
+      discordVideoBitrateKbps({ durationS: 120, hasAudio: false, maxBytes: 19 * MIB }) ?? 0,
+    ).toBeGreaterThan(
+      discordVideoBitrateKbps({ durationS: 120, hasAudio: true, maxBytes: 19 * MIB }) ?? 0,
+    );
+    expect(
+      discordVideoBitrateKbps({ durationS: 0, hasAudio: true, maxBytes: 19 * MIB }),
+    ).toBeNull();
+  });
+
+  it("las medidas para Discord caben en 720p, pares y sin ampliar", () => {
+    expect(discordVideoSize({ width: 3840, height: 2160 })).toEqual({ width: 1280, height: 720 });
+    expect(discordVideoSize({ width: 1080, height: 1920 })).toEqual({ width: 720, height: 1280 });
+    expect(discordVideoSize({ width: 2000, height: 2000 })).toEqual({ width: 720, height: 720 });
+    expect(discordVideoSize({ width: 641, height: 361 })).toEqual({ width: 640, height: 360 });
   });
 });
 

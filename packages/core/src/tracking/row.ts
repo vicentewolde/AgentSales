@@ -12,7 +12,12 @@ import {
 import type { Listing } from "../listing.js";
 import { type PortalExpiry, portalExpiry } from "../portal/expiry.js";
 import type { Post } from "../post.js";
-import type { Publication, PublicationError } from "../publication.js";
+import {
+  hasStartedLive,
+  type Publication,
+  type PublicationError,
+  publicationModeFixed,
+} from "../publication.js";
 import { publicationErrorAdvice } from "../publish/error-advice.js";
 import { type ScheduleState, scheduleState } from "../schedule.js";
 import { listingSubject, postSubject, type Subject, sameSubject } from "../subject.js";
@@ -29,6 +34,10 @@ export type TrackingPublication = {
   language: Language;
   status: Publication["status"];
   dryRun: boolean;
+  /** Si el modo ya está fijado (`publicationModeFixed`, D4 del spec F9.5); si no, vale el del servidor. */
+  modeFixed: boolean;
+  /** Los medios fijos de la publicación (un `post` de Instagram con uno es una imagen). */
+  mediaCount: number;
   /** Solo `https` (el panel lo vuelve enlace). */
   externalUrl: string | null;
   scheduledAt: Date | null;
@@ -84,6 +93,12 @@ export function trackingPublication(
     language: publication.language,
     status: publication.status,
     dryRun: publication.dryRun,
+    modeFixed: publicationModeFixed({
+      status: publication.status,
+      attempts: publication.attempts,
+      startedLive: hasStartedLive(publication),
+    }),
+    mediaCount: publication.mediaIds.length,
     externalUrl: httpsOrNull(publication.externalUrl),
     scheduledAt: publication.scheduledAt,
     schedule: scheduleState(publication, now),

@@ -6,7 +6,7 @@ import {
   PLATFORM_TEXT,
   type Platform,
   POST_PLATFORMS,
-  type PostStatus,
+  POST_STATUS_TEXT,
   PUBLICATION_STATUS_TEXT,
   publicationFormatText,
 } from "@agentsales/core";
@@ -28,13 +28,8 @@ type Row = TrackingResponse["rows"][number];
 type PostRow = TrackingResponse["posts"][number];
 type Cell = Row["cells"][keyof Row["cells"]][number];
 
-/** El estado de un post (spec F9 §4.2), como lo ve el operador. */
-export const POST_STATUS_TEXT: Readonly<Record<PostStatus, string>> = {
-  idea: "idea",
-  draft: "borrador",
-  ready: "listo",
-  archived: "archivado",
-};
+/** El estado de un post (spec F9 §4.2): vive en core, junto a los demás (F9.5-T02). */
+export { POST_STATUS_TEXT } from "@agentsales/core";
 
 function cellText(platform: Platform, publication: Cell, c: Colors): string {
   const notes = [
@@ -42,11 +37,11 @@ function cellText(platform: Platform, publication: Cell, c: Colors): string {
     publication.manualTask ? c.yellow("a mano") : null,
     publication.expiry?.soon ? c.yellow(`vence en ${publication.expiry.daysLeft} d`) : null,
     publication.lastError === null ? null : c.red(publication.lastError.code),
-    publication.dryRun ? null : c.red("vivo"),
+    publication.dryRun || !publication.modeFixed ? null : c.red("vivo"),
   ].filter(Boolean);
   // Un post con dos idiomas tiene una publicación por idioma: se dice cuál es la inglesa.
   const language = publication.language === "es" ? "" : ` [${publication.language}]`;
-  return `${publicationFormatText(platform, publication.format)}${language} ${PUBLICATION_STATUS_TEXT[publication.status] ?? publication.status}${notes.length === 0 ? "" : ` (${notes.join(", ")})`}`;
+  return `${publicationFormatText(platform, publication.format, publication.mediaCount)}${language} ${PUBLICATION_STATUS_TEXT[publication.status] ?? publication.status}${notes.length === 0 ? "" : ` (${notes.join(", ")})`}`;
 }
 
 export function renderTracking(rows: readonly Row[], c: Colors): string {

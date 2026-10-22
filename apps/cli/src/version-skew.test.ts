@@ -243,13 +243,13 @@ describe("versión de la CLI y del servidor", () => {
 });
 
 describe("las fuentes nuevas de F9.5 contra una CLI anterior", () => {
-  it("post show con una variante de medio nueva (discord_video) la muestra tal como llega", async () => {
+  it("post show con una variante de medio nueva (como discord_video para una CLI anterior a T09) la muestra tal como llega", async () => {
     const h = harness({
       afterResponse: (url, method, response) =>
         method === "GET" && /^\/api\/posts\/[^/]+$/.test(pathOf(url))
           ? rewriteJson(response, (body) => {
               for (const item of body.media as { variants: string[] }[]) {
-                item.variants = ["thumb", "discord_video"];
+                item.variants = ["thumb", "tiktok_video"];
               }
             })
           : response,
@@ -270,9 +270,9 @@ describe("las fuentes nuevas de F9.5 contra una CLI anterior", () => {
     });
 
     expect(await runPostShow(waitingDeps(h), post.id)).toBe(0);
-    expect(h.text()).toContain("variantes: thumb, discord_video");
+    expect(h.text()).toContain("variantes: thumb, tiktok_video");
     expect(notices).toEqual([
-      `${NEW_VALUES} (discord_video): se muestran tal como llegan; actualiza la CLI`,
+      `${NEW_VALUES} (tiktok_video): se muestran tal como llegan; actualiza la CLI`,
     ]);
   });
 

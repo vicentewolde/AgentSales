@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { PUBLICATION_STATUSES, type PublicationStatus } from "./enums.js";
 import { canPublishListing } from "./listing.js";
 import {
   checkPublicationProgress,
@@ -6,12 +7,14 @@ import {
   hasStartedLive,
   PUBLICATION_EVENT_TYPES,
   publicationEventSchema,
+  publicationModeFixed,
   publicationSchema,
   publishAttemptPayloadSchema,
   remoteStateSchema,
   requirePublicationMode,
   scheduleChangedPayloadSchema,
   scheduledPayloadSchema,
+  shownPublicationMode,
   syncPayloadSchema,
 } from "./publication.js";
 
@@ -156,6 +159,57 @@ describe("hasStartedLive y canPublishListing", () => {
     for (const status of ["draft", "paused", "closed", "archived"] as const) {
       expect(canPublishListing(status)).toBe(false);
     }
+  });
+});
+
+describe("el modo que se muestra (D4 del spec F9.5)", () => {
+  const fixed = (status: PublicationStatus, attempts = 0, startedLive = false) =>
+    publicationModeFixed({ status, attempts, startedLive });
+
+  it("sin fijar en approved, cancelled sin intento y failed que no empezó en vivo; fijado en lo demás", () => {
+    expect(fixed("approved")).toBe(false);
+    expect(fixed("cancelled", 0)).toBe(false);
+    expect(fixed("cancelled", 1)).toBe(true);
+    expect(fixed("failed", 2, false)).toBe(false);
+    expect(fixed("failed", 2, true)).toBe(true);
+    const others = PUBLICATION_STATUSES.filter(
+      (status) => !["approved", "cancelled", "failed"].includes(status),
+    );
+    expect(others).toEqual([
+      "scheduled",
+      "publishing",
+      "awaiting_manual_confirm",
+      "published",
+      "paused",
+      "unpublished",
+      "outcome_unknown",
+    ]);
+    for (const status of others) expect(fixed(status)).toBe(true);
+  });
+
+  it("con el servidor en vivo, una aprobada (nacida con dryRun) no dice simulación", () => {
+    const approved = { dryRun: true, modeFixed: fixed("approved") };
+    expect(shownPublicationMode(approved, "live")).toBe("live");
+    expect(shownPublicationMode(approved, "dry-run")).toBe("dry-run");
+    // Sin saber el modo del servidor, no se dice nada.
+    expect(shownPublicationMode(approved, undefined)).toBeNull();
+  });
+
+  it("una failed que empezó en vivo sigue en vivo con el servidor en dry-run", () => {
+    const failedLive = { dryRun: false, modeFixed: fixed("failed", 1, true) };
+    expect(shownPublicationMode(failedLive, "dry-run")).toBe("live");
+    // Una que no empezó en vivo se reintentaría con el modo del servidor.
+    const failedDry = { dryRun: false, modeFixed: fixed("failed", 1, false) };
+    expect(shownPublicationMode(failedDry, "dry-run")).toBe("dry-run");
+  });
+
+  it("una publicada o programada muestra su modo fijado, sea cual sea el del servidor", () => {
+    expect(shownPublicationMode({ dryRun: true, modeFixed: fixed("published") }, "live")).toBe(
+      "dry-run",
+    );
+    expect(shownPublicationMode({ dryRun: false, modeFixed: fixed("scheduled") }, "dry-run")).toBe(
+      "live",
+    );
   });
 });
 

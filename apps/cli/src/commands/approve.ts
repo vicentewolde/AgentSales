@@ -27,9 +27,13 @@ export type ApproveDeps = Io & { client: ApiClient };
 
 export type ApproveOptions = { broker?: string; platform?: string; undo?: boolean };
 
-const formats = (publications: readonly { platform: Platform; format: PublicationFormat }[]) =>
+const formats = (
+  publications: readonly { platform: Platform; format: PublicationFormat; mediaIds: string[] }[],
+) =>
   publications
-    .map((publication) => publicationFormatText(publication.platform, publication.format))
+    .map((publication) =>
+      publicationFormatText(publication.platform, publication.format, publication.mediaIds.length),
+    )
     .join(" y ");
 
 /** Un rechazo de la API para un canal, con qué hacer, sin cortar los demás. */
@@ -124,7 +128,7 @@ export function runApprove(deps: ApproveDeps, ref: string, options: ApproveOptio
           for (const skipped of result.skipped) {
             deps.printError(
               c.yellow(
-                `  El ${publicationFormatText(content.platform, skipped.format)} ya tiene una publicación activa de un texto anterior (${skipped.publicationId}): retírala o descártala para publicar este`,
+                `  El ${publicationFormatText(content.platform, skipped.format, null)} ya tiene una publicación activa de un texto anterior (${skipped.publicationId}): retírala o descártala para publicar este`,
               ),
             );
           }

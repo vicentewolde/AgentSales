@@ -14,6 +14,8 @@ import type {
   PlanRunStatus,
   Platform,
   PlatformAccountStatus,
+  PostKind,
+  PostStatus,
   PublicationFormat,
   PublicationStatus,
 } from "./enums.js";
@@ -136,6 +138,22 @@ export const CONTENT_STATUS_TEXT: Readonly<Record<ContentStatus, string>> = {
   approved: "aprobado",
 };
 
+/** El estado de un post (spec F9 §4.2), como lo ven la CLI y el panel. */
+export const POST_STATUS_TEXT: Readonly<Record<PostStatus, string>> = {
+  idea: "idea",
+  draft: "borrador",
+  ready: "listo",
+  archived: "archivado",
+};
+
+/** Qué lleva un post (`posts.kind`, F9), como lo ven la CLI y el panel. */
+export const POST_KIND_TEXT: Readonly<Record<PostKind, string>> = {
+  text: "solo texto",
+  image: "imagen",
+  carousel: "carrusel",
+  video: "video",
+};
+
 export const PUBLICATION_STATUS_TEXT: Readonly<Record<PublicationStatus, string>> = {
   approved: "aprobada",
   scheduled: "programada",
@@ -149,24 +167,62 @@ export const PUBLICATION_STATUS_TEXT: Readonly<Record<PublicationStatus, string>
   outcome_unknown: "no se sabe si salió",
 };
 
+/**
+ * El nombre de cada formato en Instagram cuando no se sabe cuántos medios lleva: `post` es el
+ * carrusel de un aviso. Con el número de medios, `publicationFormatText`.
+ */
 export const PUBLICATION_FORMAT_TEXT: Readonly<Record<PublicationFormat, string>> = {
   post: "carrusel",
   reel: "reel",
 };
 
 /**
- * El formato de una publicación según su canal (spec F4 §4.8): en Portal y Marketplace hay uno
- * solo, el aviso (`post`); en Instagram, carrusel o reel; en las redes de F9 (X, LinkedIn, Discord
- * y TikTok), el post (desde F9-T08, que las muestra en la agenda). Lo usan la CLI y el panel.
+ * El formato de una publicación según su canal (spec F4 §4.8 y F9.5 §4.2): en Portal y Marketplace
+ * hay uno solo, el aviso (`post`); en Instagram, imagen, carrusel o reel (un `post` con un solo
+ * medio sale como imagen suelta); en las redes de F9 (X, LinkedIn, Discord y TikTok), el post.
+ * `mediaCount` es el número de medios fijos de la publicación (`mediaIds`); `null` si no se sabe
+ * (un formato saltado o un servidor anterior), y entonces el `post` de Instagram es el carrusel.
+ * Lo usan la CLI y el panel.
  */
-export const publicationFormatText = (platform: Platform, format: PublicationFormat): string =>
-  platform === "instagram"
-    ? PUBLICATION_FORMAT_TEXT[format]
-    : platform === "portal_inmobiliario" || platform === "fb_marketplace"
-      ? "aviso"
-      : "post";
+export function publicationFormatText(
+  platform: Platform,
+  format: PublicationFormat,
+  mediaCount: number | null,
+): string {
+  if (platform === "portal_inmobiliario" || platform === "fb_marketplace") return "aviso";
+  if (platform !== "instagram") return "post";
+  if (format === "post" && mediaCount === 1) return "imagen";
+  // Un formato que este código no conoce (un servidor más nuevo, F9.5-T11) se muestra tal cual.
+  return PUBLICATION_FORMAT_TEXT[format] ?? format;
+}
 
-/** El modo de un intento de publicación (`publications.dry_run`, D11 del spec F3). */
+/**
+ * El formato con su artículo (F9.5-T02): «la imagen», «de la imagen», «retirada»; «el carrusel»,
+ * «del reel», «el aviso», «el post». `o` es la terminación que concuerda («retirad${o}», «otr${o}»).
+ * Lo usan las frases del panel y de la CLI que nombran la publicación por su formato.
+ */
+export type PublicationFormatPhrase = {
+  name: string;
+  el: "el" | "la";
+  del: "del" | "de la";
+  o: "o" | "a";
+};
+
+export function publicationFormatPhrase(
+  platform: Platform,
+  format: PublicationFormat,
+  mediaCount: number | null,
+): PublicationFormatPhrase {
+  const name = publicationFormatText(platform, format, mediaCount);
+  return name === "imagen"
+    ? { name, el: "la", del: "de la", o: "a" }
+    : { name, el: "el", del: "del", o: "o" };
+}
+
+/**
+ * El modo de un intento de publicación (`publications.dry_run`, D11 del spec F3). Qué modo mostrar
+ * en el panel según el estado: `shownPublicationMode` (D4 del spec F9.5).
+ */
 export const publicationModeText = (dryRun: boolean): string => (dryRun ? "simulación" : "en vivo");
 
 /** El resultado de un intento (`publish_attempt` de la bitácora). */
