@@ -1,6 +1,7 @@
 import {
   AppError,
   COST_COUNTED_STATUSES,
+  CREDENTIALS_LOCK_TIMEOUT_MS,
   canTransition,
   checkPublicationProgress,
   checkRemoteState,
@@ -16,11 +17,12 @@ import {
   subjectFieldsOf,
   subjectOfInput,
   TERMINAL_PUBLICATION_STATUSES,
+  xSpendLimitReached,
 } from "@agentsales/core";
 import { and, asc, eq, gte, inArray, lt, lte, ne, notInArray, or, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { isUniqueViolation, sqlStateOf, withDbErrors } from "../errors.js";
-import { publicationEvents, publications } from "../schema.js";
+import { platformAccounts, publicationEvents, publications } from "../schema.js";
 
 type Row = typeof publications.$inferSelect;
 
@@ -90,6 +92,53 @@ function toEvent(row: EventRow): PublicationEvent {
     );
   }
   return parsed.data;
+}
+
+const notPublishing = (id: string) =>
+  new AppError("PUBLICATION_NOT_PUBLISHING", "La publicación ya no se está publicando", {
+    details: { publicationId: id },
+  });
+
+/** SQLSTATE `55P03` (`lock_not_available`): venció el `lock_timeout` esperando la cuenta. */
+const LOCK_NOT_AVAILABLE = "55P03";
+
+const costLockTimeout = (id: string) =>
+  new AppError(
+    "ACCOUNT_LOCK_TIMEOUT",
+    "Otro proceso está usando la cuenta: se reintenta en un momento",
+    { retriable: true, details: { accountId: id } },
+  );
+
+/** `cost_usd` es `numeric(…, 4)`: se guarda con 4 decimales. */
+const roundCostUsd = (value: number) => Math.round(value * 10_000) / 10_000;
+
+/** El margen de redondeo al comparar con el tope: los montos van con 4 decimales. */
+const COST_EPSILON_USD = 1e-9;
+
+/**
+ * El gasto de `live` de una cuenta desde `since` (`COST_COUNTED_STATUSES`, por `published_at` o,
+ * sin ella, `updated_at`), sin contar `excludeId`.
+ */
+async function spentSince(
+  db: Pick<SchemaDatabase, "select">,
+  platformAccountId: string,
+  since: Date,
+  excludeId: string | undefined,
+): Promise<number> {
+  const [row] = await db
+    .select({ total: sql<string | null>`sum(${publications.costUsd})` })
+    .from(publications)
+    .where(
+      and(
+        eq(publications.platformAccountId, platformAccountId),
+        eq(publications.dryRun, false),
+        sql`${publications.costUsd} IS NOT NULL`,
+        inArray(publications.status, [...COST_COUNTED_STATUSES]),
+        sql`coalesce(${publications.publishedAt}, ${publications.updatedAt}) >= ${since.toISOString()}::timestamptz`,
+        excludeId === undefined ? undefined : ne(publications.id, excludeId),
+      ),
+    );
+  return row?.total == null ? 0 : Number(row.total);
 }
 
 const notFound = (id: string) =>
@@ -558,7 +607,7 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
         db
           .update(publications)
           .set({
-            costUsd: costUsd === null ? null : (Math.round(costUsd * 10_000) / 10_000).toFixed(4),
+            costUsd: costUsd === null ? null : roundCostUsd(costUsd).toFixed(4),
             updatedAt: sql`clock_timestamp()`,
           })
           .where(and(eq(publications.id, id), eq(publications.status, "publishing")))
@@ -566,34 +615,73 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
       );
       if (row === undefined) {
         if ((await findRow(id)) === undefined) throw notFound(id);
-        throw new AppError(
-          "PUBLICATION_NOT_PUBLISHING",
-          "La publicación ya no se está publicando",
-          { details: { publicationId: id } },
-        );
+        throw notPublishing(id);
       }
       return toPublication(row);
     },
 
     sumCostUsdSince(platformAccountId, since, options = {}) {
-      return withDbErrors(async () => {
-        const [row] = await db
-          .select({ total: sql<string | null>`sum(${publications.costUsd})` })
-          .from(publications)
-          .where(
-            and(
-              eq(publications.platformAccountId, platformAccountId),
-              eq(publications.dryRun, false),
-              sql`${publications.costUsd} IS NOT NULL`,
-              inArray(publications.status, [...COST_COUNTED_STATUSES]),
-              sql`coalesce(${publications.publishedAt}, ${publications.updatedAt}) >= ${since.toISOString()}::timestamptz`,
-              options.excludePublicationId === undefined
-                ? undefined
-                : ne(publications.id, options.excludePublicationId),
-            ),
-          );
-        return row?.total == null ? 0 : Number(row.total);
-      });
+      return withDbErrors(() =>
+        spentSince(db, platformAccountId, since, options.excludePublicationId),
+      );
+    },
+
+    async reserveCostUsd(id, platformAccountId, costUsd, { limitUsd, since }) {
+      const amount = roundCostUsd(costUsd);
+      try {
+        return await withDbErrors(() =>
+          db.transaction(async (tx) => {
+            // Quien espera el candado se rinde a los 10 s, como el de credenciales (ADR-0015).
+            await tx.execute(
+              sql.raw(`SET LOCAL lock_timeout = '${CREDENTIALS_LOCK_TIMEOUT_MS}ms'`),
+            );
+            // 1. El candado por cuenta, primero: la fila de la cuenta con `FOR NO KEY UPDATE`, como
+            //    `withCredentialsLock` (no choca con el `FOR KEY SHARE` de la FK de `publications`).
+            //    Una sola sentencia `UPDATE … WHERE (SELECT sum…)` no basta en READ COMMITTED: dos
+            //    a la vez verían la misma suma.
+            await tx
+              .select({ id: platformAccounts.id })
+              .from(platformAccounts)
+              .where(eq(platformAccounts.id, platformAccountId))
+              .for("no key update");
+            // 2. Después, en sentencias nuevas (otra foto en READ COMMITTED): ven lo que reservó
+            //    quien tenía el candado antes.
+            const [current] = await tx
+              .select({
+                accountId: publications.platformAccountId,
+                status: publications.status,
+              })
+              .from(publications)
+              .where(eq(publications.id, id));
+            if (current === undefined) throw notFound(id);
+            if (current.status !== "publishing") throw notPublishing(id);
+            if (current.accountId !== platformAccountId) {
+              throw new AppError("INTERNAL_ERROR", "La publicación no es de esa cuenta", {
+                details: { publicationId: id },
+              });
+            }
+            const spentUsd = await spentSince(tx, platformAccountId, since, id);
+            if (spentUsd + amount > limitUsd + COST_EPSILON_USD) {
+              throw xSpendLimitReached({
+                spentUsd: roundCostUsd(spentUsd),
+                costUsd: amount,
+                limitUsd,
+              });
+            }
+            const [row] = await tx
+              .update(publications)
+              .set({ costUsd: amount.toFixed(4), updatedAt: sql`clock_timestamp()` })
+              .where(and(eq(publications.id, id), eq(publications.status, "publishing")))
+              .returning();
+            if (row === undefined) throw notPublishing(id);
+            return toPublication(row);
+          }),
+        );
+      } catch (error) {
+        // `withDbErrors` lo deja como `DB_QUERY_FAILED`, con el código del driver en su `cause`.
+        if (sqlStateOf(error) === LOCK_NOT_AVAILABLE) throw costLockTimeout(platformAccountId);
+        throw error;
+      }
     },
 
     countLiveAttemptsSince(platformAccountId, since) {

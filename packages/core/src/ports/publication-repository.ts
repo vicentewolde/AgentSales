@@ -261,4 +261,23 @@ export interface PublicationRepository {
     since: Date,
     options?: { excludePublicationId?: string },
   ): Promise<number>;
+  /**
+   * Reserva el costo estimado de una publicación en `live` bajo el tope de su cuenta (F9.5-T08, el
+   * `spendLimitUsd` de X), de forma atómica. En una transacción: primero bloquea la fila de la cuenta
+   * (`FOR NO KEY UPDATE` con `lock_timeout`, como `withCredentialsLock`) y después, en otra
+   * sentencia, suma el gasto desde `since` como `sumCostUsdSince` (sin contar esta publicación) y
+   * anota `costUsd` (4 decimales) solo si lo gastado más este costo no pasa `limitUsd`; si lo pasa,
+   * `X_SPEND_LIMIT_REACHED` (no reintentable) sin anotar nada. Dos reservas a la vez de la misma
+   * cuenta se esperan: nunca pasan las dos por encima del tope. Como `setCostUsd`, solo con la
+   * publicación en `publishing` (`PUBLICATION_NOT_PUBLISHING`; `PUBLICATION_NOT_FOUND` si no
+   * existe) y de esa cuenta (`INTERNAL_ERROR` si es de otra: un error de programación); esperar la cuenta más de 10 s es `ACCOUNT_LOCK_TIMEOUT`
+   * (reintentable). No hay que liberarla: una publicación que termina `failed` o `cancelled` deja de
+   * contar (`COST_COUNTED_STATUSES`).
+   */
+  reserveCostUsd(
+    id: string,
+    platformAccountId: string,
+    costUsd: number,
+    limit: { limitUsd: number; since: Date },
+  ): Promise<Publication>;
 }
