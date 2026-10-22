@@ -59,6 +59,12 @@ export type ApprovedContent = CheckedContent & {
    * F5 §4.6). Advertencia, como en Portal: publicar lo bloquea con `MARKETPLACE_NOT_READY`.
    */
   marketplaceReadiness?: MarketplaceReadiness;
+  /**
+   * Solo en un post (F9.5-T21): `true` si el texto se aprobó pero no se abrieron publicaciones
+   * porque faltan los medios que pide la red o todavía se están procesando (`CONTENT_NOT_READY`
+   * de `planPostPublications`). Publicar y programar esperan a que existan.
+   */
+  mediaPending?: boolean;
 };
 
 /**
@@ -196,17 +202,19 @@ async function approveListingContent(
 /**
  * F9.5-T21: el texto de un post se aprueba **sin tener los medios** (llegan después: subidos o
  * generados). Si faltan (`CONTENT_NOT_READY`), no se abre ninguna publicación todavía: las abren
- * publicar o programar, que sí esperan a los medios. Cualquier otro error sigue subiendo.
+ * publicar o programar, que sí esperan a los medios, y `mediaPending` lo dice. Cualquier otro error
+ * sigue subiendo.
  */
 async function planWithoutMedia(
   locked: Parameters<typeof planPostPublications>[0],
   params: Parameters<typeof planPostPublications>[1],
-): Promise<PostPublicationOpening> {
+): Promise<{ opening: PostPublicationOpening; mediaPending: boolean }> {
   try {
-    return await planPostPublications(locked, params);
+    return { opening: await planPostPublications(locked, params), mediaPending: false };
   } catch (error) {
-    if (isAppError(error) && error.code === "CONTENT_NOT_READY")
-      return { toCreate: [], skipped: [] };
+    if (isAppError(error) && error.code === "CONTENT_NOT_READY") {
+      return { opening: { toCreate: [], skipped: [] }, mediaPending: true };
+    }
     throw error;
   }
 }
@@ -219,7 +227,7 @@ async function approvePostContent(
 ): Promise<ApprovedContent> {
   // F9-T21: el texto de una red que se le quitó al post no se aprueba (abriría publicaciones).
   requirePostPlatform(post, content.platform);
-  const opening = await planWithoutMedia(locked, { post, content });
+  const { opening, mediaPending } = await planWithoutMedia(locked, { post, content });
 
   // Recién aquí se escribe.
   const approved = await markApproved(locked, content);
@@ -236,5 +244,6 @@ async function approvePostContent(
     created,
     skipped: opening.skipped,
     publications: await channelPublications(locked, approved.subject, approved.platform),
+    mediaPending,
   };
 }

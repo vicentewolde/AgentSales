@@ -368,6 +368,8 @@ export function PostTexts({
       >
         {texts.map((content) => {
           const active = keyOf(content) === keyOf(current);
+          const reasons = textTabReasons(content, { all: true });
+          const state = textTabState(content);
           return (
             <button
               key={keyOf(content)}
@@ -377,9 +379,7 @@ export function PostTexts({
               aria-selected={active}
               aria-controls={`${ids}-panel`}
               onClick={() => setSelected(keyOf(content))}
-              {...(textTabReasons(content, { all: true }).length > 0
-                ? { title: textTabReasons(content, { all: true }).join("\n") }
-                : {})}
+              {...(reasons.length > 0 ? { title: reasons.join("\n") } : {})}
               className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
                 active
                   ? "bg-surface font-semibold text-fg shadow-xs ring-1 ring-line"
@@ -393,13 +393,13 @@ export function PostTexts({
                   ✓
                 </span>
               )}
-              {textTabState(content) === "error" && (
+              {state === "error" && (
                 <span aria-hidden="true" className="font-bold text-danger-600">
                   {" "}
                   !
                 </span>
               )}
-              {textTabState(content) === "pending" && <Badge tone="warning">pendiente</Badge>}
+              {state === "pending" && <Badge tone="warning">pendiente</Badge>}
             </button>
           );
         })}

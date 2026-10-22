@@ -132,8 +132,11 @@ export function PostPublishBar({
   lockReason,
 }: {
   postId: string;
-  /** Sus redes (`platforms`): las quitadas no se ofrecen (F9-T21); y su marca, por las cuentas. */
-  post: Pick<PostJson, "platforms" | "brokerId">;
+  /**
+   * Sus redes (`platforms`): las quitadas no se ofrecen (F9-T21); su marca, por las cuentas; y su
+   * tipo, para el enlace a subir lo que falta (F9.5-T21).
+   */
+  post: Pick<PostJson, "platforms" | "brokerId" | "kind">;
   contents: readonly ContentView[];
   /** Las publicaciones del post: una red con todo publicado no tiene botón (`undefined`: cargando). */
   publications?: readonly PublicationView[] | undefined;
@@ -234,9 +237,7 @@ export function PostPublishBar({
         <p className="text-sm text-warning-800">
           {[...new Set(noMedia.values())].join(" ")}{" "}
           <a href={`#${POST_MEDIA_ANCHOR}`} className="font-medium underline underline-offset-2">
-            {[...noMedia.values()].every((message) => message.startsWith("Falta el video"))
-              ? "Subir el video"
-              : "Subir imágenes"}
+            {post.kind === "video" ? "Subir el video" : "Subir imágenes"}
           </a>
           . El texto aprobado no se pierde: publicar y programar se activan cuando estén.
         </p>

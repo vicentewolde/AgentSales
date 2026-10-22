@@ -302,6 +302,8 @@ describe("approveContent con un post", () => {
       contentId: await t.contentId("linkedin"),
       actor: "operator",
     });
+    // Sin cuenta no hay plan que abrir: no es que falten los medios.
+    expect(result.mediaPending).toBe(false);
     expect(result.created).toEqual([]);
     expect(await t.postStatus()).toBe("ready");
   });
@@ -360,6 +362,7 @@ describe("approveContent con un post", () => {
     ]);
     expect(result.created).toEqual([]);
     expect(result.publications).toEqual([]);
+    expect(result.mediaPending).toBe(true);
     expect(await t.postStatus()).toBe("ready");
   });
 
@@ -404,6 +407,9 @@ describe("approveContent con un post", () => {
     });
     expect(result.content.status).toBe("approved");
     expect(result.created).toEqual([]);
+    // Subido pero sin procesar: la revisión no avisa nada, y `mediaPending` lo dice igual.
+    expect(result.checks).toEqual([]);
+    expect(result.mediaPending).toBe(true);
   });
 
   it("sin el candado de posts (auto_publish, solo avisos), un post es SUBJECT_NOT_LISTING", async () => {

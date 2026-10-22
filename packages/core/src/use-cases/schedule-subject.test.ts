@@ -454,6 +454,26 @@ describe("un post sin medios (F9.5-T21)", () => {
     expect(t.queue.jobs).toEqual([]);
   });
 
+  it("una programada cuyos medios fijos se borraron no sale aunque al post le queden otros: failed, no reintentable", async () => {
+    const t = await createPostPublicationScenario({ kind: "carousel", images: 3 });
+    const publication = await schedule(t, t.publicationOf("discord"));
+    expect(publication.mediaIds).toHaveLength(3);
+    // Al post le quedan 2 imágenes procesadas (el plan aún serviría), pero la publicación fijó 3.
+    const [, second] = t.images;
+    if (second === undefined) throw new Error("sin segunda imagen");
+    await t.media.deleteDerivative(second.id);
+
+    const result = await due(t, AFTER);
+
+    expect(result.started).toEqual([]);
+    expect(result.failed).toEqual([{ publicationId: publication.id, code: "CONTENT_NOT_READY" }]);
+    expect(t.current(publication.id)).toMatchObject({
+      status: "failed",
+      lastError: { code: "CONTENT_NOT_READY", retriable: false },
+    });
+    expect(t.queue.jobs).toEqual([]);
+  });
+
   it("un post de solo texto en LinkedIn no necesita medios", async () => {
     const t = await createPostPublicationScenario({
       kind: "text",

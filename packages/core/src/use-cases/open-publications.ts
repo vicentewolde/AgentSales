@@ -243,6 +243,8 @@ const MISSING_CAROUSEL = `Faltan las imágenes del carrusel: súbelas o consígu
  * falta procesar es `CONTENT_NOT_READY`. El carrusel de un aviso (`composeCarousel`) no cambia.
  */
 function instagramPostPlan(kind: Post["kind"], media: readonly Media[]): PublicationPlanItem {
+  // Inalcanzable mientras la revisión del texto frene antes un post de solo texto en Instagram
+  // con el error `MEDIA_NOT_SUPPORTED` (no se aprueba): queda como segunda barrera (F9.5-T21).
   if (kind === "text") {
     throw postMediaMissing(
       "instagram",
@@ -299,6 +301,8 @@ export function postPublicationPlan(
   }
   if (platform === "instagram") return instagramPostPlan(kind, media);
   if (kind === "text") {
+    // TikTok sin video: inalcanzable mientras la revisión lo frene antes con `MEDIA_NOT_SUPPORTED`
+    // (como el `kind !== "video"` de más abajo); queda como segunda barrera (F9.5-T21).
     if (platform === "tiktok") {
       throw postMediaMissing(platform, "Esta red necesita una imagen o un video: súbelos al post");
     }
@@ -316,6 +320,7 @@ export function postPublicationPlan(
     }
     return { format: "post", mediaIds: [video.id] };
   }
+  // Inalcanzable mientras la revisión frene antes con `MEDIA_NOT_SUPPORTED` (F9.5-T21).
   if (platform === "tiktok") {
     throw postMediaMissing(platform, "TikTok publica solo video: súbelo al post");
   }

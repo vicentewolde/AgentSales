@@ -348,15 +348,37 @@ describe("post de punta a punta", () => {
     expect(await runPostApprove(s.deps(), post.id, {})).toBe(0);
     const text = s.h.text();
     expect(text).toContain("Discord · español: aprobado");
-    expect(text).toContain("faltan los medios del post");
+    expect(text).toContain("los medios faltan o se están procesando");
     expect(text).toContain(`agentsales post upload ${post.id}`);
+    expect(text).toContain("→ Sube los medios con");
     expect(text).not.toContain("sin cuenta conectada");
     expect(text).not.toContain("→ Conecta la cuenta");
+    expect(text).not.toContain("→ Publica con");
     expect(s.publicationsOf(post.id)).toEqual([]);
 
     // Publicar todavía no se puede: faltan los medios.
     expect(await runPostPublish(s.deps(), post.id, { platform: "discord" })).toBe(1);
     expect(s.h.errors()).toContain("Falta la imagen del post");
+    expect(s.publicationsOf(post.id)).toEqual([]);
+  });
+
+  it("approve con la foto subida pero sin procesar: dice que se está procesando, no que falta la cuenta (F9.5-T21)", async () => {
+    const s = await setup();
+    await writeFile(join(s.cwd, "foto.jpg"), "foto de prueba");
+    s.setDraft({ texts: [{ platform: "discord", language: "es" }] });
+    await runPostCreate(s.deps(), "Bastidores", { broker: "agentpey", kind: "image" });
+    const post = await s.created();
+    // Subida, pero el worker (`post.media`) todavía no arma sus variantes: la revisión no avisa
+    // nada (el original está), y aun así no se pueden abrir publicaciones.
+    expect(await runPostUpload(s.deps(), post.id, ["foto.jpg"])).toBe(0);
+    expect(await runPostDraft(s.deps(), post.id)).toBe(0);
+    s.h.out.length = 0;
+    expect(await runPostApprove(s.deps(), post.id, {})).toBe(0);
+    const text = s.h.text();
+    expect(text).toContain("Discord · español: aprobado");
+    expect(text).toContain("los medios faltan o se están procesando");
+    expect(text).not.toContain("sin cuenta conectada");
+    expect(text).not.toContain("→ Conecta la cuenta");
     expect(s.publicationsOf(post.id)).toEqual([]);
   });
 
