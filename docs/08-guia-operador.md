@@ -227,7 +227,7 @@ pnpm -s cli post publish <id_post>                            # --platform para 
 - **En vivo** (`PUBLISH_MODE=live`), `post publish`, `post schedule` y `publications retry` preguntan antes (`--yes` no pregunta). A la hora programada el reloj del worker publica sin volver a preguntar.
 - **Una red a mano** (por ejemplo LinkedIn): a la hora queda lista para que la publiques tú; después `pbpaste | pnpm -s cli publications confirm <id> --url-stdin` con el enlace, o `publications not-published <id>` si no la publicaste.
 - **"No se sabe si salió"** (`outcome_unknown`): el envío se cortó y AgentSales no sabe si la red la publicó. **Mira la red** y dilo: `pnpm -s cli publications resolve <id> --published` (con el enlace, si lo tienes: `pbpaste | … --published --url-stdin`) o `--not-published` (queda fallida). AgentSales nunca la reintenta solo, para no publicarla dos veces.
-- **Reintentar o publicar ya una sola publicación:** `pnpm -s cli publications retry <id>` (el id sale en `post show` y en la agenda). Descartarla: `publications cancel <id>`. Retirar una publicada: `publications retire <id>` (en LinkedIn por la API, `--delete` la borra por ti; ver "Conectar las redes de los posts").
+- **Reintentar o publicar ya una sola publicación:** `pnpm -s cli publications retry <id>` (el id sale en `post show` y en la agenda). Descartarla: `publications cancel <id>`. Retirar una publicada: `publications retire <id>` (en LinkedIn o X por la API, `--delete` la borra por ti; ver "Conectar las redes de los posts").
 - **Antes de conectar las cuentas** de la marca, mira "Conectar las redes de los posts (F9)", más abajo: qué va en el `.env`, cómo se conecta cada red y las pruebas S1 a S6 antes de publicar de verdad.
 - **`agenda`** muestra los posts junto a las propiedades, con el comando de cada cosa pendiente. **`post archive <id>`** da por terminado un post (primero hay que resolver o descartar sus publicaciones pendientes).
 - Si algo falla, la CLI muestra el código y qué hacer: `POST_NO_PLATFORMS` (la marca no tiene cuentas ni cadencia: conecta una o define la cadencia en `brand edit`), `LLM_BUDGET_EXCEEDED` (la marca llegó a su tope de IA del mes: `pnpm -s cli usage`), `LLM_OUTPUT_INVALID` (la IA no respondió en el formato pedido: vuelve a pedir los textos), `CONTENT_EDITED` (ya editaste o aprobaste: `post draft --replace-edits` los reemplaza), `POST_NOT_READY` (una idea sin aceptar o un post archivado), `OUTCOME_UNKNOWN_PENDING` (primero di si salió).
@@ -333,7 +333,7 @@ Una cuenta de LinkedIn, X, Discord o TikTok puede estar **a mano** o **por la AP
 
 - **Confirmar una publicación a mano** (LinkedIn a mano, TikTok, Marketplace): `pbpaste | pnpm -s cli publications confirm <id> --url-stdin` con el enlace copiado (no se imprime), o en el panel, **Lo publiqué**.
 - **"No se sabe si salió"** (`outcome_unknown`): el envío se cortó y la red pudo haberlo publicado. Mira la red y di qué pasó: `pnpm -s cli publications resolve <id> --published` (con el enlace: `pbpaste | … --published --url-stdin`) o `--not-published`. AgentSales nunca la reintenta solo, para no publicarla dos veces. En X, un "texto repetido" también queda así: si no salió, cambia un poco el texto antes de reintentar.
-- **Retirar un post publicado:** bórralo a mano en la red y márcalo con `pnpm -s cli publications retire <id>` (pregunta si ya lo borraste). **En LinkedIn con la cuenta por la API**, AgentSales lo puede borrar por ti: `pnpm -s cli publications retire <id> --delete` (pregunta antes: es definitivo; solo en `live`). Si el post se publicó a mano y pegaste el enlace de "Copiar enlace", LinkedIn no acepta borrarlo por la API: la CLI te dice que lo borres a mano.
+- **Retirar un post publicado:** bórralo a mano en la red y márcalo con `pnpm -s cli publications retire <id>` (pregunta si ya lo borraste). **En LinkedIn o X con la cuenta por la API**, AgentSales lo puede borrar por ti: `pnpm -s cli publications retire <id> --delete` (pregunta antes: es definitivo; solo en `live`). Si el post de LinkedIn se publicó a mano y pegaste el enlace de "Copiar enlace", LinkedIn no acepta borrarlo por la API: la CLI te dice que lo borres a mano. En X, borrar puede tener un costo que todavía no está verificado (no se anota). **TikTok no deja borrar por la API:** borra el video a mano en la app de TikTok y después corre `publications retire <id>` sin `--delete` (con `--delete`, la CLI te lo recuerda).
 
 ### Qué hacer cuando una red falla
 
@@ -352,6 +352,7 @@ Debajo de cada publicación fallida, el panel (**Qué hacer:**), `post show`, `p
 | `TIKTOK_APP_RESTRICTED` | La app de TikTok todavía no tiene la auditoría: revisa S6 en `tiktok.md` |
 | `*_RATE_LIMITED`, `*_UNAVAILABLE`, `*_UNREACHABLE` | Es pasajero: el sistema reintenta solo; si no, reintenta más tarde |
 | `RETIRE_DELETE_UNSUPPORTED` | Esa red o esa cuenta no borra por la API: bórrala a mano y `publications retire <id>` |
+| `TIKTOK_DELETE_UNSUPPORTED` | TikTok no deja borrar por la API: bórralo a mano en la app de TikTok y `publications retire <id>` (sin `--delete`) |
 
 ## Restaurar un respaldo de la base
 
