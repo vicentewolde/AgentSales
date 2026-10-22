@@ -9,7 +9,9 @@ export {
 } from "./constants.js";
 export { isDuplicateContent, isXNotSent, X_NOT_SENT_CODES, xHttpError } from "./errors.js";
 export {
+  createXOperations,
   createXPublisher,
+  deleteXPost,
   downloadXMedia,
   validateXInput,
   type XMediaProgress,

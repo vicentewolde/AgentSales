@@ -1,11 +1,13 @@
 import {
   type AbortSignalLike,
   type AccessTokenProvider,
+  AppError,
   checkPublishInput,
   type DirectPublisher,
   formatXUsd,
   isAppError,
   POST_TEXT_LIMITS,
+  type PublicationOperations,
   type PublishContext,
   type PublishInput,
   type PublishIssue,
@@ -476,4 +478,62 @@ export function createXPublisher(options: XPublisherOptions = {}): DirectPublish
     },
   };
   return publisher;
+}
+
+/** El id de un post de X (`external_id`: el que devuelve publicar o el que lee `parseXPostUrl`). */
+const X_POST_ID = /^\d{1,30}$/;
+
+/**
+ * Borra un post de X (`DELETE /2/tweets/{id}`, `x.md` §4.3; F9.5-T09): idempotente (un 404 cuenta
+ * como borrado). Solo un post del usuario del token; un hilo no existe (F9 no publica hilos). Un id
+ * que no es de un post de X es `RETIRE_DELETE_UNSUPPORTED` sin llamar: se borra a mano.
+ */
+export async function deleteXPost({
+  api = createXApi(),
+  accessToken,
+  postId,
+  signal,
+}: {
+  api?: XApiClient;
+  accessToken: string;
+  postId: string;
+  signal?: AbortSignalLike;
+}): Promise<void> {
+  if (!X_POST_ID.test(postId)) throw xDeleteUnsupported();
+  await api.deletePost(accessToken, postId, signal === undefined ? {} : { signal });
+}
+
+const xDeleteUnsupported = () =>
+  new AppError(
+    "RETIRE_DELETE_UNSUPPORTED",
+    "Esta publicación de X no tiene el id del post que acepta la API: bórrala a mano en X",
+  );
+
+/**
+ * Lo que la API hace con lo publicado en X (F9.5-T09): borrar un post al retirarlo
+ * (`retirePublication` con `deleteRemote`). El token es `ctx.accessToken`, que en X asegura
+ * `ensureRotatingAccessToken` bajo el candado de credenciales; un 401 pide otro (`rejectedToken`) y
+ * repite **una** vez (borrar es idempotente). **Sin envolver**: core decide antes el modo (nunca
+ * en simulación) y que la cuenta esté en modo `api`. El costo de borrar no se anota (no está
+ * verificado, `x.md` §2.1).
+ */
+export function createXOperations({
+  api = createXApi(),
+}: {
+  api?: XApiClient;
+} = {}): Required<Pick<PublicationOperations, "remove">> {
+  return {
+    async remove(ref, ctx) {
+      if (!X_POST_ID.test(ref.externalId)) throw xDeleteUnsupported();
+      const signal = ctx.signal === undefined ? {} : { signal: ctx.signal };
+      const accessToken = await ctx.accessToken(signal);
+      try {
+        await deleteXPost({ api, accessToken, postId: ref.externalId, ...signal });
+      } catch (error) {
+        if (!isUnauthorized(error)) throw error;
+        const renewed = await ctx.accessToken({ ...signal, rejectedToken: accessToken });
+        await deleteXPost({ api, accessToken: renewed, postId: ref.externalId, ...signal });
+      }
+    },
+  };
 }

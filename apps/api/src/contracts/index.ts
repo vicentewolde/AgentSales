@@ -616,8 +616,9 @@ export type PublicationConfirmResponse = z.infer<typeof publicationConfirmRespon
 /**
  * `POST /publications/:id/retire`: en `live`, `removedByHand: true` confirma que se borró a mano en
  * la plataforma (Instagram Login no deja borrar por la API, D8). El cuerpo va siempre (`{}`).
- * F9-T19: `deleteRemote: true` la borra AgentSales por la API (LinkedIn con la cuenta en modo
- * `api`, con la API en `live`); no se junta con `removedByHand`.
+ * F9-T19: `deleteRemote: true` la borra AgentSales por la API (LinkedIn o, desde F9.5-T09, X, con
+ * la cuenta en modo `api` y la API en `live`; TikTok se borra a mano en la app, D9); no se junta con
+ * `removedByHand`.
  */
 export const publicationRetireBodySchema = z
   .object({ removedByHand: z.boolean().optional(), deleteRemote: z.boolean().optional() })

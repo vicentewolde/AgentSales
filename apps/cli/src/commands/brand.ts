@@ -93,7 +93,7 @@ function printProfile(deps: Io, broker: Broker, profile: EditorialProfileJson): 
   }
   const [main, ...others] = profile.languages;
   deps.print(
-    `Idiomas: ${main === undefined ? "—" : `${LANGUAGE_TEXT[main]} (principal)`}${others.map((lang) => `, ${LANGUAGE_TEXT[lang]}`).join("")}`,
+    `Idiomas: ${main === undefined ? "—" : `${LANGUAGE_TEXT[main] ?? main} (principal)`}${others.map((lang) => `, ${LANGUAGE_TEXT[lang] ?? lang}`).join("")}`,
   );
   deps.print(`Público: ${profile.audience ?? c.dim("sin definir")}`);
   deps.print("Líneas de contenido:");
@@ -123,11 +123,11 @@ function printProfile(deps: Io, broker: Broker, profile: EditorialProfileJson): 
       `${entry.postsPerWeek} por semana`,
       entry.days.length === 0
         ? "cualquier día"
-        : entry.days.map((day) => EDITORIAL_WEEKDAY_TEXT[day]).join(", "),
+        : entry.days.map((day) => EDITORIAL_WEEKDAY_TEXT[day] ?? day).join(", "),
       entry.hours.length === 0 ? "cualquier hora" : entry.hours.join(", "),
       ...(profile.languages.length > 1 ? [`${entry.languageGapHours} h entre idiomas`] : []),
     ];
-    deps.print(`  · ${PLATFORM_TEXT[platform]}: ${parts.join(" · ")}`);
+    deps.print(`  · ${PLATFORM_TEXT[platform] ?? platform}: ${parts.join(" · ")}`);
   }
   deps.print(
     `Hashtags: ${profile.defaultHashtags.length === 0 ? c.dim("(ninguno)") : profile.defaultHashtags.join(" ")}`,

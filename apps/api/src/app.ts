@@ -241,6 +241,24 @@ export type AppDeps = {
 /** Un middleware que no hace nada (un límite que no se configuró). */
 const passThrough: MiddlewareHandler<AppEnv> = (_c, next) => next();
 
+/**
+ * La versión de AgentSales en cada respuesta de la API (spec F9.5 §4.2, ADR-0011): la CLI la
+ * compara con la suya y avisa si difieren. La CLI tiene su copia del nombre (`api-client.ts`), para
+ * no cargar la API; sus pruebas contra la API en proceso confirman que calzan.
+ */
+export const VERSION_HEADER = "X-AgentSales-Version";
+
+/**
+ * Pone la cabecera después de responder, así también la llevan los errores (`onError`), los 404 y
+ * los rechazos de los guardias. `version` se leyó una vez al arrancar (`readApiVersion`).
+ */
+const versionHeader =
+  (version: string): MiddlewareHandler<AppEnv> =>
+  async (c, next) => {
+    await next();
+    c.header(VERSION_HEADER, version);
+  };
+
 /** Arma la API con sus dependencias inyectadas. Las rutas van encadenadas para el cliente `hc`. */
 export function createApp(input: AppDeps) {
   // Los eventos de la bitácora escritos por la API llevan el usuario del pedido (spec F7 §4.3).
@@ -251,11 +269,22 @@ export function createApp(input: AppDeps) {
     // Lo que publicar necesita saber de Marketplace: la configuración y lo que permite el ambiente.
     marketplace: { ...input.marketplace, automation: input.marketplaceAutomation },
   };
+  // La renovación de los tokens que rotan (X, F9-T16; TikTok, F9-T26; ADR-0029 punto 11), en un
+  // solo lugar de la API: la usan el refresco a pedido de Cuentas y retirar borrando en X
+  // (F9.5-T09), con la misma función del worker (`ensureRotatingAccessToken`, siempre bajo el
+  // candado de credenciales de la base, que comparten la API y el worker: renovar el mismo token
+  // en dos lugares a la vez lo invalida, S4). Sin el par de la app de una red, una cuenta suya por
+  // renovar es TOKEN_REFRESH_NOT_CONFIGURED sin llamar ni cambiarla.
+  const tokenRefreshers = {
+    ...(deps.x.configured ? { x: deps.x.auth } : {}),
+    ...(deps.tiktok.configured ? { tiktok: deps.tiktok.auth } : {}),
+  };
   // El refresco del token de Portal, solo con el par de la app (sin él, uno por vencer es
   // `MERCADOLIBRE_NOT_CONFIGURED` sin llamar).
   const publicationDeps = {
     ...deps,
     mercadoLibreRefresh: deps.mercadoLibre.configured ? deps.mercadoLibre.auth : null,
+    tokenRefreshers,
   };
   // Lo que le falta al aviso para Marketplace depende de si se puede convertir la UF (spec F5 §4.6).
   const contentDeps = { ...deps, ufConfigured: deps.marketplace?.ufConfigured ?? false };
@@ -303,6 +332,7 @@ export function createApp(input: AppDeps) {
     broker: ownedBy(async (id) => id, notFound("BROKER_NOT_FOUND", "No existe el corredor")),
   };
   const app = new Hono<AppEnv>()
+    .use(versionHeader(deps.version))
     .use(requestLogger(deps.logger))
     .use(hostGuard(deps.access.allowedHosts))
     .use(deps.rateLimit === null ? passThrough : rateLimitByIp(deps.rateLimit))
@@ -378,10 +408,7 @@ export function createApp(input: AppDeps) {
         // X (F9-T16) y TikTok (F9-T26): el refresco a pedido renueva con la misma función que el
         // intento. Sin el par de la app de una red, una cuenta suya a la que le toca es
         // TOKEN_REFRESH_NOT_CONFIGURED (503) sin llamar ni cambiarla.
-        refreshers: {
-          ...(deps.x.configured ? { x: deps.x.auth } : {}),
-          ...(deps.tiktok.configured ? { tiktok: deps.tiktok.auth } : {}),
-        },
+        refreshers: tokenRefreshers,
         stateHash: (nonce) => deps.auth.tokens.hash(nonce),
         instagram: deps.instagram.auth,
         instagramOAuth: deps.instagram.oauthConfigured && deps.instagram.secureCookie,

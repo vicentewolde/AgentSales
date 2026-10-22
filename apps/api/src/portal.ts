@@ -9,6 +9,7 @@ import {
   type MercadoLibreItems,
 } from "@agentsales/publishers";
 import { createLinkedInApi, createLinkedInOperations } from "@agentsales/publishers/linkedin";
+import { createXApi, createXOperations } from "@agentsales/publishers/x";
 
 /**
  * Las operaciones de cada plataforma para la API (pausar, reactivar, cerrar y el sync de Portal;
@@ -17,7 +18,8 @@ import { createLinkedInApi, createLinkedInOperations } from "@agentsales/publish
  * actualizar, el catálogo de Mercado Libre con su caché en la base. Sin fotos: actualizar usa las
  * del ítem. **Sin envolver**: el modo lo decide cada publicación. `createItems` es el cliente real;
  * los tests revisan con qué tope se arma. Sin `catalogRepository`, actualizar no está configurado.
- * Desde F9-T19, también borrar un post de LinkedIn al retirarlo (con el mismo tope de 10 s).
+ * Desde F9-T19, también borrar un post de LinkedIn al retirarlo (con el mismo tope de 10 s), y
+ * desde F9.5-T09, uno de X (el token que rota lo asegura retirar con la renovación de `createApp`).
  */
 export function createApiOperations(
   createItems: (options: MercadoLibreHttpOptions) => MercadoLibreItems = createMercadoLibreItems,
@@ -37,6 +39,11 @@ export function createApiOperations(
   const linkedin = createLinkedInOperations({
     api: createLinkedInApi({ timeoutMs: MERCADOLIBRE_API_TIMEOUT_MS }),
   });
-  return (platform) =>
-    platform === "portal_inmobiliario" ? portal : platform === "linkedin" ? linkedin : undefined;
+  const x = createXOperations({ api: createXApi({ timeoutMs: MERCADOLIBRE_API_TIMEOUT_MS }) });
+  const byPlatform: Partial<Record<Platform, PublicationOperations>> = {
+    portal_inmobiliario: portal,
+    linkedin,
+    x,
+  };
+  return (platform) => byPlatform[platform];
 }
