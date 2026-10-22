@@ -1,6 +1,7 @@
 import {
   AppError,
   type Broker,
+  type BrokerPurgeRepository,
   type BrokerRepository,
   type ContentRepository,
   type ContentRunRepository,
@@ -216,6 +217,8 @@ export type AppDeps = {
   /** El hash con clave del `user_id` de un pedido de borrado (`createMetaUserIdHasher`). */
   hashMetaUserId: (userId: string) => string;
   metaDeletion: MetaDeletionRepository;
+  /** Borrar un corredor y todo lo suyo (F9.5-T14, ADR-0035): solo el administrador. */
+  brokerPurge: BrokerPurgeRepository;
   /** Firma del `state` del OAuth (`createStateSigner`, que compone `server.ts`). */
   oauthState: OAuthDeps["oauthState"];
   /** La URL absoluta del panel, adonde vuelve el OAuth. */

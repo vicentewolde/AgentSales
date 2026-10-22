@@ -464,6 +464,14 @@ export {
   portalReadiness,
 } from "./portal/readiness.js";
 export type { PasswordHasher, SecretTokens, TotpProvider } from "./ports/auth.js";
+export type {
+  BrokerPurgeBlocker,
+  BrokerPurgeCounts,
+  BrokerPurgeDeleted,
+  BrokerPurgeOutcome,
+  BrokerPurgeRepository,
+  BrokerStorageRefs,
+} from "./ports/broker-purge-repository.js";
 export type { BrokerRepository } from "./ports/broker-repository.js";
 export {
   type ContentChanges,
@@ -1107,6 +1115,21 @@ export {
   type PublishWarning,
   publishPublication,
 } from "./use-cases/publish-publication.js";
+export {
+  type BrokerPurgeResult,
+  type BrokerPurgeSummary,
+  brokerHasActivePublications,
+  isPurgeBlockingStatus,
+  isPurgeLiveStatus,
+  PURGE_BLOCKING_PUBLICATION_STATUSES,
+  PURGE_LIVE_PUBLICATION_STATUSES,
+  PURGE_PENDING_SHOWN,
+  PURGE_STORAGE_BATCH,
+  type PurgeBrokerDeps,
+  type PurgeStorageFailure,
+  purgeBroker,
+  purgeBrokerSummary,
+} from "./use-cases/purge-broker.js";
 export {
   MERCADOLIBRE_REFRESH_AGE_MS,
   type RefreshAccountTokensDeps,

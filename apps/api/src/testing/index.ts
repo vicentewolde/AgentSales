@@ -16,6 +16,7 @@ import {
   type XAuth,
 } from "@agentsales/core";
 import {
+  createFakeBrokerPurgeRepository,
   createFakePasswordHasher,
   createFakeSecretBox,
   createFakeSecretTokens,
@@ -523,6 +524,8 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     // Sin firma válida ni cuentas: los tests de Meta pasan las suyas (`meta.test.ts`).
     verifyMetaSignature: () => null,
     hashMetaUserId: (userId) => `hmac:${userId}`,
+    // Borrar un corredor (F9.5-T14): un doble sin datos; las pruebas de la ruta fijan los suyos.
+    brokerPurge: createFakeBrokerPurgeRepository(),
     metaDeletion: createInMemoryMetaDeletionRepository({
       platformAccounts: createInMemoryPlatformAccountRepository(),
       publications: createInMemoryPublicationRepository(),

@@ -131,6 +131,7 @@ Reglas: `main` solo recibe cambios por PR; una rama por tarea o por lote de tare
 | `BACKUP_TOOL_NOT_INSTALLED`, o `doctor` avisa por `pg_dump` | Falta el cliente de Postgres: `brew install libpq` (queda en `/opt/homebrew/opt/libpq/bin`, que el respaldo busca solo; si lo instalaste en otro lado, fija `PG_BIN_DIR` en `.env`) |
 | `doctor` dice que `pg_dump` no puede respaldar una base más nueva | Tu `pg_dump` es de una versión mayor anterior a la de Neon: `brew upgrade libpq` |
 | `BACKUP_FAILED` | `pnpm db:backup` muestra la causa: sin conexión o Neon sin CU-horas (reintenta más tarde), la carpeta sin espacio o sin permisos. Los respaldos buenos nunca se borran por un intento fallido |
+| `BROKER_HAS_ACTIVE_PUBLICATIONS` al borrar un corredor | Tiene publicaciones publicándose, programadas, esperando tu clic o con resultado dudoso (la CLI las lista): desprográmalas (`unschedule <id>`) o cancélalas (`publications cancel <id>`), confirma o di «no lo publiqué» y resuelve las dudosas (`publications resolve <id>`); después, vuelve a borrar |
 | `BACKUP_IN_PROGRESS` | Ya hay un respaldo en curso (el del worker o otro `pnpm db:backup`): espera unos minutos y vuelve a intentarlo |
 
 ## La portada del panel: «Hoy» (F9.5)
@@ -148,16 +149,26 @@ Mira lo mismo que **Seguimiento** (la agenda y lo publicado) y respeta el corred
 De punta a punta, con `pnpm dev` corriendo. Todo se puede hacer en el panel (**Corredores**) o en la CLI.
 
 1. **Crear el corredor:** en **Corredores → Crear un corredor** (o `pnpm -s cli brokers create --slug <slug> --name <nombre> --brand <marca> --color <#RRGGBB>`). Si no es tuyo, déjalo **no propio**: su IA usa la API de Anthropic (con tu clave) y su Marketplace va a mano. Si quieres, ponle un **tope de IA del mes** en dólares.
-2. **Invitar a su usuario:** en el detalle del corredor, **Usuarios → Invitar** (o `pnpm -s cli users invite --email <correo> --name <nombre> --broker <slug>`). El enlace se muestra **una sola vez** (en la CLI queda en el portapapeles): envíaselo por un canal privado. Vence en 72 h; si se pierde o vence, **Restablecer** da otro.
-3. **El corredor entra** con el enlace, elige su contraseña y completa **Mi marca**: colores, WhatsApp (Portal lo exige), logo, y baja su planilla de Excel (ya trae su hoja Corredor llena). Ojo: si después carga una planilla vieja, puede deshacer lo que editó en Mi marca (manda lo último que se guarde).
+2. **Invitar a su usuario:** en el detalle del corredor, **Usuarios → Invitar** (o `pnpm -s cli users invite --email <correo> --name <nombre> --broker <slug>`). El enlace se muestra **una sola vez** (en la CLI queda en el portapapeles): **Copiar** o **Enviar por correo**, que abre tu programa de correo con el mensaje listo (para su correo, asunto «Tu acceso a AgentSales», el enlace y que vence en 72 h); revísalo y envíalo tú. El enlace va solo en el correo, nunca en la dirección de la página. El enlace sirve una sola vez; si lo mandas por correo, no lo reenvíes. Vence en 72 h; si se pierde o vence, **Restablecer** da otro (con el mismo botón).
+   - **Una sesión por navegador.** La sesión del panel es una cookie del navegador: todas sus ventanas y pestañas comparten la misma. Si abres el enlace del corredor en tu navegador, la página avisa que tienes abierta tu sesión y solo la cierra si aprietas **Seguir y cerrar esa sesión**. Para ver como corredor y como administrador a la vez, abre el enlace (o entra como el corredor) en una **ventana privada** o en otro perfil del navegador.
+3. **El corredor entra** con el enlace (la página dice «Crea tu usuario en AgentSales»), elige su contraseña y completa **Mi marca**: colores, WhatsApp (Portal lo exige), logo, y baja su planilla de Excel (ya trae su hoja Corredor llena). Ojo: si después carga una planilla vieja, puede deshacer lo que editó en Mi marca (manda lo último que se guarde).
 4. **Sus cuentas** (las conectas tú, en **Cuentas**):
    - **Instagram:** como evaluador de tu app de Meta. En el servidor, con el botón **Conectar Instagram** de **Cuentas**: tú, o el propio corredor desde su usuario (ADR-0028; inicia sesión él mismo, desde donde esté, y solo puede conectar la suya); en tu Mac, con el token de *Generate token* (pasos en `docs/07-checklist-cuentas.md`, "Antes de F7").
    - **Mercado Libre:** en el servidor, con el botón **Conectar Mercado Libre** de **Cuentas** (la vuelta es automática); en tu Mac, con su cuenta y pegando la dirección de vuelta.
    - **Marketplace:** **Activar Marketplace a mano** (el formulario automático es solo para tus corredores). Al publicar, el sistema deja el texto, las fotos y el precio listos; el corredor lo publica en Facebook y confirma con el enlace o "No lo publiqué".
-5. **La lista de alta** del corredor (en su detalle, en Mi marca y en `pnpm -s cli brokers show <slug>`) dice qué falta y quién lo hace (su Instagram lo conecta el propio corredor en **Cuentas**). Una **marca** (`--kind brand`) tiene la suya, porque solo publica posts: la marca, el **perfil editorial** (al menos una línea de contenido y un hecho), el usuario y **al menos una red de los posts** conectada (Instagram, X, LinkedIn o TikTok las conecta la marca en **Cuentas**; Discord, tú con la CLI). No pide WhatsApp, logo, Mercado Libre ni Marketplace, que son de los avisos.
+5. **La lista de alta** del corredor (en su detalle, en Mi marca y en `pnpm -s cli brokers show <slug>`) dice qué falta y quién lo hace (su Instagram lo conecta el propio corredor en **Cuentas**). Una **marca** (`--kind brand`) tiene la suya, porque solo publica posts: la marca, el **perfil editorial** (al menos un tema y un hecho), el usuario y **al menos una red de los posts** conectada (Instagram, X, LinkedIn o TikTok las conecta la marca en **Cuentas**; Discord, tú con la CLI). No pide WhatsApp, logo, Mercado Libre ni Marketplace, que son de los avisos.
 6. **El gasto:** en **Corredores** y con `pnpm -s cli usage`, lo gastado en IA en el mes (estimado: la cifra oficial está en la consola de Anthropic). Con el tope alcanzado, preparar los textos se frena hasta que subas el tope o empiece el mes siguiente.
 
 Para desactivar a alguien: **Desactivar** en su usuario (o `pnpm -s cli users disable <correo>`) cierra sus sesiones al tiro.
+
+### Borrar un corredor de verdad (F9.5)
+
+Para los corredores de prueba que ensucian el panel, o un cliente que se va y pide borrar sus datos. Es solo tuyo (administrador), por la CLI, y **no se puede deshacer**: saca un respaldo antes (`pnpm db:backup`; contra el servidor, `ENV_FILE=.env.production pnpm db:backup`).
+
+1. `pnpm -s cli brokers delete <slug>` muestra lo que se borra (propiedades, fotos y videos, publicaciones, posts, usuarios, cuentas y cargas) sin borrar nada, y cuántas publicaciones están publicadas o pausadas: esas seguirán en las redes (retíralas antes si quieres bajarlas).
+2. `pnpm -s cli brokers delete <slug> --confirm <slug>` lo borra: la base en un solo paso y después sus archivos en R2. Al final dice qué se borró y si quedó algo pendiente en R2 (la base queda borrada igual; lo pendiente se borra a mano por su clave).
+
+Se niega si alguna publicación está publicándose, programada, esperando tu clic o con resultado dudoso: dice cuáles; desprográmalas o cancélalas, confirma o di «no lo publiqué» y resuelve las dudosas. Lo publicado en las redes sigue allá: borrar aquí no retira nada. El paso a paso para el servidor está en `docs/10-despliegue.md` ("Borrar un corredor de verdad").
 
 ## El contenido de tus marcas, de punta a punta (F9)
 
@@ -165,7 +176,7 @@ El recorrido completo de un post de marca, en orden. Cada paso tiene su sección
 
 1. **Las marcas:** `pnpm db:seed --operator-brands` crea `vinny` y `agentpey` (solo en tu instancia; `docs/07-checklist-cuentas.md`, "F9 · Contenido de marca"). Otra marca: `pnpm -s cli brokers create --kind brand …`.
 2. **Sus redes:** conecta cada cuenta (Instagram, Discord, LinkedIn, X, TikTok) y haz su prueba de entrada antes de publicar de verdad ("Conectar las redes de los posts").
-3. **El perfil editorial:** idiomas, líneas, hechos, cosas que evitar y cadencia ("Llenar el perfil editorial").
+3. **El perfil editorial:** idiomas, público, temas de la marca, hechos, cosas que evitar y cadencia ("Llenar el perfil editorial").
 4. **El plan:** la IA propone ideas con fecha; tú aceptas, editas o descartas cada una ("Pedir a la IA un plan de ideas"). O creas un post a mano ("Publicar un post de una marca").
 5. **Los textos:** al aceptar una idea (`post accept <id> --wait` los espera) o con `post draft` (pide textos nuevos: gasta IA otra vez) la IA redacta un texto por red e idioma; los revisas y corriges.
 6. **Aprobar:** cada texto por separado; aprobar abre una publicación por cuenta, formato e idioma.
@@ -197,10 +208,11 @@ pnpm -s cli brand edit --broker agentpey \
 ```
 
 - **Idiomas:** `es`, `en` o `es,en`; el primero es el principal. Con dos, cada post sale en los dos idiomas como publicaciones separadas, espaciadas por la cadencia.
-- **Líneas de contenido** (`--pillar "clave|nombre|peso|descripción"`): los temas de los que habla la marca. El peso reparte las ideas del plan (una línea con peso 3 recibe el triple que una con 1). La clave va en minúsculas, sin espacios.
-- **Hechos** (`--fact`, uno por frase): **lo más importante**. Cifras, clientes, fechas y logros que la IA puede afirmar. Sin hechos, la IA escribe sobre ideas y criterios, pero no inventa números ni nombres. Revísalos: lo que pongas aquí puede salir publicado.
-- **Cosas que evitar** (`--avoid`): temas, palabras o promesas que no quieres ver.
-- **Cadencia** (`--cadence "red/posts por semana/días/horas/horas entre idiomas"`): por red (instagram, x, linkedin, discord, tiktok); los días como `lun,mar,mie,jue,vie,sab,dom` y las horas en **hora de Chile**. Las horas entre idiomas son 6 si no las pones. `--remove-cadence <red>` quita una red.
+- **Público** (`--audience`): a quién le habla la marca, en una o dos frases. Ejemplo de un corredor: «Familias y profesionales que buscan arrendar o comprar departamento en Providencia, Ñuñoa y Las Condes, y propietarios que quieren arrendar su propiedad».
+- **Temas de la marca** (antes «Líneas de contenido»; `--pillar "clave|nombre|peso|descripción"`): de qué publica tu marca y cuánto de cada tema. El peso reparte las ideas del plan; en el panel se elige como **Poco** (1), **Normal** (2) o **Mucho** (3), así un tema con «Mucho» recibe el triple de ideas que uno con «Poco». La clave va en minúsculas, sin espacios (la usan los posts); en el panel se arma sola desde el nombre si la dejas vacía. Ejemplos: «Propiedades disponibles» (mucho), «Consejos para arrendar o comprar» (normal), «El barrio: comercio, metro y parques» (poco), «Casos y cómo trabajo» (poco).
+- **Hechos que la IA puede afirmar** (`--fact`, uno por frase): **lo más importante**. La IA solo afirma lo que esté aquí: escribe solo cosas verdaderas y comprobables (cifras, fechas, comunas, cómo trabajas). Sin hechos, la IA escribe sobre ideas y criterios, pero no inventa números ni nombres. Revísalos: lo que pongas aquí puede salir publicado. Ejemplos ya completados: «Corredor de propiedades en Santiago desde 2018», «Trabajo en Providencia, Ñuñoa y Las Condes», «Arriendos con contrato notarial y revisión de antecedentes». En el panel, los ejemplos llegan como frases a completar («Corredor de propiedades en [comuna] desde [año]», «Trabajo en [comunas]», «Arriendos con [cómo trabajas]») y el perfil no se guarda mientras quede algo entre corchetes.
+- **Cosas que evitar** (`--avoid`): temas, palabras o promesas que no quieres ver. Ejemplos: «Prometer plusvalía o rentabilidad», «Hablar mal de otros corredores», «Requisitos sobre niños, nacionalidad o estado civil», «Dar la dirección exacta».
+- **Cadencia** (`--cadence "red/posts por semana/días/horas/horas entre idiomas"`): por red (instagram, x, linkedin, discord, tiktok); los días como `lun,mar,mie,jue,vie,sab,dom` y las horas en **hora de Chile**. Las horas entre idiomas (solo con dos idiomas) son las que separan el post en un idioma del mismo post en el otro, en la misma red; son 6 si no las pones. `--remove-cadence <red>` quita una red. En el panel no se escribe este formato: marcas la red, escribes los posts por semana, aprietas los días (**L M M J V S D**) y agregas cada hora con el campo de hora y **Agregar** (se quita con su **×**).
 - Cada opción **reemplaza** su campo y lo demás queda como estaba; `--add-fact` y `--add-avoid` suman a la lista. `--audience ""` lo borra.
 - **Con un archivo:** `pnpm -s cli brand show --broker agentpey --json > perfil.json`, lo editas y `pnpm -s cli brand edit --broker agentpey --file perfil.json`. Los campos que el archivo no trae quedan como estaban.
 - Si algo no sirve, la CLI dice qué campo y por qué (`EDITORIAL_PROFILE_INVALID`) y no guarda nada.
@@ -257,7 +269,7 @@ Todo lo anterior se puede hacer en el panel, en **Contenido** (el menú de la iz
 - **En vivo**, publicar y reintentar piden un segundo clic ("Sí, publicar en vivo"), y programar lo avisa en rojo.
 - **Videos de más de 100 MB:** el navegador los sube sin calcular su huella (sha256); el servidor la calcula después y el video aparece en unos minutos. Si ya estaba en el post, no se duplica.
 - **Calendario** (F9-T18, en el menú): la semana o el mes con lo programado y lo ya publicado, posts y propiedades juntos, en hora de Chile. Desde ahí cambias la hora de una publicación programada (la misma confirmación en vivo de siempre); lo aprobado sin programar, lo que se está publicando y lo fallido siguen en **Seguimiento**.
-- **El perfil editorial** se edita en **Mi marca** (o, siendo administrador, en la página de cada corredor), con los mismos campos que `brand edit`. Si algo no sirve, el error aparece en rojo junto al campo y no se guarda nada.
+- **El perfil editorial** se edita en **Mi marca** (o, siendo administrador, en la página de cada corredor), con los mismos campos que `brand edit` (ver "Llenar el perfil editorial de tus marcas"). Cada campo explica qué va y trae **ejemplos de un corredor que se insertan con un clic** (después los cambias por los tuyos); los temas se pesan con **Poco / Normal / Mucho** (un peso distinto puesto con la CLI aparece como «Como está (peso N, de la CLI)», no se toca y un aviso dice que el reparto ya no es el que dicen los nombres), y la cadencia se arma con botones de días y chips de horas (hasta 8 horas por red; sin días ni horas, el plan usa de lunes a viernes a las 10:00). La clave de un tema nuevo se arma sola al guardar y queda fija: renombrar el tema después no la cambia. Si algo no sirve, el error aparece en rojo junto al campo y no se guarda nada.
 
 ### La vista previa por red (F9.5-T07)
 
@@ -277,7 +289,7 @@ Cada texto, el de un post (en su pestaña de red e idioma) y el de una propiedad
 
 ## Pedir a la IA un plan de ideas (F9)
 
-Si no sabes qué publicar, la IA te propone **ideas con fecha** para las próximas semanas, con el perfil editorial de la marca (sus líneas, sus hechos y su cadencia). **Una idea no se publica sola:** tú decides cuáles aceptar; al aceptar una, la IA redacta sus textos, y después los revisas, apruebas y programas como cualquier post. Cada plan gasta IA de la marca (entra a su tope del mes), aunque descartes todo.
+Si no sabes qué publicar, la IA te propone **ideas con fecha** para las próximas semanas, con el perfil editorial de la marca (sus temas, sus hechos y su cadencia). **Una idea no se publica sola:** tú decides cuáles aceptar; al aceptar una, la IA redacta sus textos, y después los revisas, apruebas y programas como cualquier post. Cada plan gasta IA de la marca (entra a su tope del mes), aunque descartes todo.
 
 ```bash
 # 1. Pedir el plan (por defecto, 14 días desde mañana, todas las redes de la marca y las ideas que

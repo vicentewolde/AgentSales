@@ -500,8 +500,14 @@ describe("panel: bloqueos", () => {
     expect(within(section).getByText(/Hay publicaciones aprobadas que no han salido/)).toBeTruthy();
     const editButtons = within(section).getAllByRole("button", { name: "Editar" });
     expect((editButtons[0] as HTMLButtonElement).disabled).toBe(true);
-    expect(
-      within(section).getAllByText(/Este texto tiene publicaciones activas/).length,
-    ).toBeGreaterThan(0);
+    // El aviso en lenguaje simple y en tono de aviso, no de error (F9.5-T15).
+    const notices = within(section).getAllByText(
+      /^Ya se publicó o está por publicarse con este texto\. Para cambiarlo, primero retira o descarta esas publicaciones\.$/,
+    );
+    expect(notices.length).toBeGreaterThan(0);
+    for (const notice of notices) {
+      expect(notice.closest(".bg-warning-50")).not.toBeNull();
+      expect(notice.closest(".bg-danger-50")).toBeNull();
+    }
   });
 });
