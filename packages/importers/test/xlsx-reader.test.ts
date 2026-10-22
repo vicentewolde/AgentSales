@@ -7,6 +7,7 @@ import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 import {
   checkXlsxUncompressedSize,
+  MAX_BROKER_XLSX_UNCOMPRESSED_BYTES,
   MAX_DATA_ROWS,
   MAX_XLSX_BYTES,
   MAX_XLSX_UNCOMPRESSED_BYTES,
@@ -406,6 +407,24 @@ describe("readBrokerWorkbook", () => {
     const bytes = await buildWorkbook({ broker: [["nombre_corredor", ""]] });
     const error = await expectError(readBrokerWorkbook(bytes), "IMPORT_FILE_INVALID");
     expect(isAppError(error) && error.message).toMatch(/hoja Corredor está vacía/);
+  });
+
+  it("descomprimido en más de 8 MB → IMPORT_XLSX_TOO_LARGE sin abrirlo con exceljs", async () => {
+    // 9 MB de ceros con deflate: el archivo pesa unos kB, muy bajo cualquier tope comprimido.
+    const bomb = buildZip([
+      { name: "xl/worksheets/sheet1.xml", data: Buffer.alloc(9 * 1024 * 1024), method: "deflate" },
+    ]);
+    expect(bomb.byteLength).toBeLessThan(3 * 1024 * 1024);
+    // exceljs lo rechazaría como "no es un Excel" (le faltan las partes): este código dice que la
+    // revisión corrió antes y no llegó a abrirlo.
+    const error = await expectError(
+      readBrokerWorkbook(new Uint8Array(bomb)),
+      "IMPORT_XLSX_TOO_LARGE",
+    );
+    expect(isAppError(error) && error.details).toMatchObject({
+      maxBytes: MAX_BROKER_XLSX_UNCOMPRESSED_BYTES,
+    });
+    expect(isAppError(error) && error.message).toBe("El Excel descomprimido pasa de 8 MB");
   });
 
   it("lo que no es un xlsx o pasa del tope → IMPORT_FILE_INVALID", async () => {

@@ -433,6 +433,13 @@ export function normalizeBrokerBrand(input: BrokerBrandInput): Partial<BrokerBra
 }
 
 /**
+ * Tope de la planilla para **crear un corredor desde una planilla** (F9.5-T16): la lee la API con
+ * exceljs, que carga el libro entero en memoria. La plantilla oficial pesa unos 15 kB; el panel lo
+ * revisa antes de subirla y la API corta con 413 antes de leerla.
+ */
+export const MAX_BROKER_TEMPLATE_BYTES = 3 * 1024 * 1024;
+
+/**
  * Lo que la hoja Corredor de una planilla deja en el formulario de **Crear un corredor**
  * (F9.5-T16): los campos de la marca ya normalizados, `null` (o `[]`) los que vinieron vacíos.
  */
@@ -467,6 +474,8 @@ const SHEET_TO_BRAND: Record<Exclude<BrokerField, "logo">, keyof BrokerBrand> = 
  */
 export function brokerSheetDraft(sheet: RawBrokerSheet): BrokerSheetDraft {
   const { values, issues: cellIssues, warnings } = readBrokerSheetCells(sheet);
+  // Una celda de `logo` ilegible no frena el formulario: el logo no se sube desde aquí (se sube en
+  // el detalle del corredor), así que su problema se descarta; los demás van con su campo de la API.
   const issues: BrokerFieldIssue[] = cellIssues.flatMap((issue) =>
     issue.column === "logo"
       ? []

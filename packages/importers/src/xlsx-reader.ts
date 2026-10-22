@@ -22,6 +22,12 @@ export const MAX_DATA_ROWS = 1000;
  * ser mucho más dentro de exceljs (que lo carga entero en memoria).
  */
 export const MAX_XLSX_UNCOMPRESSED_BYTES = 50 * 1024 * 1024;
+/**
+ * Tope del xlsx descomprimido al **crear un corredor desde una planilla** (F9.5-T16): ese lector
+ * corre dentro de la API (512 MB en Fly), y exceljs carga el libro entero: 46 MB descomprimidos
+ * llegaron a casi 800 MB de memoria. La plantilla oficial ocupa unos 75 kB descomprimida.
+ */
+export const MAX_BROKER_XLSX_UNCOMPRESSED_BYTES = 8 * 1024 * 1024;
 
 const LISTINGS_SHEET = "Propiedades";
 const BROKER_SHEET = "Corredor";
@@ -89,11 +95,11 @@ async function loadBytes(source: string | Uint8Array): Promise<Uint8Array> {
   }
 }
 
-const tooBigUncompressed = (bytes: number) =>
+const tooBigUncompressed = (bytes: number, maxBytes: number) =>
   new AppError(
     "IMPORT_XLSX_TOO_LARGE",
-    `El Excel descomprimido pasa de ${MAX_XLSX_UNCOMPRESSED_BYTES / 1024 / 1024} MB`,
-    { details: { bytes, maxBytes: MAX_XLSX_UNCOMPRESSED_BYTES } },
+    `El Excel descomprimido pasa de ${maxBytes / 1024 / 1024} MB`,
+    { details: { bytes, maxBytes } },
   );
 
 /**
@@ -138,7 +144,7 @@ export async function checkXlsxUncompressedSize(
       zipfile.on("entry", (entry: yauzl.Entry) => {
         declared += entry.uncompressedSize;
         if (declared > maxBytes) {
-          stop(tooBigUncompressed(declared));
+          stop(tooBigUncompressed(declared, maxBytes));
           return;
         }
         if (entry.fileName.endsWith("/")) {
@@ -281,12 +287,13 @@ export async function readListingsWorkbook(
 /**
  * Lee **solo** la hoja Corredor de una planilla (F9.5-T16, crear un corredor desde una planilla): la
  * hoja Propiedades puede faltar o venir vacía. Con los mismos topes que la carga (comprimido y
- * descomprimido). Devuelve `Campo` → `Tu valor` tal cual (lo valida core). `IMPORT_FILE_INVALID` si
- * no es un xlsx, falta la hoja Corredor o no tiene ningún valor.
+ * descomprimido, con su propio tope más bajo: `MAX_BROKER_XLSX_UNCOMPRESSED_BYTES`, revisado antes de
+ * exceljs). Devuelve `Campo` → `Tu valor` tal cual (lo valida core). `IMPORT_FILE_INVALID` si no es
+ * un xlsx, falta la hoja Corredor o no tiene ningún valor; `IMPORT_XLSX_TOO_LARGE` sobre el tope.
  */
 export async function readBrokerWorkbook(source: string | Uint8Array): Promise<RawBrokerSheet> {
   const bytes = await loadBytes(source);
-  await checkXlsxUncompressedSize(bytes);
+  await checkXlsxUncompressedSize(bytes, MAX_BROKER_XLSX_UNCOMPRESSED_BYTES);
   const workbook = await loadWorkbook(bytes);
   const sheet = findSheet(workbook, BROKER_SHEET);
   if (sheet === undefined) {

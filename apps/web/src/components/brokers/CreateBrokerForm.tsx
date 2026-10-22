@@ -1,4 +1,9 @@
-import { type BrokerSheetDraft, parseUsdAmount, slugify } from "@agentsales/core";
+import {
+  type BrokerSheetDraft,
+  MAX_BROKER_TEMPLATE_BYTES,
+  parseUsdAmount,
+  slugify,
+} from "@agentsales/core";
 import { type ChangeEvent, type FormEvent, useId, useState } from "react";
 import { ApiError } from "../../api/client.js";
 import type { BrokerFields } from "../../queries/brokers.js";
@@ -8,7 +13,11 @@ import { Button } from "../ui/Button.js";
 import { Field, Input } from "../ui/Field.js";
 import { FILE_INPUT } from "../ui/styles.js";
 
-/** Los colores de un corredor que no eligió los suyos (F9.5-T16): azul tinta y cobre. */
+/**
+ * Los colores de un corredor que no eligió los suyos (F9.5-T16): azul tinta y cobre, los mismos
+ * `--color-brand-700` y `--color-accent-500` del panel (`index.css`). Van aquí como texto porque se
+ * guardan en el corredor (la API pide `#RRGGBB`), no son una clase de Tailwind.
+ */
 export const DEFAULT_PRIMARY_COLOR = "#233B78";
 export const DEFAULT_SECONDARY_COLOR = "#C96F24";
 
@@ -96,6 +105,7 @@ export function CreateBrokerForm({
   const [slugTouched, setSlugTouched] = useState(false);
   const [advanced, setAdvanced] = useState(false);
   const [capError, setCapError] = useState<string | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
   const [filled, setFilled] = useState<{ file: string; draft: BrokerSheetDraft } | null>(null);
 
   const set = <K extends keyof Values>(key: K, value: Values[K]) =>
@@ -113,6 +123,15 @@ export function CreateBrokerForm({
     const file = event.target.files?.[0];
     event.target.value = "";
     if (file === undefined) return;
+    // El tope de la API (413), revisado antes de subir: así no se manda un archivo que no pasa.
+    if (file.size > MAX_BROKER_TEMPLATE_BYTES) {
+      setFilled(null);
+      setFileError(
+        `La planilla pesa más de ${MAX_BROKER_TEMPLATE_BYTES / 1024 / 1024} MB: sube la planilla de AgentSales con la hoja Corredor llena.`,
+      );
+      return;
+    }
+    setFileError(null);
     onParseTemplate(file, (draft) => {
       setValues((current) => ({
         ...current,
@@ -150,7 +169,8 @@ export function CreateBrokerForm({
     }
     setCapError(null);
     onSubmit({
-      slug: values.slug.trim(),
+      // Con el identificador vacío, el de la marca.
+      slug: values.slug.trim() || slugify(values.brandName),
       name: values.name,
       brandName: values.brandName,
       primaryColor: optional(values.primaryColor) ?? DEFAULT_PRIMARY_COLOR,
@@ -172,6 +192,8 @@ export function CreateBrokerForm({
   const invalid = new Set(
     failed instanceof ApiError ? (failed.issues ?? []).flatMap((issue) => issue.field ?? []) : [],
   );
+  // Un identificador que ya usa otro corredor (409, sin `issues`) también se marca.
+  if (error instanceof ApiError && error.code === "BROKER_SLUG_TAKEN") invalid.add("slug");
   const input = (
     key: keyof Values,
     label: string,
@@ -233,7 +255,12 @@ export function CreateBrokerForm({
             </Alert>
           )}
         </div>
-        {parseError && <ErrorAlert error={parseError} />}
+        {fileError && (
+          <Alert role="alert" tone="danger" className="mt-2">
+            {fileError}
+          </Alert>
+        )}
+        {parseError && fileError === null && <ErrorAlert error={parseError} />}
       </div>
 
       <form onSubmit={submit} aria-label="Crear un corredor" className="grid gap-3 sm:grid-cols-2">
@@ -251,7 +278,8 @@ export function CreateBrokerForm({
               width="auto"
               value={values.slug}
               onChange={(event) => {
-                setSlugTouched(true);
+                // Si queda vacío, vuelve a seguir a la marca.
+                setSlugTouched(event.target.value.trim() !== "");
                 set("slug", event.target.value);
               }}
               aria-invalid={invalid.has("slug")}

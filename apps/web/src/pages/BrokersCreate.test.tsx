@@ -2,7 +2,7 @@
 import type { BrokerSheetDraft } from "@agentsales/core";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { harness } from "../../test/harness.js";
+import { brokerData, harness } from "../../test/harness.js";
 
 // F9.5-T16: crear un corredor con lo esencial a la vista, las opciones avanzadas plegadas y la
 // opción de llenar el formulario desde una planilla (sin guardar nada hasta crear).
@@ -111,6 +111,24 @@ describe("Crear un corredor (F9.5-T16)", () => {
     });
   });
 
+  it("el identificador vacío vuelve a seguir a la marca; uno ya usado queda marcado", async () => {
+    const h = harness();
+    await h.brokers.create(brokerData("ocupado"));
+    h.renderApp("/corredores");
+    const form = await openForm();
+    fireEvent.change(within(form).getByLabelText("Nombre"), { target: { value: "Ana" } });
+    fireEvent.change(within(form).getByLabelText("Identificador"), { target: { value: "a-mano" } });
+    fireEvent.change(within(form).getByLabelText("Identificador"), { target: { value: "" } });
+    fireEvent.change(within(form).getByLabelText("Nombre de la marca"), {
+      target: { value: "Ocupado" },
+    });
+    expect(fieldValue(form, "Identificador")).toBe("ocupado");
+    fireEvent.click(within(form).getByRole("button", { name: "Crear corredor" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("Ya existe el corredor");
+    expect(within(form).getByLabelText("Identificador").getAttribute("aria-invalid")).toBe("true");
+  });
+
   it("un tope mal escrito no se manda y abre las opciones avanzadas", async () => {
     const h = harness();
     h.renderApp("/corredores");
@@ -173,6 +191,18 @@ describe("Crear un corredor (F9.5-T16)", () => {
       website: "nunoa.example.cl",
       fixedHashtags: ["#uno", "#dos"],
     });
+  });
+
+  it("una planilla de más de 3 MB no se sube: el panel lo dice antes", async () => {
+    const h = harness();
+    h.renderApp("/corredores");
+    await openForm();
+    fireEvent.change(screen.getByLabelText("Llenar desde una planilla"), {
+      target: { files: [new File([new Uint8Array(3 * 1024 * 1024 + 1)], "grande.xlsx")] },
+    });
+
+    expect((await screen.findByRole("alert")).textContent).toContain("pesa más de 3 MB");
+    expect(h.requests).not.toContain("POST /brokers/parse-template");
   });
 
   it("una planilla con un valor que no sirve: el error claro y el campo marcado", async () => {

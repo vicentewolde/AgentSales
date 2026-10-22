@@ -30,6 +30,7 @@ export {
   brokerSheetDraft,
   brokerTemplateValues,
   isValidSlug,
+  MAX_BROKER_TEMPLATE_BYTES,
   normalizeBrokerBrand,
   normalizeLlmMonthlyCap,
   type ParsedBrokerSheet,

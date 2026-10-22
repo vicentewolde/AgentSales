@@ -8,8 +8,8 @@ import {
   createBroker,
   type EditorialProfileRepository,
   type LogoNormalizer,
+  MAX_BROKER_TEMPLATE_BYTES,
   MAX_LOGO_BYTES,
-  MAX_XLSX_BYTES,
   type MediaRepository,
   type MediaStorage,
   onboardingSteps,
@@ -113,13 +113,15 @@ export function brokerRoutes(deps: BrokerRoutesDeps) {
           assertCan(requireAuth(c).user, "brokers.create");
           await next();
         },
-        // El mismo tope que el Excel de una carga; el multipart se lee completo en memoria.
+        // Un tope propio, más bajo que el de una carga: exceljs corre aquí, dentro de la API, y
+        // carga el libro entero (el descomprimido lo corta `readBrokerWorkbook`, a 8 MB). El
+        // multipart se lee completo en memoria: el tope va antes de leerlo (413).
         bodyLimit({
-          maxSize: MAX_XLSX_BYTES + MULTIPART_OVERHEAD_BYTES,
+          maxSize: MAX_BROKER_TEMPLATE_BYTES + MULTIPART_OVERHEAD_BYTES,
           onError: () => {
             throw new AppError(
               "REQUEST_TOO_LARGE",
-              `La planilla pasa de ${MAX_XLSX_BYTES / 1024 / 1024} MB`,
+              `La planilla pasa de ${MAX_BROKER_TEMPLATE_BYTES / 1024 / 1024} MB`,
             );
           },
         }),

@@ -1302,7 +1302,8 @@ export const brokerLogoFormSchema = z.object({ logo: fileSchema });
 
 /**
  * `POST /brokers/parse-template` (administrador, F9.5-T16): la planilla en el campo `file`
- * (multipart, hasta `MAX_XLSX_BYTES`). Solo se lee la hoja Corredor; no se guarda nada.
+ * (multipart, hasta `MAX_BROKER_TEMPLATE_BYTES`, 3 MB). Solo se lee la hoja Corredor; no se guarda
+ * nada.
  */
 export const brokerTemplateFormSchema = z.object({ file: fileSchema });
 

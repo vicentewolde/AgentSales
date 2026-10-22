@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { findWorkspaceRoot } from "@agentsales/config";
-import { ALL_SCOPE, AppError, type Broker } from "@agentsales/core";
+import { ALL_SCOPE, AppError, type Broker, MAX_BROKER_TEMPLATE_BYTES } from "@agentsales/core";
 import {
   BROKER_TEMPLATE_PATH,
   readBrokerWorkbook,
@@ -148,7 +148,7 @@ describe("POST /brokers/parse-template (F9.5-T16)", () => {
     expect(missing.status).toBe(400);
   });
 
-  it("una planilla de más de 10 MB: 413 sin leerla", async () => {
+  it("una planilla de más de 3 MB: 413 sin leerla", async () => {
     let read = false;
     const s = await setup({
       readBrokerTemplate: async () => {
@@ -156,9 +156,26 @@ describe("POST /brokers/parse-template (F9.5-T16)", () => {
         return {};
       },
     });
-    const response = await s.admin(new Uint8Array(11 * 1024 * 1024));
+    // Sobre el tope más el margen del multipart.
+    const response = await s.admin(new Uint8Array(MAX_BROKER_TEMPLATE_BYTES + 128 * 1024));
     expect(response.status).toBe(413);
+    expect(await errorOf(response)).toMatchObject({ message: "La planilla pasa de 3 MB" });
     expect(read).toBe(false);
+  });
+
+  it("bajo 3 MB pero de más de 8 MB descomprimida: 413 IMPORT_XLSX_TOO_LARGE", async () => {
+    const s = await setup();
+    // Un tono de 9 MB de una sola letra: el xlsx comprimido pesa unos kB.
+    const bytes = await sheetOf({ tone: "a".repeat(9 * 1024 * 1024) });
+    expect(bytes.byteLength).toBeLessThan(MAX_BROKER_TEMPLATE_BYTES);
+
+    const response = await s.admin(bytes);
+
+    expect(response.status).toBe(413);
+    expect(await errorOf(response)).toMatchObject({
+      code: "IMPORT_XLSX_TOO_LARGE",
+      message: "El Excel descomprimido pasa de 8 MB",
+    });
   });
 
   it("solo el administrador: un corredor recibe 403 y el archivo no se lee", async () => {
