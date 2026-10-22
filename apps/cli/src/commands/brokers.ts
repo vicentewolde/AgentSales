@@ -371,6 +371,15 @@ function printPurgeSummary(deps: Io, { broker, counts }: BrokerPurgeSummaryRespo
     ["cargas de planillas", counts.importRuns],
   ];
   for (const [label, n] of rows) deps.print(`  ${String(n).padStart(5)}  ${label}`);
+  const live = counts.livePublications;
+  if (live > 0) {
+    deps.print(
+      c.yellow(
+        `  ${live} ${live === 1 ? "publicación está publicada o pausada: seguirá publicada" : "publicaciones están publicadas o pausadas: seguirán publicadas"} en las redes (borrar aquí no las retira; si quieres bajarlas, retíralas antes)`,
+      ),
+    );
+    return;
+  }
   deps.print(
     c.dim(
       "  Lo publicado en las redes sigue allá: borrar aquí no retira nada (para eso, retirar).",

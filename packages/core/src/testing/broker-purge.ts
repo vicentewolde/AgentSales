@@ -3,6 +3,7 @@ import type {
   BrokerPurgeBlocker,
   BrokerPurgeCounts,
   BrokerPurgeDeleted,
+  BrokerPurgeOutcome,
   BrokerPurgeRepository,
   BrokerStorageRefs,
 } from "../ports/broker-purge-repository.js";
@@ -15,6 +16,11 @@ export type FakeBrokerPurgeData = {
   refs?: Partial<BrokerStorageRefs>;
   /** Lo que devuelve `purge` (por defecto, una fila de `brokers`). */
   deleted?: BrokerPurgeDeleted;
+  /**
+   * Los posts y las cargas que `purge` dice haber borrado (por defecto, los de `refs`): uno que no
+   * está en `refs` simula uno creado entre la lectura de las claves y la transacción.
+   */
+  purgedIds?: Partial<Pick<BrokerPurgeOutcome, "postIds" | "importRunIds">>;
   /** Un error para `purge` (por ejemplo, la base caída): no se borra nada. */
   failPurge?: AppError;
 };
@@ -32,6 +38,7 @@ const ZERO: BrokerPurgeCounts = {
   listings: 0,
   media: 0,
   publications: 0,
+  livePublications: 0,
   posts: 0,
   users: 0,
   accounts: 0,
@@ -83,7 +90,11 @@ export function createFakeBrokerPurgeRepository(
       }
       purged.push(brokerId);
       await options.onPurge?.(brokerId);
-      return { ...(entry.deleted ?? { brokers: 1 }) };
+      return {
+        deleted: { ...(entry.deleted ?? { brokers: 1 }) },
+        postIds: [...(entry.purgedIds?.postIds ?? entry.refs?.postIds ?? [])],
+        importRunIds: [...(entry.purgedIds?.importRunIds ?? entry.refs?.importRunIds ?? [])],
+      };
     },
   };
 }

@@ -4,6 +4,7 @@ import {
   type BrokerPurgeRepository,
   brokerHasActivePublications,
   isPurgeBlockingStatus,
+  isPurgeLiveStatus,
 } from "@agentsales/core";
 import { count, eq, inArray, or, type SQL } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
@@ -117,11 +118,13 @@ export function createBrokerPurgeRepository(db: SchemaDatabase): BrokerPurgeRepo
         const blocking: BrokerPurgeBlocker[] = rows.filter(({ status }) =>
           isPurgeBlockingStatus(status),
         );
+        const livePublications = rows.filter(({ status }) => isPurgeLiveStatus(status)).length;
         return {
           counts: {
             listings: listingCount,
             media: mediaCount,
             publications: publicationCount,
+            livePublications,
             posts: postCount,
             users: userCount,
             accounts: accountCount,
@@ -158,14 +161,37 @@ export function createBrokerPurgeRepository(db: SchemaDatabase): BrokerPurgeRepo
     async purge(brokerId) {
       return withDbErrors(() =>
         db.transaction(async (tx) => {
-          // La fila del corredor y sus publicaciones quedan tomadas: un cambio de estado que se
-          // cruce espera el borrado (y después ya no encuentra la fila).
+          // Se toman la fila del corredor y, antes de leer las publicaciones, sus propiedades,
+          // posts, cuentas y usuarios: un `INSERT` concurrente con FK a cualquiera de ellos (un
+          // medio, un texto, una publicación, una sesión…) pide un candado `KEY SHARE` que choca con
+          // `FOR UPDATE`, así que espera el borrado y después falla por su FK, sin dejar huérfanos.
+          // Las publicaciones también quedan tomadas: un cambio de estado que se cruce espera.
           const [broker] = await tx
             .select({ id: brokers.id })
             .from(brokers)
             .where(eq(brokers.id, brokerId))
             .for("update");
           if (broker === undefined) throw notFound(brokerId);
+          await tx
+            .select({ id: listings.id })
+            .from(listings)
+            .where(eq(listings.brokerId, brokerId))
+            .for("update");
+          await tx
+            .select({ id: posts.id })
+            .from(posts)
+            .where(eq(posts.brokerId, brokerId))
+            .for("update");
+          await tx
+            .select({ id: platformAccounts.id })
+            .from(platformAccounts)
+            .where(eq(platformAccounts.brokerId, brokerId))
+            .for("update");
+          await tx
+            .select({ id: users.id })
+            .from(users)
+            .where(eq(users.brokerId, brokerId))
+            .for("update");
           const own = ownedBy(tx, brokerId);
           const owned = await tx
             .select({
@@ -183,7 +209,6 @@ export function createBrokerPurgeRepository(db: SchemaDatabase): BrokerPurgeRepo
           const note = (table: string, rows: readonly unknown[]) => {
             deleted[table] = rows.length;
           };
-          const publicationIds = owned.map(({ publicationId }) => publicationId);
           const ofOwnPublications = tx
             .select({ id: publications.id })
             .from(publications)
@@ -199,12 +224,10 @@ export function createBrokerPurgeRepository(db: SchemaDatabase): BrokerPurgeRepo
           );
           note(
             "publications",
-            publicationIds.length === 0
-              ? []
-              : await tx
-                  .delete(publications)
-                  .where(subjectOf(tx, brokerId, publications))
-                  .returning({ id: publications.id }),
+            await tx
+              .delete(publications)
+              .where(subjectOf(tx, brokerId, publications))
+              .returning({ id: publications.id }),
           );
           // 2. Los textos y sus corridas.
           note(
@@ -235,10 +258,11 @@ export function createBrokerPurgeRepository(db: SchemaDatabase): BrokerPurgeRepo
               .returning({ id: postUploads.id }),
           );
           // 4. Los posts, sus planes y el perfil editorial.
-          note(
-            "posts",
-            await tx.delete(posts).where(eq(posts.brokerId, brokerId)).returning({ id: posts.id }),
-          );
+          const deletedPosts = await tx
+            .delete(posts)
+            .where(eq(posts.brokerId, brokerId))
+            .returning({ id: posts.id });
+          note("posts", deletedPosts);
           note(
             "plan_runs",
             await tx
@@ -276,13 +300,11 @@ export function createBrokerPurgeRepository(db: SchemaDatabase): BrokerPurgeRepo
               .where(eq(fieldDefinitions.brokerId, brokerId))
               .returning({ id: fieldDefinitions.id }),
           );
-          note(
-            "import_runs",
-            await tx
-              .delete(importRuns)
-              .where(eq(importRuns.brokerId, brokerId))
-              .returning({ id: importRuns.id }),
-          );
+          const deletedImportRuns = await tx
+            .delete(importRuns)
+            .where(eq(importRuns.brokerId, brokerId))
+            .returning({ id: importRuns.id });
+          note("import_runs", deletedImportRuns);
           // 6. Los usuarios: sesiones, invitaciones, códigos de recuperación y desafíos se irían en
           // cascada; se borran a la vista para contarlos.
           note(
@@ -322,7 +344,12 @@ export function createBrokerPurgeRepository(db: SchemaDatabase): BrokerPurgeRepo
             "brokers",
             await tx.delete(brokers).where(eq(brokers.id, brokerId)).returning({ id: brokers.id }),
           );
-          return deleted;
+          // Los prefijos de R2 salen de lo que se borró de verdad (spec F9.5-T14).
+          return {
+            deleted,
+            postIds: deletedPosts.map(({ id }) => id),
+            importRunIds: deletedImportRuns.map(({ id }) => id),
+          };
         }),
       );
     },

@@ -140,6 +140,22 @@ describe("purgeBroker", () => {
     expect(s.failures).toEqual([]);
   });
 
+  it("recorre los prefijos de los posts y cargas que purge borró, aunque no estuvieran antes", async () => {
+    const s = await setup();
+    // `post-nuevo` y `run-nueva` aparecieron entre leer las claves y la transacción.
+    const late = ["posts/post-nuevo/original/x.jpg", "imports/run-nueva/planilla.xlsx"];
+    const early = ["posts/post-1/original/a.jpg", "imports/run-1/planilla.xlsx"];
+    for (const key of [...late, ...early]) await s.storage.put(key, bytes, "image/jpeg");
+    s.brokerPurge.set(s.broker.id, {
+      refs: { postIds: ["post-1"], importRunIds: ["run-1"] },
+      purgedIds: { postIds: ["post-1", "post-nuevo"], importRunIds: ["run-nueva"] },
+    });
+    const result = await purgeBroker(s.deps, admin, { brokerId: s.broker.id, confirm: "prueba" });
+    // Se unen las dos listas: lo leído antes y lo que se borró de verdad.
+    expect([...s.storage.objects.keys()]).toEqual([]);
+    expect(result.storage.deleted).toBe(4);
+  });
+
   it("exige el slug exacto como confirmación, sin borrar nada", async () => {
     const s = await setup();
     for (const confirm of ["", "otro", "PRUEBA", "prueb"]) {

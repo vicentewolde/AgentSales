@@ -17,7 +17,15 @@ async function setup() {
   const broker = await h.brokers.create(brokerData("prueba"));
   await h.brokers.create(brokerData("otro"));
   brokerPurge.set(broker.id, {
-    counts: { listings: 3, media: 42, publications: 5, posts: 2, users: 1, accounts: 2 },
+    counts: {
+      listings: 3,
+      media: 42,
+      publications: 5,
+      livePublications: 2,
+      posts: 2,
+      users: 1,
+      accounts: 2,
+    },
     refs: { mediaKeys: [`brokers/${broker.id}/brand/logo.png`] },
     deleted: { brokers: 1, listings: 3, media: 42, sessions: 0 },
   });
@@ -36,7 +44,9 @@ describe("brokers delete", () => {
     expect(out).toMatch(/42 {2}fotos, videos y logos/);
     expect(out).toMatch(/1 {2}usuarios con sus sesiones/);
     expect(out).toMatch(/2 {2}cuentas conectadas/);
-    expect(out).toContain("Lo publicado en las redes sigue allá");
+    expect(out).toContain(
+      "2 publicaciones están publicadas o pausadas: seguirán publicadas en las redes",
+    );
     expect(s.h.errors()).toContain("agentsales brokers delete prueba --confirm prueba");
     expect(s.h.errors()).toContain("pnpm db:backup");
     expect(s.brokerPurge.purged).toEqual([]);

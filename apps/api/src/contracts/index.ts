@@ -1306,6 +1306,8 @@ const purgeCountsSchema = z.object({
   listings: z.number().int().nonnegative(),
   media: z.number().int().nonnegative(),
   publications: z.number().int().nonnegative(),
+  /** De ellas, las `published` o `paused`: seguirán publicadas en las redes. */
+  livePublications: z.number().int().nonnegative(),
   posts: z.number().int().nonnegative(),
   users: z.number().int().nonnegative(),
   accounts: z.number().int().nonnegative(),

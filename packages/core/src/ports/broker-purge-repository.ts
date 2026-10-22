@@ -10,6 +10,8 @@ export type BrokerPurgeCounts = {
   /** Todos los medios: originales, variantes, renders y el logo. */
   media: number;
   publications: number;
+  /** De ellas, las `published` o `paused`: seguirán publicadas en las redes (no se retiran). */
+  livePublications: number;
   posts: number;
   users: number;
   accounts: number;
@@ -37,6 +39,17 @@ export type BrokerStorageRefs = {
 /** Filas borradas por tabla (nombre de la tabla en la base → filas). */
 export type BrokerPurgeDeleted = Record<string, number>;
 
+/**
+ * Lo que borró `purge`: las filas por tabla y los ids de los posts y las cargas que borró de verdad
+ * (con `RETURNING`), para recorrer sus prefijos en R2 aunque hayan aparecido después de leer las
+ * claves.
+ */
+export type BrokerPurgeOutcome = {
+  deleted: BrokerPurgeDeleted;
+  postIds: string[];
+  importRunIds: string[];
+};
+
 export interface BrokerPurgeRepository {
   /** Las cifras y las publicaciones que lo impiden. No cambia nada. */
   summarize(
@@ -45,11 +58,13 @@ export interface BrokerPurgeRepository {
   /** Las claves de R2 de sus medios y subidas, y los ids de sus posts y cargas. No cambia nada. */
   storageRefs(brokerId: string): Promise<BrokerStorageRefs>;
   /**
-   * Borra el corredor y todo lo suyo **en una transacción**: toma la fila del corredor y sus
-   * publicaciones, y si alguna impide borrar lanza `BROKER_HAS_ACTIVE_PUBLICATIONS` sin borrar nada
+   * Borra el corredor y todo lo suyo **en una transacción**: toma la fila del corredor, sus
+   * propiedades, posts y cuentas (un `INSERT` concurrente que las referencie espera y después falla
+   * por su FK) y sus publicaciones, y si alguna impide borrar lanza `BROKER_HAS_ACTIVE_PUBLICATIONS` sin borrar nada
    * (vuelve a mirar dentro de la transacción: entre el resumen y el borrado pudo cambiar).
    * `BROKER_NOT_FOUND` si no existe. Los demás corredores no se tocan. Devuelve las filas borradas
-   * por tabla (también las que se van en cascada: sesiones, invitaciones, códigos y bitácora).
+   * por tabla (también las que se van en cascada: sesiones, invitaciones, códigos y bitácora) y los
+   * ids de los posts y las cargas borrados.
    */
-  purge(brokerId: string): Promise<BrokerPurgeDeleted>;
+  purge(brokerId: string): Promise<BrokerPurgeOutcome>;
 }

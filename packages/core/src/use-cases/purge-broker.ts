@@ -7,6 +7,7 @@ import type {
   BrokerPurgeBlocker,
   BrokerPurgeCounts,
   BrokerPurgeDeleted,
+  BrokerPurgeOutcome,
   BrokerPurgeRepository,
   BrokerStorageRefs,
 } from "../ports/broker-purge-repository.js";
@@ -31,6 +32,18 @@ export const PURGE_BLOCKING_PUBLICATION_STATUSES = [
 
 export const isPurgeBlockingStatus = (status: PublicationStatus): boolean =>
   (PURGE_BLOCKING_PUBLICATION_STATUSES as readonly PublicationStatus[]).includes(status);
+
+/**
+ * Lo que sigue en las redes después de borrar (el resumen lo cuenta aparte): borrar aquí no retira
+ * nada (para eso está retirar).
+ */
+export const PURGE_LIVE_PUBLICATION_STATUSES = [
+  "published",
+  "paused",
+] as const satisfies readonly PublicationStatus[];
+
+export const isPurgeLiveStatus = (status: PublicationStatus): boolean =>
+  (PURGE_LIVE_PUBLICATION_STATUSES as readonly PublicationStatus[]).includes(status);
 
 /** `BROKER_HAS_ACTIVE_PUBLICATIONS` (409), con el consejo de qué hacer con cada una. */
 export function brokerHasActivePublications(blocking: readonly BrokerPurgeBlocker[]): AppError {
@@ -110,12 +123,15 @@ const codeOf = (error: unknown) => (isAppError(error) ? error.code : "STORAGE_ER
 /**
  * Borra en R2 por lista de claves, después del commit: las de la base y lo que haya bajo los
  * prefijos del corredor, de sus posts y de sus cargas (un archivo que la base ya no nombraba, como
- * un logo anterior). Nada de esto revierte la base: lo que falle queda anotado.
+ * un logo anterior). Los posts y las cargas son los leídos antes **y** los que `purge` borró de
+ * verdad (uno creado entre medio también se recorre). Nada de esto revierte la base: lo que falle
+ * queda anotado.
  */
 async function removeObjects(
   deps: Pick<PurgeBrokerDeps, "storage" | "onStorageFailure">,
   brokerId: string,
   refs: BrokerStorageRefs,
+  purged: Pick<BrokerPurgeOutcome, "postIds" | "importRunIds">,
 ): Promise<BrokerPurgeResult["storage"]> {
   const failures: PurgeStorageFailure[] = [];
   const fail = (failure: PurgeStorageFailure) => {
@@ -125,8 +141,8 @@ async function removeObjects(
   const keys = new Set([...refs.mediaKeys, ...refs.uploadKeys]);
   const prefixes = [
     `brokers/${brokerId}/`,
-    ...refs.postIds.map(postObjectsPrefix),
-    ...refs.importRunIds.map(importObjectsPrefix),
+    ...[...new Set([...refs.postIds, ...purged.postIds])].map(postObjectsPrefix),
+    ...[...new Set([...refs.importRunIds, ...purged.importRunIds])].map(importObjectsPrefix),
   ];
   for (const prefix of prefixes) {
     try {
@@ -176,7 +192,7 @@ export async function purgeBroker(
   const { blocking } = await deps.brokerPurge.summarize(broker.id);
   if (blocking.length > 0) throw brokerHasActivePublications(blocking);
   const refs = await deps.brokerPurge.storageRefs(broker.id);
-  const deleted = await deps.brokerPurge.purge(broker.id);
-  const storage = await removeObjects(deps, broker.id, refs);
-  return { broker: { id: broker.id, slug: broker.slug }, deleted, storage };
+  const outcome = await deps.brokerPurge.purge(broker.id);
+  const storage = await removeObjects(deps, broker.id, refs, outcome);
+  return { broker: { id: broker.id, slug: broker.slug }, deleted: outcome.deleted, storage };
 }

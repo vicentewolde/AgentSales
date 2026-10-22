@@ -348,7 +348,20 @@ describe("BrokerPurgeRepository (PGlite)", () => {
       .values({ email: "admin@ejemplo.cl", name: "Admin", role: "admin" })
       .returning();
     await seedBroker("otro", { adminId: admin?.id ?? "" });
+    // Un campo global (`broker_id` null): es de todos y debe sobrevivir.
+    await db.insert(fieldDefinitions).values({
+      category: "inmueble",
+      key: "global_de_prueba",
+      label: "Global",
+      type: "text",
+      sourceColumn: "Global",
+    });
     const before = await snapshot();
+    expect(
+      (before.field_definitions as { broker_id: string | null }[]).some(
+        (row) => row.broker_id === null,
+      ),
+    ).toBe(true);
 
     const target = await seedBroker("prueba", { adminId: admin?.id ?? "" });
     const seeded = countsOf(await snapshot());
@@ -383,6 +396,8 @@ describe("BrokerPurgeRepository (PGlite)", () => {
         listings: 1,
         media: 5,
         publications: 3,
+        // La del aviso publicada y la del post: seguirán en las redes.
+        livePublications: 2,
         posts: 1,
         users: 1,
         accounts: 1,
@@ -404,8 +419,11 @@ describe("BrokerPurgeRepository (PGlite)", () => {
     expect(refs.postIds).toEqual([target.postId]);
     expect(refs.importRunIds).toEqual([target.importRunId]);
 
-    const deleted = await repo.purge(target.broker.id);
-    expect(deleted).toEqual({
+    const outcome = await repo.purge(target.broker.id);
+    // Los posts y las cargas que borró de verdad (de ahí salen los prefijos de R2).
+    expect(outcome.postIds).toEqual([target.postId]);
+    expect(outcome.importRunIds).toEqual([target.importRunId]);
+    expect(outcome.deleted).toEqual({
       publication_events: 3,
       publications: 3,
       contents: 2,
@@ -467,6 +485,7 @@ describe("BrokerPurgeRepository (PGlite)", () => {
       listings: 0,
       media: 0,
       publications: 0,
+      livePublications: 0,
       posts: 0,
       users: 0,
       accounts: 0,
@@ -478,10 +497,56 @@ describe("BrokerPurgeRepository (PGlite)", () => {
       postIds: [],
       importRunIds: [],
     });
-    const deleted = await repo.purge(id);
+    const { deleted, postIds, importRunIds } = await repo.purge(id);
     expect(deleted.brokers).toBe(1);
     expect(Object.entries(deleted).filter(([table, n]) => table !== "brokers" && n > 0)).toEqual(
       [],
     );
+    expect({ postIds, importRunIds }).toEqual({ postIds: [], importRunIds: [] });
+  });
+
+  it("cubre cada tabla con FK hacia lo que borra (una tabla nueva sin cubrir hace fallar esto)", async () => {
+    const repo = createBrokerPurgeRepository(db);
+    const [empty] = await db
+      .insert(brokers)
+      .values({
+        slug: "cobertura",
+        name: "C",
+        brandName: "C",
+        primaryColor: "#000000",
+        secondaryColor: "#000000",
+      })
+      .returning();
+    // Las tablas que `purge` toca: las que informa (aunque sea con 0 filas).
+    const covered = new Set(Object.keys((await repo.purge(empty?.id ?? "")).deleted));
+    const references = await rowsOf<{ source: string; column: string; target: string }>(sql`
+      SELECT kcu.table_name AS source, kcu.column_name AS "column", ref.table_name AS target
+      FROM information_schema.referential_constraints rc
+      JOIN information_schema.key_column_usage kcu
+        ON kcu.constraint_schema = rc.constraint_schema AND kcu.constraint_name = rc.constraint_name
+      JOIN information_schema.key_column_usage ref
+        ON ref.constraint_schema = rc.unique_constraint_schema
+        AND ref.constraint_name = rc.unique_constraint_name
+        AND ref.ordinal_position = kcu.position_in_unique_constraint
+      WHERE rc.constraint_schema = 'public'
+      ORDER BY source, "column"`);
+    const purgedTables = new Set([
+      "brokers",
+      "listings",
+      "posts",
+      "publications",
+      "media",
+      "users",
+      "platform_accounts",
+      "contents",
+      "content_runs",
+      "plan_runs",
+    ]);
+    const relevant = references.filter(({ target }) => purgedTables.has(target));
+    // La consulta ve las FK de verdad (no una lista vacía que pase siempre).
+    expect(relevant).toContainEqual({ source: "media", column: "listing_id", target: "listings" });
+    expect(relevant).toContainEqual({ source: "sessions", column: "user_id", target: "users" });
+    const uncovered = relevant.filter(({ source }) => !covered.has(source));
+    expect(uncovered, "tablas con FK a lo que se borra que `purge` no cubre").toEqual([]);
   });
 });

@@ -467,6 +467,7 @@ export type {
   BrokerPurgeBlocker,
   BrokerPurgeCounts,
   BrokerPurgeDeleted,
+  BrokerPurgeOutcome,
   BrokerPurgeRepository,
   BrokerStorageRefs,
 } from "./ports/broker-purge-repository.js";
@@ -1116,7 +1117,9 @@ export {
   type BrokerPurgeSummary,
   brokerHasActivePublications,
   isPurgeBlockingStatus,
+  isPurgeLiveStatus,
   PURGE_BLOCKING_PUBLICATION_STATUSES,
+  PURGE_LIVE_PUBLICATION_STATUSES,
   PURGE_PENDING_SHOWN,
   PURGE_STORAGE_BATCH,
   type PurgeBrokerDeps,

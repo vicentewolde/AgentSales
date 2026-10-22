@@ -163,7 +163,7 @@ Para desactivar a alguien: **Desactivar** en su usuario (o `pnpm -s cli users di
 
 Para los corredores de prueba que ensucian el panel, o un cliente que se va y pide borrar sus datos. Es solo tuyo (administrador), por la CLI, y **no se puede deshacer**: saca un respaldo antes (`pnpm db:backup`; contra el servidor, `ENV_FILE=.env.production pnpm db:backup`).
 
-1. `pnpm -s cli brokers delete <slug>` muestra lo que se borra (propiedades, fotos y videos, publicaciones, posts, usuarios, cuentas y cargas) sin borrar nada.
+1. `pnpm -s cli brokers delete <slug>` muestra lo que se borra (propiedades, fotos y videos, publicaciones, posts, usuarios, cuentas y cargas) sin borrar nada, y cuántas publicaciones están publicadas o pausadas: esas seguirán en las redes (retíralas antes si quieres bajarlas).
 2. `pnpm -s cli brokers delete <slug> --confirm <slug>` lo borra: la base en un solo paso y después sus archivos en R2. Al final dice qué se borró y si quedó algo pendiente en R2 (la base queda borrada igual; lo pendiente se borra a mano por su clave).
 
 Se niega si alguna publicación está publicándose, programada, esperando tu clic o con resultado dudoso: dice cuáles; desprográmalas o cancélalas, confirma o di «no lo publiqué» y resuelve las dudosas. Lo publicado en las redes sigue allá: borrar aquí no retira nada. El paso a paso para el servidor está en `docs/10-despliegue.md` ("Borrar un corredor de verdad").

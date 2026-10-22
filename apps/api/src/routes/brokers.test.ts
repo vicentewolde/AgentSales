@@ -321,7 +321,14 @@ describe("GET /brokers/:id/purge-summary y DELETE /brokers/:id", () => {
   it("el resumen dice cuánto se borra y qué lo impide", async () => {
     const s = await setup();
     purgeOf(s.deps).set(s.mine.id, {
-      counts: { listings: 2, media: 30, publications: 4, users: 1, accounts: 2 },
+      counts: {
+        listings: 2,
+        media: 30,
+        publications: 4,
+        livePublications: 1,
+        users: 1,
+        accounts: 2,
+      },
       blocking: [{ publicationId: randomUUID(), status: "scheduled", platform: "instagram" }],
     });
     const response = await s.admin(`/brokers/${s.mine.id}/purge-summary`);
@@ -332,6 +339,7 @@ describe("GET /brokers/:id/purge-summary y DELETE /brokers/:id", () => {
       listings: 2,
       media: 30,
       publications: 4,
+      livePublications: 1,
       posts: 0,
       users: 1,
       accounts: 2,
