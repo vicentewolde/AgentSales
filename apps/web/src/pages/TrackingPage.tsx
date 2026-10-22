@@ -18,6 +18,7 @@ import {
   agendaItemWhen,
 } from "../components/agenda/agenda.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
+import { errorLineText } from "../components/error-messages.js";
 import { PublicationMode } from "../components/publications/PublicationMode.js";
 import { safeExternalUrl } from "../components/publications/publications.js";
 import { PublicationStatusBadge, StatusBadge } from "../components/StatusBadge.js";
@@ -154,8 +155,8 @@ function CellPublication({
     publication.manualTask ? "tarea a mano" : null,
     publication.expiry?.soon ? `vence en ${publication.expiry.daysLeft} d` : null,
     publication.expiry?.expired ? "venció" : null,
-    publication.lastError === null ? null : publication.lastError.message,
-    publication.lastError === null ? null : `código ${publication.lastError.code}`,
+    // En simple, con el código chico al final (F9.5-T20).
+    publication.lastError === null ? null : errorLineText(publication.lastError),
   ].filter(Boolean);
   return (
     <li>

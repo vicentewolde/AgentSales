@@ -9,6 +9,7 @@ import {
 } from "@agentsales/core";
 import { usePublicationEvents } from "../../queries/publications.js";
 import { ErrorAlert } from "../ErrorAlert.js";
+import { ErrorLine } from "../ErrorLine.js";
 
 const timeText = (date: Date) =>
   date.toLocaleString("es-CL", {
@@ -77,7 +78,7 @@ function EventLine({ event }: { event: PublicationEventView }) {
       {PUBLISH_ATTEMPT_RESULT_TEXT[result]}
       {error && (
         <span className="block text-danger-700">
-          {error.code}: {error.message}
+          <ErrorLine error={error} />
         </span>
       )}
       {sent && (

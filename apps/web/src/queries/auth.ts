@@ -12,6 +12,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { unwrap } from "../api/client.js";
 import { useApiClient } from "../api/context.js";
+import { clearAllOneTimeLinks } from "../components/brokers/one-time-link-store.js";
 
 // Entrar, salir y quién soy en el panel (spec F7 §4.11, ADR-0021). La sesión va en una cookie
 // `HttpOnly`: el panel nunca ve el token.
@@ -41,6 +42,8 @@ export function useLogin() {
     mutationFn: async (input: { email: string; password: string }): Promise<LoginStepResponse> =>
       unwrap(client.auth.login.$post({ json: input }), loginStepResponseSchema),
     onSuccess: (result) => {
+      // Entra otro usuario (o el mismo de nuevo): los enlaces guardados de la sesión anterior se van.
+      clearAllOneTimeLinks();
       if (!("totpRequired" in result)) void queryClient.resetQueries();
     },
     gcTime: 0,
@@ -54,7 +57,10 @@ export function useLoginTotp() {
   return useMutation({
     mutationFn: async (input: { challenge: string; code: string }) =>
       (await unwrap(client.auth.login.totp.$post({ json: input }), loginResponseSchema)).user,
-    onSuccess: () => queryClient.resetQueries(),
+    onSuccess: () => {
+      clearAllOneTimeLinks();
+      return queryClient.resetQueries();
+    },
     gcTime: 0,
   });
 }
@@ -128,7 +134,10 @@ export function useAcceptInvitation() {
     mutationFn: async (input: { token: string; password: string }) =>
       (await unwrap(client.auth.invitations.accept.$post({ json: input }), loginResponseSchema))
         .user,
-    onSuccess: () => queryClient.resetQueries(),
+    onSuccess: () => {
+      clearAllOneTimeLinks();
+      return queryClient.resetQueries();
+    },
   });
 }
 
@@ -141,6 +150,10 @@ export function useLogout() {
     mutationFn: async () => {
       await client.auth.logout.$post();
     },
-    onSuccess: () => queryClient.clear(),
+    onSuccess: () => {
+      // Los enlaces de invitación guardados en esta pestaña son secretos del administrador.
+      clearAllOneTimeLinks();
+      queryClient.clear();
+    },
   });
 }

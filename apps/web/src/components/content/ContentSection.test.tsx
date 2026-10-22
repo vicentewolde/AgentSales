@@ -132,7 +132,8 @@ describe("panel: sección Contenido", () => {
     const alert = await within(section).findByText("La última preparación falló");
     const box = alert.parentElement as HTMLElement;
     expect(within(box).getByText(/La CLI de Claude no tiene sesión/)).toBeTruthy();
-    expect(within(box).getByText("Código: LLM_AUTH_REQUIRED")).toBeTruthy();
+    // El código va chico al final, para reportarlo (F9.5-T20).
+    expect(within(box).getByText("(código: LLM_AUTH_REQUIRED)")).toBeTruthy();
     // Las imágenes alcanzaron a armarse: se ven aunque falten los textos.
     expect(within(section).getByRole("list", { name: "Carrusel de Instagram" })).toBeTruthy();
   });
@@ -527,13 +528,16 @@ describe("panel: edición de textos", () => {
 
     const caption = () => within(t.section).getByRole("region", { name: "Caption de Instagram" });
     // "Casa nueva con patio", una línea en blanco y "#nunoa": Instagram muestra dos líneas.
-    expect(caption().textContent).toBe("tu cuenta Casa nueva con patio… más");
+    // Este corredor no tiene Instagram conectado: la vista previa lo dice (F9.5-T20).
+    expect(caption().textContent).toBe("Instagram sin conectar Casa nueva con patio… más");
     const more = within(caption()).getByRole("button", {
       name: "más: mostrar el caption completo",
     });
     expect(more.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(more);
-    expect(caption().textContent).toBe("tu cuenta Casa nueva con patio\n\n#nunoa ver menos");
+    expect(caption().textContent).toBe(
+      "Instagram sin conectar Casa nueva con patio\n\n#nunoa ver menos",
+    );
     expect(
       within(caption())
         .getByRole("button", { name: "ver menos: acortar el caption" })

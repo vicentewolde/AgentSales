@@ -130,7 +130,7 @@ describe("panel: Cuentas", () => {
     [true, "el enlace de la API"],
   ])("sin cuenta (oauth %s): lo dice y muestra %s", async (oauth) => {
     const h = harness({ deps: deps(oauth) });
-    await h.brokers.create(brokerData("sin-cuenta"));
+    await h.brokers.create(brokerData("sin-cuenta"), { kind: "brand" });
     h.renderApp("/cuentas");
 
     const section = await screen.findByRole("region", { name: /sin-cuenta/ });
@@ -139,7 +139,8 @@ describe("panel: Cuentas", () => {
       const link = within(section).getByRole("link", {
         name: "Conectar Instagram de Marca sin-cuenta",
       });
-      expect(link.getAttribute("href")).toBe(`${START_URL}?broker=sin-cuenta`);
+      // Antes de ir a Instagram, la pantalla que explica qué se autoriza (F9.5-T20).
+      expect(link.getAttribute("href")).toBe("/cuentas/instagram?broker=sin-cuenta");
     } else {
       // Solo en Instagram: LinkedIn, X y TikTok tienen su propio enlace desde F9-T19.
       const instagram = within(section).getByRole("region", { name: "Instagram" });
@@ -156,7 +157,7 @@ describe("panel: Cuentas", () => {
 
     const section = await screen.findByRole("region", { name: /mio/ });
     const link = within(section).getByRole("link", { name: "Conectar Instagram de Marca mio" });
-    expect(link.getAttribute("href")).toBe(`${START_URL}?broker=mio`);
+    expect(link.getAttribute("href")).toBe("/cuentas/instagram?broker=mio");
     // En Instagram ya no lo pide; Mercado Libre y Facebook siguen siendo del administrador.
     const instagram = within(section).getByRole("region", { name: "Instagram" });
     expect(instagram.textContent).not.toContain("Pídele al administrador");
@@ -699,7 +700,7 @@ describe("panel: Cuentas", () => {
 describe("panel: Cuentas de las redes de posts (F9-T19)", () => {
   it("el administrador ve Discord por la CLI y los botones de LinkedIn y X; TikTok sin el par dice qué falta", async () => {
     const h = harness();
-    await h.brokers.create(brokerData("sin-cuenta"));
+    await h.brokers.create(brokerData("sin-cuenta"), { kind: "brand" });
     h.renderApp("/cuentas");
 
     const section = await screen.findByRole("region", { name: /sin-cuenta/ });
@@ -732,7 +733,7 @@ describe("panel: Cuentas de las redes de posts (F9-T19)", () => {
 
   it("el corredor conecta su LinkedIn y su X (sus permisos), pero Discord lo pide al administrador", async () => {
     const h = harness();
-    const mine = await h.brokers.create(brokerData("mio"));
+    const mine = await h.brokers.create(brokerData("mio"), { kind: "brand" });
     h.signInAsBroker(mine.id);
     h.renderApp("/cuentas");
 
@@ -744,6 +745,59 @@ describe("panel: Cuentas de las redes de posts (F9-T19)", () => {
     const discord = within(section).getByRole("region", { name: "Discord" });
     expect(discord.textContent).toContain("Pídele al administrador que la conecte.");
     expect(discord.textContent).not.toContain("--webhook-stdin");
+  });
+
+  it("un corredor de propiedades no ofrece X, TikTok, LinkedIn ni Discord; una marca sí (F9.5-T20)", async () => {
+    const h = harness();
+    await h.brokers.create(brokerData("casas"));
+    await h.brokers.create(brokerData("la-marca"), { kind: "brand" });
+    h.renderApp("/cuentas");
+
+    const casas = await screen.findByRole("region", { name: /casas/ });
+    for (const name of [
+      "Instagram",
+      "Mercado Libre (Portal Inmobiliario)",
+      "Facebook Marketplace",
+    ]) {
+      expect(within(casas).getByRole("region", { name }), name).toBeTruthy();
+    }
+    for (const name of ["Discord", "LinkedIn", "X", "TikTok"]) {
+      expect(within(casas).queryByRole("region", { name }), name).toBeNull();
+    }
+    expect(within(casas).queryByRole("link", { name: /Conectar (LinkedIn|X)/ })).toBeNull();
+
+    const marca = screen.getByRole("region", { name: /la-marca/ });
+    for (const name of ["Instagram", "Discord", "LinkedIn", "X", "TikTok"]) {
+      expect(within(marca).getByRole("region", { name }), name).toBeTruthy();
+    }
+    for (const name of ["Mercado Libre (Portal Inmobiliario)", "Facebook Marketplace"]) {
+      expect(within(marca).queryByRole("region", { name }), name).toBeNull();
+    }
+  });
+
+  it("un corredor de propiedades con una cuenta de marca ya conectada la ve para desconectarla, sin ofrecer conectar (F9.5-T20)", async () => {
+    const h = harness();
+    const broker = await h.brokers.create(brokerData("casas"));
+    await h.platformAccounts.upsertConnected({
+      brokerId: broker.id,
+      platform: "linkedin",
+      externalAccountId: "miembro-9",
+      displayName: "Perfil de antes",
+      tokenExpiresAt: new Date(Date.now() + 50 * DAY),
+      meta: { memberId: "miembro-9", scopes: ["w_member_social"], mode: "manual" },
+      credentials: { accessToken: "token-linkedin-de-prueba" },
+    });
+    h.renderApp("/cuentas");
+
+    const section = await screen.findByRole("region", { name: /casas/ });
+    const linkedin = within(section).getByRole("region", { name: "LinkedIn" });
+    expect(within(linkedin).getByText(/Perfil de antes/)).toBeTruthy();
+    expect(within(linkedin).getByRole("button", { name: "Desconectar" })).toBeTruthy();
+    expect(within(section).queryByRole("link", { name: /Conectar LinkedIn/ })).toBeNull();
+    // Las otras redes de marca, sin cuentas, ni aparecen.
+    for (const name of ["Discord", "X", "TikTok"]) {
+      expect(within(section).queryByRole("region", { name }), name).toBeNull();
+    }
   });
 
   it("una cuenta de LinkedIn dice que publica a mano; la vuelta de X dice que se conectó", async () => {

@@ -23,6 +23,7 @@ import {
   usePublicationsRefresh,
 } from "../../queries/publications.js";
 import { ErrorAlert } from "../ErrorAlert.js";
+import { ErrorLine } from "../ErrorLine.js";
 import { PollStoppedAlert } from "../PollStoppedAlert.js";
 import { PublicationStatusBadge } from "../StatusBadge.js";
 import { Badge } from "../ui/Badge.js";
@@ -442,7 +443,9 @@ export function PublicationItem({
       )}
       {publication.lastError !== null && publication.status === "failed" && (
         <>
-          <p className="mt-1 text-sm text-danger-700">{publication.lastError.message}</p>
+          <p className="mt-1 text-sm text-danger-700">
+            <ErrorLine error={publication.lastError} />
+          </p>
           {publication.errorAdvice !== null && (
             <p className="mt-1 text-sm text-fg-muted">Qué hacer: {publication.errorAdvice}</p>
           )}

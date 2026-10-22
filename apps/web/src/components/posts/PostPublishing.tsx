@@ -20,6 +20,7 @@ import { Link } from "react-router";
 import { useAccounts } from "../../queries/accounts.js";
 import { usePostPublicationAction, usePublishPost, useSchedulePost } from "../../queries/posts.js";
 import { ErrorAlert } from "../ErrorAlert.js";
+import { ErrorLine } from "../ErrorLine.js";
 import { OutcomeBox } from "../publications/OutcomeBox.js";
 import { PublicationMode } from "../publications/PublicationMode.js";
 import {
@@ -357,7 +358,7 @@ function PublicationRow({
       </div>
       {publication.lastError !== null && status === "failed" && (
         <p className="mt-2 text-danger-700">
-          {publication.lastError.message}
+          <ErrorLine error={publication.lastError} />
           {publication.errorAdvice !== null && (
             <span className="block text-fg-muted">{publication.errorAdvice}</span>
           )}
