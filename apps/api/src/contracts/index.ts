@@ -1300,6 +1300,32 @@ export type BrokerDetailResponse = z.infer<typeof brokerDetailResponseSchema>;
 /** `POST /brokers/:id/logo`: el archivo en el campo `logo` (multipart). */
 export const brokerLogoFormSchema = z.object({ logo: fileSchema });
 
+/**
+ * `POST /brokers/parse-template` (administrador, F9.5-T16): la planilla en el campo `file`
+ * (multipart, hasta `MAX_XLSX_BYTES`). Solo se lee la hoja Corredor; no se guarda nada.
+ */
+export const brokerTemplateFormSchema = z.object({ file: fileSchema });
+
+const draftText = z.string().nullable();
+/** Los datos de la hoja Corredor para llenar el formulario de crear un corredor (`brokerSheetDraft`). */
+export const brokerTemplateDraftResponseSchema = z.object({
+  draft: z.object({
+    name: draftText,
+    brandName: draftText,
+    primaryColor: draftText,
+    secondaryColor: draftText,
+    whatsapp: draftText,
+    email: draftText,
+    instagramHandle: draftText,
+    website: draftText,
+    tone: draftText,
+    fixedHashtags: z.array(z.string()),
+    logoFile: draftText,
+    warnings: z.array(z.string()),
+  }),
+});
+export type BrokerTemplateDraftResponse = z.infer<typeof brokerTemplateDraftResponseSchema>;
+
 // ── Borrar un corredor (F9.5-T14, ADR-0035) ──────────────────────────────────
 
 const purgeCountsSchema = z.object({

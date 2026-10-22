@@ -277,3 +277,28 @@ export async function readListingsWorkbook(
     broker: brokerSheet === undefined ? null : readBrokerSheet(brokerSheet),
   };
 }
+
+/**
+ * Lee **solo** la hoja Corredor de una planilla (F9.5-T16, crear un corredor desde una planilla): la
+ * hoja Propiedades puede faltar o venir vacía. Con los mismos topes que la carga (comprimido y
+ * descomprimido). Devuelve `Campo` → `Tu valor` tal cual (lo valida core). `IMPORT_FILE_INVALID` si
+ * no es un xlsx, falta la hoja Corredor o no tiene ningún valor.
+ */
+export async function readBrokerWorkbook(source: string | Uint8Array): Promise<RawBrokerSheet> {
+  const bytes = await loadBytes(source);
+  await checkXlsxUncompressedSize(bytes);
+  const workbook = await loadWorkbook(bytes);
+  const sheet = findSheet(workbook, BROKER_SHEET);
+  if (sheet === undefined) {
+    throw invalidFile(`La planilla no tiene la hoja ${BROKER_SHEET}`, {
+      sheets: workbook.worksheets.map((item) => item.name),
+    });
+  }
+  const values = readBrokerSheet(sheet);
+  if (values === null) {
+    throw invalidFile(
+      `La hoja ${BROKER_SHEET} está vacía: llena la columna ${BROKER_VALUE_HEADER} y vuelve a subirla`,
+    );
+  }
+  return values;
+}

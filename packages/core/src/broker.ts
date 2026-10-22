@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { BROKER_KINDS } from "./enums.js";
-import { AppError } from "./errors.js";
+import { AppError, isAppError } from "./errors.js";
 import type { RawBrokerSheet } from "./listing-sheet.js";
 import type { FieldIssue } from "./listing-validator/index.js";
 import { foldText, isBlank, isRawCell, normalizeText } from "./listing-validator/normalizers.js";
@@ -173,17 +173,14 @@ export function isValidSlug(slug: string): boolean {
 }
 
 /**
- * Hoja Corredor (`Campo` → `Tu valor`) → datos del corredor, con la tabla de §4.2:
- * - las etiquetas se comparan sin mayúsculas ni tildes; una repetida o desconocida es advertencia;
- * - obligatorios: `nombre_corredor`, `nombre_marca` y `color_primario` (HEX `#RRGGBB`);
- * - `color_secundario` vacío toma el primario; `instagram` sin `@`;
- * - `hashtags_fijos` se separa por espacios (o comas), sin repetidos y con `#` adelante;
- * - el `slug` sale de `nombre_marca`, salvo que venga uno explícito (`--broker`), que gana.
+ * Las celdas de la hoja Corredor por campo, ya como texto: las etiquetas se comparan sin mayúsculas
+ * ni tildes; una repetida o desconocida es advertencia, y una celda ilegible, un problema del campo.
  */
-export function parseBrokerSheet(
-  sheet: RawBrokerSheet,
-  options: { slug?: string } = {},
-): ParsedBrokerSheet {
+function readBrokerSheetCells(sheet: RawBrokerSheet): {
+  values: Map<BrokerField, string>;
+  issues: FieldIssue[];
+  warnings: string[];
+} {
   const warnings: string[] = [];
   const values = new Map<BrokerField, string>();
   const seen = new Set<BrokerField>();
@@ -212,6 +209,24 @@ export function parseBrokerSheet(
     if (!text.ok) issue(field, text.code, text.message);
     else values.set(field, text.value);
   }
+  return { values, issues, warnings };
+}
+
+/**
+ * Hoja Corredor (`Campo` → `Tu valor`) → datos del corredor, con la tabla de §4.2:
+ * - las etiquetas se comparan sin mayúsculas ni tildes; una repetida o desconocida es advertencia;
+ * - obligatorios: `nombre_corredor`, `nombre_marca` y `color_primario` (HEX `#RRGGBB`);
+ * - `color_secundario` vacío toma el primario; `instagram` sin `@`;
+ * - `hashtags_fijos` se separa por espacios (o comas), sin repetidos y con `#` adelante;
+ * - el `slug` sale de `nombre_marca`, salvo que venga uno explícito (`--broker`), que gana.
+ */
+export function parseBrokerSheet(
+  sheet: RawBrokerSheet,
+  options: { slug?: string } = {},
+): ParsedBrokerSheet {
+  const { values, issues, warnings } = readBrokerSheetCells(sheet);
+  const issue = (field: string, code: FieldIssue["code"], message: string) =>
+    issues.push({ column: field, key: field, code, message });
 
   const required = (field: BrokerField) => {
     const value = values.get(field);
@@ -415,6 +430,92 @@ export function normalizeBrokerBrand(input: BrokerBrandInput): Partial<BrokerBra
     );
   }
   return out;
+}
+
+/**
+ * Lo que la hoja Corredor de una planilla deja en el formulario de **Crear un corredor**
+ * (F9.5-T16): los campos de la marca ya normalizados, `null` (o `[]`) los que vinieron vacíos.
+ */
+export type BrokerSheetDraft = {
+  [K in keyof BrokerBrand]: K extends "fixedHashtags" ? string[] : string | null;
+} & {
+  /** El archivo del logo que nombra la hoja: aquí no se sube (se sube en el detalle del corredor). */
+  logoFile: string | null;
+  /** Etiquetas desconocidas o repetidas de la hoja. */
+  warnings: string[];
+};
+
+/** El campo de la API de cada campo de la hoja Corredor (el logo va aparte). */
+const SHEET_TO_BRAND: Record<Exclude<BrokerField, "logo">, keyof BrokerBrand> = {
+  nombre_corredor: "name",
+  nombre_marca: "brandName",
+  color_primario: "primaryColor",
+  color_secundario: "secondaryColor",
+  whatsapp: "whatsapp",
+  email: "email",
+  instagram: "instagramHandle",
+  sitio_web: "website",
+  tono: "tone",
+  hashtags_fijos: "fixedHashtags",
+};
+
+/**
+ * La hoja Corredor → el borrador del formulario de crear un corredor (F9.5-T16), **sin guardar
+ * nada**: lo que falta queda vacío para llenarlo en el formulario (los colores toman un valor por
+ * defecto en el panel), y lo que vino se revisa con las reglas de la marca (`normalizeBrokerBrand`).
+ * Un valor que no sirve (o una celda ilegible) es `BROKER_INVALID` (400) con sus `issues` por campo.
+ */
+export function brokerSheetDraft(sheet: RawBrokerSheet): BrokerSheetDraft {
+  const { values, issues: cellIssues, warnings } = readBrokerSheetCells(sheet);
+  const issues: BrokerFieldIssue[] = cellIssues.flatMap((issue) =>
+    issue.column === "logo"
+      ? []
+      : [
+          brokerFieldIssue(
+            SHEET_TO_BRAND[issue.column as keyof typeof SHEET_TO_BRAND],
+            issue.message,
+          ),
+        ],
+  );
+  const input: BrokerBrandInput = {};
+  for (const [field, key] of Object.entries(SHEET_TO_BRAND) as [
+    keyof typeof SHEET_TO_BRAND,
+    keyof BrokerBrand,
+  ][]) {
+    const value = values.get(field);
+    if (value === undefined) continue;
+    if (key === "fixedHashtags") input.fixedHashtags = [value];
+    else input[key] = value;
+  }
+  let brand: Partial<BrokerBrand> = {};
+  try {
+    brand = normalizeBrokerBrand(input);
+  } catch (error) {
+    const found = isAppError(error) ? error.details?.issues : undefined;
+    if (!Array.isArray(found)) throw error;
+    issues.push(...(found as BrokerFieldIssue[]));
+  }
+  if (issues.length > 0) {
+    throw new AppError(
+      "BROKER_INVALID",
+      `La hoja Corredor tiene valores que no sirven: ${issues.map((issue) => issue.message).join("; ")}`,
+      { details: { issues } },
+    );
+  }
+  return {
+    name: brand.name ?? null,
+    brandName: brand.brandName ?? null,
+    primaryColor: brand.primaryColor ?? null,
+    secondaryColor: brand.secondaryColor ?? null,
+    whatsapp: brand.whatsapp ?? null,
+    email: brand.email ?? null,
+    instagramHandle: brand.instagramHandle ?? null,
+    website: brand.website ?? null,
+    tone: brand.tone ?? null,
+    fixedHashtags: brand.fixedHashtags ?? [],
+    logoFile: values.get("logo") ?? null,
+    warnings,
+  };
 }
 
 /**
