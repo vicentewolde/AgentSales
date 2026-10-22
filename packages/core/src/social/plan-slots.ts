@@ -1,6 +1,7 @@
 import { parseChileTime } from "../chile-time.js";
 import { EDITORIAL_WEEKDAYS, type EditorialWeekday } from "../editorial-profile.js";
 import type { PostPlatform } from "../enums.js";
+import { isAppError } from "../errors.js";
 
 // Las ranuras del plan de ideas (spec F9.5, D7; ADR-0034): el código, no la IA, pone la fecha, la
 // hora y las redes de cada idea según la cadencia de cada red. Funciones puras, sin la base: las usa
@@ -91,8 +92,10 @@ export function planSlots(
       let at: Date;
       try {
         at = parseChileTime(`${date} ${time}`);
-      } catch {
-        continue;
+      } catch (error) {
+        // Solo la hora que no existe en Chile (el día que se adelanta el reloj); lo demás, se relanza.
+        if (isAppError(error) && error.code === "SCHEDULE_AT_INVALID") continue;
+        throw error;
       }
       if (at < bounds.start || at >= bounds.end || at < bounds.now) continue;
       slots.push({ date, time, at });

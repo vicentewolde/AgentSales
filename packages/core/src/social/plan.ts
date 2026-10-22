@@ -602,7 +602,7 @@ export function checkPlanIdeas(params: {
   const discarded: DiscardedPlanIdea[] = [];
   const recent = new Set(brief.recentTopics.map(topicKey));
   const discardedBefore = new Set(brief.discardedTopics.map(topicKey));
-  const planned = new Set<string>();
+  const plannedTopics = new Set<string>();
   const pillars = new Set(brief.pillars.map((pillar) => pillar.key));
   const book = planSlotBook({
     days: brief.days.map((day) => day.date),
@@ -657,7 +657,7 @@ export function checkPlanIdeas(params: {
       drop("DISCARDED_TOPIC", "Repite una idea que se descartó");
       continue;
     }
-    if (planned.has(key)) {
+    if (plannedTopics.has(key)) {
       drop("DUPLICATE_IN_PLAN", "Repite otra idea de este plan");
       continue;
     }
@@ -707,7 +707,7 @@ export function checkPlanIdeas(params: {
         );
       }
     }
-    planned.add(key);
+    plannedTopics.add(key);
     accepted.push({
       topic: idea.tema,
       pillar,
