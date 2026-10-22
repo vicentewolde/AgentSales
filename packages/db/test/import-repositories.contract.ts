@@ -432,6 +432,24 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
     it("promoteToReady de un id inexistente devuelve false", async () => {
       expect(await repos.listings.promoteToReady(repos.missingId)).toBe(false);
     });
+
+    it("setMusicTrack fija y quita la música del reel, y reimportar no la pisa (F9.5-T19)", async () => {
+      const ref = unique("P");
+      const created = await repos.listings.create(newListing(brokerId, ref));
+      expect((await repos.listings.get(created.id))?.musicTrackId).toBeNull();
+      const chosen = await repos.listings.setMusicTrack(created.id, "serenade-guitar");
+      expect(chosen).toMatchObject({ id: created.id, musicTrackId: "serenade-guitar" });
+      const {
+        brokerId: _broker,
+        category: _c,
+        source: _s,
+        ...data
+      } = newListing(brokerId, ref, { priceAmount: 6200, sourceHash: "hash-2" });
+      await repos.listings.update(created.id, data);
+      expect((await repos.listings.get(created.id))?.musicTrackId).toBe("serenade-guitar");
+      expect((await repos.listings.setMusicTrack(created.id, null))?.musicTrackId).toBeNull();
+      expect(await repos.listings.setMusicTrack(repos.missingId, "calm-piano")).toBeNull();
+    });
   });
 
   describe(`${name} · ImportRunRepository`, () => {

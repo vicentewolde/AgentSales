@@ -43,6 +43,8 @@ export type PostChanges = {
   xLinkAllowed?: boolean;
   /** Las redes del post (F9-T20); `null` = todas las de la marca. */
   platforms?: PostPlatform[] | null;
+  /** La música de sus videos (F9.5-T19); `null` = sin música. */
+  musicTrackId?: string | null;
 };
 
 /**
@@ -79,6 +81,7 @@ export function pickPostChanges(changes: PostChanges): PostChanges {
   if (changes.platforms !== undefined) {
     picked.platforms = changes.platforms === null ? null : [...changes.platforms];
   }
+  if (changes.musicTrackId !== undefined) picked.musicTrackId = changes.musicTrackId;
   return picked;
 }
 

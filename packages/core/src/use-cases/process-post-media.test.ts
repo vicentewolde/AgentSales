@@ -84,11 +84,19 @@ describe("processPostMedia", () => {
       outcome: "processed",
       media: { processed: 2, existing: 0, failed: 0 },
       failedMediaIds: [],
+      warnings: [],
     });
     // Sin pi_4x3 (un post no va a Portal) y el reel sin el PNG del texto.
     expect(s.processor.calls).toEqual([
       { kind: "image", mime: "image/jpeg", variants: ["thumb", "ig_4x5"], inputBytes: 4 },
-      { kind: "video", reel: true, xVideo: true, discordMaxBytes: null, inputBytes: 5 },
+      {
+        kind: "video",
+        reel: true,
+        xVideo: true,
+        discordMaxBytes: null,
+        inputBytes: 5,
+        music: null,
+      },
     ]);
 
     const all = await s.media.listBySubject({ kind: "post", id: s.post.id });
@@ -134,6 +142,7 @@ describe("processPostMedia", () => {
       xVideo: true,
       discordMaxBytes: null,
       inputBytes: 5,
+      music: null,
     });
     const variants = (await s.media.listBySubject({ kind: "post", id: s.post.id }))
       .filter((item) => item.parentMediaId === video.id)
@@ -166,6 +175,7 @@ describe("processPostMedia", () => {
       outcome: "processed",
       media: { processed: 1, existing: 0, failed: 1 },
       failedMediaIds: [broken.id],
+      warnings: [],
     });
     expect(
       await processPostMedia(s.deps, { postId: "00000000-0000-4000-8000-0000000000ff" }),
@@ -191,13 +201,21 @@ describe("processPostMedia", () => {
     );
     expect(result).toMatchObject({ media: { processed: 1, existing: 0, failed: 0 } });
     expect(s.processor.calls).toEqual([
-      { kind: "video", reel: true, xVideo: true, discordMaxBytes: null, inputBytes: 5 },
+      {
+        kind: "video",
+        reel: true,
+        xVideo: true,
+        discordMaxBytes: null,
+        inputBytes: 5,
+        music: null,
+      },
       {
         kind: "video",
         reel: false,
         xVideo: false,
         discordMaxBytes: DISCORD_VIDEO_MAX_BYTES,
         inputBytes: 5,
+        music: null,
       },
     ]);
     const discord = (await s.media.listBySubject({ kind: "post", id: s.post.id })).find(
@@ -230,6 +248,7 @@ describe("processPostMedia", () => {
       xVideo: false,
       discordMaxBytes: DISCORD_VIDEO_MAX_BYTES,
       inputBytes: 5,
+      music: null,
     });
   });
 
@@ -283,6 +302,7 @@ describe("processPostMedia", () => {
       outcome: "processed",
       media: { processed: 1, existing: 0, failed: 0 },
       failedMediaIds: [],
+      warnings: [],
     });
     expect(missing).toEqual([[video.id, "failed", "MEDIA_DECODE_FAILED"]]);
     const variants = (await s.media.listBySubject({ kind: "post", id: s.post.id }))
@@ -335,6 +355,105 @@ describe("processPostMedia", () => {
       .map((item) => item.variant)
       .sort();
     expect(ofSecond).toEqual(["ig_reel", "thumb", "x_video"]);
+  });
+
+  // F9.5-T19: la música del post va en todos sus videos y en su clave.
+  describe("música", () => {
+    const musicPath = "assets/musica/calm-piano.mp3";
+
+    it("con música: el reel, X y Discord la llevan, y su clave suma el id de la pista", async () => {
+      const s = await setup({ platforms: ["discord", "x", "instagram"] });
+      await s.storage.put(musicPath, encode("PISTA"), "audio/mpeg");
+      const video = await s.original(1, "video", "video");
+      await s.posts.update(s.post.id, { musicTrackId: "calm-piano" });
+      const result = await processPostMedia(
+        { ...s.deps, discordLimits: smallLimits },
+        { postId: s.post.id },
+      );
+      expect(result).toMatchObject({ media: { processed: 1 }, warnings: [] });
+      expect(s.processor.calls.map((call) => call.kind === "video" && call.music)).toEqual([
+        "PISTA",
+        "PISTA",
+      ]);
+      const root = `posts/${s.post.id}/processed`;
+      const paths = (await s.media.listBySubject({ kind: "post", id: s.post.id }))
+        .filter((item) => item.parentMediaId === video.id && item.kind === "video")
+        .map((item) => item.storagePath)
+        .sort();
+      expect(paths).toEqual([
+        `${root}/discord_video/${sha(1)}-v7-m-calm-piano.mp4`,
+        `${root}/ig_reel/${sha(1)}-v7-m-calm-piano.mp4`,
+        `${root}/x_video/${sha(1)}-v7-m-calm-piano.mp4`,
+      ]);
+    });
+
+    it("cambiar la pista rehace los videos; quitarla vuelve a las claves de siempre", async () => {
+      const s = await setup();
+      await s.storage.put(musicPath, encode("PISTA"), "audio/mpeg");
+      await s.storage.put("assets/musica/up-in-the-sky.mp3", encode("OTRA"), "audio/mpeg");
+      await s.original(1, "video", "video");
+      await processPostMedia(s.deps, { postId: s.post.id });
+      const root = `posts/${s.post.id}/processed`;
+      const reelPath = async () =>
+        (await s.media.listBySubject({ kind: "post", id: s.post.id })).find(
+          (item) => item.variant === "ig_reel",
+        )?.storagePath;
+      // Sin música: la clave de antes de F9.5-T19.
+      expect(await reelPath()).toBe(`${root}/ig_reel/${sha(1)}-v7.mp4`);
+
+      await s.posts.update(s.post.id, { musicTrackId: "calm-piano" });
+      await processPostMedia(s.deps, { postId: s.post.id });
+      expect(await reelPath()).toBe(`${root}/ig_reel/${sha(1)}-v7-m-calm-piano.mp4`);
+      // El reel sin música se borró de R2 (se reemplazó).
+      expect(s.storage.objects.has(`${root}/ig_reel/${sha(1)}-v7.mp4`)).toBe(false);
+
+      await s.posts.update(s.post.id, { musicTrackId: "up-in-the-sky" });
+      await processPostMedia(s.deps, { postId: s.post.id });
+      expect(await reelPath()).toBe(`${root}/ig_reel/${sha(1)}-v7-m-up-in-the-sky.mp4`);
+      expect(s.processor.calls.at(-1)).toMatchObject({ reel: true, xVideo: true, music: "OTRA" });
+
+      await s.posts.update(s.post.id, { musicTrackId: null });
+      await processPostMedia(s.deps, { postId: s.post.id });
+      expect(await reelPath()).toBe(`${root}/ig_reel/${sha(1)}-v7.mp4`);
+      expect(s.processor.calls.at(-1)).toMatchObject({ music: null });
+      // Una vuelta más no repite nada.
+      const calls = s.processor.calls.length;
+      await processPostMedia(s.deps, { postId: s.post.id });
+      expect(s.processor.calls).toHaveLength(calls);
+    });
+
+    it("una pista que no está en R2 (o ya no está en el catálogo): sin música y con aviso", async () => {
+      const s = await setup();
+      await s.original(1, "video", "video");
+      await s.posts.update(s.post.id, { musicTrackId: "calm-piano" });
+      const result = await processPostMedia(s.deps, { postId: s.post.id });
+      expect(result).toMatchObject({ media: { processed: 1, failed: 0 } });
+      if (result.outcome !== "processed") throw new Error("no se procesó");
+      expect(result.warnings).toEqual([
+        expect.stringContaining("todavía no está subida a la biblioteca"),
+      ]);
+      expect(s.processor.calls.at(-1)).toMatchObject({ music: null });
+      const reel = (await s.media.listBySubject({ kind: "post", id: s.post.id })).find(
+        (item) => item.variant === "ig_reel",
+      );
+      expect(reel?.storagePath).toBe(`posts/${s.post.id}/processed/ig_reel/${sha(1)}-v7.mp4`);
+
+      await s.posts.update(s.post.id, { musicTrackId: "pista-que-se-saco" });
+      const again = await processPostMedia(s.deps, { postId: s.post.id });
+      expect(again).toMatchObject({
+        media: { existing: 1 },
+        warnings: [expect.stringContaining("ya no está en la biblioteca")],
+      });
+    });
+
+    it("un post solo con fotos no busca la música", async () => {
+      const s = await setup();
+      await s.original(1, "image", "foto");
+      await s.posts.update(s.post.id, { musicTrackId: "calm-piano" });
+      expect(await processPostMedia(s.deps, { postId: s.post.id })).toMatchObject({
+        warnings: [],
+      });
+    });
   });
 
   it("cortado por el apagado: MEDIA_ABORTED reintentable", async () => {

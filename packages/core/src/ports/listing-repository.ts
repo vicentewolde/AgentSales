@@ -48,6 +48,11 @@ export interface ListingRepository {
    */
   promoteToReady(id: string): Promise<boolean>;
   /**
+   * Fija la música del reel (F9.5-T19; `null` = sin música) sin tocar lo demás: la importación no
+   * la pisa. Devuelve el aviso, o `null` si no existe. Validar el id es de core.
+   */
+  setMusicTrack(id: string, musicTrackId: string | null): Promise<Listing | null>;
+  /**
    * Avisos con los filtros dados (exactos), del más reciente al más antiguo (`updated_at`), dentro
    * del alcance (obligatorio desde el lote C de F7: el worker pasa `ALL_SCOPE`; spec F7 §4.4).
    */

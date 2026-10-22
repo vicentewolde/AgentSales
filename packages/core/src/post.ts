@@ -50,6 +50,11 @@ export const postSchema = z.object({
    * para estas, y solo las que sirven a su `kind` (`kindProblem`).
    */
   platforms: z.array(z.enum(POST_PLATFORMS)).nullable(),
+  /**
+   * La música de los videos del post (F9.5-T19): un id del catálogo o `null`, sin música (por
+   * defecto). Va en todos sus videos (el reel, el de X y el de Discord).
+   */
+  musicTrackId: z.string().nullable(),
   createdAt: z.date(),
   updatedAt: z.date(),
 });

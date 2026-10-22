@@ -8,9 +8,11 @@ import {
 } from "../enums.js";
 import { AppError } from "../errors.js";
 import { PLATFORM_TEXT } from "../labels.js";
+import { checkMusicTrackId } from "../music/catalog.js";
 import { assertCan, scopeOf } from "../permissions.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { EditorialProfileRepository } from "../ports/editorial-profile-repository.js";
+import type { JobQueue } from "../ports/job-queue.js";
 import type { PostLock } from "../ports/post-lock.js";
 import type { PostChanges, PostFilters, PostRepository } from "../ports/post-repository.js";
 import type { Post } from "../post.js";
@@ -199,6 +201,8 @@ export type UpdatePostDeps = {
   posts: Pick<PostRepository, "get">;
   postLock: PostLock;
   editorialProfiles: Pick<EditorialProfileRepository, "get">;
+  /** `post.media` cuando cambia la música (F9.5-T19): rehace sus videos con la pista nueva. */
+  queue: Pick<JobQueue, "enqueue">;
 };
 
 /** Lo que se edita de un post (`PATCH /api/posts/:id`); `undefined` = no tocar, `null` borra. */
@@ -219,6 +223,11 @@ export type UpdatePostInput = {
    * `POST_INVALID`.
    */
   platforms?: readonly string[] | null | undefined;
+  /**
+   * La música de sus videos (F9.5-T19): un id del catálogo o `null`, sin música. Otro id es
+   * `MUSIC_TRACK_INVALID` (400). Cambiarla encola `post.media`, que rehace los videos.
+   */
+  musicTrackId?: string | null | undefined;
 };
 
 /** Las redes de un post: de `POST_PLATFORMS`, sin repetir y en su orden; `null` = todas. */
@@ -271,7 +280,10 @@ export async function updatePost(
     changes.pillar =
       (await checkPillar(deps.editorialProfiles, current.brokerId, input.pillar)) ?? null;
   }
-  return deps.postLock.run(postId, async ({ posts, publications }) => {
+  if (input.musicTrackId !== undefined)
+    changes.musicTrackId = checkMusicTrackId(input.musicTrackId);
+  let musicChanged = false;
+  const updated = await deps.postLock.run(postId, async ({ posts, publications }) => {
     const post = await posts.get(postId);
     if (post === null) throw postNotFound(postId);
     if (post.status === "archived") throw postArchived(postId);
@@ -296,8 +308,14 @@ export async function updatePost(
         );
       }
     }
+    musicChanged = changes.musicTrackId !== undefined && changes.musicTrackId !== post.musicTrackId;
     return posts.update(postId, changes);
   });
+  // Después de confirmar (pg-boss usa otra conexión); el job salta lo que ya está con esta música.
+  if (musicChanged) {
+    await deps.queue.enqueue("post.media", { postId }, { singletonKey: postId });
+  }
+  return updated;
 }
 
 /**

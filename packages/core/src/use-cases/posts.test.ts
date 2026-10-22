@@ -4,6 +4,7 @@ import {
   createInMemoryBrokerRepository,
   createInMemoryContentRepositories,
   createInMemoryEditorialProfileRepository,
+  createInMemoryJobQueue,
   createInMemoryMediaRepository,
   createInMemoryPlatformAccountRepository,
   createInMemoryPostLock,
@@ -66,7 +67,7 @@ async function setup() {
     defaultHashtags: [],
   });
   return {
-    deps: { brokers, posts, editorialProfiles, postLock },
+    deps: { brokers, posts, editorialProfiles, postLock, queue: createInMemoryJobQueue() },
     posts,
     publications,
     mine,
@@ -222,6 +223,38 @@ describe("updatePost", () => {
     await expect(updatePost(s.deps, ADMIN, post.id, { topic: "Tarde" })).rejects.toMatchObject({
       code: "POST_ARCHIVED",
     });
+  });
+});
+
+describe("updatePost · música (F9.5-T19)", () => {
+  it("elegir o quitar la pista encola post.media; repetirla no; una que no existe es 400", async () => {
+    const s = await setup();
+    const queue = createInMemoryJobQueue();
+    const deps = { ...s.deps, queue };
+    const post = await createPost(deps, ADMIN, { brokerId: s.mine.id, topic: "Con video" });
+    expect(post.musicTrackId).toBeNull();
+
+    const chosen = await updatePost(deps, brokerUser(s.mine.id), post.id, {
+      musicTrackId: "calm-piano",
+    });
+    expect(chosen.musicTrackId).toBe("calm-piano");
+    expect(queue.jobs).toEqual([
+      { name: "post.media", data: { postId: post.id }, options: { singletonKey: post.id } },
+    ]);
+
+    await updatePost(deps, ADMIN, post.id, { musicTrackId: "calm-piano" });
+    await updatePost(deps, ADMIN, post.id, { topic: "Otro tema" });
+    expect(queue.jobs).toHaveLength(1);
+
+    expect(
+      (await updatePost(deps, ADMIN, post.id, { musicTrackId: null })).musicTrackId,
+    ).toBeNull();
+    expect(queue.jobs).toHaveLength(2);
+
+    await expect(
+      updatePost(deps, ADMIN, post.id, { musicTrackId: "no-existe" }),
+    ).rejects.toMatchObject({ code: "MUSIC_TRACK_INVALID" });
+    expect(queue.jobs).toHaveLength(2);
   });
 });
 

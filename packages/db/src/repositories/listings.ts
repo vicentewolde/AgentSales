@@ -8,7 +8,7 @@ import {
   listingSchema,
   scopedBrokerId,
 } from "@agentsales/core";
-import { and, desc, eq, inArray, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, type SQL, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { isUniqueViolation, withDbErrors } from "../errors.js";
 import { listings } from "../schema.js";
@@ -50,6 +50,7 @@ function toListing(row: typeof listings.$inferSelect): Listing {
     internalNotes: row.internalNotes,
     attributes: row.attributes,
     source: row.source,
+    musicTrackId: row.musicTrackId,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });
@@ -191,6 +192,17 @@ export function createListingRepository(db: SchemaDatabase): ListingRepository {
           .where(and(eq(listings.id, id), eq(listings.status, from)))
           .returning({ id: listings.id });
         return updated.length > 0;
+      });
+    },
+
+    setMusicTrack(id, musicTrackId) {
+      return withDbErrors(async () => {
+        const [row] = await db
+          .update(listings)
+          .set({ musicTrackId, updatedAt: sql`now()` })
+          .where(eq(listings.id, id))
+          .returning();
+        return row === undefined ? null : toListing(row);
       });
     },
 
