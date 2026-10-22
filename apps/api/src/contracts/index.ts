@@ -1300,6 +1300,65 @@ export type BrokerDetailResponse = z.infer<typeof brokerDetailResponseSchema>;
 /** `POST /brokers/:id/logo`: el archivo en el campo `logo` (multipart). */
 export const brokerLogoFormSchema = z.object({ logo: fileSchema });
 
+// ── Borrar un corredor (F9.5-T14, ADR-0035) ──────────────────────────────────
+
+const purgeCountsSchema = z.object({
+  listings: z.number().int().nonnegative(),
+  media: z.number().int().nonnegative(),
+  publications: z.number().int().nonnegative(),
+  /** De ellas, las `published` o `paused`: seguirán publicadas en las redes. */
+  livePublications: z.number().int().nonnegative(),
+  posts: z.number().int().nonnegative(),
+  users: z.number().int().nonnegative(),
+  accounts: z.number().int().nonnegative(),
+  importRuns: z.number().int().nonnegative(),
+});
+
+/**
+ * `GET /brokers/:id/purge-summary` (administrador): lo que se borraría y las publicaciones que lo
+ * impiden (publicándose, programadas, esperando el clic o con resultado dudoso).
+ */
+export const brokerPurgeSummaryResponseSchema = z.object({
+  broker: z.object({
+    id: z.string(),
+    slug: z.string(),
+    brandName: z.string(),
+    kind: z.enum(BROKER_KINDS),
+  }),
+  counts: purgeCountsSchema,
+  blocking: z.array(
+    z.object({
+      publicationId: z.string(),
+      status: z.enum(PUBLICATION_STATUSES),
+      platform: z.string(),
+    }),
+  ),
+});
+export type BrokerPurgeSummaryResponse = z.infer<typeof brokerPurgeSummaryResponseSchema>;
+
+/** `DELETE /brokers/:id` (administrador): el `slug` del corredor, repetido, como confirmación. */
+export const brokerDeleteBodySchema = z.object({ confirm: z.string().max(200) }).strict();
+
+/**
+ * La respuesta de `DELETE /brokers/:id`: filas borradas por tabla y lo de R2 (borrados y lo que
+ * quedó pendiente, con su clave o prefijo y el código; nunca una URL).
+ */
+export const brokerPurgeResponseSchema = z.object({
+  broker: z.object({ id: z.string(), slug: z.string() }),
+  deleted: z.record(z.string(), z.number().int().nonnegative()),
+  storage: z.object({
+    deleted: z.number().int().nonnegative(),
+    pendingCount: z.number().int().nonnegative(),
+    pending: z.array(
+      z.discriminatedUnion("kind", [
+        z.object({ kind: z.literal("key"), key: z.string(), code: z.string() }),
+        z.object({ kind: z.literal("prefix"), prefix: z.string(), code: z.string() }),
+      ]),
+    ),
+  }),
+});
+export type BrokerPurgeResponse = z.infer<typeof brokerPurgeResponseSchema>;
+
 /** El tipo del archivo de `GET /brokers/:id/template.xlsx`. */
 export const XLSX_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";

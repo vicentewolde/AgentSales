@@ -2,6 +2,7 @@ import {
   AppError,
   assertCan,
   type Broker,
+  type BrokerPurgeRepository,
   type BrokerRepository,
   createBroker,
   type EditorialProfileRepository,
@@ -11,6 +12,8 @@ import {
   type MediaStorage,
   onboardingSteps,
   type PlatformAccountRepository,
+  purgeBroker,
+  purgeBrokerSummary,
   setBrokerLogo,
   type UserRepository,
   updateBroker,
@@ -21,20 +24,28 @@ import { type AppEnv, requireAuth } from "../auth.js";
 import {
   type BrokerDetailResponse,
   type BrokerListResponse,
+  type BrokerPurgeResponse,
+  type BrokerPurgeSummaryResponse,
   type BrokerResponse,
   brokerCreateBodySchema,
+  brokerDeleteBodySchema,
   brokerLogoFormSchema,
   brokerPatchBodySchema,
   idParamSchema,
   XLSX_CONTENT_TYPE,
 } from "../contracts/index.js";
+import type { AppLogger } from "../logger.js";
 import { requestScope } from "../scope.js";
 import { validated } from "../validation.js";
 
 export type BrokerRoutesDeps = {
   brokers: BrokerRepository;
   media: Pick<MediaRepository, "findByStoragePath" | "create">;
-  storage: Pick<MediaStorage, "put">;
+  /** Subir el logo y, al borrar un corredor (F9.5-T14), recorrer sus prefijos y borrar sus archivos. */
+  storage: Pick<MediaStorage, "put" | "list" | "delete">;
+  /** Borrar un corredor y todo lo suyo en una transacción (F9.5-T14, ADR-0035). */
+  brokerPurge: BrokerPurgeRepository;
+  logger: Pick<AppLogger, "warn" | "info">;
   platformAccounts: Pick<PlatformAccountRepository, "listByBroker">;
   /** El perfil editorial: la lista de alta de una marca lo mira (spec F9 §4.3; decide core). */
   editorialProfiles: Pick<EditorialProfileRepository, "get">;
@@ -75,69 +86,114 @@ export function brokerRoutes(deps: BrokerRoutesDeps) {
   const canEditBrand = (c: Context<AppEnv>, id: string) =>
     assertCan(requireAuth(c).user, "brand.edit", id);
 
-  return new Hono<AppEnv>()
-    .get("/", async (c) => {
-      // Un corredor ve solo el suyo (spec F7 §4.4); el administrador, todos.
-      const body: BrokerListResponse = { brokers: await deps.brokers.list(requestScope(c)) };
-      return c.json(body, 200);
-    })
-    .post("/", validated("json", brokerCreateBodySchema), async (c) => {
-      const broker = await createBroker(deps, requireAuth(c).user, c.req.valid("json"));
-      return c.json(await detail(broker), 201);
-    })
-    .get("/:id", validated("param", idParamSchema), async (c) => {
-      return c.json(await detail(await brokerOf(c.req.valid("param").id)), 200);
-    })
-    .patch(
-      "/:id",
-      validated("param", idParamSchema),
-      validated("json", brokerPatchBodySchema),
-      async (c) => {
-        const broker = await updateBroker(
+  return (
+    new Hono<AppEnv>()
+      .get("/", async (c) => {
+        // Un corredor ve solo el suyo (spec F7 §4.4); el administrador, todos.
+        const body: BrokerListResponse = { brokers: await deps.brokers.list(requestScope(c)) };
+        return c.json(body, 200);
+      })
+      .post("/", validated("json", brokerCreateBodySchema), async (c) => {
+        const broker = await createBroker(deps, requireAuth(c).user, c.req.valid("json"));
+        return c.json(await detail(broker), 201);
+      })
+      .get("/:id", validated("param", idParamSchema), async (c) => {
+        return c.json(await detail(await brokerOf(c.req.valid("param").id)), 200);
+      })
+      .patch(
+        "/:id",
+        validated("param", idParamSchema),
+        validated("json", brokerPatchBodySchema),
+        async (c) => {
+          const broker = await updateBroker(
+            deps,
+            requireAuth(c).user,
+            c.req.valid("param").id,
+            c.req.valid("json"),
+          );
+          return c.json(await detail(broker), 200);
+        },
+      )
+      .post(
+        "/:id/logo",
+        validated("param", idParamSchema),
+        // El permiso antes de leer el archivo.
+        async (c, next) => {
+          canEditBrand(c, c.req.valid("param").id);
+          await next();
+        },
+        // El multipart se lee completo en memoria: el tope va antes de leerlo (413).
+        bodyLimit({
+          maxSize: MAX_LOGO_BYTES + MULTIPART_OVERHEAD_BYTES,
+          onError: () => {
+            throw new AppError("REQUEST_TOO_LARGE", "El logo pasa de 5 MB");
+          },
+        }),
+        validated("form", brokerLogoFormSchema),
+        async (c) => {
+          const { id } = c.req.valid("param");
+          const bytes = new Uint8Array(await c.req.valid("form").logo.arrayBuffer());
+          const broker = await setBrokerLogo(deps, requireAuth(c).user, { brokerId: id, bytes });
+          const body: BrokerResponse = { broker };
+          return c.json(body, 200);
+        },
+      )
+      .get("/:id/template.xlsx", validated("param", idParamSchema), async (c) => {
+        const { id } = c.req.valid("param");
+        canEditBrand(c, id);
+        const broker = await brokerOf(id);
+        const bytes = await deps.brokerTemplate(broker);
+        // El `slug` ya cumple `isValidSlug` (alta y carga); igual, nada raro llega a la cabecera.
+        const name = broker.slug.replace(/[^a-z0-9-]/g, "") || "corredor";
+        // `c.body` pide un `Uint8Array<ArrayBuffer>`; el de exceljs lo es (no viene de un SharedArrayBuffer).
+        return c.body(bytes as Uint8Array<ArrayBuffer>, 200, {
+          "content-type": XLSX_CONTENT_TYPE,
+          "content-disposition": `attachment; filename="planilla-${name}.xlsx"`,
+          "cache-control": "no-store",
+        });
+      })
+      // F9.5-T14 (ADR-0035), solo el administrador (`access.ts` y `brokers.delete` en core): lo que
+      // se borraría, y borrar con el `slug` repetido. No borra nada en las redes.
+      .get("/:id/purge-summary", validated("param", idParamSchema), async (c) => {
+        const body: BrokerPurgeSummaryResponse = await purgeBrokerSummary(
           deps,
           requireAuth(c).user,
           c.req.valid("param").id,
-          c.req.valid("json"),
         );
-        return c.json(await detail(broker), 200);
-      },
-    )
-    .post(
-      "/:id/logo",
-      validated("param", idParamSchema),
-      // El permiso antes de leer el archivo.
-      async (c, next) => {
-        canEditBrand(c, c.req.valid("param").id);
-        await next();
-      },
-      // El multipart se lee completo en memoria: el tope va antes de leerlo (413).
-      bodyLimit({
-        maxSize: MAX_LOGO_BYTES + MULTIPART_OVERHEAD_BYTES,
-        onError: () => {
-          throw new AppError("REQUEST_TOO_LARGE", "El logo pasa de 5 MB");
-        },
-      }),
-      validated("form", brokerLogoFormSchema),
-      async (c) => {
-        const { id } = c.req.valid("param");
-        const bytes = new Uint8Array(await c.req.valid("form").logo.arrayBuffer());
-        const broker = await setBrokerLogo(deps, requireAuth(c).user, { brokerId: id, bytes });
-        const body: BrokerResponse = { broker };
         return c.json(body, 200);
-      },
-    )
-    .get("/:id/template.xlsx", validated("param", idParamSchema), async (c) => {
-      const { id } = c.req.valid("param");
-      canEditBrand(c, id);
-      const broker = await brokerOf(id);
-      const bytes = await deps.brokerTemplate(broker);
-      // El `slug` ya cumple `isValidSlug` (alta y carga); igual, nada raro llega a la cabecera.
-      const name = broker.slug.replace(/[^a-z0-9-]/g, "") || "corredor";
-      // `c.body` pide un `Uint8Array<ArrayBuffer>`; el de exceljs lo es (no viene de un SharedArrayBuffer).
-      return c.body(bytes as Uint8Array<ArrayBuffer>, 200, {
-        "content-type": XLSX_CONTENT_TYPE,
-        "content-disposition": `attachment; filename="planilla-${name}.xlsx"`,
-        "cache-control": "no-store",
-      });
-    });
+      })
+      .delete(
+        "/:id",
+        validated("param", idParamSchema),
+        validated("json", brokerDeleteBodySchema),
+        async (c) => {
+          const { id } = c.req.valid("param");
+          const result = await purgeBroker(
+            {
+              ...deps,
+              // Lo que R2 no borró queda en el log con su clave (nunca una URL), para reintentarlo.
+              onStorageFailure: (failure) =>
+                deps.logger.warn(
+                  { brokerId: id, ...failure },
+                  "R2 no borró un archivo del corredor borrado",
+                ),
+            },
+            requireAuth(c).user,
+            { brokerId: id, confirm: c.req.valid("json").confirm },
+          );
+          deps.logger.info(
+            {
+              brokerId: id,
+              slug: result.broker.slug,
+              deleted: result.deleted,
+              storageDeleted: result.storage.deleted,
+              storagePending: result.storage.pendingCount,
+            },
+            "corredor borrado",
+          );
+          const body: BrokerPurgeResponse = result;
+          return c.json(body, 200);
+        },
+      )
+  );
 }

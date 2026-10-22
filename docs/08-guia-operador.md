@@ -130,6 +130,7 @@ Reglas: `main` solo recibe cambios por PR; una rama por tarea o por lote de tare
 | `BACKUP_TOOL_NOT_INSTALLED`, o `doctor` avisa por `pg_dump` | Falta el cliente de Postgres: `brew install libpq` (queda en `/opt/homebrew/opt/libpq/bin`, que el respaldo busca solo; si lo instalaste en otro lado, fija `PG_BIN_DIR` en `.env`) |
 | `doctor` dice que `pg_dump` no puede respaldar una base más nueva | Tu `pg_dump` es de una versión mayor anterior a la de Neon: `brew upgrade libpq` |
 | `BACKUP_FAILED` | `pnpm db:backup` muestra la causa: sin conexión o Neon sin CU-horas (reintenta más tarde), la carpeta sin espacio o sin permisos. Los respaldos buenos nunca se borran por un intento fallido |
+| `BROKER_HAS_ACTIVE_PUBLICATIONS` al borrar un corredor | Tiene publicaciones publicándose, programadas, esperando tu clic o con resultado dudoso (la CLI las lista): desprográmalas (`unschedule <id>`) o cancélalas (`publications cancel <id>`), confirma o di «no lo publiqué» y resuelve las dudosas (`publications resolve <id>`); después, vuelve a borrar |
 | `BACKUP_IN_PROGRESS` | Ya hay un respaldo en curso (el del worker o otro `pnpm db:backup`): espera unos minutos y vuelve a intentarlo |
 
 ## La portada del panel: «Hoy» (F9.5)
@@ -158,6 +159,15 @@ De punta a punta, con `pnpm dev` corriendo. Todo se puede hacer en el panel (**C
 6. **El gasto:** en **Corredores** y con `pnpm -s cli usage`, lo gastado en IA en el mes (estimado: la cifra oficial está en la consola de Anthropic). Con el tope alcanzado, preparar los textos se frena hasta que subas el tope o empiece el mes siguiente.
 
 Para desactivar a alguien: **Desactivar** en su usuario (o `pnpm -s cli users disable <correo>`) cierra sus sesiones al tiro.
+
+### Borrar un corredor de verdad (F9.5)
+
+Para los corredores de prueba que ensucian el panel, o un cliente que se va y pide borrar sus datos. Es solo tuyo (administrador), por la CLI, y **no se puede deshacer**: saca un respaldo antes (`pnpm db:backup`; contra el servidor, `ENV_FILE=.env.production pnpm db:backup`).
+
+1. `pnpm -s cli brokers delete <slug>` muestra lo que se borra (propiedades, fotos y videos, publicaciones, posts, usuarios, cuentas y cargas) sin borrar nada, y cuántas publicaciones están publicadas o pausadas: esas seguirán en las redes (retíralas antes si quieres bajarlas).
+2. `pnpm -s cli brokers delete <slug> --confirm <slug>` lo borra: la base en un solo paso y después sus archivos en R2. Al final dice qué se borró y si quedó algo pendiente en R2 (la base queda borrada igual; lo pendiente se borra a mano por su clave).
+
+Se niega si alguna publicación está publicándose, programada, esperando tu clic o con resultado dudoso: dice cuáles; desprográmalas o cancélalas, confirma o di «no lo publiqué» y resuelve las dudosas. Lo publicado en las redes sigue allá: borrar aquí no retira nada. El paso a paso para el servidor está en `docs/10-despliegue.md` ("Borrar un corredor de verdad").
 
 ## El contenido de tus marcas, de punta a punta (F9)
 

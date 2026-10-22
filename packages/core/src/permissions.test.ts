@@ -24,6 +24,8 @@ const BROKER_CAN: Readonly<Record<Permission, boolean>> = {
   "tiktok.connect": true,
   "broker.settings": false,
   "brokers.create": false,
+  // F9.5-T14: borrar un corredor es solo del administrador.
+  "brokers.delete": false,
   "users.manage": false,
   "system.view": false,
 };

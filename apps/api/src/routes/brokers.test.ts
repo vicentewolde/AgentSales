@@ -1,8 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { type BrokerData, emptyEditorialProfileData } from "@agentsales/core";
+import type { FakeBrokerPurgeRepository, InMemoryMediaStorage } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
-import { brokerDetailResponseSchema, errorBodySchema } from "../contracts/index.js";
+import {
+  brokerDetailResponseSchema,
+  brokerPurgeResponseSchema,
+  brokerPurgeSummaryResponseSchema,
+  errorBodySchema,
+} from "../contracts/index.js";
 import { TEST_ADMIN_TOKEN, testAuth, testDeps } from "../testing/index.js";
 
 // F7-T13 y T14 (spec F7 §4.6 y §4.13): crear, ver y editar corredores, el logo y la planilla.
@@ -291,5 +297,109 @@ describe("GET /brokers/:id/template.xlsx", () => {
       'attachment; filename="planilla-mio.xlsx"',
     );
     expect(await response.text()).toBe("planilla de mio");
+  });
+});
+
+// F9.5-T14 (ADR-0035): borrar un corredor. Lo que borra la base lo prueba el repositorio con PGlite;
+// aquí, quién puede, la confirmación con el slug, los rechazos y R2 después.
+describe("GET /brokers/:id/purge-summary y DELETE /brokers/:id", () => {
+  const purgeOf = (deps: Awaited<ReturnType<typeof setup>>["deps"]) =>
+    deps.brokerPurge as FakeBrokerPurgeRepository;
+
+  it("solo el administrador: el corredor recibe 403 aunque sea el suyo, sin borrar nada", async () => {
+    const s = await setup();
+    const summary = await s.broker(`/brokers/${s.mine.id}/purge-summary`);
+    expect(summary.status).toBe(403);
+    const response = await s.broker(`/brokers/${s.mine.id}`, {
+      method: "DELETE",
+      json: { confirm: "mio" },
+    });
+    expect(response.status).toBe(403);
+    expect(purgeOf(s.deps).calls).toEqual([]);
+  });
+
+  it("el resumen dice cuánto se borra y qué lo impide", async () => {
+    const s = await setup();
+    purgeOf(s.deps).set(s.mine.id, {
+      counts: {
+        listings: 2,
+        media: 30,
+        publications: 4,
+        livePublications: 1,
+        users: 1,
+        accounts: 2,
+      },
+      blocking: [{ publicationId: randomUUID(), status: "scheduled", platform: "instagram" }],
+    });
+    const response = await s.admin(`/brokers/${s.mine.id}/purge-summary`);
+    expect(response.status).toBe(200);
+    const body = brokerPurgeSummaryResponseSchema.parse(await response.json());
+    expect(body.broker).toMatchObject({ id: s.mine.id, slug: "mio", brandName: "Marca mio" });
+    expect(body.counts).toEqual({
+      listings: 2,
+      media: 30,
+      publications: 4,
+      livePublications: 1,
+      posts: 0,
+      users: 1,
+      accounts: 2,
+      importRuns: 0,
+    });
+    expect(body.blocking).toHaveLength(1);
+    expect((await s.admin(`/brokers/${randomUUID()}/purge-summary`)).status).toBe(404);
+  });
+
+  it("exige el slug en el cuerpo: sin él es 400 y con otro, 409 BROKER_DELETE_NOT_CONFIRMED", async () => {
+    const s = await setup();
+    const missing = await s.admin(`/brokers/${s.mine.id}`, { method: "DELETE", json: {} });
+    expect(missing.status).toBe(400);
+    const wrong = await s.admin(`/brokers/${s.mine.id}`, {
+      method: "DELETE",
+      json: { confirm: "ajeno" },
+    });
+    expect(wrong.status).toBe(409);
+    expect((await errorOf(wrong)).code).toBe("BROKER_DELETE_NOT_CONFIRMED");
+    expect(purgeOf(s.deps).purged).toEqual([]);
+  });
+
+  it("con publicaciones en curso o programadas: 409 BROKER_HAS_ACTIVE_PUBLICATIONS", async () => {
+    const s = await setup();
+    purgeOf(s.deps).set(s.mine.id, {
+      blocking: [{ publicationId: randomUUID(), status: "publishing", platform: "instagram" }],
+    });
+    const response = await s.admin(`/brokers/${s.mine.id}`, {
+      method: "DELETE",
+      json: { confirm: "mio" },
+    });
+    expect(response.status).toBe(409);
+    expect((await errorOf(response)).code).toBe("BROKER_HAS_ACTIVE_PUBLICATIONS");
+    expect(purgeOf(s.deps).purged).toEqual([]);
+  });
+
+  it("borra la base y después sus archivos de R2; dice lo que quedó pendiente", async () => {
+    const s = await setup();
+    const storage = s.deps.storage as InMemoryMediaStorage;
+    const mine = `brokers/${s.mine.id}/brand/logo.png`;
+    const theirs = `brokers/${s.theirs.id}/brand/logo.png`;
+    await storage.put(mine, new Uint8Array([1]), "image/png");
+    await storage.put(theirs, new Uint8Array([1]), "image/png");
+    purgeOf(s.deps).set(s.mine.id, {
+      refs: { mediaKeys: [mine] },
+      deleted: { brokers: 1, media: 1 },
+    });
+    const response = await s.admin(`/brokers/${s.mine.id}`, {
+      method: "DELETE",
+      json: { confirm: "mio" },
+    });
+    expect(response.status).toBe(200);
+    const body = brokerPurgeResponseSchema.parse(await response.json());
+    expect(body).toEqual({
+      broker: { id: s.mine.id, slug: "mio" },
+      deleted: { brokers: 1, media: 1 },
+      storage: { deleted: 1, pendingCount: 0, pending: [] },
+    });
+    expect(purgeOf(s.deps).purged).toEqual([s.mine.id]);
+    expect(storage.objects.has(mine)).toBe(false);
+    expect(storage.objects.has(theirs)).toBe(true);
   });
 });

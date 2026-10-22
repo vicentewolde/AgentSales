@@ -22,6 +22,7 @@ import {
 } from "@agentsales/config";
 import { ALL_SCOPE, brokersNeedingApiKey, WORKER_HEARTBEAT_LOOKBACK } from "@agentsales/core";
 import {
+  createBrokerPurgeRepository,
   createBrokerRepository,
   createContentRepository,
   createContentRunRepository,
@@ -277,6 +278,8 @@ const app = createApp({
   ]),
   hashMetaUserId: createMetaUserIdHasher(env.APP_ENCRYPTION_KEY),
   metaDeletion: createMetaDeletionRepository(database.db),
+  // Borrar un corredor (F9.5-T14, ADR-0035): la base en una transacción; R2 después, con `storage`.
+  brokerPurge: createBrokerPurgeRepository(database.db),
   // El host del panel debe ser el mismo de la URI de retorno (la cookie distingue `localhost`).
   panelUrl: panelUrlOf(env),
   instagramStartUrl: instagramStartUrlOf(env.INSTAGRAM_REDIRECT_URI),

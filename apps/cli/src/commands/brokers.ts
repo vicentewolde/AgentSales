@@ -2,7 +2,11 @@ import { access, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 import {
   type BrokerDetailResponse,
+  type BrokerPurgeResponse,
+  type BrokerPurgeSummaryResponse,
   brokerDetailResponseSchema,
+  brokerPurgeResponseSchema,
+  brokerPurgeSummaryResponseSchema,
   brokerResponseSchema,
 } from "@agentsales/api/contracts";
 import {
@@ -15,11 +19,14 @@ import {
   MAX_LOGO_BYTES,
   onboardingOwnerText,
   onboardingStepText,
+  PLATFORM_TEXT,
+  type Platform,
+  PUBLICATION_STATUS_TEXT,
   parseUsdAmount,
 } from "@agentsales/core";
 import type { Command } from "commander";
 import { z } from "zod";
-import { type ApiClient, createHealthFetcher, unwrap } from "../api-client.js";
+import { ApiCallError, type ApiClient, createHealthFetcher, unwrap } from "../api-client.js";
 import { type CliContext, exitWith, type Terminal } from "../context.js";
 import { CliError, guarded, type Io } from "../output.js";
 import { brokerSlugOf, fetchBrokers } from "./shared.js";
@@ -348,6 +355,137 @@ export function runBrokerTemplate(
   });
 }
 
+export type DeleteOptions = { confirm?: string };
+
+/** El resumen de lo que se borra, en lenguaje simple. */
+function printPurgeSummary(deps: Io, { broker, counts }: BrokerPurgeSummaryResponse): void {
+  const c = deps.colors;
+  deps.print(`${c.bold(broker.brandName)} (${broker.slug}): se borra todo lo suyo`);
+  const rows: [string, number][] = [
+    ["propiedades", counts.listings],
+    ["fotos, videos y logos (en la base y en R2)", counts.media],
+    ["publicaciones con su historial", counts.publications],
+    ["posts", counts.posts],
+    ["usuarios con sus sesiones", counts.users],
+    ["cuentas conectadas con sus credenciales", counts.accounts],
+    ["cargas de planillas", counts.importRuns],
+  ];
+  for (const [label, n] of rows) deps.print(`  ${String(n).padStart(5)}  ${label}`);
+  const live = counts.livePublications;
+  if (live > 0) {
+    deps.print(
+      c.yellow(
+        `  ${live} ${live === 1 ? "publicación está publicada o pausada: seguirá publicada" : "publicaciones están publicadas o pausadas: seguirán publicadas"} en las redes (borrar aquí no las retira; si quieres bajarlas, retíralas antes)`,
+      ),
+    );
+    return;
+  }
+  deps.print(
+    c.dim(
+      "  Lo publicado en las redes sigue allá: borrar aquí no retira nada (para eso, retirar).",
+    ),
+  );
+}
+
+/**
+ * `agentsales brokers delete <slug> --confirm <slug>` (administrador; F9.5-T14, ADR-0035): muestra
+ * el resumen y, solo con `--confirm` igual al slug (`--yes` no basta), borra el corredor y todo lo
+ * suyo. Al final dice qué se borró y qué quedó pendiente en R2. No se puede deshacer: el respaldo
+ * (`pnpm db:backup`) es la vuelta atrás.
+ */
+export function runBrokerDelete(
+  deps: BrokersDeps,
+  slugOption: string,
+  options: DeleteOptions = {},
+) {
+  const c = deps.colors;
+  return guarded(deps, async () => {
+    const broker = await brokerBySlug(deps.client, slugOption);
+    const summary = await unwrap(
+      deps.client.brokers[":id"]["purge-summary"].$get({ param: { id: broker.id } }),
+      brokerPurgeSummaryResponseSchema,
+    );
+    printPurgeSummary(deps, summary);
+    if (summary.blocking.length > 0) {
+      deps.printError(
+        c.yellow(
+          `No se puede borrar: ${summary.blocking.length} ${summary.blocking.length === 1 ? "publicación está" : "publicaciones están"} en curso, programadas o con resultado dudoso`,
+        ),
+      );
+      for (const { publicationId, status, platform } of summary.blocking) {
+        const network = PLATFORM_TEXT[platform as Platform] ?? platform;
+        deps.printError(`  ${publicationId}  ${network}  ${PUBLICATION_STATUS_TEXT[status]}`);
+      }
+      deps.printError(
+        c.dim(
+          "→ Desprográmalas (agentsales unschedule <id>) o cancélalas (agentsales publications cancel <id>), confirma o di «no lo publiqué» en las que esperan y resuelve las dudosas (agentsales publications resolve <id>); después, vuelve a intentarlo",
+        ),
+      );
+      return 1;
+    }
+    if (options.confirm === undefined) {
+      deps.printError(
+        c.yellow(`No se borró nada. Para borrarlo de verdad, repite el identificador:`),
+      );
+      deps.printError(`  agentsales brokers delete ${broker.slug} --confirm ${broker.slug}`);
+      deps.printError(
+        c.dim("→ No se puede deshacer: antes, saca un respaldo de la base (pnpm db:backup)"),
+      );
+      return 1;
+    }
+    if (options.confirm.trim() !== broker.slug) {
+      throw new CliError(
+        "CONFIRM_MISMATCH",
+        `--confirm debe ser exactamente ${broker.slug}: no se borró nada`,
+      );
+    }
+    let result: BrokerPurgeResponse;
+    try {
+      result = await unwrap(
+        deps.client.brokers[":id"].$delete({
+          param: { id: broker.id },
+          json: { confirm: options.confirm.trim() },
+        }),
+        brokerPurgeResponseSchema,
+      );
+    } catch (error) {
+      // El servidor puede terminar aunque la respuesta no llegue a tiempo.
+      if (error instanceof ApiCallError && error.code === "TIMEOUT") {
+        throw new CliError(
+          "TIMEOUT",
+          "El servidor no respondió a tiempo: puede que el corredor se haya borrado igual",
+          `Revísalo con agentsales brokers show ${broker.slug} (si ya no existe, se borró; lo pendiente en R2 queda en el log del servidor)`,
+        );
+      }
+      throw error;
+    }
+    const rows = Object.values(result.deleted).reduce((sum, n) => sum + n, 0);
+    deps.print(`${c.green("✓")} Corredor ${result.broker.slug} borrado: ${rows} filas en la base`);
+    for (const [table, n] of Object.entries(result.deleted)) {
+      if (n > 0) deps.print(c.dim(`  ${String(n).padStart(5)}  ${table}`));
+    }
+    deps.print(`${c.green("✓")} ${result.storage.deleted} archivos borrados en R2`);
+    if (result.storage.pendingCount > 0) {
+      deps.printError(
+        c.yellow(
+          `Quedaron ${result.storage.pendingCount} pendientes en R2 (la base ya está borrada); el log del servidor los tiene todos:`,
+        ),
+      );
+      for (const pending of result.storage.pending) {
+        deps.printError(
+          `  ${pending.kind === "key" ? pending.key : `${pending.prefix}*`}  ${pending.code}`,
+        );
+      }
+      if (result.storage.pending.length < result.storage.pendingCount) {
+        deps.printError(
+          c.dim(`  … y ${result.storage.pendingCount - result.storage.pending.length} más`),
+        );
+      }
+    }
+    return 0;
+  });
+}
+
 export function register(program: Command, ctx: CliContext): void {
   const deps = () => ({ ...ctx, client: ctx.api() });
   const brokers = program.command("brokers").description("Corredores");
@@ -401,6 +539,16 @@ export function register(program: Command, ctx: CliContext): void {
     .option("--force", "reemplaza el archivo si existe")
     .action((slug: string, options: TemplateOptions) =>
       exitWith(() => runBrokerTemplate(deps(), slug, options)),
+    );
+  brokers
+    .command("delete")
+    .description(
+      "Borra un corredor y todo lo suyo, en la base y en R2 (administrador; no se puede deshacer)",
+    )
+    .argument("<slug>", "corredor")
+    .option("--confirm <slug>", "el identificador del corredor otra vez, para borrarlo de verdad")
+    .action((slug: string, options: DeleteOptions) =>
+      exitWith(() => runBrokerDelete(deps(), slug, options)),
     );
   brokers
     .command("auto-publish")

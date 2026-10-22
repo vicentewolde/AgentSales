@@ -45,6 +45,11 @@ export const PERMISSIONS = [
   /** Publicación automática, tope de IA y "corredor propio". */
   "broker.settings",
   "brokers.create",
+  /**
+   * Borrar un corredor y todo lo suyo (F9.5-T14, ADR-0035): solo el administrador, con el `slug`
+   * repetido como confirmación.
+   */
+  "brokers.delete",
   /** Crear, restablecer, desactivar y reactivar usuarios. */
   "users.manage",
   /** `/health` con detalle. */

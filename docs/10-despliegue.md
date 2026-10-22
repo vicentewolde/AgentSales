@@ -314,6 +314,28 @@ Hazlo siempre primero en una **rama nueva de Neon**, nunca encima de la base de 
 
 Si tienes dudas en este paso, pídele ayuda a Claude antes de cambiar la base del servidor (sin pegar la cadena en el chat).
 
+### Borrar un corredor de verdad (F9.5-T14, ADR-0035)
+
+Para limpiar los corredores de prueba antes de una demo (o cuando un cliente se va y pide borrar sus datos). Se lleva **todo lo suyo**: propiedades, fotos y videos (en la base y en R2), textos, publicaciones con su historial, posts, planes, perfil editorial, cargas, cuentas conectadas con sus credenciales y usuarios con sus sesiones. **No se puede deshacer**: la única vuelta atrás es restaurar un respaldo (arriba). No borra nada en las redes: lo publicado sigue allá (para eso está retirar).
+
+1. **Respaldo antes**, desde tu Mac (deja el volcado en `~/.agentsales/backups`):
+   ```bash
+   ENV_FILE=.env.production pnpm db:backup
+   ```
+   Si no tienes `.env.production` a mano, revisa en R2 (`agentsales-backups` → `db/`) que el respaldo de hoy del worker esté ahí.
+2. **Mira el resumen** (con la sesión del administrador en el servidor: `pnpm -s cli login --api https://<dominio>`): sin `--confirm` no borra nada.
+   ```bash
+   pnpm -s cli brokers delete <slug>
+   ```
+   Dice cuántas propiedades, medios, publicaciones, posts, usuarios, cuentas y cargas se van. Si alguna publicación está publicándose, programada, esperando tu clic o con resultado dudoso, se niega y lista cuáles: desprográmalas o cancélalas, confirma o di «no lo publiqué» en las que esperan y resuelve las dudosas.
+3. **Borra**, repitiendo el identificador (`--yes` no sirve aquí):
+   ```bash
+   pnpm -s cli brokers delete <slug> --confirm <slug>
+   ```
+   El resumen también dice cuántas publicaciones están publicadas o pausadas: **seguirán publicadas en las redes** (si quieres bajarlas, retíralas antes de borrar). Al final dice cuántas filas y cuántos archivos de R2 se borraron. Si R2 no pudo borrar alguno, la base ya quedó borrada igual y la lista sale en la terminal (y completa en los logs: busca «R2 no borró un archivo del corredor borrado» en `fly logs -a agentsales`); bórralos a mano en **dash.cloudflare.com** → **R2** → el bucket de medios, por su clave.
+
+**Trabajos del worker en cola de un corredor borrado** (revisado en el código, F9.5-T14): cada job recarga su fila al empezar, y si ya no existe falla con un error **no reintentable** (`CONTENT_RUN_NOT_FOUND` para preparar textos o pedir los de un post, `PLAN_RUN_NOT_FOUND` para un plan, `IMPORT_RUN_NOT_FOUND` para una carga, `PUBLICATION_NOT_FOUND` para publicar o leer el estado en Portal). El worker lo anota **una vez** en el log («job falló sin reintento (error no reintentable)») y lo cierra: pg-boss no lo reintenta. Procesar los medios de un post borrado se salta sin error (`skipped`, con un aviso informativo). Un trabajo que ya estaba corriendo y escribe después del borrado choca con una FK (`DB_QUERY_FAILED`, también no reintentable); si alcanzó a subir un archivo a R2 después de la limpieza, queda suelto bajo `brokers/<id>/` o `posts/<id>/` y se borra a mano. Por eso conviene borrar sin preparaciones ni cargas en curso de ese corredor (el borrado no lo exige). Los trabajos periódicos (publicar lo programado, vigilar publicaciones, renovar tokens) buscan por estado y no ven nada del corredor borrado. Ninguna publicación programada o publicándose puede quedar en cola: el borrado se niega con ellas.
+
 ## Paso 11 · Pasar a siempre encendido (cuando decidas pagar)
 
 Fuera de F8. Cuando quieras que los corredores usen la herramienta cualquier día:
