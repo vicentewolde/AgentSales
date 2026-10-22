@@ -181,20 +181,30 @@ describe("panel: detalle de un post", () => {
     const s = await setup();
     await s.brokers.create(brokerData("otro"));
     sessionStorage.setItem(BROKER_SCOPE_STORAGE_KEY, "otro");
-    await s.draft();
-    await s.client.posts[":id"].contents[":platform"][":language"].approve.$post({
-      param: { id: s.post.id, platform: "discord", language: "es" },
-    });
+    await s.draft([
+      { platform: "discord", language: "es" },
+      { platform: "linkedin", language: "es" },
+    ]);
+    for (const platform of ["discord", "linkedin"] as const) {
+      await s.client.posts[":id"].contents[":platform"][":language"].approve.$post({
+        param: { id: s.post.id, platform, language: "es" },
+      });
+    }
     await s.open();
     const section = screen.getByRole("region", { name: "Publicar" });
-    const publish = await within(section).findByRole("button", {
+    const discord = await within(section).findByRole("button", {
       name: "Publicar en Discord (simulación)",
     });
+    const linkedin = within(section).getByRole("button", {
+      name: "Publicar en LinkedIn (simulación)",
+    });
+    // LinkedIn (la marca no tiene cuenta) queda desactivado: las cuentas ya cargaron.
+    await waitFor(() => expect(linkedin).toHaveProperty("disabled", true));
     await waitFor(() => expect(s.requests).toContain("GET /brokers"));
-    await waitFor(() => expect(s.requests).toContain("GET /accounts"));
+    expect(discord).toHaveProperty("disabled", false);
+    expect(within(section).queryByText(/Sin cuenta conectada en Discord/)).toBeNull();
+    expect(s.requests).toContain("GET /accounts");
     expect(s.requests.filter((request) => request.startsWith("GET /accounts?"))).toEqual([]);
-    expect(publish).toHaveProperty("disabled", false);
-    expect(within(section).queryByText(/Sin cuenta conectada/)).toBeNull();
   });
 
   it("programar pide la hora de Chile y deja la publicación programada", async () => {

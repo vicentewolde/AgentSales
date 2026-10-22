@@ -54,8 +54,9 @@ export function approvedPlatforms(
 
 /**
  * Las redes que no tienen una cuenta conectada de la marca del post (ensayo de la demo de F9;
- * `accountOwnedBy`, F9.5-T12): publicarlas o programarlas daría `ACCOUNT_NOT_CONNECTED`. Mientras no se saben las cuentas (`undefined`),
- * ninguna: el panel no esconde nada que la API podría aceptar.
+ * `accountOwnedBy`, F9.5-T12): publicarlas o programarlas daría `ACCOUNT_NOT_CONNECTED`.
+ * Mientras no se saben las cuentas (`undefined`), ninguna: el panel no esconde nada que la API
+ * podría aceptar.
  */
 export function platformsWithoutAccount(
   platforms: readonly PostPlatform[],
