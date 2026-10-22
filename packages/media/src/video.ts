@@ -8,6 +8,7 @@ import {
   type AbortSignalLike,
   AppError,
   discordVideoBitrateKbps,
+  type MusicInput,
   type PhotoReelOptions,
   type ProcessedVideo,
   REEL_MIN_DURATION_S,
@@ -18,7 +19,13 @@ import {
 import sharp from "sharp";
 import { z } from "zod";
 import { decodableSource, decodeFailed, renderVariant } from "./image.js";
-import { DISCORD_VIDEO_SPEC, PHOTO_REEL_SPEC, REEL_SPEC, X_VIDEO_SPEC } from "./pipeline.js";
+import {
+  DISCORD_VIDEO_SPEC,
+  MUSIC_SPEC,
+  PHOTO_REEL_SPEC,
+  REEL_SPEC,
+  X_VIDEO_SPEC,
+} from "./pipeline.js";
 import { aborted, CommandFailedError, runTool, throwIfAborted } from "./run.js";
 
 export type VideoToolOptions = {
@@ -200,15 +207,54 @@ async function outputOf(
 }
 
 /**
- * La pista de audio silenciosa de un reel sin audio (Instagram la espera), como entrada de ffmpeg.
- * Es el único lugar por donde entra el audio de un reel sin sonido propio: la música (F9.5-T19)
- * entrará aquí en vez del silencio.
+ * La pista de audio silenciosa de un reel sin audio ni música (Instagram la espera), como entrada
+ * de ffmpeg. Con música (F9.5-T19), la música entra en su lugar (`musicInput`).
  */
 function silentAudioInput(durationS: number): string[] {
   return [
     ...["-f", "lavfi", "-t", durationS.toFixed(3)],
     ...["-i", `anullsrc=channel_layout=stereo:sample_rate=${REEL_SPEC.audio.sampleRate}`],
   ];
+}
+
+/** Deja la pista de música en el temporal del intento (ffmpeg la lee de un archivo). */
+async function writeMusic(music: MusicInput, options: VideoToolOptions): Promise<string> {
+  const path = join(options.workDir, `${randomUUID()}-musica`);
+  await writeFile(path, music.bytes);
+  return path;
+}
+
+/** La música como entrada de ffmpeg: en bucle, por si es más corta que el video. */
+function musicInput(path: string): string[] {
+  return ["-stream_loop", "-1", "-i", path];
+}
+
+/**
+ * El grafo de audio con música (F9.5-T19, `MUSIC_SPEC`), que termina en `[a]`: la música (la
+ * entrada `music`) recortada a `durationS`, con un fundido de entrada y otro de salida. Con `voice`
+ * (el sonido del video, como `0:a:0`), la música va detrás, a `underVoiceDb`, y se suma al sonido
+ * sin normalizar (la voz queda a su volumen); sin `voice`, la música sola a `aloneDb`.
+ */
+export function musicAudioFilter(voice: string | null, music: number, durationS: number): string {
+  const { sampleRate, fadeInS, underVoiceDb, aloneDb } = MUSIC_SPEC;
+  const format = `aresample=${sampleRate},aformat=sample_fmts=fltp:channel_layouts=stereo`;
+  const end = durationS.toFixed(3);
+  const fadeOutS = Math.min(MUSIC_SPEC.fadeOutS, durationS / 3);
+  const fadeOutStart = Math.max(0, durationS - fadeOutS).toFixed(3);
+  const musicChain = [
+    `[${music}:a:0]${format}`,
+    `atrim=end=${end}`,
+    "asetpts=N/SR/TB",
+    `volume=${voice === null ? aloneDb : underVoiceDb}dB`,
+    `afade=t=in:st=0:d=${Math.min(fadeInS, durationS / 3).toFixed(3)}`,
+    `afade=t=out:st=${fadeOutStart}:d=${fadeOutS.toFixed(3)}`,
+  ].join(",");
+  if (voice === null) return `${musicChain}[a]`;
+  return [
+    `${musicChain}[music]`,
+    `[${voice}]${format},apad,atrim=end=${end},asetpts=N/SR/TB[voice]`,
+    "[voice][music]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[a]",
+  ].join(";");
 }
 
 /** Hilos de ffmpeg (filtros y codificador): sin valor, ffmpeg usa todos los núcleos. */
@@ -243,6 +289,7 @@ async function encodeReel(
   path: string,
   source: Probe,
   overlayPng: Uint8Array | null,
+  musicPath: string | null,
   options: VideoToolOptions,
   signal?: AbortSignalLike,
 ): Promise<VideoOutput> {
@@ -252,22 +299,21 @@ async function encodeReel(
   if (overlayPath !== null && overlayPng !== null) await writeFile(overlayPath, overlayPng);
   const durationS = Math.min(source.durationS, REEL_SPEC.maxDurationS);
   const threads = threadsOf(options);
-  // Un video sin audio recibe una pista silenciosa: Instagram la espera.
-  const silence = source.hasAudio ? [] : silentAudioInput(durationS);
-  // La pista silenciosa va después del video y, si hay, del texto.
-  const silenceInput = overlayPath === null ? 1 : 2;
+  // La música, o la pista silenciosa de un video sin audio (Instagram la espera), va después del
+  // video y, si hay, del texto.
+  const audioIndex = overlayPath === null ? 1 : 2;
+  const audioInput =
+    musicPath !== null ? musicInput(musicPath) : source.hasAudio ? [] : silentAudioInput(durationS);
+  const filter =
+    musicPath === null
+      ? reelFilter(overlayPath !== null)
+      : `${reelFilter(overlayPath !== null)};${musicAudioFilter(source.hasAudio ? "0:a:0" : null, audioIndex, durationS)}`;
+  const audioMap = musicPath !== null ? "[a]" : source.hasAudio ? "0:a:0" : `${audioIndex}:a:0`;
   const args = [
     ...["-hide_banner", "-loglevel", "error", "-nostdin", "-y"],
     ...(threads === null ? [] : ["-filter_complex_threads", threads]),
-    ...["-i", path, ...(overlayPath === null ? [] : ["-i", overlayPath]), ...silence],
-    ...[
-      "-filter_complex",
-      reelFilter(overlayPath !== null),
-      "-map",
-      "[v]",
-      "-map",
-      source.hasAudio ? "0:a:0" : `${silenceInput}:a:0`,
-    ],
+    ...["-i", path, ...(overlayPath === null ? [] : ["-i", overlayPath]), ...audioInput],
+    ...["-filter_complex", filter, "-map", "[v]", "-map", audioMap],
     ...reelOutputArgs(durationS, threads, reelPath),
   ];
   try {
@@ -353,7 +399,7 @@ function photoReelFilter(count: number, withText: boolean): string {
  */
 export async function encodeReelFromPhotos(
   photos: readonly ReelPhotoInput[],
-  { overlayPng }: PhotoReelOptions,
+  { overlayPng, music = null }: PhotoReelOptions,
   options: VideoToolOptions,
   signal?: AbortSignalLike,
 ): Promise<VideoOutput> {
@@ -379,6 +425,7 @@ export async function encodeReelFromPhotos(
   const durationS = photos.length * slideS;
   const threads = threadsOf(options);
   const imageOptions = { ...options, ensureFfmpeg: options.ensureTools };
+  let musicPath: string | null = null;
   try {
     for (const { photo, path } of frames) {
       throwIfAborted(signal);
@@ -393,16 +440,23 @@ export async function encodeReelFromPhotos(
       ...["-t", (index < framePaths.length - 1 ? slideS + fadeS : slideS).toFixed(3)],
       ...["-i", path],
     ]);
-    // La pista silenciosa va después de las fotos y, si hay, del texto.
-    const audioInput = photos.length + (overlayPath === null ? 0 : 1);
+    // La música (F9.5-T19), o la pista silenciosa, va después de las fotos y, si hay, del texto.
+    const audioIndex = photos.length + (overlayPath === null ? 0 : 1);
+    if (music !== null) musicPath = await writeMusic(music, options);
+    const videoFilter = photoReelFilter(photos.length, overlayPath !== null);
     const args = [
       ...["-hide_banner", "-loglevel", "error", "-nostdin", "-y"],
       ...(threads === null ? [] : ["-filter_complex_threads", threads]),
       ...inputs,
       ...(overlayPath === null ? [] : ["-i", overlayPath]),
-      ...silentAudioInput(durationS),
-      ...["-filter_complex", photoReelFilter(photos.length, overlayPath !== null)],
-      ...["-map", "[v]", "-map", `${audioInput}:a:0`],
+      ...(musicPath === null ? silentAudioInput(durationS) : musicInput(musicPath)),
+      ...[
+        "-filter_complex",
+        musicPath === null
+          ? videoFilter
+          : `${videoFilter};${musicAudioFilter(null, audioIndex, durationS)}`,
+      ],
+      ...["-map", "[v]", "-map", musicPath === null ? `${audioIndex}:a:0` : "[a]"],
       ...reelOutputArgs(durationS, threads, reelPath),
     ];
     await runOrDecodeFailed(options.ffmpegPath, args, signal);
@@ -412,6 +466,7 @@ export async function encodeReelFromPhotos(
   } finally {
     for (const path of framePaths) await rm(path, { force: true });
     if (overlayPath !== null) await rm(overlayPath, { force: true });
+    if (musicPath !== null) await rm(musicPath, { force: true });
   }
   return outputOf(reelPath, options, signal);
 }
@@ -455,30 +510,71 @@ function fitInside(
   return { width: even(source.width * scale), height: even(source.height * scale) };
 }
 
+/**
+ * Las entradas, los filtros y las pistas de un video reducido (X o Discord) con su filtro de video
+ * `vf`. Sin música, como siempre: `-vf` y el audio del original tal cual (si tiene). Con música
+ * (F9.5-T19), un grafo con el video y el audio mezclado (`musicAudioFilter`), con la duración del
+ * original: siempre lleva audio.
+ */
+function reducedStreams(
+  path: string,
+  source: Probe,
+  vf: string,
+  musicPath: string | null,
+  threads: string | null,
+): { args: string[]; withAudio: boolean } {
+  if (musicPath === null) {
+    return {
+      args: [
+        ...(threads === null ? [] : ["-filter_threads", threads]),
+        ...["-i", path, "-map", "0:v:0", ...(source.hasAudio ? ["-map", "0:a:0"] : [])],
+        ...["-vf", vf],
+      ],
+      withAudio: source.hasAudio,
+    };
+  }
+  const audio = musicAudioFilter(source.hasAudio ? "0:a:0" : null, 1, source.durationS);
+  return {
+    args: [
+      ...(threads === null ? [] : ["-filter_complex_threads", threads]),
+      ...["-i", path, ...musicInput(musicPath)],
+      ...["-filter_complex", `[0:v:0]${vf}[v];${audio}`, "-map", "[v]", "-map", "[a]"],
+      ...["-t", source.durationS.toFixed(3)],
+    ],
+    withAudio: true,
+  };
+}
+
 /** Arma el video para X en el temporal (`X_VIDEO_SPEC`); lo sube quien lo pide. */
 async function encodeXVideo(
   path: string,
   source: Probe,
+  musicPath: string | null,
   options: VideoToolOptions,
   signal?: AbortSignalLike,
 ): Promise<VideoOutput> {
   const outPath = join(options.workDir, `${randomUUID()}-x.mp4`);
-  // Sin `-t`: la duración completa (el límite de X lo revisa quien publica, T16).
+  // La duración completa (el límite de X lo revisa quien publica, T16).
   const { fps, x264, audio } = X_VIDEO_SPEC;
   const size = xVideoSize(source);
   const threads = options.threads === undefined ? null : String(options.threads);
+  const streams = reducedStreams(
+    path,
+    source,
+    `fps=${fps},scale=${size.width}:${size.height},format=yuv420p,setsar=1`,
+    musicPath,
+    threads,
+  );
   const args = [
     ...["-hide_banner", "-loglevel", "error", "-nostdin", "-y"],
-    ...(threads === null ? [] : ["-filter_threads", threads]),
-    ...["-i", path, "-map", "0:v:0", ...(source.hasAudio ? ["-map", "0:a:0"] : [])],
-    ...["-vf", `fps=${fps},scale=${size.width}:${size.height},format=yuv420p,setsar=1`],
+    ...streams.args,
     ...["-r", String(fps)],
     ...["-c:v", "libx264", "-preset", x264.preset, "-profile:v", "high", "-crf", String(x264.crf)],
     ...(threads === null ? [] : ["-threads", threads]),
     ...["-maxrate", x264.maxrate, "-bufsize", x264.bufsize],
     ...["-g", String(x264.gop), "-keyint_min", String(x264.gop), "-sc_threshold", "0"],
     ...["-flags", "+cgop"],
-    ...(source.hasAudio
+    ...(streams.withAudio
       ? ["-c:a", "aac", "-b:a", audio.bitrate, "-ac", "2", "-ar", String(audio.sampleRate)]
       : ["-an"]),
     ...["-movflags", "+faststart", "-map_metadata", "-1", outPath],
@@ -501,12 +597,14 @@ async function encodeDiscordVideo(
   path: string,
   source: Probe,
   maxBytes: number,
+  musicPath: string | null,
   options: VideoToolOptions,
   signal?: AbortSignalLike,
 ): Promise<VideoOutput | null> {
   const kbps = discordVideoBitrateKbps({
     durationS: source.durationS,
-    hasAudio: source.hasAudio,
+    // Con música siempre lleva audio (F9.5-T19).
+    hasAudio: source.hasAudio || musicPath !== null,
     maxBytes,
   });
   if (kbps === null) return null;
@@ -515,11 +613,16 @@ async function encodeDiscordVideo(
   const size = discordVideoSize(source);
   const threads = options.threads === undefined ? null : String(options.threads);
   const rate = `${kbps}k`;
+  const streams = reducedStreams(
+    path,
+    source,
+    `fps=${fps},scale=${size.width}:${size.height},format=yuv420p,setsar=1`,
+    musicPath,
+    threads,
+  );
   const args = [
     ...["-hide_banner", "-loglevel", "error", "-nostdin", "-y"],
-    ...(threads === null ? [] : ["-filter_threads", threads]),
-    ...["-i", path, "-map", "0:v:0", ...(source.hasAudio ? ["-map", "0:a:0"] : [])],
-    ...["-vf", `fps=${fps},scale=${size.width}:${size.height},format=yuv420p,setsar=1`],
+    ...streams.args,
     ...["-r", String(fps)],
     ...["-c:v", "libx264", "-preset", x264.preset, "-profile:v", "high"],
     ...(threads === null ? [] : ["-threads", threads]),
@@ -527,7 +630,7 @@ async function encodeDiscordVideo(
     ...["-b:v", rate, "-maxrate", rate, "-bufsize", `${Math.round(kbps * bufferS)}k`],
     ...["-g", String(x264.gop), "-keyint_min", String(x264.gop), "-sc_threshold", "0"],
     ...["-flags", "+cgop"],
-    ...(source.hasAudio
+    ...(streams.withAudio
       ? ["-c:a", "aac", "-b:a", `${audio.kbps}k`, "-ac", "2", "-ar", String(audio.sampleRate)]
       : ["-an"]),
     ...["-movflags", "+faststart", "-map_metadata", "-1", outPath],
@@ -551,18 +654,20 @@ async function encodeDiscordVideo(
  * `xVideo`, el video reducido para X (spec F9 §4.5). Un video de menos de 3 s no da reel (sí video
  * para X, desde 0,5 s); el reel de uno de más de 90 s se corta (los avisos son de core), y el video
  * para X sale entero. Con `discordVideo`, el video liviano para Discord bajo su tope (F9.5 D8), o
- * `null` si no se puede. Todo queda en el temporal del intento, que el worker borra al terminar
- * (los videos también: se suben antes con `open()`).
+ * `null` si no se puede. Con `music` (F9.5-T19), todos esos videos llevan la música de fondo
+ * (`MUSIC_SPEC`: detrás del sonido del video, o sola). Todo queda en el temporal del intento, que
+ * el worker borra al terminar (los videos también: se suben antes con `open()`).
  */
 export async function processVideo(
   input: AsyncIterable<Uint8Array>,
-  { reel, xVideo = false, discordVideo = null }: VideoProcessOptions,
+  { reel, xVideo = false, discordVideo = null, music = null }: VideoProcessOptions,
   options: VideoToolOptions,
   signal?: AbortSignalLike,
 ): Promise<ProcessedVideo> {
   throwIfAborted(signal);
   await options.ensureTools(signal);
   const path = join(options.workDir, `${randomUUID()}-video`);
+  let musicPath: string | null = null;
   try {
     await writeInput(input, path, signal);
     const source = await probe(path, options, signal);
@@ -574,19 +679,23 @@ export async function processVideo(
     );
     const thumb = await renderVariant(frame, "thumb");
 
+    // La música (F9.5-T19) va en todo lo que se arme en esta pasada: el reel, X y Discord.
+    if (music !== null && (reel !== null || xVideo || discordVideo !== null)) {
+      musicPath = await writeMusic(music, options);
+    }
     // Sin reel bajo el mínimo de Meta; el aviso lo calcula core (`reelWarnings`).
     const output =
       reel === null || source.durationS < REEL_MIN_DURATION_S
         ? null
-        : await encodeReel(path, source, reel.overlayPng, options, signal);
+        : await encodeReel(path, source, reel.overlayPng, musicPath, options, signal);
     const forX =
       !xVideo || source.durationS < X_VIDEO_MIN_DURATION_S
         ? null
-        : await encodeXVideo(path, source, options, signal);
+        : await encodeXVideo(path, source, musicPath, options, signal);
     const forDiscord =
       discordVideo === null
         ? null
-        : await encodeDiscordVideo(path, source, discordVideo.maxBytes, options, signal);
+        : await encodeDiscordVideo(path, source, discordVideo.maxBytes, musicPath, options, signal);
     return {
       measurements: { width: source.width, height: source.height, durationS: source.durationS },
       thumb,
@@ -596,5 +705,6 @@ export async function processVideo(
     };
   } finally {
     await rm(path, { force: true });
+    if (musicPath !== null) await rm(musicPath, { force: true });
   }
 }

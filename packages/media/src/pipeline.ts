@@ -118,3 +118,20 @@ export const DISCORD_VIDEO_SPEC = {
   bufferS: DISCORD_VIDEO_RATE.bufferS,
   containerOverhead: DISCORD_VIDEO_RATE.containerOverhead,
 } as const;
+
+/**
+ * La música de fondo de un reel y de los videos para X y Discord (F9.5-T19, decisión del operador:
+ * `docs/integraciones/musica-reels.md`). La pista se recorta a la duración del video (o se repite
+ * si es más corta), entra con un fundido corto y sale con uno de `fadeOutS` (como mucho un tercio
+ * del video). Si el video trae sonido propio, ese sonido va al frente y la música detrás, a
+ * `underVoiceDb` (una mezcla sin normalizar: la voz queda como estaba); sin sonido, la música va
+ * sola a `aloneDb`. Cambiar estas cifras no sube `MEDIA_PIPELINE_VERSION` (solo cambian los videos
+ * con música que se armen después); si se quiere rehacer los ya armados, sí.
+ */
+export const MUSIC_SPEC = {
+  underVoiceDb: -18,
+  aloneDb: -3,
+  fadeInS: 0.5,
+  fadeOutS: 2,
+  sampleRate: 48000,
+} as const;
