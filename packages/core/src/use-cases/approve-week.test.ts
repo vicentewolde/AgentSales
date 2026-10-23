@@ -26,6 +26,7 @@ import {
   postWeekRange,
   weekProblemKind,
 } from "./approve-week.js";
+import { schedulePublication, unschedulePublication } from "./schedule-publications.js";
 
 // «Aprobar la semana» (F9.5-T27): aprueba y programa de una vez las ideas aceptadas de una semana,
 // cada una a su fecha, y dice lo que no se pudo. Nunca publica en el momento.
@@ -348,9 +349,74 @@ describe("approvePostWeek", () => {
     const before = s.ofPost(post.id).map((p) => [p.id, p.status, p.scheduledAt?.toISOString()]);
     const again = await approvePostWeek(s.deps, ADMIN, params);
     expect(again.posts[0]?.problems).toEqual([]);
+    expect(again.posts[0]?.kept.map((kept) => [kept.platform, kept.status])).toEqual([
+      ["x", "scheduled"],
+      ["linkedin", "scheduled"],
+    ]);
     expect(s.ofPost(post.id).map((p) => [p.id, p.status, p.scheduledAt?.toISOString()])).toEqual(
       before,
     );
+  });
+
+  it("no pisa lo que hizo el operador: la hora movida, la fallida y la desprogramada quedan igual", async () => {
+    const s = await setup({ accounts: ["linkedin", "x", "discord"] });
+    const post = await s.addPost({
+      topic: "Lunes",
+      at: "2026-10-26 10:00",
+      texts: [{ platform: "x" }, { platform: "linkedin" }, { platform: "discord" }],
+    });
+    const params = {
+      brokerId: s.broker.id,
+      day: "2026-10-26",
+      dryRun: true,
+      by: "operator" as const,
+    };
+    await approvePostWeek(s.deps, ADMIN, params);
+    const of = (platform: Platform) => {
+      const found = s.ofPost(post.id).find((publication) => publication.platform === platform);
+      if (found === undefined) throw new Error(`sin publicación de ${platform}`);
+      return found;
+    };
+    // X: el operador la movió a las 18:00. LinkedIn: la desprogramó. Discord: falló.
+    const moved = parseChileTime("2026-10-26 18:00");
+    await schedulePublication(s.deps, {
+      publicationId: of("x").id,
+      at: moved,
+      dryRun: true,
+      actor: "operator",
+    });
+    await unschedulePublication(s.deps, { publicationId: of("linkedin").id, actor: "operator" });
+    await s.deps.postLock.run(post.id, async ({ publications }) => {
+      const id = of("discord").id;
+      await publications.transition(
+        id,
+        { from: "scheduled", to: "publishing", changes: { dryRun: true, incrementAttempts: true } },
+        { actor: "system" },
+      );
+      await publications.transition(id, { from: "publishing", to: "failed" }, { actor: "system" });
+    });
+
+    const again = await approvePostWeek(s.deps, ADMIN, params);
+    const result = again.posts[0];
+    expect(result?.scheduled).toEqual([]);
+    expect(result?.problems).toEqual([]);
+    expect(result?.kept.map((kept) => [kept.platform, kept.status, kept.at])).toEqual([
+      ["x", "scheduled", moved],
+      ["linkedin", "unscheduled", null],
+      ["discord", "failed", null],
+    ]);
+    expect(result?.kept.find((kept) => kept.platform === "x")?.message).toContain(
+      "2026-10-26 18:00",
+    );
+    expect(result?.kept.find((kept) => kept.platform === "discord")?.command).toBe(
+      `pnpm -s cli publications retry ${of("discord").id}`,
+    );
+    expect(result?.kept.find((kept) => kept.platform === "linkedin")?.command).toContain(
+      `schedule --publication ${of("linkedin").id}`,
+    );
+    expect([of("x").status, of("x").scheduledAt]).toEqual(["scheduled", moved]);
+    expect([of("linkedin").status, of("linkedin").scheduledAt]).toEqual(["approved", null]);
+    expect(of("discord").status).toBe("failed");
   });
 
   it("lo de otra marca no existe para un corredor, y sin la marca es BROKER_NOT_FOUND", async () => {

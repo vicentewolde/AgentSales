@@ -21,12 +21,17 @@ afterEach(() => {
 /** Un día de la semana que viene (hora de Chile). */
 const DAY = chileDateOf(new Date(Date.now() + 8 * 86_400_000));
 
-async function setup() {
-  const h = harness();
+async function setup(options: { live?: boolean } = {}) {
+  const h = harness(options.live === true ? { deps: { publishMode: "live" } } : {});
   const brand = await h.brokers.create(
     { ...brokerData("agentpey"), brandName: "AgentPey" },
     { kind: "brand" },
   );
+  // ADR-0036: en vivo solo una marca propia y encendida.
+  if (options.live === true) {
+    await h.brokers.setSettings(brand.id, { operatorOwned: true });
+    await h.brokers.setLiveEnabled(brand.id, true);
+  }
   await h.platformAccounts.upsertConnected({
     brokerId: brand.id,
     platform: "linkedin",
@@ -64,22 +69,25 @@ async function setup() {
     });
     return post;
   };
-  return { ...h, brand, accepted };
+  /** «Aprobar la semana» solo, con la API en proceso. */
+  const renderWeek = () =>
+    render(
+      <ApiClientContext.Provider value={h.client}>
+        <QueryClientProvider client={h.queryClient}>
+          <MemoryRouter>
+            <ApproveWeek brandId={brand.id} week={DAY} />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </ApiClientContext.Provider>,
+    );
+  return { ...h, brand, accepted, renderWeek };
 }
 
 describe("panel: Aprobar la semana", () => {
   it("muestra los textos de la semana, aprueba y programa cada post a su fecha y dice lo que no pudo", async () => {
     const s = await setup();
     const post = await s.accepted("Lo que aprendí", ["linkedin", "x"]);
-    render(
-      <ApiClientContext.Provider value={s.client}>
-        <QueryClientProvider client={s.queryClient}>
-          <MemoryRouter>
-            <ApproveWeek brandId={s.brand.id} week={DAY} />
-          </MemoryRouter>
-        </QueryClientProvider>
-      </ApiClientContext.Provider>,
-    );
+    s.renderWeek();
     fireEvent.click(screen.getByRole("button", { name: "Aprobar la semana…" }));
     const panel = await screen.findByRole("region", { name: /^Aprobar la semana del/ });
     const list = await within(panel).findByRole("list", { name: "Posts de la semana" });
@@ -99,6 +107,40 @@ describe("panel: Aprobar la semana", () => {
     expect(publications.map((p) => [p.platform, p.status, p.dryRun])).toEqual([
       ["linkedin", "scheduled", true],
     ]);
+  });
+});
+
+describe("panel: Aprobar la semana, foco y en vivo", () => {
+  it("al abrir, el foco va a la región; Escape la cierra y el foco vuelve al botón", async () => {
+    const s = await setup();
+    await s.accepted("Lo que aprendí");
+    s.renderWeek();
+    const opener = screen.getByRole("button", { name: "Aprobar la semana…" });
+    fireEvent.click(opener);
+    const panel = await screen.findByRole("region", { name: /^Aprobar la semana del/ });
+    expect(document.activeElement).toBe(panel);
+    fireEvent.keyDown(panel, { key: "Escape" });
+    const again = await screen.findByRole("button", { name: "Aprobar la semana…" });
+    expect(screen.queryByRole("region", { name: /^Aprobar la semana del/ })).toBeNull();
+    expect(document.activeElement).toBe(again);
+  });
+
+  it("con la marca en vivo, pide confirmar antes de programar; al confirmar, programa en vivo", async () => {
+    const s = await setup({ live: true });
+    const post = await s.accepted("En vivo");
+    s.renderWeek();
+    fireEvent.click(screen.getByRole("button", { name: "Aprobar la semana…" }));
+    const panel = await screen.findByRole("region", { name: /^Aprobar la semana del/ });
+    await within(panel).findByRole("link", { name: "En vivo" });
+    fireEvent.click(within(panel).getByRole("button", { name: "Aprobar y programar la semana" }));
+    expect(
+      await within(panel).findByText(/a su hora, cada post se publica de verdad/),
+    ).toBeTruthy();
+    expect(s.requests).not.toContain(`POST /brokers/${s.brand.id}/week/approve`);
+    fireEvent.click(within(panel).getByRole("button", { name: "Sí, programar en vivo" }));
+    await within(panel).findByRole("status", { name: "Resultado de aprobar la semana" });
+    const publications = await s.deps.publications.listBySubject(postSubject(post.id));
+    expect(publications.map((p) => [p.status, p.dryRun])).toEqual([["scheduled", false]]);
   });
 });
 
@@ -153,8 +195,11 @@ describe("LinkedInAssist", () => {
     expect(await screen.findByText("Texto copiado: pégalo en LinkedIn")).toBeTruthy();
   });
 
-  it("sin el texto no muestra nada", () => {
-    const { container } = render(<LinkedInAssist content={undefined} />);
-    expect(container.textContent).toBe("");
+  it("sin el texto avisa que no lo encontró, sin botón de copiar", () => {
+    render(<LinkedInAssist content={undefined} />);
+    expect(screen.getByRole("status").textContent).toContain(
+      "No encontré el texto aprobado de esta publicación",
+    );
+    expect(screen.queryByRole("link", { name: "Copiar texto y abrir LinkedIn" })).toBeNull();
   });
 });

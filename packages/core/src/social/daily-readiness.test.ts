@@ -20,7 +20,10 @@ const account = (overrides: Partial<ReadinessAccount> & Pick<ReadinessAccount, "
     ...overrides,
   }) satisfies ReadinessAccount;
 
-/** Una marca lista en vivo, con horario y todas sus redes conectadas (LinkedIn a mano). */
+/**
+ * Una marca lista en vivo, con el worker sin horario y encendido, y todas sus redes conectadas
+ * (LinkedIn a mano).
+ */
 const ready = (overrides: Partial<DailyReadinessInput> = {}): DailyReadinessInput => ({
   broker: { id: "b1", slug: "agentpey", llmMonthlyCapUsd: 5, operatorOwned: true },
   effectiveMode: "live",
@@ -32,7 +35,9 @@ const ready = (overrides: Partial<DailyReadinessInput> = {}): DailyReadinessInpu
     account({ platform: "discord" }),
     account({ platform: "tiktok" }),
   ],
-  workerSchedule: true,
+  workerSchedule: false,
+  workerRunning: true,
+  imageAi: { spentUsd: 0.4, capUsd: 2, capReached: false },
   llmSpentUsd: 1.2,
   ...overrides,
 });
@@ -45,12 +50,13 @@ const networkItem = (input: DailyReadinessInput, platform: string, key: Readines
     ?.items.find((item) => item.key === key);
 
 describe("dailyReadiness: la marca", () => {
-  it("en vivo, con horario y tope sin pasar, lo de la marca está listo", () => {
+  it("en vivo, con el worker encendido y los topes sin pasar, lo de la marca está listo", () => {
     const result = dailyReadiness(ready());
     expect(result.brand.map((item) => [item.key, item.state])).toEqual([
       ["mode", "ok"],
-      ["worker", "ok"],
+      ["worker", "info"],
       ["ai_cap", "ok"],
+      ["image_ai_cap", "ok"],
     ]);
     expect(result.brand.every((item) => item.fix === null)).toBe(true);
   });
@@ -76,12 +82,35 @@ describe("dailyReadiness: la marca", () => {
     expect(foreign?.fix?.command).toBeUndefined();
   });
 
-  it("el worker: con horario listo, sin horario falta, y si no se sabe lo revisa el operador", () => {
-    expect(brandItem(ready(), "worker")?.detail).toContain("cada hora");
-    expect(brandItem(ready({ workerSchedule: false }), "worker")?.state).toBe("missing");
-    const unknown = brandItem(ready({ workerSchedule: null }), "worker");
+  it("el worker: con horario lo revisa el operador (el secreto del workflow); sin horario, su latido", () => {
+    const scheduled = brandItem(ready({ workerSchedule: true }), "worker");
+    expect(scheduled?.state).toBe("operator");
+    expect(scheduled?.detail).toContain("se apaga solo");
+    expect(scheduled?.fix?.text).toContain("«Encender el worker»");
+    expect(scheduled?.fix?.text).toContain("docs/10-despliegue.md, paso 8");
+    expect(brandItem(ready(), "worker")?.detail).toContain("latido reciente");
+    const off = brandItem(ready({ workerRunning: false }), "worker");
+    expect(off?.state).toBe("missing");
+    expect(off?.detail).toContain("apagado");
+    expect(brandItem(ready({ workerRunning: null }), "worker")?.state).toBe("missing");
+    // Quien no es administrador no lo ve.
+    const unknown = brandItem(ready({ workerSchedule: null, workerRunning: null }), "worker");
     expect(unknown?.state).toBe("operator");
     expect(unknown?.fix?.command).toBe("pnpm -s cli doctor");
+  });
+
+  it("el tope de imágenes con IA: sin la IA configurada es un aviso; al llegar, también", () => {
+    expect(brandItem(ready(), "image_ai_cap")?.detail).toBe("US$ 0,40 de US$ 2,00 este mes.");
+    expect(brandItem(ready({ imageAi: null }), "image_ai_cap")).toMatchObject({
+      state: "info",
+      detail: expect.stringContaining("no está configurada"),
+    });
+    const over = brandItem(
+      ready({ imageAi: { spentUsd: 2, capUsd: 2, capReached: true } }),
+      "image_ai_cap",
+    );
+    expect(over?.state).toBe("info");
+    expect(over?.detail).toContain("tarjetas o la biblioteca");
   });
 
   it("el tope de IA: sin tope es un aviso; al llegar, falta con el comando", () => {
@@ -129,7 +158,9 @@ describe("dailyReadiness: las redes", () => {
   it("la prueba de entrada sale solo de lo anotado: hecha con su fecha, o la marca el operador", () => {
     const x = networkItem(ready(), "x", "entry_test");
     expect(x?.state).toBe("ok");
-    expect(x?.detail).toBe("S4 hecha el 2026-10-21 (docs/integraciones/x.md).");
+    expect(x?.detail).toBe(
+      "S4 hecha el 2026-10-21 (docs/integraciones/x.md). Queda por ver: el hilo (no lo hace AgentSales) y si un error 4xx cobra.",
+    );
     // LinkedIn a mano no la necesita; por la API, S2 y S3 siguen pendientes y las marca el operador.
     expect(networkItem(ready(), "linkedin", "entry_test")?.state).toBe("ok");
     const api = ready({ accounts: [account({ platform: "linkedin", publishingMode: "api" })] });
@@ -153,7 +184,11 @@ describe("dailyReadiness: las redes", () => {
     );
     expect(over?.state).toBe("missing");
     expect(over?.fix?.command).toBe("pnpm -s cli accounts spend-limit cuenta-x <dólares>");
-    expect(networkItem(ready(), "x", "x_media")?.state).toBe("operator");
+    // La imagen y el video en X no dejan a X pendiente para siempre: es un aviso.
+    expect(networkItem(ready(), "x", "x_media")).toMatchObject({
+      state: "info",
+      detail: expect.stringContaining("todavía no se publicaron de verdad"),
+    });
     expect(networkItem(ready(), "x", "x_link")?.detail).toContain("Permitir un enlace en X");
     // Sin cuenta conectada no hay tope que mostrar.
     expect(networkItem(ready({ accounts: [] }), "x", "x_spend")).toBeUndefined();
@@ -175,13 +210,13 @@ describe("dailyReadiness: las redes", () => {
     }
   });
 
-  it("cuenta lo pendiente: X espera la revisión de su primera imagen, y sin cuenta falta más", () => {
-    expect(dailyReadiness(ready()).pending).toBe(1);
-    expect(dailyReadiness(ready()).ready).toBe(false);
+  it("cuenta lo pendiente: lista cuando no falta nada, y sin cuentas ni worker falta más", () => {
+    expect(dailyReadiness(ready()).pending).toBe(0);
+    expect(dailyReadiness(ready()).ready).toBe(true);
     const nothing = dailyReadiness(
-      ready({ accounts: [], effectiveMode: "dry-run", workerSchedule: false }),
+      ready({ accounts: [], effectiveMode: "dry-run", workerRunning: false }),
     );
-    // modo + worker + 4 cuentas + la imagen de X.
-    expect(nothing.pending).toBe(7);
+    // modo + worker + 4 cuentas.
+    expect(nothing.pending).toBe(6);
   });
 });

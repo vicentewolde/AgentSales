@@ -3,12 +3,18 @@ import { chileMonthOf, chileMonthRange } from "../chile-time.js";
 import { editorialProfileView } from "../editorial-profile.js";
 import { isPostPlatform, POST_PLATFORMS, type PublishMode } from "../enums.js";
 import { AppError } from "../errors.js";
+import {
+  type ImageAiPricing,
+  imageAiSpentThisMonth,
+  wouldPassImageAiCap,
+} from "../image-ai-budget.js";
 import { assertCan, scopeOf } from "../permissions.js";
 import { isManualAccount, MANUAL_MODE_PLATFORMS } from "../platform-account.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { ContentRunRepository } from "../ports/content-repository.js";
 import type { EditorialProfileRepository } from "../ports/editorial-profile-repository.js";
 import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
+import type { PostImageRunRepository } from "../ports/post-image-run-repository.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
 import { postPlatforms } from "../social/brief.js";
 import {
@@ -30,6 +36,8 @@ export type DailyReadinessDeps = {
   contentRuns: Pick<ContentRunRepository, "sumLlmCost">;
   /** La cadencia: las redes de la marca son las de sus cuentas y las de su cadencia. */
   editorialProfiles: Pick<EditorialProfileRepository, "get">;
+  /** El gasto del mes en imágenes con IA (F9.5-T25). */
+  postImageRuns: Pick<PostImageRunRepository, "sumImageCost">;
   now?: () => Date;
 };
 
@@ -38,8 +46,9 @@ export type DailyReadinessDeps = {
  * sus cuentas, su gasto de X y de IA del mes de Chile y su cadencia, y arma la lista
  * (`dailyReadiness`). Las redes son las de la marca (`postPlatforms`); si todavía no tiene ninguna,
  * todas las de los posts, para que diga qué conectar. `effectiveMode` y `server` los pone quien
- * llama (la única fuente del modo, ADR-0036); `workerSchedule` es el de `/health` (`null` si no se
- * sabe). Lo ajeno no existe (`BROKER_NOT_FOUND`); sin `broker.view`, `FORBIDDEN`. Solo lee.
+ * llama (la única fuente del modo, ADR-0036); `workerSchedule` y `workerRunning`, los del worker
+ * (`null` si quien pide no es el administrador, que es el único que los ve); `imageAi`, el precio y
+ * el tope de las imágenes con IA (`null` sin la IA configurada). Lo ajeno no existe (`BROKER_NOT_FOUND`); sin `broker.view`, `FORBIDDEN`. Solo lee.
  */
 export async function getDailyReadiness(
   deps: DailyReadinessDeps,
@@ -49,11 +58,16 @@ export async function getDailyReadiness(
     effectiveMode,
     server,
     workerSchedule,
+    workerRunning,
+    imageAi,
   }: {
     brokerId: string;
     effectiveMode: PublishMode;
     server: PublishMode;
     workerSchedule: boolean | null;
+    workerRunning: boolean | null;
+    /** El precio y el tope de la IA de imágenes, o `null` si no está configurada. */
+    imageAi: ImageAiPricing | null;
   },
 ): Promise<DailyReadiness> {
   const notFound = new AppError("BROKER_NOT_FOUND", `No existe el corredor ${brokerId}`, {
@@ -98,6 +112,15 @@ export async function getDailyReadiness(
     networks: brandNetworks.length > 0 ? brandNetworks : POST_PLATFORMS,
     accounts,
     workerSchedule,
+    workerRunning,
+    imageAi:
+      imageAi === null
+        ? null
+        : await imageAiSpentThisMonth(deps.postImageRuns, brokerId, now).then((spentUsd) => ({
+            spentUsd,
+            capUsd: imageAi.monthlyCapUsd,
+            capReached: wouldPassImageAiCap(spentUsd, imageAi),
+          })),
     llmSpentUsd: spend.reduce((total, row) => total + row.costUsd, 0),
   });
 }

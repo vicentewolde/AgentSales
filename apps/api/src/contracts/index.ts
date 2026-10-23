@@ -2127,10 +2127,24 @@ export const postWeekApproveResponseSchema = z.object({
           publicationIds: z.array(z.string()),
         }),
       ),
+      /** Las redes que ya tenían algo del operador (programadas, fallidas o desprogramadas). */
+      kept: z
+        .array(
+          z.object({
+            platform: z.enum(POST_PLATFORMS),
+            publicationId: z.string(),
+            status: z.enum(["scheduled", "failed", "unscheduled"]),
+            at: z.coerce.date().nullable(),
+            message: z.string(),
+            command: z.string().nullable(),
+          }),
+        )
+        .default([]),
       problems: z.array(weekProblemSchema),
     }),
   ),
 });
+export type WeekKeptView = PostWeekApproveResponse["posts"][number]["kept"][number];
 export type PostWeekApproveResponse = z.infer<typeof postWeekApproveResponseSchema>;
 
 /** Un ítem de la lista «Lista para publicar a diario»: qué es, cómo está y cómo resolverlo. */

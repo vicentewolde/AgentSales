@@ -93,6 +93,10 @@ describe("post approve-week", () => {
     expect(s.questions).toEqual([]);
     expect(await s.statuses(good.id)).toEqual([["linkedin", "scheduled", true]]);
     expect(await s.statuses(bad.id)).toEqual([]);
+    // Repetirla no pisa lo programado: lo dice y sigue igual.
+    await runPostApproveWeek(s.deps, { broker: "agentpey", start: DAY });
+    expect(s.h.text()).toContain(`= LinkedIn: Ya está programado para el ${DAY} 10:00`);
+    expect(await s.statuses(good.id)).toEqual([["linkedin", "scheduled", true]]);
   });
 
   it("sin ideas aceptadas lo dice y sale bien, sin aprobar nada", async () => {

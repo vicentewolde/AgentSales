@@ -92,7 +92,7 @@ async function setup() {
         },
         ...(init.json === undefined ? {} : { body: JSON.stringify(init.json) }),
       });
-  return { deps, mine, theirs, post, admin: as(TEST_ADMIN_TOKEN), other: as(MINE) };
+  return { deps, auth, mine, theirs, post, admin: as(TEST_ADMIN_TOKEN), other: as(MINE) };
 }
 
 describe("/brokers/:id/week", () => {
@@ -150,9 +150,54 @@ describe("/brokers/:id/daily-readiness", () => {
     expect(response.status).toBe(200);
     const { readiness } = dailyReadinessResponseSchema.parse(await response.json());
     expect(readiness.slug).toBe("agentpey");
-    expect(readiness.brand.map((item) => item.key)).toEqual(["mode", "worker", "ai_cap"]);
+    expect(readiness.brand.map((item) => item.key)).toEqual([
+      "mode",
+      "worker",
+      "ai_cap",
+      "image_ai_cap",
+    ]);
+    // Al administrador: sin horario y sin latidos que leer, el worker falta.
+    expect(readiness.brand[1]).toMatchObject({ state: "missing" });
     expect(readiness.brand[0]).toMatchObject({ state: "missing" });
     expect(readiness.networks.map((network) => network.platform)).toEqual(["linkedin"]);
     expect(readiness.networks[0]?.items.find((item) => item.key === "account")?.state).toBe("ok");
+  });
+
+  it("el estado del worker solo lo ve el administrador; con un latido reciente, está encendido", async () => {
+    const s = await setup();
+    const beat = new Date();
+    s.deps.healthDetails = {
+      ...s.deps.healthDetails,
+      workerHeartbeats: async () => [
+        { processId: "w1", startedAt: beat, beatAt: beat, stoppedAt: null },
+      ],
+    };
+    const app = createApp(s.deps);
+    const asAdmin = await app.request(`/brokers/${s.mine.id}/daily-readiness`, {
+      headers: { authorization: `Bearer ${TEST_ADMIN_TOKEN}` },
+    });
+    const admin = dailyReadinessResponseSchema.parse(await asAdmin.json()).readiness;
+    expect(admin.brand[1]).toMatchObject({ key: "worker", state: "info" });
+
+    // Un usuario de la marca no lo ve: «no se sabe».
+    const { auth } = s;
+    const user = auth.repos.seed.user({
+      email: "agentpey@ejemplo.cl",
+      name: "AgentPey",
+      role: "broker",
+      brokerId: s.mine.id,
+    });
+    auth.repos.seed.session({
+      userId: user.id,
+      tokenHash: auth.tokens.hash("token-agentpey"),
+      client: "cli",
+    });
+    const asBroker = await app.request(`/brokers/${s.mine.id}/daily-readiness`, {
+      headers: { authorization: "Bearer token-agentpey" },
+    });
+    expect(asBroker.status).toBe(200);
+    const broker = dailyReadinessResponseSchema.parse(await asBroker.json()).readiness;
+    expect(broker.brand[1]).toMatchObject({ key: "worker", state: "operator" });
+    expect(broker.brand[1]?.detail).toContain("solo el administrador");
   });
 });

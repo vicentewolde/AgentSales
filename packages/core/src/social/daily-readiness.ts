@@ -25,6 +25,7 @@ export const READINESS_KEYS = [
   "mode",
   "worker",
   "ai_cap",
+  "image_ai_cap",
   "account",
   "entry_test",
   "x_spend",
@@ -39,8 +40,9 @@ export type ReadinessKey = (typeof READINESS_KEYS)[number];
 /** El nombre de cada ítem en la lista. */
 export const READINESS_LABEL: Readonly<Record<ReadinessKey, string>> = {
   mode: "Modo de la marca",
-  worker: "Worker con horario",
+  worker: "El worker",
   ai_cap: "Tope de IA del mes",
+  image_ai_cap: "Tope de imágenes con IA",
   account: "Cuenta conectada",
   entry_test: "Prueba de entrada",
   x_spend: "Tope de gasto de X",
@@ -123,6 +125,13 @@ export type DailyReadinessInput = {
   accounts: readonly ReadinessAccount[];
   /** Si el worker se enciende solo (`/health.workerSchedule`, ADR-0037); `null` si no se sabe. */
   workerSchedule: boolean | null;
+  /** Si el worker tiene un latido reciente (`workerStatusOf`); `null` si no se sabe. */
+  workerRunning: boolean | null;
+  /**
+   * Las imágenes con IA (F9.5-T25): lo gastado y el tope del mes, o `null` si la IA de imágenes no
+   * está configurada (sin `GEMINI_API_KEY`).
+   */
+  imageAi: { spentUsd: number; capUsd: number; capReached: boolean } | null;
   /** Lo gastado en IA este mes de Chile por la marca. */
   llmSpentUsd: number;
 };
@@ -192,33 +201,70 @@ function modeItem(input: DailyReadinessInput): ReadinessItem {
   );
 }
 
-function workerItem(schedule: boolean | null): ReadinessItem {
-  if (schedule === true) {
-    return item(
-      "worker",
-      "ok",
-      `El worker se enciende solo (${workerScheduleText()}) y publica lo programado.`,
-    );
+/**
+ * El worker (ADR-0037). Solo el administrador lo ve: para los demás, `null` («no se sabe»).
+ * - Con horario (`WORKER_IDLE_EXIT_MINUTES` > 0), el worker se apaga solo y lo enciende el workflow:
+ *   la API no sabe si ese workflow tiene su secreto, así que lo revisa el operador.
+ * - Sin horario, el worker nunca se apaga solo: sirve si está encendido (un latido reciente).
+ */
+function workerItem(schedule: boolean | null, running: boolean | null): ReadinessItem {
+  if (schedule === null) {
+    return item("worker", "operator", "No se sabe: solo el administrador ve el worker.", {
+      text: "Lo revisa el operador con doctor.",
+      command: "pnpm -s cli doctor",
+    });
   }
-  if (schedule === false) {
+  if (schedule) {
     return item(
       "worker",
-      "missing",
-      "Sin horario: lo programado sale solo si el worker está encendido a esa hora.",
+      "operator",
+      `El worker se apaga solo y lo enciende el horario (${workerScheduleText()}).`,
       {
-        text: "Lo activa el operador (docs/10-despliegue.md, el worker por horario) o deja el worker encendido.",
-        command: "pnpm -s cli doctor",
+        text: "Revisa que el workflow «Encender el worker» tenga su secreto (docs/10-despliegue.md, paso 8): sin él, nada lo enciende.",
       },
     );
   }
-  return item("worker", "operator", "No se sabe: solo el administrador ve el horario del worker.", {
-    text: "Lo revisa el operador con doctor.",
-    command: "pnpm -s cli doctor",
-  });
+  if (running === true) {
+    return item(
+      "worker",
+      "info",
+      "Sin horario y encendido (latido reciente): lo programado sale mientras siga encendido.",
+    );
+  }
+  return item(
+    "worker",
+    "missing",
+    running === false
+      ? "Sin horario y apagado: lo programado no sale hasta que se encienda."
+      : "Sin horario, y no se sabe si el worker está encendido (no se pudo leer su latido).",
+    {
+      text: "Enciende el worker (en el Mac, pnpm dev; en el servidor, docs/10-despliegue.md, paso 8) o activa el horario (lo hace el operador).",
+      command: "pnpm -s cli doctor",
+    },
+  );
+}
+
+/** El tope de las imágenes con IA (F9.5-T25, ADR-0038): sin la clave, solo tarjetas y biblioteca. */
+function imageAiItem(imageAi: DailyReadinessInput["imageAi"]): ReadinessItem {
+  if (imageAi === null) {
+    return item(
+      "image_ai_cap",
+      "info",
+      "La IA de imágenes no está configurada en el servidor: «Conseguir imagen» ofrece tarjetas y la biblioteca.",
+    );
+  }
+  const spent = roundUsd(imageAi.spentUsd);
+  const text = `${formatUsd(spent)} de ${formatUsd(imageAi.capUsd)} este mes`;
+  return imageAi.capReached
+    ? item(
+        "image_ai_cap",
+        "info",
+        `${text}: llegaste al tope; hasta el mes siguiente, usa tarjetas o la biblioteca.`,
+      )
+    : item("image_ai_cap", "ok", `${text}.`);
 }
 
 function aiCapItem(input: DailyReadinessInput): ReadinessItem {
-  // El tope de las imágenes con IA (F9.5-T25) se suma aquí cuando exista.
   const cap = input.broker.llmMonthlyCapUsd;
   const spent = roundUsd(input.llmSpentUsd);
   const command = `pnpm -s cli brokers edit ${input.broker.slug} --cap <dólares>`;
@@ -279,7 +325,8 @@ function entryTestItem(
     );
   }
   if (test.passedOn !== null) {
-    return item("entry_test", "ok", `${codes} hecha el ${test.passedOn} (${test.doc}).`);
+    const rest = test.pendingNote === null ? "" : ` Queda por ver: ${test.pendingNote}.`;
+    return item("entry_test", "ok", `${codes} hecha el ${test.passedOn} (${test.doc}).${rest}`);
   }
   return item(
     "entry_test",
@@ -322,11 +369,8 @@ function networkExtras(
       extras.push(
         item(
           "x_media",
-          "operator",
-          "Una imagen o un video en X no se probó de verdad: S4 publicó un texto sin enlace.",
-          {
-            text: "El operador revisa en X la primera publicación en vivo con imagen o video (docs/integraciones/x.md); si algo no calza, se corrige antes de seguir.",
-          },
+          "info",
+          "Una imagen o un video en X todavía no se publicaron de verdad (S4 fue un texto sin enlace): mira en X la primera publicación en vivo con imagen o video.",
         ),
         item(
           "x_link",
@@ -397,7 +441,12 @@ function accountOf(
  * nada ni decide el modo (lo trae `effectiveMode`).
  */
 export function dailyReadiness(input: DailyReadinessInput): DailyReadiness {
-  const brand = [modeItem(input), workerItem(input.workerSchedule), aiCapItem(input)];
+  const brand = [
+    modeItem(input),
+    workerItem(input.workerSchedule, input.workerRunning),
+    aiCapItem(input),
+    imageAiItem(input.imageAi),
+  ];
   const networks = input.networks.map((platform): NetworkReadiness => {
     const account = accountOf(input.accounts, platform);
     const items = [

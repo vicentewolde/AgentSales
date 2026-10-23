@@ -355,6 +355,14 @@ export function createApp(input: AppDeps) {
     // El corredor es su propio dueño: un corredor solo llega al suyo (F7-T13).
     broker: ownedBy(async (id) => id, notFound("BROKER_NOT_FOUND", "No existe el corredor")),
   };
+  // Lo del worker (ADR-0037) para la agenda y la lista para publicar a diario (F9.5-T27): si se
+  // apaga solo (sin el dato, no) y sus latidos. Solo lo ve el administrador.
+  const workerDetails = {
+    workerScheduled: deps.healthDetails?.workerIdleExit ?? false,
+    ...(deps.healthDetails?.workerHeartbeats === undefined
+      ? {}
+      : { workerHeartbeats: deps.healthDetails.workerHeartbeats }),
+  };
   const app = new Hono<AppEnv>()
     .use(versionHeader(deps.version))
     .use(requestLogger(deps.logger))
@@ -412,10 +420,7 @@ export function createApp(input: AppDeps) {
     .route("/brokers", brokerRoutes(deps))
     .route("/brokers", editorialProfileRoutes(deps))
     // F9.5-T27: aprobar la semana y la lista para publicar a diario de una marca.
-    .route(
-      "/brokers",
-      brandWeekRoutes({ ...deps, workerScheduled: deps.healthDetails?.workerIdleExit ?? null }),
-    )
+    .route("/brokers", brandWeekRoutes({ ...deps, ...workerDetails }))
     .route("/posts", postRoutes(deps))
     .route("/plans", planRoutes(deps))
     .route("/music", musicRoutes(deps))
@@ -427,10 +432,7 @@ export function createApp(input: AppDeps) {
         ...(deps.healthDetails?.backupStatus === undefined
           ? {}
           : { backupStatus: deps.healthDetails.backupStatus }),
-        ...(deps.healthDetails?.workerHeartbeats === undefined
-          ? {}
-          : { workerHeartbeats: deps.healthDetails.workerHeartbeats }),
-        workerScheduled: deps.healthDetails?.workerIdleExit ?? false,
+        ...workerDetails,
       }),
     )
     .route("/usage", usageRoutes(deps))

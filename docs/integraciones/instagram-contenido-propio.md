@@ -16,6 +16,7 @@ Aviso de método: las páginas de Meta se leyeron con una herramienta que extrae
 - **Métricas:** existen con `instagram_business_manage_insights` en `graph.instagram.com`; el permiso es nuevo y la doc se contradice sobre su revisión (sección 5).
 - **Comentarios:** viable como paso futuro con `instagram_business_manage_comments`, también con acceso estándar para cuentas propias (sección 6).
 - **Terceros:** acceso avanzado, App Review, verificación del negocio y Access Verification, ya descritos en la nota principal §13; esta nota agrega qué pasa con los dos permisos nuevos (sección 7).
+<!-- entry-test: S1 passed 2026-10-21 -->
 - **Qué publica hoy AgentSales para posts (F9-T13):** imagen suelta, carrusel de 2 a 10 y reel, con la cuota de la cuenta compartida con los avisos (sección 13). **La prueba S1 pasó el 2026-10-21** (sección 13): una cuenta sin rol en la app vio el post de prueba.
 
 ## 2. Cuentas y app para cuentas propias

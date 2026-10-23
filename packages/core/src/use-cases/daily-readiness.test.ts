@@ -42,6 +42,7 @@ async function setup() {
     publications: createInMemoryPublicationRepository(),
     contentRuns: createInMemoryContentRepositories().contentRuns,
     editorialProfiles: createInMemoryEditorialProfileRepository(),
+    postImageRuns: { sumImageCost: async () => [] },
     now: () => new Date("2026-10-22T15:00:00Z"),
   };
   return { broker, other, deps, x };
@@ -55,6 +56,8 @@ describe("getDailyReadiness", () => {
       effectiveMode: "dry-run",
       server: "dry-run",
       workerSchedule: true,
+      workerRunning: null,
+      imageAi: { priceUsd: 0.04, monthlyCapUsd: 2 },
     });
     expect(result.slug).toBe("agentpey");
     expect(result.networks.map((network) => network.platform)).toEqual(["x", "linkedin"]);
@@ -63,6 +66,9 @@ describe("getDailyReadiness", () => {
     const linkedin = result.networks[1]?.items.find((item) => item.key === "entry_test");
     expect(linkedin?.state).toBe("ok");
     expect(result.brand.find((item) => item.key === "mode")?.state).toBe("missing");
+    expect(result.brand.find((item) => item.key === "image_ai_cap")?.detail).toBe(
+      "US$ 0,00 de US$ 2,00 este mes.",
+    );
   });
 
   it("una marca sin redes muestra todas las de los posts, para decir qué conectar", async () => {
@@ -72,6 +78,8 @@ describe("getDailyReadiness", () => {
       effectiveMode: "dry-run",
       server: "dry-run",
       workerSchedule: null,
+      workerRunning: null,
+      imageAi: null,
     });
     expect(result.networks.map((network) => network.platform)).toEqual([
       "instagram",
@@ -90,7 +98,14 @@ describe("getDailyReadiness", () => {
     const error = await getDailyReadiness(
       s.deps,
       { id: "u1", role: "broker", brokerId: s.other.id },
-      { brokerId: s.broker.id, effectiveMode: "dry-run", server: "dry-run", workerSchedule: null },
+      {
+        brokerId: s.broker.id,
+        effectiveMode: "dry-run",
+        server: "dry-run",
+        workerSchedule: null,
+        workerRunning: null,
+        imageAi: null,
+      },
     ).catch((caught: unknown) => caught);
     expect(isAppError(error) && error.code).toBe("BROKER_NOT_FOUND");
   });

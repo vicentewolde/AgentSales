@@ -303,6 +303,55 @@ describe("panel: detalle de un post", () => {
     expect(await within(list).findByText("publicada")).toBeTruthy();
   });
 
+  it("LinkedIn a mano: «Copiar texto y abrir LinkedIn» sale solo cuando espera la confirmación (F9.5-T27)", async () => {
+    const s = await setup();
+    await s.platformAccounts.upsertConnected({
+      brokerId: s.brand.id,
+      platform: "linkedin",
+      externalAccountId: "perfil-1",
+      displayName: "Vinny",
+      tokenExpiresAt: null,
+      meta: { mode: "manual" },
+      credentials: { accessToken: "token-de-prueba" },
+    });
+    await s.draft([{ platform: "linkedin", language: "es", body: "Texto para LinkedIn" }]);
+    await s.client.posts[":id"].contents[":platform"][":language"].approve.$post({
+      param: { id: s.post.id, platform: "linkedin", language: "es" },
+    });
+    const [publication] = await s.deps.publications.listBySubject({ kind: "post", id: s.post.id });
+    if (publication === undefined) throw new Error("sin publicación");
+    // Aprobada: todavía no hay nada que copiar.
+    await s.open();
+    const list = screen.getByRole("region", { name: "Publicaciones" });
+    expect(within(list).queryByRole("region", { name: "Publicar en LinkedIn a mano" })).toBeNull();
+    cleanup();
+
+    await s.deps.postLock.run(s.post.id, async ({ publications }) => {
+      await publications.transition(
+        publication.id,
+        { from: "approved", to: "publishing", changes: { dryRun: true } },
+        { actor: "system" },
+      );
+      await publications.transition(
+        publication.id,
+        { from: "publishing", to: "awaiting_manual_confirm" },
+        { actor: "system" },
+      );
+    });
+    s.queryClient.clear();
+    await s.open();
+    const waiting = screen.getByRole("region", { name: "Publicaciones" });
+    const assist = await within(waiting).findByRole("region", {
+      name: "Publicar en LinkedIn a mano",
+    });
+    expect(
+      within(assist)
+        .getByRole("link", { name: "Copiar texto y abrir LinkedIn" })
+        .getAttribute("href"),
+    ).toBe("https://www.linkedin.com/feed/");
+    expect(within(waiting).getByRole("button", { name: "Lo publiqué" })).toBeTruthy();
+  });
+
   it("sube un medio con avance a R2 y lo muestra procesando hasta que el worker arme sus variantes", async () => {
     const s = await setup();
     await s.open();

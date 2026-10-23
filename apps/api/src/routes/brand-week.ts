@@ -4,8 +4,11 @@ import {
   type DailyReadinessDeps,
   getDailyReadiness,
   getPostWeek,
+  type ImageAiPricing,
   type PostWeekDeps,
   type PublishMode,
+  type WorkerHeartbeat,
+  workerStatusOf,
 } from "@agentsales/core";
 import { Hono } from "hono";
 import { type AppEnv, requireAuth } from "../auth.js";
@@ -30,8 +33,12 @@ export type BrandWeekRoutesDeps = PostWeekDeps &
      * nunca sale del cuerpo.
      */
     publishMode: PublishMode;
-    /** Si el worker se enciende solo (`WORKER_IDLE_EXIT_MINUTES` > 0, ADR-0037); `null` si no se sabe. */
-    workerScheduled: boolean | null;
+    /** Si el worker se enciende solo (`WORKER_IDLE_EXIT_MINUTES` > 0, ADR-0037). */
+    workerScheduled: boolean;
+    /** Los latidos del worker (F8-T12): si está encendido. Sin ellos, no se sabe. */
+    workerHeartbeats?: () => Promise<WorkerHeartbeat[]>;
+    /** La IA de imágenes (F9.5-T25): su precio y tope, o `null` sin la clave. */
+    imageSources: { ai: ImageAiPricing | null };
   };
 
 /**
@@ -98,11 +105,22 @@ export function brandWeekRoutes(deps: BrandWeekRoutesDeps) {
     )
     .get("/:id/daily-readiness", validated("param", idParamSchema), async (c) => {
       const brokerId = c.req.valid("param").id;
-      const readiness = await getDailyReadiness(deps, requireAuth(c).user, {
+      const { user } = requireAuth(c);
+      // El estado del worker solo lo ve el administrador (como el detalle de `/health`).
+      const admin = user.role === "admin";
+      const readiness = await getDailyReadiness(deps, user, {
         brokerId,
         effectiveMode: await brokerMode(deps, brokerId),
         server: deps.publishMode,
-        workerSchedule: deps.workerScheduled,
+        workerSchedule: admin ? deps.workerScheduled : null,
+        workerRunning:
+          admin && deps.workerHeartbeats !== undefined
+            ? await deps.workerHeartbeats().then(
+                (beats) => workerStatusOf(beats, new Date()).running,
+                () => null,
+              )
+            : null,
+        imageAi: deps.imageSources.ai,
       });
       const body: DailyReadinessResponse = { readiness };
       return c.json(body, 200);

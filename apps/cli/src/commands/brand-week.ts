@@ -54,6 +54,11 @@ export function renderWeekResult(result: PostWeekApproveResponse, c: Colors): st
         `  ${c.green("✓")} ${PLATFORM_TEXT[row.platform]}: programado para ${formatChileTime(row.at)} (${mode})`,
       );
     }
+    // Lo que ya hizo el operador (una hora movida, una fallida, una desprogramada) no se toca.
+    for (const kept of post.kept) {
+      lines.push(`  ${c.dim("=")} ${PLATFORM_TEXT[kept.platform]}: ${kept.message}`);
+      if (kept.command !== null) lines.push(c.dim(`      → ${kept.command}`));
+    }
     for (const problem of post.problems) {
       const where =
         problem.platform === null

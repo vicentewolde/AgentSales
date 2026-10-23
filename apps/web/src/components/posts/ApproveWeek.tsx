@@ -7,7 +7,7 @@ import {
   publicationModeText,
   WEEK_PROBLEM_TEXT,
 } from "@agentsales/core";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useApprovePostWeek, usePostWeek } from "../../queries/brand-week.js";
 import { useBrokerModeOf } from "../../queries/brokers.js";
@@ -112,6 +112,14 @@ export function WeekResult({ result }: { result: PostWeekApproveResponse }) {
                 de Chile, {mode})
               </li>
             ))}
+            {post.kept.map((kept) => (
+              <li key={kept.publicationId} className="text-fg-muted">
+                = {PLATFORM_TEXT[kept.platform]}: {kept.message}.
+                {kept.command !== null && (
+                  <code className="mt-0.5 block text-xs break-all">{kept.command}</code>
+                )}
+              </li>
+            ))}
             {post.problems.map((problem, index) => {
               const { text, hint } = WEEK_PROBLEM_TEXT[problem.kind];
               const where =
@@ -158,9 +166,18 @@ export function ApproveWeek({ brandId, week }: { brandId: string; week: string }
   const approve = useApprovePostWeek(brandId);
   // El modo de la marca (F9.5-T22, ADR-0036): en vivo solo con el servidor y la marca encendidos.
   const modeOf = useBrokerModeOf();
+  const opener = useRef<HTMLButtonElement>(null);
+  const region = useRef<HTMLElement>(null);
+  // Al abrir, el foco va a la región; al cerrar, vuelve al botón que la abrió.
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (open) region.current?.focus();
+    else if (wasOpen.current) opener.current?.focus();
+    wasOpen.current = open;
+  }, [open]);
   if (!open) {
     return (
-      <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
+      <Button ref={opener} variant="secondary" size="sm" onClick={() => setOpen(true)}>
         Aprobar la semana…
       </Button>
     );
@@ -168,8 +185,13 @@ export function ApproveWeek({ brandId, week }: { brandId: string; week: string }
   const posts = preview.data?.posts ?? [];
   return (
     <section
+      ref={region}
+      tabIndex={-1}
       aria-label={`Aprobar la ${planWeekText(week).toLowerCase()}`}
-      className="mt-2 rounded-xl border border-line bg-sand p-4"
+      className="mt-2 rounded-xl border border-line bg-sand p-4 focus:outline-2 focus:outline-brand-700"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") setOpen(false);
+      }}
     >
       <p className="text-sm text-fg-muted">
         Aprueba los textos sin errores de las ideas aceptadas y programa cada una a su fecha. Nada

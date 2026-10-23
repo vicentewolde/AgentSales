@@ -2,10 +2,10 @@ import type { PostPlatform } from "../enums.js";
 
 // Las pruebas de entrada de las redes de los posts (spec F9 §4.8): cada red publica de verdad solo
 // después de la suya, que hace el operador a mano con su cuenta. El resultado se anota en la nota
-// de la red (`docs/integraciones/`); este registro repite **solo lo anotado ahí** (una prueba
-// cuenta como hecha cuando su nota tiene la sección «Resultado de Sx» que dice que pasó). La lista
-// «Lista para publicar a diario» (F9.5-T27) lo muestra; nunca lo deduce de otra cosa. Un test lee
-// las notas y falla si este registro y ellas no dicen lo mismo.
+// de la red (`docs/integraciones/`), con una línea legible por máquina
+// (`<!-- entry-test: S4 passed 2026-10-21 -->` o `<!-- entry-test: S2 pending -->`); este registro
+// repite **solo lo anotado ahí**. La lista «Lista para publicar a diario» (F9.5-T27) lo muestra;
+// nunca lo deduce de otra cosa. Un test lee esas líneas y falla si el registro no dice lo mismo.
 
 /** Una prueba de entrada: sus códigos, la nota donde se anota y el día en que pasó (o `null`). */
 export type EntryTest = {
@@ -20,6 +20,8 @@ export type EntryTest = {
    * llama a la red, así que no la necesita.
    */
   onlyForApi: boolean;
+  /** Lo que la nota deja pendiente aun con la prueba pasada (en palabras), o `null`. */
+  pendingNote: string | null;
 };
 
 /** Lo anotado en las notas de cada red (revisado el 2026-10-22). */
@@ -29,25 +31,35 @@ export const ENTRY_TESTS: Readonly<Record<PostPlatform, EntryTest>> = {
     doc: "docs/integraciones/instagram-contenido-propio.md",
     passedOn: "2026-10-21",
     onlyForApi: false,
+    pendingNote: null,
   },
-  x: { codes: ["S4"], doc: "docs/integraciones/x.md", passedOn: "2026-10-21", onlyForApi: false },
+  x: {
+    codes: ["S4"],
+    doc: "docs/integraciones/x.md",
+    passedOn: "2026-10-21",
+    onlyForApi: false,
+    pendingNote: "el hilo (no lo hace AgentSales) y si un error 4xx cobra",
+  },
   linkedin: {
     codes: ["S2", "S3"],
     doc: "docs/integraciones/linkedin.md",
     passedOn: null,
     onlyForApi: true,
+    pendingNote: null,
   },
   discord: {
     codes: ["S5"],
     doc: "docs/integraciones/discord.md",
     passedOn: "2026-10-21",
     onlyForApi: false,
+    pendingNote: null,
   },
   tiktok: {
     codes: ["S6"],
     doc: "docs/integraciones/tiktok.md",
     passedOn: "2026-10-21",
     onlyForApi: false,
+    pendingNote: null,
   },
 };
 

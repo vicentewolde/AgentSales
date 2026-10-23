@@ -21,7 +21,14 @@ export function LinkedInAssist({
   content: Pick<ContentView, "body" | "hashtags"> | undefined;
 }) {
   const [copy, setCopy] = useState<CopyState>("idle");
-  if (content === undefined) return null;
+  if (content === undefined) {
+    return (
+      <p role="status" className="mt-3 text-sm text-warning-800">
+        No encontré el texto aprobado de esta publicación: cópialo desde «Textos por red» y
+        publícalo a mano en LinkedIn.
+      </p>
+    );
+  }
   const text = joinedPostText(content);
   const copyText = async () => {
     try {
@@ -32,7 +39,7 @@ export function LinkedInAssist({
     }
   };
   return (
-    <fieldset
+    <section
       aria-label="Publicar en LinkedIn a mano"
       className="mt-3 min-w-0 rounded-lg border border-info-200 bg-info-50 p-3 text-sm"
     >
@@ -60,6 +67,6 @@ export function LinkedInAssist({
           {copy === "failed" && "No se pudo copiar: selecciona el texto del post a mano"}
         </span>
       </div>
-    </fieldset>
+    </section>
   );
 }

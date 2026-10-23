@@ -1,5 +1,5 @@
 import { inScope } from "../access.js";
-import { chileDateOf, chileDateStart } from "../chile-time.js";
+import { chileDateOf, chileDateStart, formatChileTime } from "../chile-time.js";
 import {
   isPostPlatform,
   LANGUAGES,
@@ -12,8 +12,9 @@ import { assertCan, scopeOf } from "../permissions.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { ContentRepository } from "../ports/content-repository.js";
 import type { PostRepository } from "../ports/post-repository.js";
+import type { PublicationRepository } from "../ports/publication-repository.js";
 import { canDraftPost, type Post } from "../post.js";
-import type { PublicationActor } from "../publication.js";
+import type { Publication, PublicationActor } from "../publication.js";
 import { addDays, weekOf } from "../social/plan-slots.js";
 import { postPublishesOn } from "../social/post-networks.js";
 import { postSubject } from "../subject.js";
@@ -73,23 +74,26 @@ async function requireBrand(
   return broker;
 }
 
+/** Un post con fecha: los de la semana siempre la tienen (la consulta filtra por `planned_at`). */
+type DatedPost = Post & { plannedAt: Date };
+const isDated = (post: Post): post is DatedPost => post.plannedAt !== null;
+
 /** Los posts de la semana: los aceptados (borrador o listos) y cuántas ideas siguen sin decidir. */
 async function weekPosts(
   deps: { posts: Pick<PostRepository, "list"> },
   actor: Actor,
   brokerId: string,
   range: PostWeekRange,
-): Promise<{ accepted: Post[]; ideas: number }> {
+): Promise<{ accepted: DatedPost[]; ideas: number }> {
   const all = await deps.posts.list(
     { brokerId, status: ["idea", "draft", "ready"], from: range.from, to: range.to },
     scopeOf(actor),
   );
-  const sorted = [...all].sort(
-    (a, b) =>
-      (a.plannedAt?.getTime() ?? 0) - (b.plannedAt?.getTime() ?? 0) || a.id.localeCompare(b.id),
-  );
+  const sorted = all
+    .filter(isDated)
+    .sort((a, b) => a.plannedAt.getTime() - b.plannedAt.getTime() || a.id.localeCompare(b.id));
   return {
-    accepted: sorted.filter((post) => canDraftPost(post.status) && post.plannedAt !== null),
+    accepted: sorted.filter((post) => canDraftPost(post.status)),
     ideas: sorted.filter((post) => post.status === "idea").length,
   };
 }
@@ -126,7 +130,7 @@ export async function getPostWeek(
 
 /**
  * Por qué no se pudo una red de un post:
- * - `no_texts`: la IA todavía no redacta sus textos;
+ * - `no_texts`: la IA todavía no redacta sus textos (o los está redactando: `CONTENT_RUN_ACTIVE`);
  * - `text_errors`: la revisión encontró errores (se corrigen en el post);
  * - `media_missing`: faltan la imagen o el video (o se están procesando, F9.5-T21);
  * - `account_missing`: la marca no tiene la cuenta conectada;
@@ -147,6 +151,7 @@ export type WeekProblemKind = (typeof WEEK_PROBLEM_KINDS)[number];
 
 const KIND_OF_CODE: Readonly<Record<string, WeekProblemKind>> = {
   POST_NO_TEXTS: "no_texts",
+  CONTENT_RUN_ACTIVE: "no_texts",
   CONTENT_HAS_ERRORS: "text_errors",
   X_LINK_NOT_ALLOWED: "text_errors",
   CONTENT_NOT_READY: "media_missing",
@@ -164,7 +169,7 @@ export const WEEK_PROBLEM_TEXT: Readonly<Record<WeekProblemKind, { text: string;
   {
     no_texts: {
       text: "Sin textos todavía",
-      hint: "Espera a que la IA los redacte (o pídelos en el post) y vuelve a aprobar la semana.",
+      hint: "Si la IA está redactando, espera a que termine; si no, pídelos en el post. Después vuelve a aprobar la semana.",
     },
     text_errors: {
       text: "El texto tiene errores",
@@ -196,6 +201,24 @@ export type WeekProblem = {
   message: string;
 };
 
+/**
+ * Una red que «Aprobar la semana» no tocó porque ya tiene algo del operador (F9.5-T27): repetirla
+ * nunca pisa lo que él hizo.
+ * - `scheduled`: ya está programada (aunque sea a otra hora: el operador pudo moverla);
+ * - `failed`: falló; se reintenta con su comando, no aquí;
+ * - `unscheduled`: el operador la desprogramó; se vuelve a programar con su comando.
+ */
+export type WeekKept = {
+  platform: PostPlatform;
+  publicationId: string;
+  status: "scheduled" | "failed" | "unscheduled";
+  /** La hora a la que está programada (solo `scheduled`). */
+  at: Date | null;
+  message: string;
+  /** El comando para reintentarla o programarla (`null` en `scheduled`). */
+  command: string | null;
+};
+
 export type WeekPostResult = {
   postId: string;
   topic: string;
@@ -204,6 +227,8 @@ export type WeekPostResult = {
   approved: { platform: PostPlatform; language: Language }[];
   /** Las redes que quedaron programadas, a la fecha del post, con sus publicaciones. */
   scheduled: { platform: PostPlatform; at: Date; publicationIds: string[] }[];
+  /** Las redes que ya tenían algo del operador y no se tocaron. */
+  kept: WeekKept[];
   problems: WeekProblem[];
 };
 
@@ -217,8 +242,60 @@ export type ApprovePostWeekDeps = ApproveContentDeps &
     brokers: Pick<BrokerRepository, "findById">;
     posts: Pick<PostRepository, "get" | "list">;
     contents: Pick<ContentRepository, "get" | "listCurrent">;
+    /** Lo que ya hizo el operador en cada red (programar, desprogramar, reintentar): no se pisa. */
+    publications: Pick<PublicationRepository, "listBySubject" | "listEvents">;
     now?: () => Date;
   };
+
+/**
+ * Lo que el operador ya hizo en una red del post y la semana no debe pisar: una publicación
+ * programada (a la hora que sea), una fallida o una que él desprogramó (volvió de `scheduled` a
+ * `approved`). La primera que encuentra, o `null` si la red se puede programar.
+ */
+async function keptOf(
+  deps: Pick<ApprovePostWeekDeps, "publications">,
+  publications: readonly Publication[],
+  platform: PostPlatform,
+): Promise<WeekKept | null> {
+  const own = publications.filter((publication) => publication.platform === platform);
+  const scheduled = own.find((publication) => publication.status === "scheduled");
+  if (scheduled?.scheduledAt != null) {
+    return {
+      platform,
+      publicationId: scheduled.id,
+      status: "scheduled",
+      at: scheduled.scheduledAt,
+      message: `Ya está programado para el ${formatChileTime(scheduled.scheduledAt)} (hora de Chile): no se cambia`,
+      command: null,
+    };
+  }
+  const failed = own.find((publication) => publication.status === "failed");
+  if (failed !== undefined) {
+    return {
+      platform,
+      publicationId: failed.id,
+      status: "failed",
+      at: null,
+      message: "Falló: no se reintenta sola; reinténtala tú cuando esté lista",
+      command: `pnpm -s cli publications retry ${failed.id}`,
+    };
+  }
+  for (const publication of own.filter((item) => item.status === "approved")) {
+    const events = await deps.publications.listEvents(publication.id);
+    const last = events.filter((event) => event.toStatus === "approved").at(-1);
+    if (last?.fromStatus === "scheduled") {
+      return {
+        platform,
+        publicationId: publication.id,
+        status: "unscheduled",
+        at: null,
+        message: "La desprogramaste: queda aprobada, sin hora",
+        command: `pnpm -s cli schedule --publication ${publication.id} --at "AAAA-MM-DD HH:MM"`,
+      };
+    }
+  }
+  return null;
+}
 
 /** Un error que no es del pedido (la base, la red) corta todo: lo hecho queda escrito. */
 const asProblem = (
@@ -236,8 +313,9 @@ const asProblem = (
  * fecha del post (`schedulePost`, con las mismas revisiones de programar uno: cuenta conectada,
  * medios, hora en el futuro). **Nunca publica en el momento.** El modo (`dryRun`) lo pone quien
  * llama: el de la marca (ADR-0036). Un post o una red que no se puede no corta el resto: queda en
- * `problems` con su motivo. Un error reintentable (la base) corta el pedido con lo ya hecho escrito;
- * repetirlo es seguro (aprobar y programar a la misma hora no cambian nada).
+ * `problems` con su motivo. **Nunca pisa lo que hizo el operador:** una red ya programada (a la hora
+ * que sea), fallida o que él desprogramó no se toca y va en `kept`, con su estado y su comando. Un
+ * error reintentable (la base) corta el pedido con lo ya hecho escrito; repetirlo es seguro.
  */
 export async function approvePostWeek(
   deps: ApprovePostWeekDeps,
@@ -257,13 +335,14 @@ export async function approvePostWeek(
   const { accepted, ideas } = await weekPosts(deps, actor, brokerId, range);
   const posts: WeekPostResult[] = [];
   for (const post of accepted) {
-    const plannedAt = post.plannedAt as Date;
+    const { plannedAt } = post;
     const result: WeekPostResult = {
       postId: post.id,
       topic: post.topic,
       plannedAt,
       approved: [],
       scheduled: [],
+      kept: [],
       problems: [],
     };
     posts.push(result);
@@ -298,7 +377,13 @@ export async function approvePostWeek(
         result.problems.push(asProblem(error, { platform, language: content.language }));
       }
     }
-    const platforms = [...new Set(result.approved.map((text) => text.platform))];
+    const existing = await deps.publications.listBySubject(postSubject(post.id));
+    const platforms: PostPlatform[] = [];
+    for (const platform of new Set(result.approved.map((text) => text.platform))) {
+      const kept = await keptOf(deps, existing, platform);
+      if (kept === null) platforms.push(platform);
+      else result.kept.push(kept);
+    }
     if (platforms.length === 0) continue;
     try {
       const { results } = await schedulePost(fixed, {
