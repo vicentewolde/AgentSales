@@ -9,7 +9,7 @@ import { runBrandReady, runPostApproveWeek } from "./brand-week.js";
 /** Un día de la semana que viene (hora de Chile). */
 const DAY = chileDateOf(new Date(Date.now() + 8 * 86_400_000));
 
-async function setup(options: { publishMode?: "dry-run" | "live" } = {}) {
+async function setup(options: { publishMode?: "dry-run" | "live"; liveBrand?: boolean } = {}) {
   const h = harness(
     options.publishMode === undefined ? {} : { deps: { publishMode: options.publishMode } },
   );
@@ -17,6 +17,11 @@ async function setup(options: { publishMode?: "dry-run" | "live" } = {}) {
     { ...brokerData("agentpey"), brandName: "AgentPey" },
     { kind: "brand" },
   );
+  // ADR-0036: en vivo solo una marca propia y encendida.
+  if (options.liveBrand === true) {
+    await h.brokers.setSettings(brand.id, { operatorOwned: true });
+    await h.brokers.setLiveEnabled(brand.id, true);
+  }
   await h.platformAccounts.upsertConnected({
     brokerId: brand.id,
     platform: "linkedin",
@@ -97,8 +102,16 @@ describe("post approve-week", () => {
     expect(s.h.requests).not.toContain(`POST /brokers/${s.brand.id}/week/approve`);
   });
 
-  it("en vivo pregunta antes: sin confirmar no programa nada; con --yes programa en vivo", async () => {
+  it("con el servidor en vivo y la marca apagada, programa en simulación sin preguntar", async () => {
     const s = await setup({ publishMode: "live" });
+    const post = await s.addPost("Marca apagada", [{ platform: "linkedin" }]);
+    expect(await runPostApproveWeek(s.deps, { broker: "agentpey", start: DAY })).toBe(0);
+    expect(s.questions).toEqual([]);
+    expect(await s.statuses(post.id)).toEqual([["linkedin", "scheduled", true]]);
+  });
+
+  it("en vivo (servidor y marca) pregunta antes: sin confirmar no programa; con --yes, en vivo", async () => {
+    const s = await setup({ publishMode: "live", liveBrand: true });
     const post = await s.addPost("En vivo", [{ platform: "linkedin" }]);
     expect(await runPostApproveWeek(s.deps, { broker: "agentpey", start: DAY })).toBe(1);
     expect(s.questions).toHaveLength(1);

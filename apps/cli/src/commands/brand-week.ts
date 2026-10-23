@@ -113,7 +113,8 @@ export function runPostApproveWeek(deps: ApproveWeekDeps, options: PostApproveWe
         deps.print(`  ${when}  ${item.post.topic}: ${texts === "" ? "sin textos" : texts}`);
       }
     }
-    const live = await confirmLive(deps, options.yes ?? false);
+    // En vivo solo si la marca también lo está (ADR-0036): la misma pregunta que programar.
+    const live = await confirmLive(deps, options.yes ?? false, async () => [broker.id]);
     if (live === null) return 1;
     const result = await unwrap(
       deps.client.brokers[":id"].week.approve.$post({

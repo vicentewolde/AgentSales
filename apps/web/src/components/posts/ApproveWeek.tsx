@@ -10,7 +10,8 @@ import {
 import { useState } from "react";
 import { Link } from "react-router";
 import { useApprovePostWeek, usePostWeek } from "../../queries/brand-week.js";
-import { useHealth } from "../../queries/health.js";
+import { useBrokerModeOf } from "../../queries/brokers.js";
+import { SubjectBrokerContext } from "../../queries/health.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 import { Badge } from "../ui/Badge.js";
 import { Button } from "../ui/Button.js";
@@ -155,7 +156,8 @@ export function ApproveWeek({ brandId, week }: { brandId: string; week: string }
   const [open, setOpen] = useState(false);
   const preview = usePostWeek(brandId, week, open);
   const approve = useApprovePostWeek(brandId);
-  const health = useHealth();
+  // El modo de la marca (F9.5-T22, ADR-0036): en vivo solo con el servidor y la marca encendidos.
+  const modeOf = useBrokerModeOf();
   if (!open) {
     return (
       <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
@@ -195,15 +197,18 @@ export function ApproveWeek({ brandId, week }: { brandId: string; week: string }
         </p>
       )}
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <LiveConfirmButton
-          label={approve.isPending ? "Aprobando…" : "Aprobar y programar la semana"}
-          publishMode={health.data?.publishMode}
-          pending={approve.isPending}
-          disabled={posts.length === 0}
-          liveMessage="El sistema está en vivo: a su hora, cada post se publica de verdad, sin volver a preguntar."
-          confirmLabel="Sí, programar en vivo"
-          onConfirm={() => approve.mutate(week)}
-        />
+        {/* Antes de confirmar, relee el modo de esta marca (no solo el del servidor). */}
+        <SubjectBrokerContext.Provider value={brandId}>
+          <LiveConfirmButton
+            label={approve.isPending ? "Aprobando…" : "Aprobar y programar la semana"}
+            publishMode={modeOf(brandId)}
+            pending={approve.isPending}
+            disabled={posts.length === 0}
+            liveMessage="El sistema está en vivo: a su hora, cada post se publica de verdad, sin volver a preguntar."
+            confirmLabel="Sí, programar en vivo"
+            onConfirm={() => approve.mutate(week)}
+          />
+        </SubjectBrokerContext.Provider>
         <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
           Cerrar
         </Button>

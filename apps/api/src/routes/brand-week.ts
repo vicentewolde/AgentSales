@@ -17,6 +17,7 @@ import {
   postWeekApproveBodySchema,
   postWeekQuerySchema,
 } from "../contracts/index.js";
+import { brokerMode, isDryRun } from "../publish-modes.js";
 import { validated } from "../validation.js";
 import { contentView } from "./content.js";
 import { actorOf, publicationView } from "./publication-views.js";
@@ -47,8 +48,6 @@ export function brandWeekRoutes(deps: BrandWeekRoutesDeps) {
     ...deps,
     postReview: { posts: deps.posts, editorialProfiles: deps.editorialProfiles },
   };
-  /** El modo con que saldría lo de la marca: hoy, el del servidor para todas. */
-  const brandMode = async (_brokerId: string): Promise<PublishMode> => deps.publishMode;
   return new Hono<AppEnv>()
     .get(
       "/:id/week",
@@ -79,7 +78,8 @@ export function brandWeekRoutes(deps: BrandWeekRoutesDeps) {
       validated("json", postWeekApproveBodySchema),
       async (c) => {
         const brokerId = c.req.valid("param").id;
-        const dryRun = (await brandMode(brokerId)) === "dry-run";
+        // El modo de la marca (ADR-0036): en vivo solo con el servidor y la marca encendidos.
+        const dryRun = isDryRun(await brokerMode(deps, brokerId));
         const result = await approvePostWeek(approveDeps, requireAuth(c).user, {
           brokerId,
           day: c.req.valid("json").day,
@@ -100,7 +100,7 @@ export function brandWeekRoutes(deps: BrandWeekRoutesDeps) {
       const brokerId = c.req.valid("param").id;
       const readiness = await getDailyReadiness(deps, requireAuth(c).user, {
         brokerId,
-        effectiveMode: await brandMode(brokerId),
+        effectiveMode: await brokerMode(deps, brokerId),
         server: deps.publishMode,
         workerSchedule: deps.workerScheduled,
       });
