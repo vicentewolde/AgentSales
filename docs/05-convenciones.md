@@ -76,6 +76,17 @@ Cualquier dependencia nueva que no esté en esta tabla requiere justificación e
 - Nombres de archivos: `kebab-case.ts`. Componentes React: `PascalCase.tsx`.
 - Imports entre paquetes solo por su nombre público (`@agentsales/core`), nunca por ruta relativa a otro paquete.
 
+## Sistema visual del panel
+
+Desde F9.5-T26, «un diseño acogedor» (reemplaza el de T01): tonos tierra, como lo haría una diseñadora de interiores, con las fotos de las propiedades como protagonistas.
+
+- **Tokens** en el tema de Tailwind v4 (`apps/web/src/index.css`, `@theme`), con nombres de uso: `canvas` (fondo crema `#F6F0E6`), `surface` (tarjetas y campos `#FFFCF7`, también el texto sobre terracota), `sand` (barra lateral `#EFE5D6`), `sand-strong` (la nota de la barra `#E4D6C1`), `line` y `line-strong` (separadores y bordes), `fg`, `fg-muted` y `fg-subtle` (madera). Escalas: `brand` (terracota: `brand-700` `#A8532F` el botón primario, `brand-800` `#9A4A29` el enlace, `brand-900` `#7A3A1F` al pasar el cursor; `text-brand-700` sigue sirviendo de enlace), `accent` (madera y ocre), `success` (salvia: «publicado» es `success-50` con `success-800`), `warning` (miel: «espera tu revisión» es `warning-50` con `warning-800`), `danger` (rojo ladrillo) e `info` (azul piedra).
+- **Nada de la paleta por defecto de Tailwind** (`slate`, `gray`, `red`…, ni `white` o `black`): todo pasa por los tokens. `apps/web/src/design-tokens.test.ts` lo revisa archivo por archivo y calcula el contraste de cada par de texto que usa el panel (AA, 4,5:1; íconos 3:1), con los valores de `index.css`. Un color nuevo entra con su par en esa prueba.
+- **Tipografía:** títulos en Fraunces (`h1` y `h2` por defecto; `font-display` para otro texto en serif; 400 en los grandes, 600 en los de sección) y texto en DM Sans, desde Google Fonts con `<link>` en `apps/web/index.html` (`display=swap`). Sin ellas (por ejemplo, si la CSP del servidor no deja cargarlas) se ven Georgia y la del sistema.
+- **Formas:** esquinas suaves (`rounded-xl` 20 px, `rounded-2xl` 22 px, `rounded-3xl` 24 px: el tema las agranda), botones en píldora de 44 px de alto (los chicos, 36 px con el mouse y 44 px en pantallas táctiles) y sombras tibias (`shadow-card`, `shadow-lift`).
+- **Componentes base** en `apps/web/src/components/ui/` (`Button`, `Badge`, `Card`, `Field`, `Alert`, `Table`, `EmptyState`, `PageHeader`); las clases, en `styles.ts`. Los estados vacíos llevan una ilustración de hogar en SVG en línea (`illustrations.tsx`); los íconos son de trazo, en `icons.tsx`, sin emoji.
+- **Teléfono:** la barra lateral queda arriba y su menú se abre con el botón «Menú»; ninguna pantalla se desplaza de lado.
+
 ## Estructura de un paquete
 
 Cada paquete o app en `packages/<nombre>` o `apps/<nombre>` sigue esta estructura:
