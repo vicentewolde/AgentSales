@@ -3,6 +3,7 @@ import {
   type ListingLock,
   type LockedRepositories,
   listingSubject,
+  loadCardLanguages,
   type PostLock,
   type PostLockedRepositories,
   postSubject,
@@ -33,6 +34,7 @@ import { createListingRepository } from "../src/repositories/listings.js";
 import { createMediaRepository } from "../src/repositories/media.js";
 import { createPlanRunRepository } from "../src/repositories/plan-runs.js";
 import { createPlatformAccountRepository } from "../src/repositories/platform-accounts.js";
+import { createPostImageRunRepository } from "../src/repositories/post-image-runs.js";
 import { createPostRepository, createPostUploadRepository } from "../src/repositories/posts.js";
 import { createPublicationRepository } from "../src/repositories/publications.js";
 import { contentRuns, contents, editorialProfiles, posts } from "../src/schema.js";
@@ -478,6 +480,27 @@ describe("PostLock · Postgres (PGlite)", () => {
     expect(queries[0]).toMatch(/from "posts" where "posts"\."id" = \$1 for no key update/);
     expect((await repos.posts.get(ids.postId))?.topic).toBe("Un post");
     expect((await repos.contents.get(ids.contentId))?.status).toBe("draft");
+  });
+
+  it("entrega los pedidos de imágenes del post: de ahí sale el idioma de sus tarjetas", async () => {
+    const { db, repos, lock } = await pgliteLock();
+    const ids = await seedPost(repos);
+    const runs = createPostImageRunRepository(db);
+    const run = await runs.create({
+      postId: ids.postId,
+      brokerId: ids.brokerId,
+      source: "card",
+      request: { source: "card", format: "4:5", language: "en" },
+      createdBy: null,
+    });
+    await runs.markRunning(run.id);
+    await runs.markSucceeded(run.id, [MISSING_UUID]);
+    const seen = await lock.run(ids.postId, async (locked) => {
+      // El candado de Postgres siempre entrega los pedidos: sin ellos, las tarjetas no se separan.
+      expect(locked.postImageRuns).toBeDefined();
+      return loadCardLanguages(locked.postImageRuns, ids.postId);
+    });
+    expect([...seen]).toEqual([[MISSING_UUID, ["en"]]]);
   });
 
   it("las transacciones propias de los repositorios funcionan dentro (savepoints)", async () => {

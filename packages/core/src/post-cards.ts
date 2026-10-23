@@ -9,6 +9,7 @@ import {
   type PostPlatform,
 } from "./enums.js";
 import { AppError } from "./errors.js";
+import { LANGUAGE_TEXT } from "./labels.js";
 import type { CardSpec } from "./ports/card-renderer.js";
 import type { Post } from "./post.js";
 import { DISCORD_MAX_FILES, kindProblem, X_MAX_IMAGES } from "./social/networks.js";
@@ -57,17 +58,23 @@ function clip(text: string, max: number): string {
  * cuatro textos juntos): el vigente de la primera red en `SOURCE_ORDER` que tenga texto en
  * `language` (el idioma principal de la marca). Si ese idioma no tiene ningún texto, el del primer
  * idioma que sí lo tenga, también de una sola red: nunca se juntan dos textos ni dos idiomas. Sin
- * `language`, el del primero que aparezca. Sin texto, `body = ""`.
+ * `language`, el del primero que aparezca. Con `exact`, solo el de `language` (las tarjetas de un
+ * idioma no usan el texto de otro). Sin texto, `body = ""`.
  */
 export function cardSource(
   contents: readonly Pick<Content, "platform" | "language" | "body">[],
   language?: Language,
+  exact = false,
 ): { body: string; platform: PostPlatform | null; language: Language | null } {
   const filled = contents.filter((item) => item.body.trim() !== "");
-  const languages = [
-    ...(language === undefined ? [] : [language]),
-    ...filled.map((item) => item.language),
-  ].filter((value, index, all) => all.indexOf(value) === index);
+  // `exact`: solo el idioma pedido (tarjetas de un idioma: nunca se usa el texto de otro).
+  const languages =
+    exact && language !== undefined
+      ? [language]
+      : [
+          ...(language === undefined ? [] : [language]),
+          ...filled.map((item) => item.language),
+        ].filter((value, index, all) => all.indexOf(value) === index);
   for (const wanted of languages) {
     for (const platform of SOURCE_ORDER) {
       const found = filled.find((item) => item.platform === platform && item.language === wanted);
@@ -134,6 +141,42 @@ const needsText = (postId: string) =>
     "Para el video de las tarjetas, el post necesita su texto redactado (al menos un punto): pide los textos y vuelve a intentarlo",
     { details: { postId } },
   );
+
+/**
+ * Los textos de los que pueden salir las tarjetas de un post: los de las redes que el post publica
+ * (las que fijó o todas) y que sirven a su tipo.
+ */
+export function postCardContents<T extends Pick<Content, "platform">>(
+  post: Pick<Post, "kind"> & { platforms?: Post["platforms"] },
+  contents: readonly T[],
+): T[] {
+  return contents.filter(
+    (item) =>
+      isPostPlatform(item.platform) &&
+      ((post.platforms ?? null) === null || post.platforms?.includes(item.platform) === true) &&
+      kindProblem(item.platform, post.kind) === null,
+  );
+}
+
+/**
+ * `POST_IMAGE_NEEDS_TEXT` (409) si el post tiene texto en otro idioma pero ninguno en `language`: sus
+ * tarjetas saldrían con el tema (que puede estar en otro idioma) y sin puntos. Un post sin ningún
+ * texto todavía sí puede hacer sus tarjetas (portada con el tema y cierre).
+ */
+export function assertTextInLanguage(
+  postId: string,
+  contents: readonly Pick<Content, "language" | "body">[],
+  language: Language,
+): void {
+  const filled = contents.filter((item) => item.body.trim() !== "");
+  if (filled.length > 0 && !filled.some((item) => item.language === language)) {
+    throw new AppError(
+      "POST_IMAGE_NEEDS_TEXT",
+      `El post no tiene texto en ${LANGUAGE_TEXT[language]}: pídelo antes de hacer sus tarjetas en ese idioma`,
+      { details: { postId, language } },
+    );
+  }
+}
 
 /**
  * Cuántas imágenes admite una red en un post de ese tipo, o `null` si no pone tope. Los números
@@ -221,7 +264,11 @@ export type CardPlan = {
 };
 
 export type CardPlanOptions = {
-  /** El idioma principal de la marca (el primero de su perfil editorial). */
+  /**
+   * El idioma de las tarjetas (F9.5, arreglo del idioma): los puntos y el título de la portada salen
+   * del texto de **este** idioma, nunca del de otro ni del tema del post (que puede estar en otro
+   * idioma). Sin él (los pedidos anteriores), el texto del primer idioma que haya y el tema.
+   */
   language?: Language;
 };
 
@@ -234,6 +281,28 @@ type PlanContent = Pick<Content, "platform" | "language" | "body">;
 type PlanBroker = Pick<Broker, "brandName" | "instagramHandle" | "website">;
 
 /**
+ * El título de una portada sacado de un texto: su primera oración (sin emojis, hashtags ni el punto
+ * final), y el resto del texto, para que esa oración no se repita como primer punto. `null` si el
+ * texto empieza con una viñeta o no tiene una primera línea con palabras: ahí no hay título.
+ */
+export function coverFromText(body: string): { cover: string; rest: string } | null {
+  const lines = body.split(/\r?\n/u);
+  const index = lines.findIndex((line) => cardText(line) !== "");
+  const line = lines[index];
+  if (index < 0 || line === undefined || BULLET.test(line)) return null;
+  const sentences = line.trim().split(/(?<=[.!?])\s+/u);
+  const first = cardText(sentences[0] ?? "")
+    .replace(/[.:;,\s]+$/u, "")
+    .trim();
+  if (first.length < POST_CARDS.pointMinChars) return null;
+  const remainder = sentences.slice(1).join(" ");
+  return {
+    cover: clip(first, POST_CARDS.coverMaxChars),
+    rest: [remainder, ...lines.slice(index + 1)].join("\n"),
+  };
+}
+
+/**
  * El plan de tarjetas de un post según su tipo:
  * - imagen: una, con el tema;
  * - carrusel: portada (el tema), una por punto del texto y un cierre (la marca y su contacto), sin
@@ -241,7 +310,8 @@ type PlanBroker = Pick<Broker, "brandName" | "instagramHandle" | "website">;
  *   10). Con un tope de 1, solo la portada; de 2, portada y cierre;
  * - video: lo mismo sin el tope de imágenes (el video es un solo archivo), con al menos
  *   `POST_CARDS.videoMinCards` (`POST_IMAGE_NEEDS_TEXT`).
- * Los puntos salen de **un solo texto** (`cardSource`): el del idioma principal de la marca.
+ * Los puntos salen de **un solo texto** (`cardSource`) y, con `options.language`, de un solo idioma:
+ * el título de la portada también sale de ese texto (su primera oración), no del tema del post.
  */
 export function postCardPlan(
   post: PlanPost,
@@ -249,24 +319,32 @@ export function postCardPlan(
   broker: PlanBroker,
   options: CardPlanOptions = {},
 ): CardPlan {
-  const cover = clip(cardText(post.topic), POST_CARDS.coverMaxChars);
-  const usable = contents.filter(
-    (item) =>
-      isPostPlatform(item.platform) &&
-      ((post.platforms ?? null) === null || post.platforms?.includes(item.platform) === true) &&
-      kindProblem(item.platform, post.kind) === null,
-  );
+  const topicCover = clip(cardText(post.topic), POST_CARDS.coverMaxChars);
+  const usable = postCardContents(post, contents);
+  // Pedir un idioma en que el post no tiene texto, habiéndolo en otro, daría una tarjeta con el tema
+  // (quizá del otro idioma): mejor un error claro.
+  if (options.language !== undefined) assertTextInLanguage(post.id, usable, options.language);
   const limit = cardImageLimit(post.kind, cardPlatforms(post, usable));
-  const single: CardSpec[] = [{ role: "cover", text: cover, detail: null, position: 1, total: 1 }];
-  if (post.kind === "image") {
-    return { cards: single, points: 0, limit, source: null, limited: false };
-  }
-  const source = cardSource(usable, options.language);
+  const source = cardSource(usable, options.language, options.language !== undefined);
   const sourceInfo =
     source.platform === null || source.language === null
       ? null
       : { platform: source.platform, language: source.language };
-  const available = cardPoints(source.body, post.topic);
+  // Con un idioma pedido, la portada sale del texto de ese idioma (no del tema, que puede estar en
+  // otro idioma); sin texto o sin una primera oración, del tema.
+  const headline = options.language === undefined ? null : coverFromText(source.body);
+  const cover = headline?.cover ?? topicCover;
+  const single: CardSpec[] = [{ role: "cover", text: cover, detail: null, position: 1, total: 1 }];
+  if (post.kind === "image") {
+    return {
+      cards: single,
+      points: 0,
+      limit,
+      source: headline === null ? null : sourceInfo,
+      limited: false,
+    };
+  }
+  const available = cardPoints(headline?.rest ?? source.body, cover);
   if (post.kind === "carousel" && limit.max < 2) {
     return { cards: single, points: 0, limit, source: sourceInfo, limited: available.length > 0 };
   }
@@ -307,8 +385,6 @@ export const postCardDeck = (
   options: CardPlanOptions = {},
 ): CardSpec[] => postCardPlan(post, contents, broker, options).cards;
 
-const LANGUAGE_NAME: Readonly<Record<Language, string>> = { es: "español", en: "inglés" };
-
 /**
  * Lo que el panel dice antes de hacer las tarjetas: cuántas saldrán y por qué, en simple. Por
  * ejemplo «4 tarjetas: X admite hasta 4 imágenes por post (portada, 2 puntos y cierre, del texto en
@@ -318,7 +394,11 @@ export function describeCardPlan(
   plan: Pick<CardPlan, "cards" | "points" | "limit" | "source" | "limited">,
   kind: Exclude<PostKind, "text">,
 ): string {
-  if (kind === "image") return "1 tarjeta con el tema del post.";
+  if (kind === "image") {
+    return plan.source === null
+      ? "1 tarjeta con el tema del post."
+      : `1 tarjeta con la primera frase del texto en ${LANGUAGE_TEXT[plan.source.language]}.`;
+  }
   const count = plan.cards.length;
   const noun = count === 1 ? "1 tarjeta" : `${count} tarjetas`;
   const parts =
@@ -328,7 +408,7 @@ export function describeCardPlan(
         ? "portada y cierre"
         : `portada, ${plan.points === 1 ? "1 punto" : `${plan.points} puntos`} y cierre`;
   const language =
-    plan.source === null ? "" : `, del texto en ${LANGUAGE_NAME[plan.source.language]}`;
+    plan.source === null ? "" : `, del texto en ${LANGUAGE_TEXT[plan.source.language]}`;
   const why =
     kind === "carousel" &&
     plan.limit.platform !== null &&

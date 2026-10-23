@@ -1635,6 +1635,12 @@ export type UpdatePostBody = z.infer<typeof updatePostBodySchema>;
  */
 export const postMediaItemSchema = mediaItemSchema.extend({
   variants: z.array(z.enum(PROCESSED_MEDIA_VARIANTS)),
+  /**
+   * Los idiomas de la tarjeta (F9.5, tarjetas por idioma): `null` si el medio no es una tarjeta (una
+   * foto subida, de la biblioteca o con IA); `[]` si es una tarjeta de un pedido anterior al idioma.
+   * Un servidor anterior no lo manda: se lee `null`.
+   */
+  cardLanguages: z.array(z.enum(LANGUAGES)).nullable().default(null),
 });
 export type PostMediaItem = z.infer<typeof postMediaItemSchema>;
 
@@ -1762,15 +1768,27 @@ export const postImageOptionsResponseSchema = z.object({
     }),
   }),
   /**
-   * Las tarjetas antes de pedirlas: cuántas saldrían (`count`; `null` si aún no se pueden armar),
-   * por qué (`message`, en simple) y cuántas tarjetas de pedidos anteriores tiene ya el post.
-   * `null` en un post de solo texto.
+   * Las tarjetas antes de pedirlas, por idioma (los de la marca y los de los textos del post): en
+   * cada uno, cuántas saldrían (`count`; `null` si aún no se pueden armar), por qué (`message`, en
+   * simple) y cuántas tarjetas de ese idioma tiene ya el post (`existing`). Arriba, el total de
+   * tarjetas sin repetir y las de un pedido anterior al idioma (`unknown`). `null` en un post de
+   * solo texto.
    */
   cards: z
     .object({
-      count: z.number().int().nullable(),
-      message: z.string(),
-      existing: z.number().int().nonnegative(),
+      // Un servidor anterior no manda los idiomas ni los totales: se leen vacíos.
+      languages: z
+        .array(
+          z.object({
+            language: z.enum(LANGUAGES),
+            count: z.number().int().nullable(),
+            message: z.string(),
+            existing: z.number().int().nonnegative(),
+          }),
+        )
+        .default([]),
+      existing: z.number().int().nonnegative().default(0),
+      unknown: z.number().int().nonnegative().default(0),
     })
     .nullable(),
   suggestions: z.object({ query: z.string(), prompt: z.string() }),
@@ -1795,6 +1813,9 @@ export type PostImageBody = z.infer<typeof postImageBodySchema>;
 /** `POST /posts/:id/images` (202) y `GET /posts/:id/images/:runId`. */
 export const postImageRunResponseSchema = z.object({ run: postImageRunViewSchema });
 export type PostImageRunResponse = z.infer<typeof postImageRunResponseSchema>;
+
+/** `DELETE /posts/:id/images/cards`: sin `language`, todas las tarjetas; con él, las de ese idioma. */
+export const postImageCardsQuerySchema = z.object({ language: z.enum(LANGUAGES).optional() });
 
 export const postImageRunParamSchema = z.object({ id: z.uuid(), runId: z.uuid() });
 

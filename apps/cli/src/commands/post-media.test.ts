@@ -1,3 +1,4 @@
+import { emptyEditorialProfileData } from "@agentsales/core";
 import {
   createFakeStockPhotoProvider,
   createInMemoryPostImageRunRepository,
@@ -20,7 +21,7 @@ const PHOTO = (id: string, tags: string[]) => ({
   author: "autora",
 });
 
-async function setup(options: { keys?: boolean; worker?: "ok" | "fail" } = {}) {
+async function setup(options: { keys?: boolean; worker?: "ok" | "fail"; chain?: boolean } = {}) {
   const postImageRuns = createInMemoryPostImageRunRepository();
   const stock = createFakeStockPhotoProvider({
     photos: [PHOTO("101", ["casa", "living"]), PHOTO("102", ["mujer"]), PHOTO("103", ["cocina"])],
@@ -58,6 +59,18 @@ async function setup(options: { keys?: boolean; worker?: "ok" | "fail" } = {}) {
           to: new Date("2100-01-01"),
         });
       await postImageRuns.markSucceeded(run.id, ["11111111-1111-4111-8111-111111111111"]);
+      // El worker de verdad pide el idioma que sigue al terminar bien.
+      const [next, ...rest] =
+        run.request.source === "card" ? (run.request.thenLanguages ?? []) : [];
+      if (options.chain === true && next !== undefined && run.request.source === "card") {
+        await postImageRuns.create({
+          postId: run.postId,
+          brokerId: run.brokerId,
+          source: "card",
+          request: { ...run.request, language: next, thenLanguages: rest },
+          createdBy: null,
+        });
+      }
     }
   });
   const deps = { ...h.io, client: h.client, sleep: clock.sleep, now: clock.now };
@@ -79,7 +92,7 @@ describe("agentsales post media", () => {
     await expect(runPostMedia(s.deps, s.post.id, { card: true, format: "9:16" })).resolves.toBe(0);
     expect(s.h.text()).toContain("Listo: 1 medio quedó en el post (tarjetas)");
     const [run] = await s.postImageRuns.listByPost(s.post.id, 1);
-    expect(run?.request).toEqual({ source: "card", format: "9:16" });
+    expect(run?.request).toEqual({ source: "card", format: "9:16", language: "es" });
     expect(s.h.queue.jobs.at(-1)?.name).toBe("post.image");
   });
 
@@ -93,9 +106,95 @@ describe("agentsales post media", () => {
     const s = await setup();
     await expect(runPostMedia(s.deps, s.post.id, { card: true, replace: true })).resolves.toBe(0);
     const [run] = await s.postImageRuns.listByPost(s.post.id, 1);
-    expect(run?.request).toEqual({ source: "card", format: "4:5", replaceCards: true });
+    expect(run?.request).toEqual({
+      source: "card",
+      format: "4:5",
+      language: "es",
+      replaceCards: true,
+    });
     await expect(runPostMedia(s.deps, s.post.id, { replace: true })).resolves.toBe(1);
     expect(s.h.errors()).toContain("--replace va con --card");
+  });
+
+  it("--language pide las tarjetas de un idioma; all, las de cada idioma una después de otra", async () => {
+    const s = await setup();
+    await s.h.editorialProfiles.upsert(s.post.brokerId, {
+      ...emptyEditorialProfileData(),
+      languages: ["en", "es"],
+    });
+    await expect(runPostMedia(s.deps, s.post.id, { card: true, language: "es" })).resolves.toBe(0);
+    const [one] = await s.postImageRuns.listByPost(s.post.id, 1);
+    expect(one?.request).toEqual({ source: "card", format: "4:5", language: "es" });
+    await expect(runPostMedia(s.deps, s.post.id, { card: true, language: "all" })).resolves.toBe(0);
+    const [all] = await s.postImageRuns.listByPost(s.post.id, 1);
+    expect(all?.request).toEqual({
+      source: "card",
+      format: "4:5",
+      language: "en",
+      thenLanguages: ["es"],
+    });
+    // Sin un pedido posterior (aquí no hay worker que lo cree), no dice que se hará: avisa.
+    expect(s.h.text()).not.toContain("Después se hacen");
+    expect(s.h.errors()).toContain("no se hizo: pídelo con");
+    expect(s.h.errors()).toContain("--language es");
+    // Un idioma que no existe o sin --card: el motivo, sin llamar.
+    await expect(runPostMedia(s.deps, s.post.id, { card: true, language: "fr" })).resolves.toBe(1);
+    expect(s.h.errors()).toContain("--language debe ser es, en o all");
+    await expect(runPostMedia(s.deps, s.post.id, { language: "es" })).resolves.toBe(1);
+    expect(s.h.errors()).toContain("--language va con --card");
+  });
+
+  it("con el pedido del idioma que sigue creado (lo hace el worker), lo dice", async () => {
+    const s = await setup({ chain: true });
+    await s.h.editorialProfiles.upsert(s.post.brokerId, {
+      ...emptyEditorialProfileData(),
+      languages: ["en", "es"],
+    });
+    await expect(runPostMedia(s.deps, s.post.id, { card: true, language: "all" })).resolves.toBe(0);
+    expect(s.h.text()).toContain("Después se hacen las tarjetas en español (pedido ");
+    expect(s.h.errors()).not.toContain("no se hizo");
+  });
+
+  it("--language all deja fuera el idioma sin texto", async () => {
+    const s = await setup();
+    await s.h.editorialProfiles.upsert(s.post.brokerId, {
+      ...emptyEditorialProfileData(),
+      languages: ["en", "es"],
+    });
+    const run = await s.h.contentRuns.create({ postId: s.post.id, texts: true });
+    await s.h.contentRuns.markRunning(run.id);
+    await s.h.contentRuns.markSucceeded(run.id, {
+      report: { warnings: [] },
+      contents: [
+        {
+          platform: "x",
+          language: "es",
+          title: null,
+          body: "Hola a todos.",
+          hashtags: [],
+          llmProvider: "fake",
+          llmModel: "fake",
+          promptVersion: "v",
+          rawOutput: null,
+        },
+      ],
+    });
+    await expect(runPostMedia(s.deps, s.post.id, { card: true, language: "all" })).resolves.toBe(0);
+    const [only] = await s.postImageRuns.listByPost(s.post.id, 1);
+    expect(only?.request).toEqual({ source: "card", format: "4:5", language: "es" });
+  });
+
+  it("sin fuente, con dos idiomas dice cuántas saldrían en cada uno", async () => {
+    const s = await setup();
+    await s.h.editorialProfiles.upsert(s.post.brokerId, {
+      ...emptyEditorialProfileData(),
+      languages: ["en", "es"],
+    });
+    await runPostMedia(s.deps, s.post.id);
+    const text = s.h.text();
+    expect(text).toContain("En inglés: saldrían 1 tarjeta con el tema del post.");
+    expect(text).toContain("En español: saldrían 1 tarjeta con el tema del post.");
+    expect(text).toContain("--language es|en|all");
   });
 
   it("--stock lista los resultados sin personas y sin URLs firmadas; --pick elige uno", async () => {

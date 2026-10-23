@@ -1,16 +1,14 @@
-import type { PublicationStatus } from "../enums.js";
+import type { Language, PublicationStatus } from "../enums.js";
 import type { MediaRepository } from "../ports/media-repository.js";
 import type { MediaStorage } from "../ports/media-storage.js";
 import type { PostImageRunRepository } from "../ports/post-image-run-repository.js";
+import { ALL_CARD_RUNS, cardLanguagesOf } from "../post-card-languages.js";
 import { postCardsInUse } from "../post-image.js";
 import { postSubject } from "../subject.js";
 
 // Quitar las tarjetas de un post (F9.5-T25, ADR-0038): qué medios son tarjetas, cuándo se pueden
 // quitar y cómo se borran sus archivos. Lo usan la API (`removePostCards`) y el worker (el
 // reemplazo de un pedido de tarjetas con `replaceCards`, que borra solo cuando las nuevas ya están).
-
-/** Cuántos pedidos de un post se leen para saber cuáles de sus medios son tarjetas. */
-const ALL_RUNS = 500;
 
 /**
  * Las publicaciones en estos estados usan (o usaron) los medios del post: no se les quitan imágenes.
@@ -40,6 +38,11 @@ export function assertCardsRemovable(
  * Los ids de los medios del post que son tarjetas: los de sus pedidos de tarjetas terminados que
  * siguen siendo originales del post. Lo que el usuario subió, una foto de la biblioteca o una imagen
  * con IA nunca está aquí (el post no guarda de dónde salió un medio: lo dicen los pedidos).
+ *
+ * Con `language`, solo las que se pueden quitar al rehacer o quitar las tarjetas de **ese** idioma:
+ * las de ese idioma y las de un pedido anterior al idioma (de idioma desconocido). Una tarjeta que
+ * también es de otro idioma (el cierre con la marca, idéntico en los dos) no se quita: la usa el
+ * otro; solo se quita con todas.
  */
 export async function cardMediaIds(
   deps: {
@@ -47,16 +50,48 @@ export async function cardMediaIds(
     media: Pick<MediaRepository, "listBySubject">;
   },
   postId: string,
+  language?: Language,
 ): Promise<string[]> {
-  const runs = await deps.runs.listByPost(postId, ALL_RUNS);
-  const fromCards = new Set(
-    runs
-      .filter((run) => run.source === "card" && run.status === "succeeded")
-      .flatMap((run) => run.mediaIds),
-  );
-  if (fromCards.size === 0) return [];
+  const cards = cardLanguagesOf(await deps.runs.listByPost(postId, ALL_CARD_RUNS));
+  if (cards.size === 0) return [];
   const all = await deps.media.listBySubject(postSubject(postId));
-  return all.filter((item) => item.role === "original" && fromCards.has(item.id)).map((i) => i.id);
+  return all
+    .filter((item) => item.role === "original" && cards.has(item.id))
+    .filter((item) => {
+      if (language === undefined) return true;
+      const languages = cards.get(item.id) ?? [];
+      return languages.every((own) => own === language);
+    })
+    .map((item) => item.id);
+}
+
+/**
+ * Cuántas tarjetas tiene un post: las **exclusivas** de cada idioma (`byLanguage`, lo que quitar ese
+ * idioma borraría), las que no tienen idioma conocido (`unknown`) y el total sin repetir (`total`,
+ * con las que comparten dos idiomas).
+ */
+export async function countCards(
+  deps: {
+    runs: Pick<PostImageRunRepository, "listByPost">;
+    media: Pick<MediaRepository, "listBySubject">;
+  },
+  postId: string,
+): Promise<{ total: number; unknown: number; byLanguage: Partial<Record<Language, number>> }> {
+  const cards = cardLanguagesOf(await deps.runs.listByPost(postId, ALL_CARD_RUNS));
+  const present = (await deps.media.listBySubject(postSubject(postId))).filter(
+    (item) => item.role === "original" && cards.has(item.id),
+  );
+  const byLanguage: Partial<Record<Language, number>> = {};
+  let unknown = 0;
+  for (const item of present) {
+    const languages = cards.get(item.id) ?? [];
+    if (languages.length === 0) unknown++;
+    // Solo cuentan las exclusivas de un idioma: el cierre que comparten dos no se quita al quitar uno.
+    const [only] = languages;
+    if (languages.length === 1 && only !== undefined)
+      byLanguage[only] = (byLanguage[only] ?? 0) + 1;
+  }
+  return { total: present.length, unknown, byLanguage };
 }
 
 /**

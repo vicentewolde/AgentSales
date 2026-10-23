@@ -6,7 +6,7 @@ import {
   postImageRunResponseSchema,
   postImageStockResponseSchema,
 } from "@agentsales/api/contracts";
-import { RUN_WAIT } from "@agentsales/core";
+import { type Language, RUN_WAIT } from "@agentsales/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { unwrap } from "../api/client.js";
 import { useApiClient } from "../api/context.js";
@@ -63,15 +63,19 @@ export function useStockSearch(postId: string) {
 
 /**
  * `DELETE /posts/:id/images/cards`: quita las tarjetas de pedidos anteriores del post (nunca una
- * foto o un video que el usuario subió). El detalle del post trae los medios que quedan.
+ * foto o un video que el usuario subió): las de un idioma, o todas si no se dice cuál. El detalle
+ * del post trae los medios que quedan.
  */
 export function useRemovePostCards(postId: string) {
   const client = useApiClient();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () =>
+    mutationFn: (language?: Language) =>
       unwrap(
-        client.posts[":id"].images.cards.$delete({ param: { id: postId } }),
+        client.posts[":id"].images.cards.$delete({
+          param: { id: postId },
+          query: language === undefined ? {} : { language },
+        }),
         postImageCardsRemovedResponseSchema,
       ),
     onSettled: () => {

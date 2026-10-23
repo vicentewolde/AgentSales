@@ -6,6 +6,9 @@ import {
 } from "@agentsales/api/contracts";
 import {
   formatUsd,
+  LANGUAGE_TEXT,
+  LANGUAGES,
+  type Language,
   POST_IMAGE_FORMATS,
   type PostImageFormat,
   type PostImageRequest,
@@ -27,6 +30,8 @@ export type PostMediaDeps = WaitDeps & { client: ApiClient };
 
 export type PostMediaOptions = {
   card?: boolean;
+  /** Con `--card`: `es`, `en` o `all` (las tarjetas de cada idioma, una después de otra). */
+  language?: string;
   /** Con `--card`: quita antes las tarjetas anteriores del post (nunca lo que subiste). */
   replace?: boolean;
   stock?: string;
@@ -93,11 +98,24 @@ async function printOptions(deps: PostMediaDeps, postId: string): Promise<number
   deps.print(c.bold("Conseguir imagen"));
   deps.print(`  Tarjetas de la marca (US$ 0): ${media(postId)} --card [--format 4:5|9:16]`);
   if (options.cards !== null) {
-    deps.print(`    Saldrían ${options.cards.message}`);
-    if (options.cards.existing > 0) {
+    const several = options.cards.languages.length > 1;
+    for (const item of options.cards.languages) {
+      const lead = several ? `En ${LANGUAGE_TEXT[item.language]}: ` : "";
+      const said =
+        item.count === null ? item.message : `${several ? "saldrían" : "Saldrían"} ${item.message}`;
+      deps.print(`    ${lead}${said}`);
+      if (item.existing > 0) {
+        deps.print(
+          c.yellow(
+            `    Ya tiene ${item.existing} en ${LANGUAGE_TEXT[item.language]} de pedidos anteriores: agrega --replace para quitarlas antes (lo que subiste no se toca).`,
+          ),
+        );
+      }
+    }
+    if (several) {
       deps.print(
-        c.yellow(
-          `    El post ya tiene ${options.cards.existing} de pedidos anteriores: agrega --replace para quitarlas antes (lo que subiste no se toca).`,
+        c.dim(
+          `    Cada texto se publica con las tarjetas de su idioma: --language ${LANGUAGES.join("|")}|all`,
         ),
       );
     }
@@ -128,6 +146,37 @@ async function printOptions(deps: PostMediaDeps, postId: string): Promise<number
     for (const run of options.runs) deps.print(`  ${runLine(run, c)}`);
   }
   return 0;
+}
+
+/**
+ * Los idiomas de las tarjetas que pide `--language`: ninguno (el servidor usa el principal de la
+ * marca), uno, o `all`: los de la marca y sus textos, uno después de otro.
+ */
+async function cardLanguagesOf(
+  deps: PostMediaDeps,
+  postId: string,
+  text: string | undefined,
+): Promise<Language[]> {
+  if (text === undefined) return [];
+  const wanted = text.trim().toLowerCase();
+  if (wanted === "all") {
+    const options = await unwrap(
+      deps.client.posts[":id"].images.$get({ param: { id: postId } }),
+      postImageOptionsResponseSchema,
+    );
+    // Solo los idiomas que se pueden hacer: uno sin texto en ese idioma no se pide.
+    return (options.cards?.languages ?? [])
+      .filter((item) => item.count !== null)
+      .map((item) => item.language);
+  }
+  const found = LANGUAGES.find((language) => language === wanted);
+  if (found === undefined) {
+    throw new CliError(
+      "POST_IMAGE_LANGUAGE_INVALID",
+      `--language debe ser ${LANGUAGES.join(", ")} o all: "${text}"`,
+    );
+  }
+  return [found];
 }
 
 /** Espera un pedido e imprime cómo terminó; 1 si falló o si no terminó a tiempo. */
@@ -167,6 +216,34 @@ async function waitForImage(
   if (done.costUsd !== null) {
     deps.print(`Costo: ${formatUsd(done.costUsd)}${done.model === null ? "" : ` (${done.model})`}`);
   }
+  if (done.request.source === "card" && (done.request.thenLanguages?.length ?? 0) > 0) {
+    // El worker pide el siguiente idioma al terminar: solo se dice si ese pedido existe.
+    const [next] = done.request.thenLanguages ?? [];
+    const { runs } = await unwrap(
+      deps.client.posts[":id"].images.$get({ param: { id: postId } }),
+      postImageOptionsResponseSchema,
+    );
+    const later = runs.find(
+      (item) =>
+        item.id !== done.id &&
+        item.createdAt >= done.createdAt &&
+        item.request.source === "card" &&
+        item.request.language === next,
+    );
+    if (later !== undefined && next !== undefined) {
+      deps.print(
+        c.dim(
+          `→ Después se hacen las tarjetas en ${LANGUAGE_TEXT[next]} (pedido ${later.id}): sigue con ${media(postId)}`,
+        ),
+      );
+    } else if (next !== undefined) {
+      deps.printError(
+        c.yellow(
+          `El pedido de las tarjetas en ${LANGUAGE_TEXT[next]} no se hizo: pídelo con ${media(postId)} --card --language ${next}`,
+        ),
+      );
+    }
+  }
   deps.print(c.dim(`→ Se arman sus variantes en un momento. Revísalos con ${show(postId)}`));
   return 0;
 }
@@ -188,6 +265,9 @@ export function runPostMedia(deps: PostMediaDeps, id: string, options: PostMedia
     if (options.replace === true && options.card !== true) {
       throw new CliError("POST_MEDIA_OPTIONS", "--replace va con --card");
     }
+    if (options.language !== undefined && options.card !== true) {
+      throw new CliError("POST_MEDIA_OPTIONS", "--language va con --card");
+    }
     if (options.pick !== undefined && options.stock === undefined) {
       throw new CliError("POST_MEDIA_OPTIONS", '--pick va con --stock "<búsqueda>"');
     }
@@ -196,9 +276,13 @@ export function runPostMedia(deps: PostMediaDeps, id: string, options: PostMedia
 
     let request: PostImageRequest;
     if (options.card === true) {
+      const languages = await cardLanguagesOf(deps, postId, options.language);
+      const [first, ...rest] = languages;
       request = {
         source: "card",
         format,
+        ...(first === undefined ? {} : { language: first }),
+        ...(rest.length > 0 ? { thenLanguages: rest } : {}),
         ...(options.replace === true ? { replaceCards: true } : {}),
       };
     } else if (options.stock !== undefined) {
@@ -271,6 +355,10 @@ export function registerPostMedia(post: Command, ctx: CliContext): void {
     .option(
       "--replace",
       "con --card: quita antes las tarjetas anteriores del post (lo que subiste no se toca)",
+    )
+    .option(
+      "--language <es|en|all>",
+      "con --card: el idioma de las tarjetas (portada, puntos y cierre salen del texto en ese idioma); all, las de cada idioma",
     )
     .option("--stock <búsqueda>", "busca en la biblioteca de Pixabay (lista los resultados)")
     .option("--pick <n o id>", "con --stock: elige el resultado n (desde 1) o la foto con ese id")

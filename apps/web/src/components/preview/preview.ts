@@ -2,6 +2,8 @@ import type { PostMediaItem } from "@agentsales/api/contracts";
 import {
   CAROUSEL_MAX_ITEMS,
   DISCORD_MAX_FILES,
+  hiddenCardIds,
+  type Language,
   type PostKind,
   type PostPlatform,
   X_MAX_IMAGES,
@@ -107,6 +109,27 @@ const VIDEO_VARIANTS: Readonly<Record<PostPlatform, readonly PostMediaItem["vari
 
 /** Lo que el publisher rechazaría por los medios del post, dicho en la vista previa. */
 export type PreviewMediaProblem = string | null;
+
+/**
+ * Los medios de un post que lleva una publicación de `language`: todos menos las tarjetas de otro
+ * idioma (`hiddenCardIds`, la misma regla que usa la publicación al abrirse). Lo que subió el
+ * usuario va igual en todos los idiomas.
+ */
+export function mediaForLanguage(
+  media: readonly PostMediaItem[],
+  language: Language,
+): PostMediaItem[] {
+  const cards = new Map(
+    media.flatMap((item) => (item.cardLanguages === null ? [] : [[item.id, item.cardLanguages]])),
+  );
+  if (cards.size === 0) return [...media];
+  const hidden = hiddenCardIds(
+    media.map((item) => item.id),
+    cards,
+    language,
+  );
+  return media.filter((item) => !hidden.has(item.id));
+}
 
 /**
  * Los medios de un post que van a una red, como los elige el publisher (`postPublicationPlan`):

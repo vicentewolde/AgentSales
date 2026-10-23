@@ -12,6 +12,7 @@ import type { ListingRepository } from "../ports/listing-repository.js";
 import type { PostLockedRepositories } from "../ports/post-lock.js";
 import type { PostRepository } from "../ports/post-repository.js";
 import { canDraftPost, type Post } from "../post.js";
+import { loadCardLanguages } from "../post-card-languages.js";
 import { buildPostCheckContext, checkPostContent } from "../social/check.js";
 import { listingSubject, postSubject, type Subject, sameSubject } from "../subject.js";
 import type { LockedSubject, SubjectLockedRepositories } from "../subject-lock.js";
@@ -204,6 +205,7 @@ export async function lockedCurrentContent(
     profile,
     broker,
     media: await locked.repos.media.listBySubject(locked.subject),
+    cards: await loadCardLanguages(locked.repos.postImageRuns, post.id),
   });
   const review = (item: Content): CheckedContent => ({
     content: item,

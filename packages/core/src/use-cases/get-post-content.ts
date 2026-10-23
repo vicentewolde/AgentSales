@@ -13,9 +13,11 @@ import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { ContentRepository, ContentRunRepository } from "../ports/content-repository.js";
 import type { EditorialProfileRepository } from "../ports/editorial-profile-repository.js";
 import type { MediaRepository } from "../ports/media-repository.js";
+import type { PostImageRunRepository } from "../ports/post-image-run-repository.js";
 import type { PostRepository } from "../ports/post-repository.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
 import type { Post } from "../post.js";
+import { loadCardLanguages } from "../post-card-languages.js";
 import type { Publication } from "../publication.js";
 import { buildPostCheckContext, checkPostContent } from "../social/check.js";
 import { postSubject } from "../subject.js";
@@ -36,6 +38,8 @@ export type GetPostContentDeps = {
   contents: Pick<ContentRepository, "listCurrent">;
   contentRuns: Pick<ContentRunRepository, "latest">;
   publications: Pick<PublicationRepository, "listBySubject">;
+  /** El idioma de las tarjetas, para contar las imágenes de cada texto (sin él, no se separan). */
+  postImageRuns?: Pick<PostImageRunRepository, "listByPost">;
 };
 
 export type PostContent = {
@@ -75,6 +79,7 @@ export async function getPostContent(
     deps.contentRuns.latest(subject),
     deps.publications.listBySubject(subject),
   ]);
+  const cards = await loadCardLanguages(deps.postImageRuns, post.id);
   if (broker === null) {
     throw new AppError("BROKER_NOT_FOUND", "No existe la marca del post", {
       details: { postId: post.id },
@@ -85,6 +90,7 @@ export async function getPostContent(
     profile: editorialProfileView(post.brokerId, profile),
     broker,
     media,
+    cards,
   });
   const contents = [...current]
     .sort((a, b) => order(a) - order(b))

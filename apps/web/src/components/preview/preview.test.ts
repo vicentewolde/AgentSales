@@ -1,6 +1,13 @@
 import type { PostMediaItem } from "@agentsales/api/contracts";
 import { describe, expect, it } from "vitest";
-import { cutText, draftDiffers, INSTAGRAM_CUT, LINKEDIN_CUT, postPreviewMedia } from "./preview.js";
+import {
+  cutText,
+  draftDiffers,
+  INSTAGRAM_CUT,
+  LINKEDIN_CUT,
+  mediaForLanguage,
+  postPreviewMedia,
+} from "./preview.js";
 
 const item = (id: string, kind: "image" | "video"): PostMediaItem => ({
   id,
@@ -15,6 +22,7 @@ const item = (id: string, kind: "image" | "video"): PostMediaItem => ({
   height: null,
   durationS: null,
   variants: [],
+  cardLanguages: null,
 });
 
 describe("cutText", () => {
@@ -54,6 +62,35 @@ describe("draftDiffers", () => {
     expect(draftDiffers({ ...saved, title: "Otra" }, saved)).toBe(true);
     expect(draftDiffers({ ...saved, hashtags: ["#a", "#b"] }, saved)).toBe(true);
     expect(draftDiffers({ ...saved }, null)).toBe(true);
+  });
+});
+
+describe("mediaForLanguage: cada texto ve las tarjetas de su idioma", () => {
+  const card = (id: string, cardLanguages: PostMediaItem["cardLanguages"]) => ({
+    ...item(id, "image"),
+    cardLanguages,
+  });
+  const media = [
+    item("foto", "image"),
+    card("es1", ["es"]),
+    card("en1", ["en"]),
+    card("cierre", ["es", "en"]),
+  ];
+  const ids = (list: readonly { id: string }[]) => list.map((entry) => entry.id);
+
+  it("la foto del usuario va en los dos; el cierre compartido, también", () => {
+    expect(ids(mediaForLanguage(media, "es"))).toEqual(["foto", "es1", "cierre"]);
+    expect(ids(mediaForLanguage(media, "en"))).toEqual(["foto", "en1", "cierre"]);
+  });
+
+  it("sin tarjetas de su idioma, ve las únicas que haya", () => {
+    const onlyEnglish = [item("foto", "image"), card("en1", ["en"]), card("cierre", ["en"])];
+    expect(ids(mediaForLanguage(onlyEnglish, "es"))).toEqual(["foto", "en1", "cierre"]);
+  });
+
+  it("sin tarjetas, no cambia nada", () => {
+    const plain = [item("a", "image"), item("b", "image")];
+    expect(ids(mediaForLanguage(plain, "es"))).toEqual(["a", "b"]);
   });
 });
 

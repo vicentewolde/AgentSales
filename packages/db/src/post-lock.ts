@@ -2,6 +2,7 @@ import {
   AppError,
   lockedMedia,
   type PostLock,
+  type PostLockedRepositories,
   postSubject,
   type SecretBox,
 } from "@agentsales/core";
@@ -13,6 +14,7 @@ import { createContentRunRepository } from "./repositories/content-runs.js";
 import { createContentRepository } from "./repositories/contents.js";
 import { createMediaRepository } from "./repositories/media.js";
 import { createPlatformAccountRepository } from "./repositories/platform-accounts.js";
+import { createPostImageRunRepository } from "./repositories/post-image-runs.js";
 import { createPostRepository, createPostUploadRepository } from "./repositories/posts.js";
 import { createPublicationRepository } from "./repositories/publications.js";
 import { posts } from "./schema.js";
@@ -43,7 +45,9 @@ export function createPostLock(
               details: { postId },
             });
           }
-          return fn({
+          // Con `postImageRuns` obligatorio aquí (en el tipo es opcional, para los dobles de prueba):
+          // sin él, las tarjetas no se separarían por idioma en Postgres.
+          const repos = {
             brokers: createBrokerRepository(tx),
             posts: createPostRepository(tx),
             postUploads: createPostUploadRepository(tx),
@@ -52,8 +56,11 @@ export function createPostLock(
             contentRuns: createContentRunRepository(tx),
             contents: createContentRepository(tx),
             publications: createPublicationRepository(tx),
+            postImageRuns: createPostImageRunRepository(tx),
             platformAccounts: createPlatformAccountRepository(tx, { secretBox }),
-          });
+          } satisfies PostLockedRepositories &
+            Required<Pick<PostLockedRepositories, "postImageRuns">>;
+          return fn(repos);
         }),
       );
     },

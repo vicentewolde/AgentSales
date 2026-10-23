@@ -722,6 +722,15 @@ export {
   postUploadSchema,
 } from "./post.js";
 export {
+  type CardLanguages,
+  cardLanguagesOf,
+  hiddenCardIds,
+  isExclusiveCard,
+  loadCardLanguages,
+  mediaForLanguage,
+} from "./post-card-languages.js";
+export {
+  assertTextInLanguage,
   type CardImageLimit,
   type CardPlan,
   cardImageLimit,
@@ -730,9 +739,11 @@ export {
   cardSource,
   cardSourceText,
   cardText,
+  coverFromText,
   describeCardPlan,
   POST_CARDS,
   platformImageLimit,
+  postCardContents,
   postCardDeck,
   postCardPlan,
 } from "./post-cards.js";

@@ -13,9 +13,11 @@ import type { EditorialProfileRepository } from "../ports/editorial-profile-repo
 import type { LLMProvider } from "../ports/llm-provider.js";
 import type { MediaRepository } from "../ports/media-repository.js";
 import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
+import type { PostImageRunRepository } from "../ports/post-image-run-repository.js";
 import type { PostLock } from "../ports/post-lock.js";
 import type { PostRepository } from "../ports/post-repository.js";
 import { canDraftPost, postNotReady } from "../post.js";
+import { loadCardLanguages } from "../post-card-languages.js";
 import { buildSocialBrief, postPlatforms, socialTargets } from "../social/brief.js";
 import { buildPostCheckContext } from "../social/check.js";
 import { draftPostTexts } from "../social/draft-texts.js";
@@ -30,6 +32,8 @@ export type DraftPostDeps = {
   editorialProfiles: Pick<EditorialProfileRepository, "get">;
   platformAccounts: Pick<PlatformAccountRepository, "listByBroker">;
   media: Pick<MediaRepository, "listBySubject">;
+  /** El idioma de las tarjetas, para contar las imágenes de cada texto (sin él, no se separan). */
+  postImageRuns?: Pick<PostImageRunRepository, "listByPost">;
   /** Para guardar los textos y dejar el estado del post al día en una sola transacción. */
   postLock: PostLock;
   /** El proveedor del operador (`LLM_PROVIDER`): el de sus marcas propias (spec F7 §4.7). */
@@ -194,6 +198,7 @@ async function texts(
     profile,
     broker,
     media: await deps.media.listBySubject(postSubject(post.id)),
+    cards: await loadCardLanguages(deps.postImageRuns, post.id),
   });
   const brief = buildSocialBrief({ post, profile, broker, targets });
 
