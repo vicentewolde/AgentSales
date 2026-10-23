@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { DEFAULT_LANGUAGE, LANGUAGES, type Language, POST_PLATFORMS } from "./enums.js";
 import { AppError } from "./errors.js";
+import { hasHiddenChars } from "./hidden-chars.js";
 
 // El perfil editorial de una marca (spec F9 §4.3, ADR-0030 punto 1): la única fuente de datos de
 // la IA para los posts. Aquí viven la forma de la fila (lo que devuelve el repositorio) y las
@@ -167,10 +168,8 @@ const FIELD_LABELS: Record<keyof EditorialProfileInput, string> = {
   defaultHashtags: "Hashtags",
 };
 
-// Controles C0 y C1, separadores de línea y párrafo Unicode y controles bidireccionales: los textos
-// del perfil viajan al prompt de la IA (ADR-0030) y no deben esconder saltos ni texto invertido.
-// biome-ignore lint/suspicious/noControlCharactersInRegex: justamente los que se rechazan
-const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e]/;
+// Los textos del perfil viajan al prompt de la IA (ADR-0030) y no deben esconder saltos ni texto
+// invertido: la lista compartida con el pedido de un plan (`hidden-chars.ts`), sin saltos de línea.
 /** La clave de una línea: minúsculas, números y guiones (la usa `posts.pillar`). */
 const PILLAR_KEY = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** El cuerpo de un hashtag: letras (con tildes), números y `_`, como los acepta Instagram. */
@@ -209,7 +208,7 @@ export function normalizeEditorialProfile(input: EditorialProfileInput): Editori
     max: number,
   ): string | null => {
     const trimmed = value.trim();
-    if (CONTROL_CHARS.test(trimmed)) {
+    if (hasHiddenChars(trimmed, { allowNewline: false })) {
       issue(top, field, "tiene saltos de línea o caracteres no permitidos");
       return null;
     }

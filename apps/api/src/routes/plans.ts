@@ -58,6 +58,7 @@ export function planRunView(run: PlanRun): PlanRunView {
     status: run.status,
     platforms: request.success ? request.data.platforms : [],
     count: request.success ? request.data.count : null,
+    guidance: request.success ? (request.data.guidance ?? null) : null,
     error: run.error === null ? null : { code: run.error.code, message: run.error.message },
     errorAdvice: run.error === null ? null : planRunErrorAdvice(run.error.code),
     promptVersion: run.promptVersion,
@@ -78,8 +79,12 @@ export function planRoutes(deps: PlanRoutesDeps) {
     new Hono<AppEnv>()
       .post("/", validated("json", planRequestBodySchema), async (c) => {
         const input = c.req.valid("json");
-        const { run, reused } = await requestPlanRun(deps, requireAuth(c).user, input);
-        const body: PlanRequestResponse = { plan: planRunView(run), reused };
+        const { run, reused, guidanceIgnored } = await requestPlanRun(
+          deps,
+          requireAuth(c).user,
+          input,
+        );
+        const body: PlanRequestResponse = { plan: planRunView(run), reused, guidanceIgnored };
         return c.json(body, 202);
       })
       // Los más recientes, `PLAN_RUNS_LIST_LIMIT.default` (20); el contrato no expone `limit`.

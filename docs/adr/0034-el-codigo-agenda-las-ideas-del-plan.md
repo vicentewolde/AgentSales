@@ -27,3 +27,6 @@ En F9 la IA propone cada idea con sus redes, formato, fecha y hora, y el código
 ## Alternativas descartadas
 - **Mejorar el prompt para que la IA respete la cadencia:** ya lo pide (regla 6 del prompt de F9) y no lo cumple de forma fiable; validar y descartar pierde ideas.
 - **Que la IA elija la fecha y el código la corrija a la ranura más cercana:** dos fuentes de verdad para lo mismo y resultados difíciles de explicar.
+
+## Seguimiento
+- **F9.5-T23 (2026-10-22), punto 4:** `PLAN_DISCARD_CODES` suma `FIRST_PERSON_PLURAL` al final. Además, desde ahora el reporte guardado se lee con tolerancia (`readPlanRunReport`): cada descarte se valida por separado y uno con un código que la versión no conoce se deja fuera, en vez de anular el reporte entero. Así una versión anterior a un código nuevo (desde T23 en adelante) sigue mostrando las ideas, sus notas y los demás descartes. Las versiones anteriores a T23 no tienen este lector: con un reporte que traiga `FIRST_PERSON_PLURAL` muestran las ideas, pero no los descartes (`docs/10-despliegue.md`, volver atrás).

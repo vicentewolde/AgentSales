@@ -152,6 +152,24 @@ describe("el perfil sin hechos (primer criterio de F9-T22)", () => {
     expect(exitCode).toBe(0);
   });
 
+  it("cuenta las ideas que hablan de «nosotros» sin ser un equipo (FIRST_PERSON_PLURAL, F9.5-T23)", async () => {
+    const plural = ["Lo que nuestro estudio aprendió", "Una pregunta para quienes nos leen"];
+    const { report, output } = await run(
+      { planLlm: planWithInventedIdeas(plural), textLlm: fakeProviders().textLlm },
+      [item],
+      { ideas: 0 },
+    );
+    expect(report.profiles[0]?.plan?.discarded.map((idea) => idea.code)).toEqual([
+      "FIRST_PERSON_PLURAL",
+      "FIRST_PERSON_PLURAL",
+    ]);
+    expect(report.totals).toMatchObject({
+      firstPersonPlural: 2,
+      discardedByCode: { FIRST_PERSON_PLURAL: 2 },
+    });
+    expect(output).toContain("en plural 2");
+  });
+
   it("con --strict, las ideas descartadas sí hacen salir con 1", async () => {
     const { exitCode, output } = await run(
       {
@@ -167,7 +185,7 @@ describe("el perfil sin hechos (primer criterio de F9-T22)", () => {
 });
 
 describe("runSocialEval con fake", () => {
-  it("evalúa los tres perfiles, con un texto por idioma en el de dos idiomas, sin problemas", async () => {
+  it("evalúa los cuatro perfiles, con un texto por idioma en el de dos idiomas, sin problemas", async () => {
     const { exitCode, report, output } = await run(fakeProviders(), SOCIAL_EVAL_PROFILES);
     expect(report.profiles.map((item) => item.profile)).toEqual(
       SOCIAL_EVAL_PROFILES.map((item) => item.name),
@@ -182,10 +200,21 @@ describe("runSocialEval con fake", () => {
       "es",
       "es",
     ]);
+    // Solo el perfil con pedido (F9.5-T23) descarta: la idea de ejemplo que trae su cliente y su cifra
+    // falsos (`FACT_NOT_IN_PROFILE`); el pedido no se vuelve un hecho.
+    const withGuidance = report.profiles.find((item) => item.profile === "con-pedido");
+    expect(withGuidance?.plan?.discarded.map((item) => item.code)).toEqual(["FACT_NOT_IN_PROFILE"]);
+    expect(withGuidance?.plan?.discarded[0]?.topic).toContain("Los Cerezos");
+    for (const idea of withGuidance?.plan?.ideas ?? []) {
+      expect(idea.topic).not.toMatch(/Cerezos|340/);
+    }
+    expect(output).toContain("Pedido del operador: Cuenta que Inmobiliaria Los Cerezos");
     expect(report.totals).toMatchObject({
-      ideasDiscarded: 0,
+      ideasDiscarded: 1,
+      discardedByCode: { FACT_NOT_IN_PROFILE: 1 },
       repeated: 0,
-      outsideProfile: 0,
+      firstPersonPlural: 0,
+      outsideProfile: 1,
       tooLong: 0,
       escapes: 0,
       massMentions: 0,
@@ -194,9 +223,9 @@ describe("runSocialEval con fake", () => {
       textsWithErrors: 0,
     });
     // `fake` no informa tokens: el costo es 0, por separado y en total.
-    expect(report.usage.plan).toMatchObject({ calls: 3, reportedCalls: 0, costUsd: 0 });
-    expect(report.usage.texts).toMatchObject({ calls: 9, reportedCalls: 0, costUsd: 0 });
-    expect(report.usage.total.calls).toBe(12);
+    expect(report.usage.plan).toMatchObject({ calls: 4, reportedCalls: 0, costUsd: 0 });
+    expect(report.usage.texts).toMatchObject({ calls: 12, reportedCalls: 0, costUsd: 0 });
+    expect(report.usage.total.calls).toBe(16);
     expect(output).toContain("fake no informa tokens (US$ 0)");
     expect(output).toContain("Resultado: ✓");
     expect(report.stopped).toBe(false);
@@ -684,6 +713,7 @@ describe("las piezas de la evaluación", () => {
       discardedByCode: {},
       repeated: 0,
       noSlot: 0,
+      firstPersonPlural: 0,
       similar: 0,
       outsideProfile: 0,
       tooLong: 0,
