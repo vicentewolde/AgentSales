@@ -8,6 +8,7 @@ import {
   type EditorialProfileRepository,
   type FieldDefinitionRepository,
   type HealthCheckName,
+  type ImageAiPricing,
   type ImportRunRepository,
   type JobQueue,
   type ListingLock,
@@ -22,6 +23,8 @@ import {
   type PlanRunRepository,
   type Platform,
   type PlatformAccountRepository,
+  type PostImageRunRepository,
+  type PostImageSourcesConfig,
   type PostLock,
   type PostRepository,
   type PostUploadRepository,
@@ -142,6 +145,15 @@ export type AppDeps = {
    * `uploaded` que el worker todavía revisa. Los cambios van en el candado del post.
    */
   postUploads: Pick<PostUploadRepository, "listByPost">;
+  /**
+   * Conseguir imágenes para un post (F9.5-T25, ADR-0038): los pedidos (el worker los atiende con
+   * `post.image`), la biblioteca de Pixabay (sin `PIXABAY_API_KEY`, `null`) y el precio y el tope de
+   * la IA (sin `GEMINI_API_KEY`, `null`). También el gasto de imágenes de `GET /usage`.
+   */
+  postImageRuns: PostImageRunRepository;
+  imageSources: PostImageSourcesConfig;
+  /** El precio y el tope de la IA de imágenes (para `GET /usage`, aunque falte la clave). */
+  imageAiPricing: ImageAiPricing;
   /** El perfil editorial de cada corredor o marca (F9-T09): lo lee la IA de los posts. */
   editorialProfiles: EditorialProfileRepository;
   /**

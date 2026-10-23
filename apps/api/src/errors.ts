@@ -133,6 +133,12 @@ const CONFLICTS = new Set([
   "PLAN_RUN_CONFLICT",
   // F9-T21: aprobar, publicar o programar una red que no está entre las del post (se agrega al post).
   "POST_PLATFORM_EXCLUDED",
+  // F9.5-T25 (ADR-0038): pedir imágenes para un post de solo texto, con otro pedido en curso, con la
+  // IA en el tope del mes o el video de las tarjetas sin texto redactado.
+  "POST_IMAGE_NOT_NEEDED",
+  "POST_IMAGE_RUN_ACTIVE",
+  "IMAGE_AI_BUDGET_EXCEEDED",
+  "POST_IMAGE_NEEDS_TEXT",
 ]);
 
 /**
@@ -195,6 +201,8 @@ const PLATFORM_REJECTIONS = new Set([
  */
 const PLATFORM_UNEXPECTED = new Set([
   "IG_UNEXPECTED_RESPONSE",
+  // F9.5-T25: la biblioteca de Pixabay respondió algo con otra forma.
+  "STOCK_UNEXPECTED_RESPONSE",
   "ML_UNEXPECTED_RESPONSE",
   "DISCORD_UNEXPECTED_RESPONSE",
   "LINKEDIN_UNEXPECTED_RESPONSE",
@@ -216,6 +224,9 @@ const PLATFORM_UNEXPECTED = new Set([
  */
 const NOT_CONFIGURED = new Set([
   "MERCADOLIBRE_NOT_CONFIGURED",
+  // F9.5-T25: falta PIXABAY_API_KEY o GEMINI_API_KEY, o Pixabay no reconoce la suya.
+  "POST_IMAGE_SOURCE_NOT_CONFIGURED",
+  "STOCK_AUTH_INVALID",
   "ML_APP_CREDENTIALS_INVALID",
   // F4-T19: la API no tiene las operaciones de esa plataforma (no debería pasar: `server.ts` las
   // compone).

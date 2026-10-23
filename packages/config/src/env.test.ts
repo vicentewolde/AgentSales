@@ -165,6 +165,32 @@ describe("loadEnv", () => {
     );
   });
 
+  it("las imágenes de un post (F9.5-T25): sin claves, el modelo, el precio y el tope por defecto", () => {
+    const env = loadEnv({ ...validSource, PIXABAY_API_KEY: "", GEMINI_API_KEY: "" });
+    expect([env.PIXABAY_API_KEY, env.GEMINI_API_KEY]).toEqual([undefined, undefined]);
+    expect([env.IMAGE_AI_MODEL, env.IMAGE_AI_PRICE_USD, env.IMAGE_AI_MONTHLY_CAP_USD]).toEqual([
+      "gemini-nano-banana-2.1",
+      0.034,
+      2,
+    ]);
+    const custom = loadEnv({
+      ...validSource,
+      IMAGE_AI_MODEL: "otro-modelo",
+      IMAGE_AI_PRICE_USD: "0.05",
+      IMAGE_AI_MONTHLY_CAP_USD: "0",
+    });
+    expect([
+      custom.IMAGE_AI_MODEL,
+      custom.IMAGE_AI_PRICE_USD,
+      custom.IMAGE_AI_MONTHLY_CAP_USD,
+    ]).toEqual(["otro-modelo", 0.05, 0]);
+    for (const value of ["-1", "abc", "0,05", "9"]) {
+      expect(envErrorOf({ ...validSource, IMAGE_AI_PRICE_USD: value }).message).toContain(
+        "IMAGE_AI_PRICE_USD",
+      );
+    }
+  });
+
   it("rechaza un LLM_PROVIDER desconocido listando las tres opciones", () => {
     const error = envErrorOf({ ...validSource, LLM_PROVIDER: "openai" });
 

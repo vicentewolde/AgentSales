@@ -40,6 +40,7 @@ import {
   createPlanRunRepository,
   createPlatformAccountRepository,
   createPlatformCatalogRepository,
+  createPostImageRunRepository,
   createPostLock,
   createPostRepository,
   createPostUploadRepository,
@@ -65,6 +66,7 @@ import {
 } from "@agentsales/publishers";
 // La subruta de Discord (F9-T14): solo el cliente del webhook, para conectarlo sin publicar.
 import { createDiscordWebhooks } from "@agentsales/publishers/discord";
+import { createPixabayStock } from "@agentsales/publishers/images";
 // La subruta de LinkedIn (F9-T15): solo su OAuth, para conectar el perfil sin publicar.
 import { createLinkedInAuth } from "@agentsales/publishers/linkedin";
 import { createTikTokAuth } from "@agentsales/publishers/tiktok";
@@ -129,6 +131,11 @@ const secretBox = createSecretBox(env.APP_ENCRYPTION_KEY);
 // o, con el respaldo en R2 (F8-T13), en `system/` del bucket principal.
 let serverVersion: string | null = null;
 const brokers = createBrokerRepository(database.db);
+// El precio y el tope de las imágenes con IA (F9.5-T25), de la configuración.
+const imageAiPricing = {
+  priceUsd: env.IMAGE_AI_PRICE_USD,
+  monthlyCapUsd: env.IMAGE_AI_MONTHLY_CAP_USD,
+};
 const users = createUserRepository(database.db);
 const workerHeartbeats = createWorkerHeartbeatRepository(database.db);
 const backupStatus = backupStatusReader(
@@ -200,6 +207,14 @@ const app = createApp({
   editorialProfiles: createEditorialProfileRepository(database.db),
   // Los planes de ideas (F9-T21): la API los pide y lee; el worker los corre (`content.plan`).
   planRuns: createPlanRunRepository(database.db),
+  // Conseguir imágenes para un post (F9.5-T25): la API busca en la biblioteca y pide; el worker
+  // descarga y genera (`post.image`). Sin la clave, esa fuente dice qué falta.
+  postImageRuns: createPostImageRunRepository(database.db),
+  imageSources: {
+    stock: env.PIXABAY_API_KEY ? createPixabayStock({ apiKey: env.PIXABAY_API_KEY }) : null,
+    ai: env.GEMINI_API_KEY ? imageAiPricing : null,
+  },
+  imageAiPricing,
   publications: createPublicationRepository(database.db),
   platformAccounts: createPlatformAccountRepository(database.db, { secretBox }),
   instagram: {

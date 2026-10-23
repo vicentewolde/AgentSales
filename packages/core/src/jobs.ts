@@ -19,6 +19,7 @@ export const JOB_NAMES = [
   "post.draft",
   "post.media",
   "content.plan",
+  "post.image",
 ] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
@@ -96,6 +97,12 @@ export const JOB_PAYLOADS = {
    * `runPlan` (F9-T20).
    */
   "content.plan": z.object({ planRunId: z.uuid() }),
+  /**
+   * Conseguir imágenes para un post (F9.5-T25, ADR-0038): tarjetas, biblioteca o IA. El pedido
+   * (`post_image_runs`) guarda lo elegido; el job lleva su id. Lo encola `requestPostImage`; lo
+   * atiende `runPostImage`.
+   */
+  "post.image": z.object({ postImageRunId: z.uuid() }),
 } as const satisfies Record<JobName, z.ZodType>;
 
 export type JobPayload<N extends JobName> = z.infer<(typeof JOB_PAYLOADS)[N]>;

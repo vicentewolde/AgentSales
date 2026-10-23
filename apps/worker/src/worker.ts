@@ -35,6 +35,7 @@ import {
   createPlanRunRepository,
   createPlatformAccountRepository,
   createPlatformCatalogRepository,
+  createPostImageRunRepository,
   createPostLock,
   createPostRepository,
   createPostUploadRepository,
@@ -45,7 +46,7 @@ import {
 } from "@agentsales/db";
 import { createStaging, stagingRootOf } from "@agentsales/importers/staging";
 import { createLlmProvider } from "@agentsales/llm";
-import { createHtmlRenderer, createMediaProcessor } from "@agentsales/media";
+import { createCardRenderer, createHtmlRenderer, createMediaProcessor } from "@agentsales/media";
 import {
   createInstagramAuth,
   createInstagramPublisher,
@@ -53,6 +54,7 @@ import {
   MERCADOLIBRE_REFRESH_TIMEOUT_MS,
 } from "@agentsales/publishers";
 import { createDiscordPublisher } from "@agentsales/publishers/discord";
+import { createGeminiImages, createPixabayStock } from "@agentsales/publishers/images";
 import { createLinkedInPublisher } from "@agentsales/publishers/linkedin";
 import { marketplaceProfileDir, openMarketplaceProfile } from "@agentsales/publishers/marketplace";
 import { createTikTokAuth, createTikTokPublisher } from "@agentsales/publishers/tiktok";
@@ -481,6 +483,44 @@ const jobs = buildJobs({
       apiLlm,
       newId: randomUUID,
     },
+    signal: jobsAbort.signal,
+  },
+  // Conseguir imágenes para un post (F9.5-T25, ADR-0038): las tarjetas siempre; la biblioteca y
+  // la IA solo con su clave. El modelo, el precio y el tope son de la configuración.
+  postImage: {
+    shared: {
+      runs: createPostImageRunRepository(database.db),
+      posts,
+      brokers: repositories.brokers,
+      contents: createContentRepository(database.db),
+      media: repositories.media,
+      storage,
+      postLock,
+      // Se arma más abajo (`jobQueueFromBoss`); los handlers corren después de arrancar.
+      queue: { enqueue: (name, data, options) => queue.enqueue(name, data, options) },
+      cards: createCardRenderer(),
+      stock: env.PIXABAY_API_KEY ? createPixabayStock({ apiKey: env.PIXABAY_API_KEY }) : null,
+      ai: env.GEMINI_API_KEY
+        ? {
+            generator: createGeminiImages({
+              apiKey: env.GEMINI_API_KEY,
+              model: env.IMAGE_AI_MODEL,
+            }),
+            pricing: {
+              priceUsd: env.IMAGE_AI_PRICE_USD,
+              monthlyCapUsd: env.IMAGE_AI_MONTHLY_CAP_USD,
+            },
+          }
+        : null,
+      sha256: (bytes) => createHash("sha256").update(bytes).digest("hex"),
+    },
+    createProcessor: (workDir) =>
+      createMediaProcessor({
+        ffmpegPath: env.FFMPEG_PATH,
+        ffprobePath: env.FFPROBE_PATH,
+        workDir,
+      }),
+    tmpRoot: contentTmpRoot,
     signal: jobsAbort.signal,
   },
   dbBackup: {
