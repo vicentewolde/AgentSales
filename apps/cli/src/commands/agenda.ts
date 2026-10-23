@@ -63,7 +63,9 @@ function postCommands(item: Item, postId: string): string[] {
   const show = `agentsales post show ${postId}`;
   const byId = publicationCommands(item);
   if (byId !== null) return [show, ...byId];
-  if (item.action === "start_worker") return [show, ...START_WORKER_COMMANDS];
+  if (item.action === "start_worker" || item.action === "wait_worker") {
+    return [show, ...START_WORKER_COMMANDS];
+  }
   const retry = `agentsales publications retry ${item.publicationId}`;
   if (item.kind === "overdue") {
     return [
@@ -116,6 +118,7 @@ export function agendaCommands(item: Item): string[] {
         `agentsales accounts connect ${item.platform === null ? "<plataforma>" : platformShortName(item.platform)} --broker ${item.brokerSlug ?? "<slug>"}`,
       ];
     case "start_worker":
+    case "wait_worker":
       return [...START_WORKER_COMMANDS];
     case "backup":
       // En el servidor (F8-T13) el respaldo va a R2 y lo hace el worker: `pnpm db:backup` del Mac
@@ -174,7 +177,12 @@ export function renderAgenda(items: readonly Item[], c: Colors, now: Date = new 
     lines.push(
       "",
       kind === "worker_off"
-        ? `${c.yellow(c.bold(title))} · sale cuando se encienda, en la próxima revisión: ${nextWorkerCheckText(now)}`
+        ? `${c.yellow(c.bold(title))} · ${
+            // Con horario (`wait_worker`), la revisión lo enciende; sin horario, no se enciende solo.
+            group.every((item) => item.action === "wait_worker")
+              ? `sale cuando se encienda, en la próxima revisión: ${nextWorkerCheckText(now)}`
+              : "sin horario: el worker debe estar encendido"
+          }`
         : c.bold(title),
     );
     for (const item of group) {

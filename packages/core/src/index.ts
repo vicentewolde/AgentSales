@@ -1277,6 +1277,7 @@ export {
 } from "./use-cases/set-broker-logo.js";
 export {
   DUE_BATCH_LIMIT,
+  dueQuery,
   type StartDueDeps,
   type StartDueResult,
   startDuePublications,

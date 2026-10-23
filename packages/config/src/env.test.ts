@@ -389,10 +389,12 @@ describe("loadEnv", () => {
       expect(
         loadEnv({ ...validSource, WORKER_STAY_AHEAD_MINUTES: "90" }).WORKER_STAY_AHEAD_MINUTES,
       ).toBe(90);
-      expect(envErrorOf({ ...validSource, WORKER_STAY_AHEAD_MINUTES: "0" }).issues).toEqual([
+      // Menos que el periodo de la revisión (60) dejaría lo que vence antes de la siguiente esperando.
+      expect(envErrorOf({ ...validSource, WORKER_STAY_AHEAD_MINUTES: "59" }).issues).toEqual([
         {
           variable: "WORKER_STAY_AHEAD_MINUTES",
-          message: "debe ser un número entero de minutos entre 1 y 1440",
+          message:
+            "debe ser un número entero de minutos entre 60 (cada cuánto revisa el horario) y 1440",
         },
       ]);
       expect(

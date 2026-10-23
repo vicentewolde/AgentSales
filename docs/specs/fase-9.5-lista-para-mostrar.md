@@ -358,12 +358,14 @@ El operador probó la demo como administrador y como un corredor nuevo (Oficina 
 
 ### F9.5-T24 · El worker se enciende y se apaga solo (ADR-0037)
 - **Depende de:** —
-- **Descripción:** el worker cierra limpio cuando no tiene nada que hacer ni nada por vencer en `WORKER_IDLE_EXIT_MINUTES`; el workflow `.github/workflows/worker-schedule.yml` (cron con las ventanas y `workflow_dispatch`) arranca la máquina con un token de Fly acotado; la agenda y `doctor` dicen la próxima ventana y avisan si el worker está apagado con algo por vencer; la guía de despliegue explica cómo crear el token y activar el workflow (lo hace el operador). **El workflow no se activa solo: el secreto lo crea el operador.**
-- **Archivos principales:** `apps/worker/src/worker.ts` y un módulo de reposo, `packages/config` (variable nueva), `.github/workflows/worker-schedule.yml`, `packages/core/src/tracking/agenda.ts`, `apps/cli/src/commands/doctor.ts`, `docs/10-despliegue.md`
+- **Descripción:** el workflow `.github/workflows/worker-schedule.yml` revisa **cada hora a los :50** (y a pedido, `workflow_dispatch`) y enciende la máquina del worker si está apagada, dentro de una franja del día (07:00 a 23:00 de Chile; de noche no lo despierta). El worker cierra limpio, sin cortar los jobs, cuando lleva `WORKER_IDLE_EXIT_MINUTES` sin jobs activos, sin formularios de Marketplace abiertos y sin nada programado que venza antes de la próxima revisión más un margen (`WORKER_STAY_AHEAD_MINUTES`, 70). `WORKER_IDLE_EXIT_MINUTES` es 0 por defecto: nunca se apaga. La agenda avisa «el worker está apagado y hay algo por vencer»: con horario, sale en la próxima revisión; sin horario, el worker debe estar encendido. `doctor` dice la próxima revisión. La guía de despliegue explica cómo crear el token de Fly, guardarlo en el Environment `worker-schedule` (solo `main`) y activar el horario; lo hace el operador. **El workflow no enciende nada sin el secreto, que crea el operador.**
+- **Archivos principales:** `apps/worker/src/worker.ts`, `idle-exit.ts` y `shutdown.ts`, `packages/queue` (los jobs pendientes), `packages/config` (las variables), `packages/core/src/worker-schedule.ts` y `tracking/agenda.ts`, `.github/workflows/worker-schedule.yml` y `ci.yml` (actionlint), `apps/cli/src/commands/doctor/`, `docs/10-despliegue.md`
 - **Hecho cuando:**
-  - [ ] con un job activo o una publicación que vence en menos de N minutos, el worker no se apaga; sin nada, cierra limpio (tests con reloj falso)
-  - [ ] la agenda avisa «el worker está apagado y hay algo por vencer» (test)
-  - [ ] el workflow valida con `actionlint` y la guía lo explica
+  - [ ] el worker se queda si algo vence dentro del margen o hay un job activo, y se apaga sin cortar los jobs cuando no hay nada (tests con reloj falso)
+  - [ ] la consulta de los jobs pendientes corre contra el esquema real de pg-boss (test con PGlite)
+  - [ ] la agenda avisa «el worker está apagado y hay algo por vencer» con o sin horario (test)
+  - [ ] el minuto y la franja del workflow calzan con los de core, incluida la cuenta de bash (test)
+  - [ ] la CI corre `actionlint` sobre los workflows, y la guía explica cómo activar el horario
   - [ ] `pnpm check` pasa (CI)
 
 ### F9.5-T25 · Tarjetas y biblioteca de imágenes desde el post

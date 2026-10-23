@@ -121,7 +121,9 @@ async function ownedBy(deps: ReturnType<typeof testDeps>, slug: string) {
   return { broker, listing, run, content, account, publication, importRun, post, plan };
 }
 
-async function setup(options: { workerHeartbeats?: () => Promise<WorkerHeartbeat[]> } = {}) {
+async function setup(
+  options: { workerHeartbeats?: () => Promise<WorkerHeartbeat[]>; workerIdleExit?: boolean } = {},
+) {
   const auth = testAuth();
   const deps = testDeps({
     access: { allowedHosts: ["localhost"], allowedOrigins: [ORIGIN] },
@@ -135,6 +137,7 @@ async function setup(options: { workerHeartbeats?: () => Promise<WorkerHeartbeat
       ...(options.workerHeartbeats === undefined
         ? {}
         : { workerHeartbeats: options.workerHeartbeats }),
+      ...(options.workerIdleExit === undefined ? {} : { workerIdleExit: options.workerIdleExit }),
     },
   });
   deps.auth = { ...auth, brokers: deps.brokers };
@@ -391,6 +394,21 @@ describe("las listas sin nada ajeno", () => {
     ]);
     const broker = (await (await s.broker("/agenda")).json()) as AgendaBody;
     expect(broker.items.some((item) => item.kind === "worker_off")).toBe(false);
+  });
+
+  it("con el horario activado, lo que espera al worker sale en la próxima revisión (F9.5-T24)", async () => {
+    const s = await setup({
+      workerHeartbeats: async () => [],
+      workerIdleExit: true,
+    });
+    const due = await scheduledPostPublication(s.deps, s.mine, new Date(Date.now() - 5 * 60_000));
+
+    const admin = (await (await s.admin("/agenda")).json()) as {
+      items: { kind: string; action: string; publicationId: string | null }[];
+    };
+    expect(admin.items.filter((item) => item.kind === "worker_off")).toEqual([
+      expect.objectContaining({ action: "wait_worker", publicationId: due.id }),
+    ]);
   });
 
   it("los posts y las cuentas de otro corredor no aparecen en su agenda ni en su seguimiento (F9-T08)", async () => {

@@ -1,4 +1,10 @@
-import { LLM_PROVIDERS, MERCADOLIBRE_SITE_ID, PUBLISH_MODES } from "@agentsales/core";
+import {
+  LLM_PROVIDERS,
+  MERCADOLIBRE_SITE_ID,
+  PUBLISH_MODES,
+  WORKER_CHECK_PERIOD_MINUTES,
+  WORKER_STAY_AHEAD_DEFAULT_MINUTES,
+} from "@agentsales/core";
 import { z } from "zod";
 
 /** `["a", "b", "c"]` → `"a", "b" o "c"` (para mensajes de error). */
@@ -331,18 +337,18 @@ const envSchema = z
     // El worker se apaga solo (F9.5-T24, ADR-0037): tras estos minutos seguidos sin jobs activos ni
     // nada programado que venza en los próximos WORKER_STAY_AHEAD_MINUTES, cierra limpio (exit 0) y
     // la máquina queda detenida hasta la próxima revisión del horario (cada hora a los :50). Vacía
-    // o 0: nunca se apaga solo (como antes). Mirar 70 min adelante cubre la próxima revisión (60) y
-    // su atraso en GitHub.
+    // o 0: nunca se apaga solo (como antes). Mira por lo menos el periodo de la revisión (60 min): por
+    // defecto 70, la próxima revisión y su atraso en GitHub (core, `worker-schedule.ts`).
     WORKER_IDLE_EXIT_MINUTES: intInRange(
       0,
       1440,
       "debe ser un número entero de minutos entre 0 (nunca) y 1440",
     ).default(0),
     WORKER_STAY_AHEAD_MINUTES: intInRange(
-      1,
+      WORKER_CHECK_PERIOD_MINUTES,
       1440,
-      "debe ser un número entero de minutos entre 1 y 1440",
-    ).default(70),
+      `debe ser un número entero de minutos entre ${WORKER_CHECK_PERIOD_MINUTES} (cada cuánto revisa el horario) y 1440`,
+    ).default(WORKER_STAY_AHEAD_DEFAULT_MINUTES),
 
     // Respaldo local (F6, spec §4.11): la carpeta de los volcados (fuera del proyecto) y, opcional,
     // la de `pg_dump` y `pg_restore` (Homebrew `libpq` no queda en el PATH: sin esto se busca en el

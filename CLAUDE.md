@@ -122,7 +122,7 @@ corredor → `Broker` · marca → `Broker` con `kind = brand` (solo publica pos
 - No subas datos reales de clientes (`data/muestras/`) a git.
 - Marketplace: nunca automatices el clic final (ni el de Siguiente), ni resuelvas o evadas captchas o verificaciones, ni disfraces la automatización. Conectar la cuenta de Marketplace y `pnpm fb:smoke` abren Facebook en cualquier modo, porque no publican (ADR-0017): los pide y corre solo el operador. No leas la carpeta de perfiles (`BROWSER_PROFILES_DIR`: guarda la sesión de Facebook); de `tmp/fb-smoke/` lee solo, y siempre con el permiso del operador en el chat: `summary.json` y los árboles que lista (`*.aria.yml`), y de una corrida de `--listing` los archivos de diagnóstico de su carpeta `fb-smoke-<id>/` (`formulario.aria.yml`, `control-faltante.aria.yml`, `listas-abiertas.aria.yml`, `errores-de-la-pagina.txt`); nunca las capturas `.png`.
 - Nunca `git push --force` a `main` ni reescribas su historia.
-- Desplegar es del operador (spec F8, D8): nunca corras `gh workflow run deploy.yml`, `fly deploy`, `fly secrets`, `fly machine start/stop` ni otro comando que hable con Fly.io; preparas los archivos y la guía (`docs/10-despliegue.md`).
+- Desplegar es del operador (spec F8, D8): nunca corras `gh workflow run deploy.yml`, `gh workflow run worker-schedule.yml` (enciende la máquina del worker en Fly, F9.5-T24), `fly deploy`, `fly secrets`, `fly machine start/stop` ni otro comando que hable con Fly.io; preparas los archivos y la guía (`docs/10-despliegue.md`).
 
 ## Reglas editoriales de la IA (resumen)
 Solo datos entregados; nunca inventar. Respetar `show_exact_address`. Precio con formato chileno (`UF 5.800`, `$650.000`). Sin requisitos discriminatorios. Detalle completo en `docs/04-formato-publicaciones.md`.

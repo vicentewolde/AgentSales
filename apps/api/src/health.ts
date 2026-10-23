@@ -51,6 +51,11 @@ export type HealthDetails = {
   workerHeartbeats?: () => Promise<WorkerHeartbeat[]>;
   /** Los administradores activos sin el doble factor (F8-T15); un error da `null`. */
   adminsWithoutTotp?: () => Promise<string[]>;
+  /**
+   * Si el worker se apaga solo (`WORKER_IDLE_EXIT_MINUTES` > 0) y lo enciende el horario (F9.5-T24).
+   * Sale del entorno, que la API comparte con el worker.
+   */
+  workerIdleExit?: boolean;
   now?: () => Date;
 };
 
@@ -101,6 +106,7 @@ export async function runHealth(options: {
     ...(details.adminsWithoutTotp === undefined
       ? {}
       : { adminsWithoutTotp: await fromDb(details.adminsWithoutTotp) }),
+    ...(details.workerIdleExit === undefined ? {} : { workerSchedule: details.workerIdleExit }),
     ...(details.workerHeartbeats === undefined
       ? {}
       : {

@@ -8,15 +8,17 @@
 # Environment `worker-schedule` de GitHub, que solo acepta la rama `main`. **Sin ese secreto este
 # flujo no hace nada**: avisa y termina sin error (el horario queda escrito, pero apagado).
 #
-# La franja (`ACTIVE_FROM`, `ACTIVE_UNTIL` y `LEAD_MINUTES`) y el minuto del `cron` están también en
-# `packages/core/src/worker-schedule.ts` (la agenda y `doctor` dicen la próxima revisión con ellos);
-# un test del worker (`apps/worker/src/worker-schedule-workflow.test.ts`) falla si no calzan.
+# La franja (`ACTIVE_FROM`, `ACTIVE_UNTIL`, `LEAD_MINUTES` y `GRACE_MINUTES`) y el minuto del `cron`
+# están también en `packages/core/src/worker-schedule.ts` (la agenda y `doctor` dicen la próxima
+# revisión con ellos); un test del worker (`apps/worker/src/worker-schedule-workflow.test.ts`) falla
+# si no calzan, y corre la cuenta de la franja de abajo contra la de core.
 name: Encender el worker
 
 on:
   schedule:
     # Cada hora a los :50 (UTC; Chile va 3 o 4 horas atrás, así que también a los :50 allí). GitHub
-    # puede atrasar un cron varios minutos (nunca lo adelanta): el worker mira 70 min adelante.
+    # puede atrasar un cron varios minutos (nunca lo adelanta) y, con mucha carga, saltarse una
+    # corrida: el worker mira 70 min adelante y la revisión siguiente lo enciende.
     - cron: "50 * * * *"
   workflow_dispatch:
 
@@ -32,11 +34,13 @@ env:
   # La app de Fly de la instancia principal (`app` de fly.toml).
   FLY_APP: agentsales
   # La franja en hora de Chile (HH:MM): se enciende desde LEAD_MINUTES antes de ACTIVE_FROM hasta
-  # antes de ACTIVE_UNTIL (con 07:00, 23:00 y 10: de 06:50 a 22:50). De noche no lo despierta: lo
-  # programado de madrugada sale a las 06:50.
+  # GRACE_MINUTES después de ACTIVE_UNTIL (con 07:00, 23:00, 10 y 15: de 06:50 a 23:15, así la
+  # revisión de las 22:50 enciende aunque GitHub la atrase). De noche no lo despierta: lo programado
+  # de madrugada sale a las 06:50.
   ACTIVE_FROM: "07:00"
   ACTIVE_UNTIL: "23:00"
   LEAD_MINUTES: "10"
+  GRACE_MINUTES: "15"
 
 jobs:
   start:
@@ -63,12 +67,17 @@ jobs:
             echo "go=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          now="$(TZ=America/Santiago date +%H:%M)"
+          # <franja> (el test la corre contra `isWorkerCheckTime` de core)
           minutes() { echo $((10#${1%%:*} * 60 + 10#${1##*:})); }
-          now_min="$(minutes "$now")"
-          from_min=$(($(minutes "$ACTIVE_FROM") - LEAD_MINUTES))
-          until_min="$(minutes "$ACTIVE_UNTIL")"
-          if [ "$now_min" -ge "$from_min" ] && [ "$now_min" -lt "$until_min" ]; then
+          in_band() {
+            local from_min until_min
+            from_min=$(($(minutes "$ACTIVE_FROM") - LEAD_MINUTES))
+            until_min=$(($(minutes "$ACTIVE_UNTIL") + GRACE_MINUTES))
+            [ "$1" -ge "$from_min" ] && [ "$1" -lt "$until_min" ]
+          }
+          # </franja>
+          now="$(TZ=America/Santiago date +%H:%M)"
+          if in_band "$(minutes "$now")"; then
             echo "Son las $now en Chile: dentro de la franja ($ACTIVE_FROM a $ACTIVE_UNTIL)."
             echo "go=true" >> "$GITHUB_OUTPUT"
           else
@@ -95,26 +104,44 @@ jobs:
           version: 0.4.118
 
       # Las máquinas del grupo `worker` (sin guardar su id: un despliegue podría cambiarlo). Una
-      # encendida se deja como está.
+      # encendida se deja como está; una que se está apagando o reemplazando se espera una vez (30 s)
+      # y, si sigue igual, se deja para la revisión siguiente con un aviso (sin dejar el job en rojo).
       - name: Encender el worker
         if: steps.token.outputs.ready == 'true'
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_WORKER_START_TOKEN }}
         run: |
-          machines="$(flyctl machine list -a "$FLY_APP" --json)"
-          workers="$(printf '%s' "$machines" | jq -r '.[] | select(.config.metadata.fly_process_group == "worker") | "\(.id) \(.state)"')"
-          if [ -z "$workers" ]; then
+          workers() {
+            flyctl machine list -a "$FLY_APP" --json \
+              | jq -r '.[] | select(.config.metadata.fly_process_group == "worker") | "\(.id) \(.state)"'
+          }
+          list="$(workers)"
+          if [ -z "$list" ]; then
             echo "::error::No hay una máquina del worker en la app $FLY_APP (fly machine list -a $FLY_APP)."
             exit 1
           fi
-          while read -r id state; do
-            case "$state" in
-              started | starting)
-                echo "El worker $id ya está encendido ($state)."
-                ;;
-              *)
-                echo "Encendiendo el worker $id (estaba $state)."
-                flyctl machine start "$id" -a "$FLY_APP"
-                ;;
-            esac
-          done <<< "$workers"
+          for attempt in 1 2; do
+            busy=""
+            while read -r id state; do
+              case "$state" in
+                started | starting)
+                  echo "El worker $id ya está encendido ($state)."
+                  ;;
+                stopped | suspended | created)
+                  echo "Encendiendo el worker $id (estaba $state)."
+                  flyctl machine start "$id" -a "$FLY_APP"
+                  ;;
+                *)
+                  busy="$busy $id:$state"
+                  ;;
+              esac
+            done <<< "$list"
+            [ -z "$busy" ] && exit 0
+            if [ "$attempt" = 1 ]; then
+              echo "El worker está ocupado ($busy ); se espera 30 s y se vuelve a mirar."
+              sleep 30
+              list="$(workers | grep -v -E ' (started|starting)$' || true)"
+              [ -z "$list" ] && exit 0
+            fi
+          done
+          echo "::warning::El worker sigue en un estado de paso ($busy ): no se encendió; lo intenta la revisión siguiente."

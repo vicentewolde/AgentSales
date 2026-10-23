@@ -1,13 +1,7 @@
 import { createLogger } from "@agentsales/config";
 import type { DueQuery, Platform, Publication } from "@agentsales/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  countPendingJobs,
-  createIdleProbe,
-  type IdleReason,
-  type QueueDb,
-  startIdleExit,
-} from "./idle-exit.js";
+import { createIdleProbe, type IdleReason, pendingJobsOf, startIdleExit } from "./idle-exit.js";
 
 // F9.5-T24 (ADR-0037): el worker se apaga solo cuando no tiene nada que hacer ni nada por vencer.
 
@@ -80,12 +74,19 @@ describe("startIdleExit", () => {
     expect(onIdle).not.toHaveBeenCalled();
   });
 
-  it("si la revisión falla, no se sabe: no se apaga", async () => {
+  it("si la revisión falla, no se sabe: no se apaga, y el log no repite el error cada minuto", async () => {
+    const error = vi.spyOn(logger, "error");
+    const warn = vi.spyOn(logger, "warn");
     const { state, onIdle } = start(10);
     state.reason = new Error("la base no respondió");
 
     await vi.advanceTimersByTimeAsync(30 * MINUTE);
     expect(onIdle).not.toHaveBeenCalled();
+    // Un error al empezar y, como mucho, un resumen en esos 30 min (no 30 avisos).
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls.length).toBeLessThanOrEqual(1);
+    error.mockRestore();
+    warn.mockRestore();
   });
 
   it("con 0 minutos no arranca nada (nunca se apaga solo, como antes)", async () => {
@@ -219,24 +220,17 @@ describe("createIdleProbe", () => {
   });
 });
 
-describe("countPendingJobs", () => {
-  it("cuenta en la tabla de pg-boss los activos y los que empiezan dentro del margen, sin publication.due", async () => {
-    const calls: { text: string; values?: unknown[] }[] = [];
-    const db: QueueDb = {
-      executeSql: async (text, values) => {
-        calls.push({ text, ...(values === undefined ? {} : { values }) });
+describe("pendingJobsOf", () => {
+  it("pide a la cola los jobs del margen, sin publication.due ni publications.watch", async () => {
+    const calls: unknown[][] = [];
+    const count = pendingJobsOf({
+      executeSql: async (_text, values) => {
+        calls.push(values ?? []);
         return { rows: [{ count: 2 }] };
       },
-    };
+    });
 
-    expect(await countPendingJobs(db, 10 * MINUTE)).toBe(2);
-    expect(calls[0]?.text).toContain("from pgboss.job");
-    expect(calls[0]?.text).toContain("state = 'active'");
-    expect(calls[0]?.text).toContain("state in ('created', 'retry')");
-    expect(calls[0]?.values).toEqual([["publication.due"], 600]);
-  });
-
-  it("sin filas, 0", async () => {
-    expect(await countPendingJobs({ executeSql: async () => ({ rows: [] }) }, MINUTE)).toBe(0);
+    expect(await count(70 * MINUTE)).toBe(2);
+    expect(calls[0]).toEqual(["__pgboss__", ["publication.due", "publications.watch"], 4200]);
   });
 });

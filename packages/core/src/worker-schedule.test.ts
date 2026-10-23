@@ -43,7 +43,7 @@ describe("nextWorkerCheck", () => {
 
   it("una franja sin revisiones da null", () => {
     expect(
-      nextWorkerCheck(at("2026-10-22T13:00:00Z"), { from: "10:00", until: "09:50" }),
+      nextWorkerCheck(at("2026-10-22T13:00:00Z"), { from: "10:00", until: "09:30" }),
     ).toBeNull();
   });
 });
@@ -55,6 +55,9 @@ describe("la franja y los textos", () => {
     expect(isWorkerCheckTime(5 * 60 + 50)).toBe(false);
     expect(isWorkerCheckTime(22 * 60 + 50)).toBe(true);
     expect(isWorkerCheckTime(23 * 60 + 50)).toBe(false);
+    // La de las 22:50 atrasada por GitHub todavía enciende, hasta las 23:15.
+    expect(isWorkerCheckTime(23 * 60 + 10)).toBe(true);
+    expect(isWorkerCheckTime(23 * 60 + 15)).toBe(false);
     expect(workerScheduleText()).toBe("cada hora a los :50, de 06:50 a 22:50, hora de Chile");
     expect(nextWorkerCheckText(at("2026-10-22T13:00:00Z"))).toBe("2026-10-22 10:50");
   });

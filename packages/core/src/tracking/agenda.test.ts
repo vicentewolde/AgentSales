@@ -229,15 +229,17 @@ describe("agendaItems con el worker apagado (F9.5-T24)", () => {
   // NOW es 2026-10-15 12:00 en Chile: la próxima revisión del horario es a las 12:50.
   const scheduled = (at: Date, extra: Partial<Publication> = {}) =>
     publication({ status: "scheduled", scheduledAt: at, ...extra });
+  /** Apagado, con el horario activado (se enciende en la próxima revisión). */
+  const off = { running: false, scheduled: true };
 
-  it("el worker está apagado y hay algo por vencer: la vencida y la que vence antes de la próxima revisión, con encenderlo", () => {
+  it("con horario: la vencida y la que vence antes de la próxima revisión esperan esa revisión", () => {
     const due = scheduled(minutes(-5));
     const beforeWindow = scheduled(minutes(30));
-    const items = run([due, beforeWindow], { worker: { running: false } });
+    const items = run([due, beforeWindow], { worker: off });
 
     expect(items.map((item) => [item.kind, item.action, item.publicationId])).toEqual([
-      ["worker_off", "start_worker", due.id],
-      ["worker_off", "start_worker", beforeWindow.id],
+      ["worker_off", "wait_worker", due.id],
+      ["worker_off", "wait_worker", beforeWindow.id],
     ]);
     expect(items[0]).toMatchObject({ at: due.scheduledAt, title: "L1", platform: "instagram" });
     // Va primero: explica por qué lo demás no sale.
@@ -250,7 +252,7 @@ describe("agendaItems con el worker apagado (F9.5-T24)", () => {
       platform: "linkedin",
       scheduledAt: minutes(30),
     });
-    const items = run([linkedin], { posts: [post("p1")], worker: { running: false } });
+    const items = run([linkedin], { posts: [post("p1")], worker: off });
 
     expect(items.map((item) => [item.kind, item.postId])).toEqual([["worker_off", "p1"]]);
   });
@@ -263,7 +265,7 @@ describe("agendaItems con el worker apagado (F9.5-T24)", () => {
         scheduled(minutes(-30), { platform: "fb_marketplace" }), // recordatorio: lo aprieta el operador
         scheduled(minutes(60), { platform: "fb_marketplace" }),
       ],
-      { worker: { running: false } },
+      { worker: off },
     );
 
     expect(items.map((item) => item.kind)).toEqual([
@@ -279,12 +281,28 @@ describe("agendaItems con el worker apagado (F9.5-T24)", () => {
     const night = new Date("2026-10-16T02:30:00.000Z");
     const at = (hours: number) => new Date(night.getTime() + hours * 60 * 60_000);
     const items = run([scheduled(at(2.5)), scheduled(at(8))], {
-      worker: { running: false },
+      worker: off,
       now: night,
     });
 
     // 02:00 espera al worker; 07:30, después de la revisión de las 06:50, es una próxima.
     expect(items.map((item) => item.kind)).toEqual(["worker_off", "upcoming"]);
+  });
+
+  it("sin horario: el worker debe estar encendido; avisa lo de las próximas 24 h y pide encenderlo", () => {
+    const items = run([scheduled(minutes(-5)), scheduled(minutes(6 * 60)), scheduled(days(2))], {
+      worker: { running: false, scheduled: false },
+    });
+
+    expect(items.map((item) => [item.kind, item.action])).toEqual([
+      ["worker_off", "start_worker"],
+      ["worker_off", "start_worker"],
+      ["upcoming", "none"],
+    ]);
+    // Sin decir si hay horario, es que no lo hay.
+    expect(run([scheduled(minutes(-5))], { worker: { running: false } })[0]?.action).toBe(
+      "start_worker",
+    );
   });
 
   it("con el worker encendido, o sin saber su estado, no hay aviso", () => {

@@ -625,22 +625,31 @@ export function checkWorker(report: HealthReport | null, remote: boolean): Check
     ...(report.worker === null
       ? {}
       : {
-          hint: remote
-            ? "Con el horario activado se enciende solo en la próxima revisión (cada hora, de día); para encenderlo ya: GitHub → Actions → «Encender el worker» → Run workflow (docs/10-despliegue.md, paso 8)"
-            : "Arráncalo con pnpm dev si lo necesitas",
+          hint: !remote
+            ? "Arráncalo con pnpm dev si lo necesitas"
+            : report.workerSchedule === true
+              ? "Se enciende solo en la próxima revisión del horario; para encenderlo ya: GitHub → Actions → «Encender el worker» → Run workflow (docs/10-despliegue.md, paso 8)"
+              : "Sin horario no se enciende solo: enciéndelo (GitHub → Actions → «Encender el worker», o docs/10-despliegue.md, paso 8) y apágalo al terminar",
         }),
   };
 }
 
 /**
- * El horario del worker en el servidor (F9.5-T24, ADR-0037): cada cuánto revisa y la próxima, en hora de
- * Chile. Es informativo: el horario lo enciende el workflow `worker-schedule.yml` (si el operador lo
- * activó) y el worker se apaga solo sin nada que hacer.
+ * El horario del worker en el servidor (F9.5-T24, ADR-0037): con el apagado solo activado
+ * (`workerSchedule`), cada cuánto revisa el workflow y la próxima revisión, en hora de Chile; sin él,
+ * que no hay horario y el worker debe estar encendido. `null` si el servidor no lo informa.
  */
-export function checkWorkerSchedule(now: Date): CheckItem {
-  return {
-    name: "Horario del worker",
-    level: "ok",
-    detail: `próxima revisión ${nextWorkerCheckText(now)} (${workerScheduleText()})`,
-  };
+export function checkWorkerSchedule(report: HealthReport | null, now: Date): CheckItem | null {
+  if (report?.workerSchedule === undefined) return null;
+  return report.workerSchedule
+    ? {
+        name: "Horario del worker",
+        level: "ok",
+        detail: `próxima revisión ${nextWorkerCheckText(now)} (${workerScheduleText()})`,
+      }
+    : {
+        name: "Horario del worker",
+        level: "ok",
+        detail: "sin horario: el worker no se apaga solo y debe estar encendido",
+      };
 }

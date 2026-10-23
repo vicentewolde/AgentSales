@@ -185,17 +185,25 @@ La API se apaga sola sin tráfico. **El worker hay que apagarlo a mano al termin
 En vez de encenderlo y apagarlo tú, el worker puede **encenderse solo** cada hora y **apagarse solo** cuando no tiene nada que hacer ni nada por vencer. Pagas solo el rato que está encendido y Neon se duerme mientras está apagado.
 
 **Cómo funciona:**
-- **La revisión de cada hora:** el flujo `.github/workflows/worker-schedule.yml` ("Encender el worker") corre **cada hora a los :50** y enciende la máquina del worker si está apagada, solo **dentro de la franja de 07:00 a 23:00 de Chile** (la primera revisión es la de las 06:50 y la última la de las 22:50): de noche no lo despierta. GitHub puede atrasar un cron varios minutos (nunca lo adelanta). El repositorio es público: los minutos de Actions no se cobran.
-- **El worker se apaga solo** cuando lleva `WORKER_IDLE_EXIT_MINUTES` minutos seguidos (10) sin jobs activos, sin un formulario de Marketplace abierto y sin publicaciones programadas que venzan en los próximos `WORKER_STAY_AHEAD_MINUTES` (70 por defecto: la próxima revisión llega en 60 o menos, más el atraso de GitHub). Cierra limpio, como con `fly machine stop` (espera los trabajos en curso), y la máquina queda detenida (`[[restart]]` con `on-failure`: una salida sin error no la reinicia). Lo vencido hace menos de 12 h también lo mantiene encendido, para que salga.
+- **La revisión de cada hora:** el flujo `.github/workflows/worker-schedule.yml` ("Encender el worker") corre **cada hora a los :50** y enciende la máquina del worker si está apagada, solo **dentro de la franja de 07:00 a 23:00 de Chile**. La primera revisión es la de las 06:50 y la última la de las 22:50, con 15 minutos de holgura si GitHub la atrasa. De noche no lo despierta. GitHub puede atrasar un cron varios minutos (nunca lo adelanta) y, con mucha carga, **saltarse una corrida**: entonces lo enciende la revisión siguiente. El repositorio es público: los minutos de Actions no se cobran.
+- **El worker se apaga solo** cuando lleva `WORKER_IDLE_EXIT_MINUTES` minutos seguidos (10) sin jobs activos, sin un formulario de Marketplace abierto y sin publicaciones programadas que venzan en los próximos `WORKER_STAY_AHEAD_MINUTES` (70 por defecto: la próxima revisión llega en 60 o menos, más el atraso de GitHub). Cierra limpio **sin cortar nada**: deja de tomar trabajos y espera hasta 15 min a los que están en curso. Después la máquina queda detenida (`[[restart]]` con `on-failure`: una salida sin error no la reinicia). Lo vencido hace menos de 12 h también lo mantiene encendido, para que salga.
 - **Así, lo programado de día sale a su hora:** por ejemplo, un post a las 10:00 lo ve la revisión de las 08:50 o la de las 09:50, que deja el worker encendido hasta publicarlo y se apaga unos 10 minutos después.
 - **Lo programado de madrugada** (después de las 00:00, cuando ya no lo ve la revisión de las 22:50) **sale a las 06:50**, con la primera revisión de la mañana. La agenda lo muestra en **"El worker está apagado y hay algo por vencer"** con cómo encenderlo ya, y `doctor` dice la próxima revisión. Lo que pasa **más de 12 h** sin salir queda atrasado y no sale solo (D2 de F6): con la franja de 07:00 a 23:00 eso no pasa.
-- **Preparar textos y fotos, importar y pedir un plan** también necesitan el worker: con el horario, esperan a la próxima revisión (como mucho una hora de día) o a que lo enciendas a mano (abajo).
-- **Cambiar la franja o el minuto:** pídele a Claude el cambio; van en el flujo (`ACTIVE_FROM`, `ACTIVE_UNTIL`, `LEAD_MINUTES` y el `cron`) y en `packages/core/src/worker-schedule.ts`, y un test revisa que calcen. `WORKER_STAY_AHEAD_MINUTES` (en `fly.toml` o con `fly secrets`, 1 a 1440) no debería bajar de 70: con menos, lo que vence justo antes de la revisión siguiente espera a esa revisión.
+- **Lo que pides con el worker apagado espera a la próxima revisión, hasta unos 60 minutos de día** (de noche, hasta las 06:50). Eso incluye:
+  - lo que programas para dentro de poco, o lo que publicas «ahora»;
+  - un `retry`;
+  - las operaciones de Portal (pausar, cerrar, actualizar, sincronizar);
+  - preparar textos y fotos, importar y pedir un plan.
+
+  La CLI que espera un resultado (`publish`, `prepare`, `import`) queda esperando hasta su tope. Si no quieres esperar, enciéndelo a mano (abajo).
+- **El costo (estimación, sin medir):** cada revisión deja el worker encendido unos 10 a 12 minutos aunque no haya nada (arranca, espera los 10 minutos y se apaga). Son 17 revisiones al día, unas 3 h de worker y de Neon despierto: unos US$ 1 a 3 al mes en Fly y unos 25 a 35 de los 100 CU-h gratis de Neon, más el rato de cada publicación. Siempre encendido serían unos US$ 37 a 48 (paso 11).
+- **Dos cosas vencen solas:** el token de Fly vence a los 6 meses (renuévalo, abajo), y GitHub desactiva los workflows programados después de 60 días sin cambios en el repositorio (abajo, "Volver atrás", cómo reactivarlo). En los dos casos el worker deja de encenderse, y la agenda y `doctor` lo avisan.
+- **Cambiar la franja o el minuto:** pídele a Claude el cambio; van en el flujo (`ACTIVE_FROM`, `ACTIVE_UNTIL`, `LEAD_MINUTES`, `GRACE_MINUTES` y el `cron`) y en `packages/core/src/worker-schedule.ts`, y un test revisa que calcen. `WORKER_STAY_AHEAD_MINUTES` (en `fly.toml`, de 60 a 1440, 70 si no está) es cuánto mira hacia adelante; menos de 60 se rechaza, porque lo que vence justo antes de la revisión siguiente esperaría a esa revisión.
 
 **Activarlo (lo haces tú, una vez):**
 
 1. **El Environment de GitHub** que guarda el token (como el de desplegar, paso 3): el repositorio → **Settings** → **Environments** → **New environment** → `worker-schedule` → **Configure environment**. En **Deployment branches and tags**, **Selected branches and tags** con la regla **`main`**, y **Allow administrators to bypass configured protection rules** desmarcado. Así ninguna otra rama puede usar el token. (Si el flujo corrió antes, GitHub ya creó el Environment sin regla: ábrelo y ponle la regla.)
-2. **El token de Fly** (vence en 6 meses, queda en el portapapeles sin mostrarse). Es un token de la app `agentsales` y nada más (no sirve para otras apps ni para la organización):
+2. **El token de Fly** (vence en 6 meses, queda en el portapapeles sin mostrarse). Es un token de la app `agentsales` y nada más: no sirve para otras apps ni para la organización.
    ```bash
    fly tokens create deploy -a agentsales -n github-worker-schedule -x 4380h | pbcopy
    ```
@@ -203,8 +211,9 @@ En vez de encenderlo y apagarlo tú, el worker puede **encenderse solo** cada ho
 3. **Guardarlo en el Environment**, sin que pase por la pantalla:
    ```bash
    pbpaste | gh secret set FLY_WORKER_START_TOKEN --env worker-schedule
+   pbcopy </dev/null
    ```
-   (O en la web: el Environment `worker-schedule` → **Environment secrets** → **Add environment secret**, nombre `FLY_WORKER_START_TOKEN`, y pegar.) No lo pongas como secreto del repositorio: ahí lo vería cualquier rama.
+   La segunda línea limpia el portapapeles para que el token no quede ahí. (O en la web: el Environment `worker-schedule` → **Environment secrets** → **Add environment secret**, nombre `FLY_WORKER_START_TOKEN`, pegar, y después `pbcopy </dev/null`.) No lo pongas como secreto del repositorio: ahí lo vería cualquier rama. El token por sí solo podría desplegar la app (es de tipo `deploy`); **lo que lo limita es el Environment**: solo este flujo, desde `main`, lo usa, y solo para listar y encender la máquina del worker.
 4. **Probar el encendido a mano:** con el worker apagado, en GitHub → **Actions** → **Encender el worker** → **Run workflow** (rama `main`). Debe decir "Encendiendo el worker …" y, al minuto, `pnpm -s cli doctor` (contra el servidor) debe decir "Worker: encendido". NO VERIFICADO hasta esa primera corrida: la forma del JSON de `fly machine list --json` que lee el flujo (el grupo en `config.metadata.fly_process_group` y el estado en `state`).
 5. **Que se apague solo:** pídele a Claude quitar el `#` de `WORKER_IDLE_EXIT_MINUTES = "10"` en `fly.toml` y despliega (paso 4). Desde ahí, el worker se apaga a los 10 minutos sin nada que hacer. Compruébalo con `pnpm -s cli doctor` unos 15 minutos después de que termine lo programado: "Worker: apagado desde …".
 
@@ -452,6 +461,7 @@ Pídele a Claude "la instancia `<instancia>` con la app `<app>` y el dominio `<d
 
 - **`fly.<instancia>.toml`:** una copia de `fly.toml` con cuatro valores cambiados: `app = "<app>"`, `PUBLIC_URL = "https://<dominio>"`, el `Host` del chequeo (`<dominio>`) y `BACKUP_R2_BUCKET = "<app>-backups"`. Todo lo demás igual, también `PUBLISH_MODE = "dry-run"` (pasarlo a `live` en esa instancia es otra decisión tuya, en el chat).
 - **`.github/workflows/deploy.yml`:** `<instancia>` agregada a las opciones de la entrada `instance`.
+- **Sin el apagado solo:** en `fly.<instancia>.toml`, `WORKER_IDLE_EXIT_MINUTES` queda comentado. El flujo que enciende el worker (`worker-schedule.yml`, paso 8) solo enciende la app principal (`FLY_APP` está fijo), así que el worker de otra instancia que se apagara solo no volvería a encenderse y nada programado saldría. Para activarlo en esa instancia hace falta su propio horario (otro flujo o una entrada de instancia en este, con su Environment y su token): pídelo antes.
 
 El flujo se niega a desplegar otra instancia si falta su archivo o si repite la app, el dominio, el `Host` o el bucket de respaldos de la principal: una copia a medio cambiar nunca despliega encima de la instancia de hoy.
 

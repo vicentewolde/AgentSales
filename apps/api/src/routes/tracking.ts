@@ -61,6 +61,8 @@ export type TrackingRoutesDeps = {
    * administrador avisa si el worker está apagado y hay algo por vencer (F9.5-T24).
    */
   workerHeartbeats?: () => Promise<WorkerHeartbeat[]>;
+  /** Si el worker se apaga solo y lo enciende el horario (F9.5-T24): cambia qué hacer con `worker_off`. */
+  workerScheduled?: boolean;
   now?: () => Date;
 };
 
@@ -182,12 +184,15 @@ export function trackingRoutes(deps: TrackingRoutesDeps) {
           ? undefined
           : await deps.backupStatus().catch(() => null);
       // El worker también (F9.5-T24): encenderlo es del administrador; si no se pudo leer, sin aviso.
-      const worker: WorkerStatus | null | undefined =
+      const worker: (WorkerStatus & { scheduled: boolean }) | null | undefined =
         deps.workerHeartbeats === undefined || scope.kind !== "all"
           ? undefined
           : await deps
               .workerHeartbeats()
-              .then((processes) => workerStatusOf(processes, at))
+              .then((processes) => ({
+                ...workerStatusOf(processes, at),
+                scheduled: deps.workerScheduled ?? false,
+              }))
               .catch(() => null);
       const body: AgendaResponse = {
         items: agendaItems({

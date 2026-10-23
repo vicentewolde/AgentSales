@@ -1,7 +1,7 @@
 import { type AppError, isAppError } from "../errors.js";
 import { MANUAL_CONFIRM_PLATFORMS, requiresManualConfirm } from "../marketplace/limits.js";
 import type { JobQueue } from "../ports/job-queue.js";
-import type { PublicationRepository } from "../ports/publication-repository.js";
+import type { DueQuery, PublicationRepository } from "../ports/publication-repository.js";
 import type { Publication, PublicationError } from "../publication.js";
 import { scrubMessage } from "../redact.js";
 import { SCHEDULE_OVERDUE_MS } from "../schedule.js";
@@ -17,6 +17,21 @@ import { requireStartableOne } from "./start-checks.js";
 
 /** Cuántas programadas empieza como mucho cada vuelta del disparo (spec F6 §4.4). */
 export const DUE_BATCH_LIMIT = 20;
+
+/**
+ * Las programadas que el disparo empieza (`listDue`): vencidas hace 12 h o menos
+ * (`SCHEDULE_OVERDUE_MS`), sin los recordatorios de Marketplace, como mucho `DUE_BATCH_LIMIT`. Con
+ * `aheadMs`, también las que vencen en ese margen: el worker no se apaga solo mientras haya alguna
+ * (F9.5-T24, ADR-0037). Una sola regla para los dos.
+ */
+export function dueQuery(now: Date, aheadMs = 0): DueQuery {
+  return {
+    now: new Date(now.getTime() + aheadMs),
+    since: new Date(now.getTime() - SCHEDULE_OVERDUE_MS),
+    excludePlatforms: [...MANUAL_CONFIRM_PLATFORMS],
+    limit: DUE_BATCH_LIMIT,
+  };
+}
 
 /**
  * Con los dos candados (ADR-0029 punto 3): sin `postLock`, una programada de un post queda en
@@ -62,12 +77,7 @@ export type StartDueResult = {
  */
 export async function startDuePublications(deps: StartDueDeps): Promise<StartDueResult> {
   const now = (deps.now ?? (() => new Date()))();
-  const due = await deps.publications.listDue({
-    now,
-    since: new Date(now.getTime() - SCHEDULE_OVERDUE_MS),
-    excludePlatforms: [...MANUAL_CONFIRM_PLATFORMS],
-    limit: DUE_BATCH_LIMIT,
-  });
+  const due = await deps.publications.listDue(dueQuery(now));
   const result: StartDueResult = {
     started: [],
     notQueued: [],

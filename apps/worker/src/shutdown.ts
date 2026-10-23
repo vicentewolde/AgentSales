@@ -18,16 +18,48 @@ export type ShutdownSteps = {
   closeDatabase(): Promise<void>;
 };
 
+/** Por qué se apaga el worker: una señal (SIGTERM, SIGINT) o solo, sin trabajo (F9.5-T24). */
+export type ShutdownReason = "signal" | "idle";
+
+/** El tope de espera de pg-boss en un apagado por señal (Fly da 45 s, `kill_timeout`). */
+export const GRACEFUL_STOP_MS = 30_000;
+
 /**
- * Apaga el worker en orden (spec F2 §4.4, T11): primero corta los handlers, después espera a que
+ * Apagado solo (F9.5-T24): nadie lo apura, así que espera hasta 15 min a que terminen los jobs que
+ * pg-boss haya tomado entre la última revisión y `stop`.
+ */
+export const IDLE_GRACEFUL_STOP_MS = 15 * 60_000;
+
+/**
+ * Cómo se apaga según el motivo. Con una señal, los handlers se cortan (`abortJobs`) y pg-boss espera
+ * 30 s. **Solo, sin trabajo, no se corta nada**: un intento de publicar cortado podría quedar
+ * `outcome_unknown`; pg-boss deja de tomar jobs y espera a los activos. Si llega una señal mientras
+ * tanto, el worker corta igual (`worker.ts`).
+ */
+export function stopOptionsFor(reason: ShutdownReason): {
+  abortJobs: boolean;
+  gracefulStopMs: number;
+} {
+  return reason === "idle"
+    ? { abortJobs: false, gracefulStopMs: IDLE_GRACEFUL_STOP_MS }
+    : { abortJobs: true, gracefulStopMs: GRACEFUL_STOP_MS };
+}
+
+/**
+ * Apaga el worker en orden (spec F2 §4.4, T11): primero corta los handlers (salvo con
+ * `abortJobs: false`, el apagado solo de F9.5-T24), después espera a que
  * pg-boss los detenga y **recién entonces** cierra el renderizador (cerrarlo antes haría fallar un
  * render en curso con un error que no es el corte) y la base. El renderizador se cierra también si
  * detener pg-boss falla; un error al cerrarlo solo queda en el log. Un error de pg-boss o de la base
  * se propaga. Entre el corte y `stop`, pg-boss podría tomar un job más: sale de inmediato con el
  * `signal` ya disparado y gasta un intento, sin tocar la corrida.
  */
-export async function stopWorker(steps: ShutdownSteps, logger: Logger): Promise<void> {
-  steps.abortJobs();
+export async function stopWorker(
+  steps: ShutdownSteps,
+  logger: Logger,
+  { abortJobs = true }: { abortJobs?: boolean } = {},
+): Promise<void> {
+  if (abortJobs) steps.abortJobs();
   try {
     await steps.stopBoss();
   } finally {
