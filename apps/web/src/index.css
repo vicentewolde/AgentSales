@@ -9,7 +9,7 @@
  * estos mismos valores. Guía en docs/05-convenciones.md (Sistema visual del panel).
  */
 @theme {
-  /* Texto limpio (DM Sans) y títulos serif (Fraunces), desde Google Fonts en `index.html`. */
+  /* Texto limpio (DM Sans) y títulos serif (Fraunces), desde el propio sitio (`fonts.css`). */
   --font-sans:
     "DM Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;

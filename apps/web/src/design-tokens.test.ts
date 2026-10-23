@@ -146,6 +146,20 @@ describe("sin colores del diseño anterior (F9.5-T26)", () => {
     expect(source.match(OLD)?.[0]).toBeUndefined();
   });
 
+  it("las fuentes salen del propio sitio: nada de Google Fonts (D2 y la CSP del servidor)", () => {
+    const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+    expect(html).not.toMatch(/fonts\.googleapis\.com|fonts\.gstatic\.com/);
+    const fonts = readFileSync(new URL("./fonts.css", import.meta.url), "utf8");
+    const sources = [...fonts.matchAll(/url\("([^"]+)"\)/g)].map(([, url]) => url as string);
+    expect(sources).toHaveLength(4);
+    for (const source of sources) {
+      // Un archivo del paquete (Vite lo copia a `dist/assets`), solo de los subconjuntos latinos.
+      expect(source).toMatch(/^@fontsource-variable\/(fraunces|dm-sans)\/files\/[a-z-]+\.woff2$/);
+      expect(source).toMatch(/-latin(-ext)?-/);
+    }
+    expect(fonts).not.toMatch(/https?:/);
+  });
+
   it("index.html no pone clases de color en el body", () => {
     const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
     expect(html).not.toMatch(/<body[^>]*class=/);
