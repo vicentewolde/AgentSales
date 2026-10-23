@@ -53,6 +53,8 @@ import {
   PUBLICATION_STATUSES,
   postSchema,
   publicationErrorSchema,
+  READINESS_KEYS,
+  READINESS_STATES,
   remoteStateSchema,
   SCHEDULE_STATES,
   SESSION_CLIENTS,
@@ -60,6 +62,7 @@ import {
   TOKEN_REFRESH_SKIP_REASONS,
   TONE_MAX,
   USER_ROLES,
+  WEEK_PROBLEM_KINDS,
 } from "@agentsales/core";
 import { z } from "zod";
 
@@ -1961,3 +1964,115 @@ export type UserLinkResponse = z.infer<typeof userLinkResponseSchema>;
 
 export const userResponseSchema = z.object({ user: userViewSchema });
 export type UserResponse = z.infer<typeof userResponseSchema>;
+
+// ── Publicar a diario desde una marca (F9.5-T27) ─────────────────────────────
+
+/** Un día `AAAA-MM-DD` (hora de Chile) de la semana; la forma y que exista los revisa core. */
+const weekDaySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "el día va como AAAA-MM-DD");
+
+/**
+ * `GET /brokers/:id/week?day=AAAA-MM-DD`: la semana (de lunes a domingo) de ese día; sin `day`, la
+ * de mañana (hora de Chile).
+ */
+export const postWeekQuerySchema = z.object({ day: weekDaySchema.optional() });
+
+/** Un post aceptado de la semana: el post, sus textos con la revisión y sus publicaciones. */
+export const postWeekItemSchema = z.object({
+  post: postJsonSchema,
+  contents: z.array(contentViewSchema),
+  publications: z.array(publicationViewSchema),
+});
+export type PostWeekItem = z.infer<typeof postWeekItemSchema>;
+
+/** La semana: su lunes y su domingo, los posts aceptados y cuántas ideas siguen sin decidir. */
+export const postWeekResponseSchema = z.object({
+  week: z.string(),
+  lastDay: z.string(),
+  posts: z.array(postWeekItemSchema),
+  ideas: z.number().int().nonnegative(),
+});
+export type PostWeekResponse = z.infer<typeof postWeekResponseSchema>;
+
+/** `POST /brokers/:id/week/approve`: la semana de `day` (sin él, la de mañana). */
+export const postWeekApproveBodySchema = z.object({ day: weekDaySchema.optional() }).strict();
+export type PostWeekApproveBody = z.infer<typeof postWeekApproveBodySchema>;
+
+/** Lo que no se pudo de un post: la red (o `null`, el post entero), el motivo y su mensaje. */
+export const weekProblemSchema = z.object({
+  platform: z.enum(POST_PLATFORMS).nullable(),
+  language: z.enum(LANGUAGES).nullable(),
+  kind: z.enum(WEEK_PROBLEM_KINDS),
+  code: z.string(),
+  message: z.string(),
+});
+export type WeekProblemView = z.infer<typeof weekProblemSchema>;
+
+/**
+ * Lo que hizo «Aprobar la semana», post por post: los textos aprobados, las redes programadas a la
+ * fecha del post y lo que no se pudo. `dryRun` es el modo con que quedó programado (el de la
+ * marca): `false` es en vivo.
+ */
+export const postWeekApproveResponseSchema = z.object({
+  week: z.string(),
+  lastDay: z.string(),
+  ideas: z.number().int().nonnegative(),
+  dryRun: z.boolean(),
+  posts: z.array(
+    z.object({
+      postId: z.string(),
+      topic: z.string(),
+      plannedAt: z.coerce.date(),
+      approved: z.array(
+        z.object({ platform: z.enum(POST_PLATFORMS), language: z.enum(LANGUAGES) }),
+      ),
+      scheduled: z.array(
+        z.object({
+          platform: z.enum(POST_PLATFORMS),
+          at: z.coerce.date(),
+          publicationIds: z.array(z.string()),
+        }),
+      ),
+      problems: z.array(weekProblemSchema),
+    }),
+  ),
+});
+export type PostWeekApproveResponse = z.infer<typeof postWeekApproveResponseSchema>;
+
+/** Un ítem de la lista «Lista para publicar a diario»: qué es, cómo está y cómo resolverlo. */
+export const readinessItemSchema = z.object({
+  key: z.enum(READINESS_KEYS),
+  label: z.string(),
+  state: z.enum(READINESS_STATES),
+  detail: z.string(),
+  fix: z
+    .object({
+      text: z.string(),
+      command: z.string().optional(),
+      // Solo rutas del panel: el botón no abre nada de afuera.
+      page: z
+        .string()
+        .regex(/^\/[a-z0-9/-]*$/)
+        .optional(),
+    })
+    .nullable(),
+});
+export type ReadinessItemView = z.infer<typeof readinessItemSchema>;
+
+/** `GET /brokers/:id/daily-readiness`: lo de la marca y, por red, lo que falta para publicar a diario. */
+export const dailyReadinessResponseSchema = z.object({
+  readiness: z.object({
+    brokerId: z.string(),
+    slug: z.string(),
+    ready: z.boolean(),
+    pending: z.number().int().nonnegative(),
+    brand: z.array(readinessItemSchema),
+    networks: z.array(
+      z.object({
+        platform: z.enum(POST_PLATFORMS),
+        ready: z.boolean(),
+        items: z.array(readinessItemSchema),
+      }),
+    ),
+  }),
+});
+export type DailyReadinessResponse = z.infer<typeof dailyReadinessResponseSchema>;

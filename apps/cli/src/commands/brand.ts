@@ -24,6 +24,7 @@ import type { Command } from "commander";
 import { type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith } from "../context.js";
 import { CliError, guarded, type Io } from "../output.js";
+import { brandWeekCommands } from "./brand-week.js";
 import { brokerSlugOf, fetchBrokers } from "./shared.js";
 
 // F9-T09 (spec F9 §4.3 y §4.10): `agentsales brand show|edit`, el perfil editorial de una marca
@@ -423,4 +424,12 @@ export function register(program: Command, ctx: CliContext): void {
     .option("--remove-cadence <red>", "quita la cadencia de una red (repetible)", collect)
     .option("--hashtags <lista>", "hashtags del perfil, separados por espacio (reemplaza la lista)")
     .action((options: BrandEditOptions) => exitWith(() => runBrandEdit(deps(), options)));
+  brand
+    .command("ready")
+    .description(
+      "La lista para publicar a diario: cuenta, prueba de entrada, modo, worker y topes por red (solo lee)",
+    )
+    .option("--broker <slug>", "la marca (si tienes más de una)")
+    .option("--json", "salida en JSON")
+    .action(brandWeekCommands.ready(ctx));
 }

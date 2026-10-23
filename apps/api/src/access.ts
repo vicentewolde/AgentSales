@@ -98,6 +98,10 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   // suyo), revisados en core; el de otro corredor es 404 (`ownedBy`).
   "GET /brokers/:id/editorial-profile": "session",
   "PUT /brokers/:id/editorial-profile": "session",
+  // F9.5-T27: aprobar la semana (`posts.manage`) y la lista para publicar a diario (`broker.view`).
+  "GET /brokers/:id/week": "session",
+  "POST /brokers/:id/week/approve": "session",
+  "GET /brokers/:id/daily-readiness": "session",
   // F9-T10: los posts y sus medios, con `posts.manage` revisado en core; un corredor ve y gestiona
   // solo los de su marca (lo ajeno es 404: `ownedBy` y core), el administrador todos.
   "GET /posts": "session",

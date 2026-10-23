@@ -32,6 +32,7 @@ import {
 import { ScheduleForm } from "../publications/ScheduleForm.js";
 import { PublicationStatusBadge } from "../StatusBadge.js";
 import { Button } from "../ui/Button.js";
+import { LinkedInAssist } from "./LinkedInAssist.js";
 import { LiveConfirmButton } from "./LiveConfirm.js";
 import { postContents } from "./labels.js";
 import { POST_MEDIA_ANCHOR } from "./media-anchor.js";
@@ -311,10 +312,13 @@ function PublicationRow({
   postId,
   publication,
   publishMode,
+  content,
 }: {
   postId: string;
   publication: PublicationView;
   publishMode: PublishMode | undefined;
+  /** Su texto (el que fijó la publicación), para copiarlo en LinkedIn a mano (F9.5-T27). */
+  content: ContentView | undefined;
 }) {
   const action = usePostPublicationAction(postId);
   const { status } = publication;
@@ -364,6 +368,15 @@ function PublicationRow({
           )}
         </p>
       )}
+      {publication.platform === "tiktok" && (
+        <p className="mt-1 text-xs text-fg-subtle">
+          El video va como borrador a la app de TikTok: lo publicas desde el teléfono y lo confirmas
+          con el enlace. Publicar directo espera la auditoría de TikTok.
+        </p>
+      )}
+      {publication.platform === "linkedin" && status === "awaiting_manual_confirm" && (
+        <LinkedInAssist content={content} />
+      )}
       {(status === "outcome_unknown" || status === "awaiting_manual_confirm") && (
         <OutcomeBox
           publication={publication}
@@ -411,10 +424,13 @@ export function PostPublications({
   postId,
   publications,
   publishMode,
+  contents = [],
 }: {
   postId: string;
   publications: readonly PublicationView[];
   publishMode: PublishMode | undefined;
+  /** Los textos del post: el de cada publicación, para LinkedIn a mano (F9.5-T27). */
+  contents?: readonly ContentView[];
 }) {
   if (publications.length === 0) {
     return <p className="text-sm text-fg-muted">Todavía no tiene publicaciones.</p>;
@@ -427,6 +443,7 @@ export function PostPublications({
           postId={postId}
           publication={publication}
           publishMode={publishMode}
+          content={contents.find((content) => content.id === publication.contentId)}
         />
       ))}
     </ul>

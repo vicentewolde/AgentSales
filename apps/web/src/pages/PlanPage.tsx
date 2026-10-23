@@ -21,6 +21,7 @@ import {
 import { type FormEvent, useId, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { ErrorAlert } from "../components/ErrorAlert.js";
+import { ApproveWeek } from "../components/posts/ApproveWeek.js";
 import { useBrandPlatforms } from "../components/posts/brand-platforms.js";
 import { Examples } from "../components/posts/EditorialProfileForm.js";
 import { addLine, lines } from "../components/posts/editorial-profile-draft.js";
@@ -532,7 +533,8 @@ function PlanView({ detail, brandId }: { detail: PlanDetailResponse; brandId: st
         <>
           <p className="mt-3 rounded-md border border-info-200 bg-info-50 p-3 text-sm text-info-800">
             Una idea no se publica sola: al aceptarla, la IA redacta sus textos; después tú los
-            revisas, apruebas y programas en Contenido.
+            revisas y los apruebas y programas en Contenido, o toda la semana de una vez con
+            «Aprobar la semana».
           </p>
           <DraftAccepted planId={plan.id} ideas={ideas} />
           {ideas.length === 0 && (
@@ -545,6 +547,13 @@ function PlanView({ detail, brandId }: { detail: PlanDetailResponse; brandId: st
               <h3 className="font-semibold">
                 {group.week === null ? "Sin fecha" : planWeekText(group.week)}
               </h3>
+              {/* F9.5-T27: aprobar y programar de una vez lo aceptado de la semana. */}
+              {group.week !== null &&
+                group.items.some((idea) => idea.status === "draft" || idea.status === "ready") && (
+                  <div className="mt-2">
+                    <ApproveWeek brandId={brandId} week={group.week} />
+                  </div>
+                )}
               <ul
                 aria-label={group.week === null ? "Sin fecha" : planWeekText(group.week)}
                 className="mt-2 space-y-2"

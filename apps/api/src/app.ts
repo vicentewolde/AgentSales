@@ -43,6 +43,7 @@ import { type RequestContext, withEventUser, withPostEventUser } from "./request
 import { requestLogger } from "./request-logger.js";
 import { type AccountRoutesDeps, accountRoutes } from "./routes/accounts.js";
 import { authRoutes } from "./routes/auth.js";
+import { brandWeekRoutes } from "./routes/brand-week.js";
 import { brokerRoutes } from "./routes/brokers.js";
 import { contentRoutes, contentRunRoutes, listingContentRoutes } from "./routes/content.js";
 import { editorialProfileRoutes } from "./routes/editorial-profile.js";
@@ -151,11 +152,12 @@ export type AppDeps = {
   planRuns: PlanRunRepository;
   /**
    * Publicaciones (F3-T15): leer las de un aviso y su bitácora, y saber de qué aviso es una antes
-   * del candado. Los cambios de estado van dentro del candado, con sus repositorios.
+   * del candado. Los cambios de estado van dentro del candado, con sus repositorios. El gasto de X
+   * del mes de una cuenta, para la lista para publicar a diario (F9.5-T27).
    */
   publications: Pick<
     PublicationRepository,
-    "get" | "listBySubject" | "listEvents" | "listByStatus" | "listForTracking"
+    "get" | "listBySubject" | "listEvents" | "listByStatus" | "listForTracking" | "sumCostUsdSince"
   >;
   // Cuentas (F3-T13): conectar con el token del panel de Meta o por OAuth, y desconectar.
   platformAccounts: PlatformAccountRepository;
@@ -397,6 +399,11 @@ export function createApp(input: AppDeps) {
     .route("/contents", contentRoutes(contentDeps))
     .route("/brokers", brokerRoutes(deps))
     .route("/brokers", editorialProfileRoutes(deps))
+    // F9.5-T27: aprobar la semana y la lista para publicar a diario de una marca.
+    .route(
+      "/brokers",
+      brandWeekRoutes({ ...deps, workerScheduled: deps.healthDetails?.workerIdleExit ?? null }),
+    )
     .route("/posts", postRoutes(deps))
     .route("/plans", planRoutes(deps))
     .route("/music", musicRoutes(deps))

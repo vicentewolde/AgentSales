@@ -156,6 +156,23 @@ describe("panel: Plan", () => {
     );
   });
 
+  it("una semana con ideas aceptadas ofrece «Aprobar la semana» (F9.5-T27); sin aceptar, no", async () => {
+    const s = await setup();
+    await s.planned(1);
+    const [idea] = await s.ideas();
+    if (idea === undefined) throw new Error("falta la idea");
+    s.signInAsBroker(s.brand.id);
+    s.renderApp("/plan");
+    await screen.findByRole("listitem", { name: idea.topic });
+    expect(screen.queryByRole("button", { name: "Aprobar la semana…" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Aceptar" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Aprobar la semana…" }));
+    expect(await screen.findByRole("region", { name: /^Aprobar la semana del/ })).toBeTruthy();
+    await waitFor(() =>
+      expect(s.requests.some((r) => /^GET \/brokers\/.+\/week\?day=/.test(r))).toBe(true),
+    );
+  });
+
   it("editar una idea: el brief, la fecha y las redes", async () => {
     const s = await setup();
     await s.planned(1);
