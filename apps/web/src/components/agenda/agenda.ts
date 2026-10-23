@@ -10,6 +10,7 @@ import {
   publicationFormatText,
   workerScheduleText,
 } from "@agentsales/core";
+import { confirmedWithoutLink } from "../posts/linkedin.js";
 import type { BadgeTone } from "../ui/styles.js";
 
 // Lo que comparten la agenda de Seguimiento y la portada «Hoy» (F9.5-T03): qué hacer con cada
@@ -29,7 +30,8 @@ export const AGENDA_ACTION_TEXT: Readonly<Record<AgendaAction, string>> = {
   sync: "Usa Actualizar en Contenido para leer su estado",
   // F9-T08 y T17: lo de los posts (en su página de Contenido) y las cuentas.
   resolve: "Revisa la red y di si salió o no desde el post, en Contenido",
-  confirm: "Publícala a mano en la red y confirma con el enlace desde el post, en Contenido",
+  confirm:
+    "Publícala a mano en la red y confírmala desde el post, en Contenido (en LinkedIn el enlace es opcional)",
   reconnect: "Vuelve a conectar la cuenta en Cuentas",
   // F9.5-T24 (ADR-0037): con horario, la próxima revisión lo enciende (el horario sale de core);
   // sin horario, hay que encenderlo.
@@ -98,6 +100,19 @@ export function agendaItemPath(item: AgendaItem): string | null {
 }
 
 /**
+ * Un LinkedIn a mano listo para publicar (F9.5): una tarea a mano de un post que espera tu
+ * confirmación. «Hoy» y la agenda le ponen el botón de un clic en vez de mandarte al post.
+ */
+export const isLinkedInHandTask = (
+  item: AgendaItem,
+): item is AgendaItem & { postId: string; publicationId: string } =>
+  item.kind === "manual_task" &&
+  item.action === "confirm" &&
+  item.platform === "linkedin" &&
+  item.postId !== null &&
+  item.publicationId !== null;
+
+/**
  * «Te toca» en la portada: lo de la agenda que pide una acción. Fuera quedan las próximas (otro
  * bloque) y el respaldo cuando está al día.
  */
@@ -124,6 +139,8 @@ export type RecentPublication = {
   /** El modo de la publicación (una publicada lo tiene fijado: D4 del spec F9.5). */
   dryRun: boolean;
   modeFixed: boolean;
+  /** LinkedIn confirmada a mano sin enlace (F9.5): se dice, y no hay «Ver en LinkedIn». */
+  withoutLink: boolean;
 };
 
 /**
@@ -153,6 +170,12 @@ export function recentPublications(tracking: TrackingResponse, now: Date): Recen
           externalUrl: publication.externalUrl,
           dryRun: publication.dryRun,
           modeFixed: publication.modeFixed,
+          withoutLink: confirmedWithoutLink({
+            platform,
+            status: publication.status,
+            dryRun: publication.dryRun,
+            externalUrl: publication.externalUrl,
+          }),
         });
       }
     }

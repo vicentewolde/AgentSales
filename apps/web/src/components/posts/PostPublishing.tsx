@@ -2,6 +2,7 @@ import type {
   ContentView,
   PlatformAccountView,
   PostJson,
+  PostMediaItem,
   PostScheduleResponse,
   PublicationView,
 } from "@agentsales/api/contracts";
@@ -10,6 +11,7 @@ import {
   formatChileTime,
   LANGUAGE_TEXT,
   PLATFORM_TEXT,
+  type PostKind,
   type PostPlatform,
   type PublishMode,
   postPublishesOn,
@@ -35,6 +37,12 @@ import { Button } from "../ui/Button.js";
 import { LinkedInAssist } from "./LinkedInAssist.js";
 import { LiveConfirmButton } from "./LiveConfirm.js";
 import { postContents } from "./labels.js";
+import {
+  CONFIRMED_WITHOUT_LINK_TEXT,
+  confirmedWithoutLink,
+  type LinkedInDownload,
+  linkedinDownloads,
+} from "./linkedin.js";
 import { GET_IMAGE_ANCHOR, POST_MEDIA_ANCHOR } from "./media-anchor.js";
 
 /**
@@ -317,12 +325,15 @@ function PublicationRow({
   publication,
   publishMode,
   content,
+  downloads,
 }: {
   postId: string;
   publication: PublicationView;
   publishMode: PublishMode | undefined;
   /** Su texto (el que fijó la publicación), para copiarlo en LinkedIn a mano (F9.5-T27). */
   content: ContentView | undefined;
+  /** Los medios ya procesados del post, para bajarlos y ponerlos a mano en LinkedIn. */
+  downloads: readonly LinkedInDownload[];
 }) {
   const action = usePostPublicationAction(postId);
   const { status } = publication;
@@ -363,6 +374,9 @@ function PublicationRow({
             Ver en {PLATFORM_TEXT[publication.platform]}
           </a>
         )}
+        {confirmedWithoutLink(publication) && (
+          <span className="text-fg-muted">· {CONFIRMED_WITHOUT_LINK_TEXT}</span>
+        )}
       </div>
       {publication.lastError !== null && status === "failed" && (
         <p className="mt-2 text-danger-700">
@@ -379,7 +393,7 @@ function PublicationRow({
         </p>
       )}
       {publication.platform === "linkedin" && status === "awaiting_manual_confirm" && (
-        <LinkedInAssist content={content} />
+        <LinkedInAssist content={content} downloads={downloads} />
       )}
       {(status === "outcome_unknown" || status === "awaiting_manual_confirm") && (
         <OutcomeBox
@@ -429,13 +443,19 @@ export function PostPublications({
   publications,
   publishMode,
   contents = [],
+  media = [],
+  postKind = "text",
 }: {
   postId: string;
   publications: readonly PublicationView[];
   publishMode: PublishMode | undefined;
   /** Los textos del post: el de cada publicación, para LinkedIn a mano (F9.5-T27). */
   contents?: readonly ContentView[];
+  /** Los medios del post y su tipo: lo que se baja para ponerlo a mano en LinkedIn. */
+  media?: readonly PostMediaItem[];
+  postKind?: PostKind;
 }) {
+  const downloads = linkedinDownloads(media, postKind);
   if (publications.length === 0) {
     return <p className="text-sm text-fg-muted">Todavía no tiene publicaciones.</p>;
   }
@@ -448,6 +468,7 @@ export function PostPublications({
           publication={publication}
           publishMode={publishMode}
           content={contents.find((content) => content.id === publication.contentId)}
+          downloads={downloads}
         />
       ))}
     </ul>

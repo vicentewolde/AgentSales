@@ -514,7 +514,9 @@ export function renderPostDetail(detail: PostDetailResponse, brandSlug: string, 
 export function withoutSignedUrls(detail: PostDetailResponse) {
   return {
     ...detail,
-    media: detail.media.map(({ url: _url, thumbUrl: _thumbUrl, ...item }) => item),
+    media: detail.media.map(
+      ({ url: _url, thumbUrl: _thumbUrl, downloadUrl: _downloadUrl, ...item }) => item,
+    ),
   };
 }
 

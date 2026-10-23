@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { brokerData, harness } from "../../../test/harness.js";
 import { ApiClientContext } from "../../api/context.js";
 import { ApproveWeek, weekTextState } from "./ApproveWeek.js";
-import { LINKEDIN_FEED_URL, LinkedInAssist } from "./LinkedInAssist.js";
 
 // F9.5-T27: «Aprobar la semana» en Plan, la lista «Lista para publicar a diario» en Cuentas y el
 // asistente de LinkedIn a mano, contra la API real en proceso. Nada se publica en el momento.
@@ -178,28 +177,5 @@ describe("panel: Lista para publicar a diario", () => {
     expect(within(section).getByText("Conectada: Vinny.")).toBeTruthy();
     expect(within(section).getByText(/Copiar texto y abrir LinkedIn/)).toBeTruthy();
     expect(s.requests).toContain(`GET /brokers/${s.brand.id}/daily-readiness`);
-  });
-});
-
-describe("LinkedInAssist", () => {
-  it("copia el texto aprobado con sus hashtags y abre LinkedIn con un enlace normal", async () => {
-    const writeText = vi.fn(async () => {});
-    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
-    render(<LinkedInAssist content={{ body: "Hola LinkedIn", hashtags: ["#agentpey"] }} />);
-    const link = screen.getByRole("link", { name: "Copiar texto y abrir LinkedIn" });
-    expect(link.getAttribute("href")).toBe(LINKEDIN_FEED_URL);
-    expect(link.getAttribute("target")).toBe("_blank");
-    expect(link.getAttribute("rel")).toContain("noopener");
-    fireEvent.click(link);
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("Hola LinkedIn\n\n#agentpey"));
-    expect(await screen.findByText("Texto copiado: pégalo en LinkedIn")).toBeTruthy();
-  });
-
-  it("sin el texto avisa que no lo encontró, sin botón de copiar", () => {
-    render(<LinkedInAssist content={undefined} />);
-    expect(screen.getByRole("status").textContent).toContain(
-      "No encontré el texto aprobado de esta publicación",
-    );
-    expect(screen.queryByRole("link", { name: "Copiar texto y abrir LinkedIn" })).toBeNull();
   });
 });

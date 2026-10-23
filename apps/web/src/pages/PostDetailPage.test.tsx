@@ -348,8 +348,12 @@ describe("panel: detalle de un post", () => {
       within(assist)
         .getByRole("link", { name: "Copiar texto y abrir LinkedIn" })
         .getAttribute("href"),
-    ).toBe("https://www.linkedin.com/feed/");
-    expect(within(waiting).getByRole("button", { name: "Lo publiqué" })).toBeTruthy();
+    ).toBe(
+      `https://www.linkedin.com/feed/?shareActive=true&text=${encodeURIComponent("Texto para LinkedIn")}`,
+    );
+    // El enlace es opcional: «Ya lo publiqué» confirma sin pedirlo.
+    expect(within(waiting).getByLabelText(/Enlace de la publicación \(opcional\)/)).toBeTruthy();
+    expect(within(waiting).getByRole("button", { name: "Ya lo publiqué" })).toBeTruthy();
   });
 
   it("sube un medio con avance a R2 y lo muestra procesando hasta que el worker arme sus variantes", async () => {
@@ -559,5 +563,101 @@ describe("panel: un post sin imágenes (F9.5-T21)", () => {
       within(problems).getByText(/^Error · Discord · español: El texto tiene 2100/),
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Aprobar" }).hasAttribute("disabled")).toBe(true);
+  });
+});
+
+// LinkedIn a mano al mínimo trabajo (F9.5): el editor con el texto puesto, los medios para bajar,
+// «Ya lo publiqué» sin pedir el enlace y la fila «LinkedIn: publica a mano» en «Hoy».
+describe("LinkedIn a mano al mínimo trabajo (F9.5)", () => {
+  /** Un texto aprobado de LinkedIn y su publicación esperando la confirmación (en vivo o no). */
+  async function linkedinWaiting(s: Awaited<ReturnType<typeof setup>>, dryRun: boolean) {
+    await s.platformAccounts.upsertConnected({
+      brokerId: s.brand.id,
+      platform: "linkedin",
+      externalAccountId: "perfil-1",
+      displayName: "Vinny",
+      tokenExpiresAt: null,
+      meta: { mode: "manual" },
+      credentials: { accessToken: "token-de-prueba" },
+    });
+    await s.draft([{ platform: "linkedin", language: "es", body: "Texto para LinkedIn" }]);
+    await s.client.posts[":id"].contents[":platform"][":language"].approve.$post({
+      param: { id: s.post.id, platform: "linkedin", language: "es" },
+    });
+    const [publication] = await s.deps.publications.listBySubject({ kind: "post", id: s.post.id });
+    if (publication === undefined) throw new Error("sin publicación");
+    await s.deps.postLock.run(s.post.id, async ({ publications }) => {
+      await publications.transition(
+        publication.id,
+        { from: "approved", to: "publishing", changes: { dryRun } },
+        { actor: "system" },
+      );
+      await publications.transition(
+        publication.id,
+        { from: "publishing", to: "awaiting_manual_confirm" },
+        { actor: "system" },
+      );
+    });
+    return publication;
+  }
+
+  it("«Ya lo publiqué» sin enlace confirma en vivo y queda «Confirmada a mano, sin enlace»", async () => {
+    const s = await setup();
+    const publication = await linkedinWaiting(s, false);
+    await s.open();
+    const list = screen.getByRole("region", { name: "Publicaciones" });
+    fireEvent.click(await within(list).findByRole("button", { name: "Ya lo publiqué" }));
+    await waitFor(() =>
+      expect(s.requests).toContain(`POST /publications/${publication.id}/confirm`),
+    );
+    expect(await within(list).findByText("publicada")).toBeTruthy();
+    expect(within(list).getByText(/Confirmada a mano, sin enlace/)).toBeTruthy();
+    expect(within(list).queryByRole("link", { name: /Ver en LinkedIn/ })).toBeNull();
+    const confirmed = await s.deps.publications.get(publication.id);
+    expect(confirmed).toMatchObject({
+      status: "published",
+      externalUrl: null,
+      externalId: `manual:${publication.id}`,
+    });
+  });
+
+  it("con el enlace pegado se guarda el enlace, no «sin enlace»", async () => {
+    const s = await setup();
+    const publication = await linkedinWaiting(s, false);
+    await s.open();
+    const list = screen.getByRole("region", { name: "Publicaciones" });
+    fireEvent.change(await within(list).findByLabelText(/Enlace de la publicación/), {
+      target: { value: "https://www.linkedin.com/feed/update/urn:li:share:7380000000000000000/" },
+    });
+    fireEvent.click(within(list).getByRole("button", { name: "Ya lo publiqué" }));
+    expect(await within(list).findByRole("link", { name: /Ver en LinkedIn/ })).toBeTruthy();
+    expect(within(list).queryByText(/Confirmada a mano, sin enlace/)).toBeNull();
+    expect((await s.deps.publications.get(publication.id))?.externalId).toBe(
+      "urn:li:share:7380000000000000000",
+    );
+  });
+
+  it("en «Hoy»: la fila «LinkedIn: publica a mano» con el botón de un clic y «Ya lo publiqué», sin entrar al post", async () => {
+    const s = await setup();
+    const publication = await linkedinWaiting(s, true);
+    s.renderApp("/");
+    const todo = await screen.findByRole("region", { name: "Te toca" });
+    expect(
+      await within(todo).findByText("LinkedIn: publica a mano", { selector: "span" }),
+    ).toBeTruthy();
+    const row = await within(todo).findByRole("region", { name: "LinkedIn: publica a mano" });
+    const open = within(row).getByRole("link", { name: "Copiar texto y abrir LinkedIn" });
+    expect(open.getAttribute("href")).toBe(
+      `https://www.linkedin.com/feed/?shareActive=true&text=${encodeURIComponent("Texto para LinkedIn")}`,
+    );
+    expect(open.getAttribute("target")).toBe("_blank");
+    fireEvent.click(within(row).getByRole("button", { name: "Ya lo publiqué" }));
+    await waitFor(() =>
+      expect(s.requests).toContain(`POST /publications/${publication.id}/confirm`),
+    );
+    await waitFor(() =>
+      expect(within(todo).queryByRole("region", { name: "LinkedIn: publica a mano" })).toBeNull(),
+    );
+    expect((await s.deps.publications.get(publication.id))?.status).toBe("published");
   });
 });

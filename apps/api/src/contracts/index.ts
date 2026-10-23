@@ -658,15 +658,24 @@ export const MARKETPLACE_URL_MAX_LENGTH = 2048;
 /**
  * `POST /publications/:id/confirm` (spec F5 §4.3): el enlace del aviso publicado en Marketplace,
  * obligatorio en vivo (en simulación se ignora). Nunca vuelve en un error ni va al log.
+ * `withoutUrl: true` (F9.5, LinkedIn al mínimo trabajo) confirma **sin enlace**: solo para las redes
+ * de `confirmsWithoutUrl` (hoy LinkedIn), y no a la vez que `url`. Sin enlace no se puede abrir el
+ * post desde Seguimiento.
  */
-export const publicationConfirmBodySchema = z.object({
-  url: z
-    .string()
-    .trim()
-    .min(1, "falta el enlace")
-    .max(MARKETPLACE_URL_MAX_LENGTH, "el enlace es demasiado largo")
-    .optional(),
-});
+export const publicationConfirmBodySchema = z
+  .object({
+    url: z
+      .string()
+      .trim()
+      .min(1, "falta el enlace")
+      .max(MARKETPLACE_URL_MAX_LENGTH, "el enlace es demasiado largo")
+      .optional(),
+    withoutUrl: z.boolean().optional(),
+  })
+  .refine(({ url, withoutUrl }) => !(withoutUrl === true && url !== undefined), {
+    message: "Elige una: pegar el enlace o confirmar sin enlace",
+    path: ["withoutUrl"],
+  });
 export type PublicationConfirmBody = z.infer<typeof publicationConfirmBodySchema>;
 
 /** `changed: false`: ya estaba publicada con ese enlace (confirmar dos veces no cambia nada). */
@@ -1626,6 +1635,12 @@ export type UpdatePostBody = z.infer<typeof updatePostBodySchema>;
  */
 export const postMediaItemSchema = mediaItemSchema.extend({
   variants: z.array(z.enum(PROCESSED_MEDIA_VARIANTS)),
+  /**
+   * La URL de lectura temporal del medio ya procesado que las redes reciben (una foto, su `ig_4x5`;
+   * un video, su `ig_reel`): lo que el operador baja para ponerlo a mano en LinkedIn (F9.5). `null`
+   * hasta que se procesa y en un servidor anterior. Nunca va a la CLI ni a los logs.
+   */
+  downloadUrl: z.string().nullable().default(null),
 });
 export type PostMediaItem = z.infer<typeof postMediaItemSchema>;
 

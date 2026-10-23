@@ -38,6 +38,8 @@ function publicationCommands(item: Item): string[] | null {
     case "confirm":
       return [
         `pbpaste | agentsales publications confirm ${id} --url-stdin`,
+        // LinkedIn a mano se puede confirmar sin enlace (F9.5).
+        ...(item.platform === "linkedin" ? [`agentsales publications confirm ${id} --no-url`] : []),
         `agentsales publications not-published ${id}`,
       ];
     default:

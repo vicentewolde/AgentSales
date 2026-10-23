@@ -279,6 +279,7 @@ describe("post de punta a punta", () => {
     for (const item of parsed.media) {
       expect(item).not.toHaveProperty("url");
       expect(item).not.toHaveProperty("thumbUrl");
+      expect(item).not.toHaveProperty("downloadUrl");
       expect(item).toHaveProperty("variants");
     }
 
@@ -485,6 +486,23 @@ describe("publications resolve, retry, confirm y not-published con posts", () =>
     await runRetryPublication(s.deps(), publication.id);
     await s.move(post.id, publication.id, ["awaiting_manual_confirm"]);
     expect(await runConfirmPublication(s.deps(), publication.id)).toBe(0);
+    expect(s.publicationsOf(post.id)[0]?.status).toBe("published");
+  });
+
+  it("confirm --no-url confirma sin enlace; con --url-stdin a la vez no vale y no cambia nada (F9.5)", async () => {
+    const s = await setup();
+    const { post, publication } = await approvedPost(s);
+    await s.move(post.id, publication.id, ["publishing", "awaiting_manual_confirm"]);
+    s.setStdin("https://www.linkedin.com/feed/update/urn:li:share:1/");
+    expect(
+      await runConfirmPublication(s.deps(), publication.id, { urlStdin: true, url: false }),
+    ).toBe(1);
+    expect(s.h.errors()).toContain("CONFIRM_OPTIONS_CONFLICT");
+    expect(s.h.errors()).not.toContain("urn:li:share");
+    expect(s.publicationsOf(post.id)[0]?.status).toBe("awaiting_manual_confirm");
+
+    s.setStdin(null);
+    expect(await runConfirmPublication(s.deps(), publication.id, { url: false })).toBe(0);
     expect(s.publicationsOf(post.id)[0]?.status).toBe("published");
   });
 

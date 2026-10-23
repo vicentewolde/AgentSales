@@ -169,6 +169,8 @@ export function postRoutes(deps: PostRoutesDeps) {
     const all = await deps.media.listBySubject(postSubject(postId));
     const variants = new Map<string, ProcessedMediaVariant[]>();
     const thumbs = new Map<string, string>();
+    // Lo que reciben las redes: la foto `ig_4x5` y el video `ig_reel` (para bajarlos a mano).
+    const downloads = new Map<string, string>();
     for (const item of all) {
       // Solo las variantes de un original (un render no tiene padre ni es de un post).
       const variant = PROCESSED_MEDIA_VARIANTS.find((known) => known === item.variant);
@@ -178,6 +180,9 @@ export function postRoutes(deps: PostRoutesDeps) {
       list.push(variant);
       variants.set(item.parentMediaId, list);
       if (item.variant === "thumb") thumbs.set(item.parentMediaId, item.storagePath);
+      if (item.variant === "ig_4x5" || item.variant === "ig_reel") {
+        downloads.set(item.parentMediaId, item.storagePath);
+      }
     }
     return Promise.all(
       all
@@ -185,6 +190,7 @@ export function postRoutes(deps: PostRoutesDeps) {
         .sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id))
         .map(async (item) => {
           const thumb = thumbs.get(item.id);
+          const download = downloads.get(item.id);
           return {
             id: item.id,
             kind: item.kind,
@@ -194,6 +200,7 @@ export function postRoutes(deps: PostRoutesDeps) {
             isCover: item.isCover,
             url: await deps.storage.signedReadUrl(item.storagePath),
             thumbUrl: thumb === undefined ? null : await deps.storage.signedReadUrl(thumb),
+            downloadUrl: download === undefined ? null : await deps.storage.signedReadUrl(download),
             width: item.width,
             height: item.height,
             durationS: item.durationS,

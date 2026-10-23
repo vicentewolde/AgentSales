@@ -313,7 +313,11 @@ export function runRetirePublication(
   });
 }
 
-export type ConfirmOptions = { urlStdin?: boolean };
+/**
+ * `url` es el `--no-url` de commander: `false` si se pasó (confirmar sin enlace, LinkedIn); sin la
+ * opción, no llega o es `true`.
+ */
+export type ConfirmOptions = { urlStdin?: boolean; url?: boolean };
 
 /** Los errores de confirmar y de "no lo publiqué", con qué hacer en la CLI. */
 function explainedManual(error: unknown, publicationId: string): unknown {
@@ -323,6 +327,7 @@ function explainedManual(error: unknown, publicationId: string): unknown {
   const hints: Record<string, string> = {
     MARKETPLACE_URL_REQUIRED: `Copia el enlace del aviso desde la barra del navegador y corre: ${commands.confirm}`,
     MARKETPLACE_URL_INVALID: `Copia el enlace desde la barra, con el aviso abierto en Facebook, y corre: ${commands.confirm}`,
+    PUBLISHED_URL_REQUIRED: `Copia el enlace de la publicación y corre: ${commands.confirm} (en LinkedIn también puedes confirmar sin enlace: agentsales publications confirm ${publicationId} --no-url)`,
     PUBLICATION_ALREADY_CONFIRMED:
       "Mira el enlace guardado con agentsales publications <propiedad>",
     INVALID_TRANSITION: "Mira su estado con agentsales publications <propiedad>",
@@ -373,11 +378,19 @@ export function runConfirmPublication(deps: ConfirmDeps, id: string, options: Co
   return guarded(deps, async () => {
     const publicationId = publicationIdOf(id);
     const pipe = manualConfirmCommands(publicationId).confirm;
+    const withoutUrl = options.url === false;
+    if (withoutUrl && options.urlStdin) {
+      throw new CliError(
+        "CONFIRM_OPTIONS_CONFLICT",
+        "Elige una: --url-stdin (con el enlace) o --no-url (sin enlace)",
+        pipe,
+      );
+    }
     const url = options.urlStdin ? await urlFromStdin(deps, pipe) : undefined;
     const { publication, changed } = await unwrap(
       deps.client.publications[":id"].confirm.$post({
         param: { id: publicationId },
-        json: url === undefined ? {} : { url },
+        json: url !== undefined ? { url } : withoutUrl ? { withoutUrl: true } : {},
       }),
       publicationConfirmResponseSchema,
     ).catch((error: unknown) => {
@@ -390,6 +403,12 @@ export function runConfirmPublication(deps: ConfirmDeps, id: string, options: Co
     );
     if (publication.dryRun) {
       deps.print(c.dim("  Simulación: no se publicó nada en Facebook"));
+    } else if (withoutUrl) {
+      deps.print(
+        c.dim(
+          "  Confirmada a mano, sin enlace: no se podrá abrir desde Seguimiento (queda anotada)",
+        ),
+      );
     }
     return 0;
   });
@@ -879,10 +898,14 @@ export function register(program: Command, ctx: CliContext): void {
   publications
     .command("confirm")
     .description(
-      "Marketplace o una red a mano: lo publicaste (pega el enlace: pbpaste | … --url-stdin; no se imprime)",
+      "Marketplace o una red a mano: lo publicaste (pega el enlace: pbpaste | … --url-stdin; no se imprime; LinkedIn también --no-url)",
     )
     .argument("<id>", "id de la publicación (agentsales publications <propiedad>)")
     .option("--url-stdin", "lee el enlace del aviso desde la entrada estándar (pbpaste | …)")
+    .option(
+      "--no-url",
+      "LinkedIn: confirma sin enlace (sin él no se abre el post desde Seguimiento)",
+    )
     .action((id: string, options: ConfirmOptions) =>
       exitWith(() => runConfirmPublication(deps(), id, options)),
     );

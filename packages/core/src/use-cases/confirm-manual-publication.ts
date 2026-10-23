@@ -16,6 +16,24 @@ export type ManualPublicationDeps = SubjectLocks & {
 /** Lo que devuelve confirmar: la publicación y si se cambió ahora (`false` = ya estaba así). */
 export type ConfirmManualPublicationResult = { publication: Publication; changed: boolean };
 
+/**
+ * Las redes cuya publicación a mano se puede confirmar **sin enlace** (F9.5, «LinkedIn al mínimo
+ * trabajo»): solo LinkedIn. Sin enlace no se puede abrir el post desde Seguimiento ni leer su id;
+ * las demás (Marketplace, Portal, TikTok…) lo necesitan para identificar lo publicado.
+ */
+export const CONFIRM_WITHOUT_URL_PLATFORMS: readonly Platform[] = ["linkedin"];
+
+/** Si la red deja confirmar a mano sin pegar el enlace (`withoutUrl`). */
+export const confirmsWithoutUrl = (platform: Platform): boolean =>
+  CONFIRM_WITHOUT_URL_PLATFORMS.includes(platform);
+
+/**
+ * El `external_id` de lo confirmado a mano sin enlace: no hay id en la red, así que se guarda uno
+ * propio (`manual:<id de la publicación>`), distinto del URN real y del simulado (`dry-run:`).
+ * Con él `external_url` queda en `null`.
+ */
+export const manualExternalId = (publicationId: string) => `manual:${publicationId}`;
+
 const urlRequired = (publicationId: string, platform: Platform) =>
   platform === "fb_marketplace"
     ? new AppError(
@@ -25,7 +43,9 @@ const urlRequired = (publicationId: string, platform: Platform) =>
       )
     : new AppError(
         "PUBLISHED_URL_REQUIRED",
-        "Pega el enlace de la publicación (empieza con https://)",
+        confirmsWithoutUrl(platform)
+          ? "Pega el enlace de la publicación (empieza con https://) o confirma sin enlace"
+          : "Pega el enlace de la publicación (empieza con https://)",
         { details: { publicationId } },
       );
 
@@ -54,17 +74,36 @@ const notWaiting = (publication: Publication, to: "published" | "failed") => {
  *   `PUBLISHED_URL_REQUIRED` en las demás) y se normaliza (`parsePublishedUrl`): en Marketplace,
  *   `external_id` = el número del aviso; en las demás, el enlace limpio. Un aviso pasa de `ready` a
  *   `active`; un post nunca (ADR-0029 punto 4).
+ * - En LinkedIn, `withoutUrl: true` confirma **sin enlace** (F9.5): `external_id = manual:<id>`,
+ *   `external_url = null`, y la bitácora lo anota (`withoutUrl`). Es opcional y explícito: sin enlace
+ *   y sin `withoutUrl`, en vivo sigue siendo `PUBLISHED_URL_REQUIRED`; en las demás redes no existe
+ *   (`PUBLISHED_URL_REQUIRED`); con enlace y `withoutUrl` a la vez, `PUBLISHED_URL_INVALID`.
  * - En `dry-run`, un enlace se ignora: `external_id = dry-run:<id>`, sin enlace.
  * - Ya publicada: con el mismo enlace (o en `dry-run`), no cambia nada (`changed: false`); con otro,
- *   `PUBLICATION_ALREADY_CONFIRMED` (409). En otro estado, `INVALID_TRANSITION`.
+ *   `PUBLICATION_ALREADY_CONFIRMED` (409); `withoutUrl` sobre una ya confirmada sin enlace tampoco
+ *   cambia nada. En otro estado, `INVALID_TRANSITION`.
  * Un post sin `postLock` en las dependencias es `SUBJECT_NOT_LISTING` (`runOnSubject`).
  */
 export async function confirmManualPublication(
   deps: ManualPublicationDeps,
-  { publicationId, url, actor }: { publicationId: string; url?: string; actor: PublicationActor },
+  {
+    publicationId,
+    url,
+    withoutUrl = false,
+    actor,
+  }: { publicationId: string; url?: string; withoutUrl?: boolean; actor: PublicationActor },
 ): Promise<ConfirmManualPublicationResult> {
   const found = await deps.publications.get(publicationId);
   if (found === null) throw publicationNotFound(publicationId);
+  if (withoutUrl && url !== undefined) {
+    throw new AppError(
+      "PUBLISHED_URL_INVALID",
+      "Elige una: pegar el enlace o confirmar sin enlace",
+      { details: { publicationId } },
+    );
+  }
+  // Sin enlace solo donde la red lo permite; en las demás, es como no haberlo pegado.
+  const skipUrl = withoutUrl && confirmsWithoutUrl(found.platform);
   const now = deps.now ?? (() => new Date());
   // El enlace se revisa antes del candado: un enlace malo no toca nada.
   const item = found.dryRun || url === undefined ? null : parsePublishedUrl(found.platform, url);
@@ -77,7 +116,10 @@ export async function confirmManualPublication(
       if (!live || (item !== null && item.externalId === publication.externalId)) {
         return { publication, changed: false };
       }
-      if (item === null) throw urlRequired(publicationId, publication.platform);
+      if (skipUrl && publication.externalId === manualExternalId(publicationId)) {
+        return { publication, changed: false };
+      }
+      if (item === null && !skipUrl) throw urlRequired(publicationId, publication.platform);
       throw new AppError(
         "PUBLICATION_ALREADY_CONFIRMED",
         "Esta publicación ya se confirmó con otro enlace",
@@ -86,14 +128,18 @@ export async function confirmManualPublication(
     }
     if (publication.status !== "awaiting_manual_confirm")
       throw notWaiting(publication, "published");
-    if (live && item === null) throw urlRequired(publicationId, publication.platform);
+    if (live && item === null && !skipUrl) throw urlRequired(publicationId, publication.platform);
+    // Confirmada a mano sin enlace (solo en vivo): un id propio y ningún enlace.
+    const withoutLink = live && item === null && skipUrl;
     const published = await locked.repos.publications.transition(
       publicationId,
       {
         from: "awaiting_manual_confirm",
         to: "published",
         changes: {
-          externalId: item?.externalId ?? dryRunExternalId(publicationId),
+          externalId: withoutLink
+            ? manualExternalId(publicationId)
+            : (item?.externalId ?? dryRunExternalId(publicationId)),
           externalUrl: item?.url ?? null,
           publishedAt: now(),
           lastError: null,
@@ -104,6 +150,7 @@ export async function confirmManualPublication(
         payload: {
           mode: modeOf(publication.dryRun),
           confirmedBy: actor === "system" ? "window" : "operator",
+          ...(withoutLink ? { withoutUrl: true } : {}),
         },
       },
     );

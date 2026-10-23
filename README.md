@@ -124,7 +124,7 @@ pnpm -s cli plan --broker <slug> [--days 14]                 # la IA propone ide
 pnpm -s cli post accept|discard <id>                         # aceptar una idea redacta sus textos (accept --wait los espera)
 pnpm -s cli post create|list|show|upload|draft|edit|approve|publish|schedule|archive
 pnpm -s cli publications resolve <id> --published|--not-published   # "no se sabe si salió"
-pbpaste | pnpm -s cli publications confirm <id> --url-stdin  # LinkedIn a mano o TikTok: lo publicaste
+pbpaste | pnpm -s cli publications confirm <id> --url-stdin  # LinkedIn a mano o TikTok: lo publicaste (LinkedIn también con --no-url, sin enlace)
 pnpm eval:social                                             # evalúa el plan y los textos sin la base (--provider fake no gasta)
 ```
 En el panel: **Contenido** (posts, textos por red e idioma, medios, aprobar, programar, resolver y confirmar), **Plan** (las ideas por semana) y **Calendario** (lo programado de posts y propiedades); el perfil editorial, en **Mi marca**.

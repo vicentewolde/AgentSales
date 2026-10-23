@@ -15,6 +15,7 @@ import {
   type AgendaItem,
   agendaItemPath,
   agendaItemWhen,
+  isLinkedInHandTask,
   needsAction,
   platformWithFormat,
   RECENT_DAYS,
@@ -24,6 +25,8 @@ import {
 } from "../components/agenda/agenda.js";
 import { daySummary, greetingLine, todayText } from "../components/agenda/today.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
+import { LinkedInHandTask } from "../components/posts/LinkedInHandTask.js";
+import { CONFIRMED_WITHOUT_LINK_TEXT } from "../components/posts/linkedin.js";
 import { PublicationMode } from "../components/publications/PublicationMode.js";
 import { safeExternalUrl } from "../components/publications/publications.js";
 import { Badge } from "../components/ui/Badge.js";
@@ -126,11 +129,15 @@ function TodoEntry({ item, covers }: { item: AgendaItem; covers: Covers }) {
       : agendaItemWhen(item);
   const path = agendaItemPath(item);
   const cover = path === null ? undefined : covers.get(path);
+  // LinkedIn a mano (F9.5): la fila «LinkedIn: publica a mano» con el botón de un clic.
+  const linkedin = isLinkedInHandTask(item);
   return (
     <li className="flex gap-4 rounded-2xl bg-surface p-4 shadow-md">
       <Thumb src={cover} icon={itemIcon(item)} size="md" />
       <div className="flex min-w-0 flex-1 flex-col items-start gap-1.5">
-        <Badge tone={AGENDA_KIND_TONE[item.kind]}>{AGENDA_KIND_TEXT[item.kind]}</Badge>
+        <Badge tone={AGENDA_KIND_TONE[item.kind]}>
+          {linkedin ? "LinkedIn: publica a mano" : AGENDA_KIND_TEXT[item.kind]}
+        </Badge>
         <div className="min-w-0">
           <ItemTitle item={item} />
           <Details parts={[itemChannel(item), when]} />
@@ -142,12 +149,13 @@ function TodoEntry({ item, covers }: { item: AgendaItem; covers: Covers }) {
               <span className="block text-sm text-danger-700">Error: {item.code}</span>
             )
           )}
-          {item.action !== "none" && (
+          {item.action !== "none" && !linkedin && (
             <span className="block text-xs font-medium text-brand-800">
               {AGENDA_ACTION_TEXT[item.action]}
             </span>
           )}
         </div>
+        {linkedin && <LinkedInHandTask postId={item.postId} publicationId={item.publicationId} />}
       </div>
     </li>
   );
@@ -214,6 +222,9 @@ function RecentEntry({
         <span className="mt-1.5 mr-3 inline-flex align-middle">
           <Badge tone="success">Publicada</Badge>
         </span>
+        {publication.withoutLink && (
+          <span className="mr-3 text-sm text-fg-subtle">{CONFIRMED_WITHOUT_LINK_TEXT}</span>
+        )}
         {url !== null && (
           <a
             href={url}

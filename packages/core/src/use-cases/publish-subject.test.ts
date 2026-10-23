@@ -10,7 +10,12 @@ import {
   POST_SCENARIO_TOKEN,
 } from "../testing/index.js";
 import { cancelPublication } from "./cancel-publication.js";
-import { confirmManualPublication, markNotPublished } from "./confirm-manual-publication.js";
+import {
+  confirmManualPublication,
+  confirmsWithoutUrl,
+  manualExternalId,
+  markNotPublished,
+} from "./confirm-manual-publication.js";
 import { publishListing } from "./publish-listing.js";
 import { publishPublication } from "./publish-publication.js";
 import { resolvePublication } from "./resolve-publication.js";
@@ -549,6 +554,76 @@ describe("traspaso a mano por cuenta (ADR-0029 punto 9)", () => {
     ).resolves.toMatchObject({ changed: false });
   });
 
+  it("LinkedIn se confirma sin enlace: publicada a mano, con id propio, sin enlace y con la nota en la bitácora", async () => {
+    const t = await manualLinkedIn();
+    const publication = await t.toPublishing(t.publicationOf("linkedin"));
+    await publishPublication(t.publishDeps({}), {
+      publicationId: publication.id,
+      isLastAttempt: false,
+    });
+
+    const confirmed = await confirmManualPublication(
+      { ...t.subjectDeps, now: () => NOW },
+      { publicationId: publication.id, withoutUrl: true, actor: "operator" },
+    );
+    expect(confirmed).toMatchObject({
+      changed: true,
+      publication: {
+        status: "published",
+        externalUrl: null,
+        externalId: manualExternalId(publication.id),
+        publishedAt: NOW,
+      },
+    });
+    expect(t.postLock.busy()).toEqual([]);
+    // Dos veces lo mismo no cambia nada; con un enlace después, es otra confirmación (409).
+    await expect(
+      confirmManualPublication(t.subjectDeps, {
+        publicationId: publication.id,
+        withoutUrl: true,
+        actor: "cli",
+      }),
+    ).resolves.toMatchObject({ changed: false });
+    expect(
+      await codeOf(
+        confirmManualPublication(t.subjectDeps, {
+          publicationId: publication.id,
+          url: "https://www.linkedin.com/feed/update/urn:li:share:7380000000000000000/",
+          actor: "cli",
+        }),
+      ),
+    ).toBe("PUBLICATION_ALREADY_CONFIRMED");
+  });
+
+  it("sin enlace y sin withoutUrl sigue pidiendo el enlace; enlace y withoutUrl a la vez no valen", async () => {
+    const t = await manualLinkedIn();
+    const publication = await t.toPublishing(t.publicationOf("linkedin"));
+    await publishPublication(t.publishDeps({}), {
+      publicationId: publication.id,
+      isLastAttempt: false,
+    });
+    expect(
+      await codeOf(
+        confirmManualPublication(t.subjectDeps, {
+          publicationId: publication.id,
+          withoutUrl: false,
+          actor: "operator",
+        }),
+      ),
+    ).toBe("PUBLISHED_URL_REQUIRED");
+    expect(
+      await codeOf(
+        confirmManualPublication(t.subjectDeps, {
+          publicationId: publication.id,
+          url: "https://www.linkedin.com/feed/update/urn:li:share:7380000000000000000/",
+          withoutUrl: true,
+          actor: "operator",
+        }),
+      ),
+    ).toBe("PUBLISHED_URL_INVALID");
+    expect(t.current(publication.id)?.status).toBe("awaiting_manual_confirm");
+  });
+
   it("«no lo publiqué»: failed con MANUAL_NOT_PUBLISHED", async () => {
     const t = await manualLinkedIn();
     const publication = await t.toPublishing(t.publicationOf("linkedin"));
@@ -559,6 +634,19 @@ describe("traspaso a mano por cuenta (ADR-0029 punto 9)", () => {
     await expect(
       markNotPublished(t.subjectDeps, { publicationId: publication.id, actor: "operator" }),
     ).resolves.toMatchObject({ status: "failed", lastError: { code: "MANUAL_NOT_PUBLISHED" } });
+  });
+
+  it("solo LinkedIn se confirma sin enlace: las demás redes lo necesitan para identificar lo publicado", () => {
+    expect(confirmsWithoutUrl("linkedin")).toBe(true);
+    for (const platform of [
+      "fb_marketplace",
+      "portal_inmobiliario",
+      "tiktok",
+      "x",
+      "discord",
+    ] as const) {
+      expect(confirmsWithoutUrl(platform)).toBe(false);
+    }
   });
 
   it("sin el candado del post, confirmar un post es SUBJECT_NOT_LISTING sin cambiar nada", async () => {

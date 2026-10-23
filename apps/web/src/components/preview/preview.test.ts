@@ -11,6 +11,7 @@ const item = (id: string, kind: "image" | "video"): PostMediaItem => ({
   isCover: false,
   url: `https://r2.example/${id}`,
   thumbUrl: `https://r2.example/${id}-thumb.jpg`,
+  downloadUrl: null,
   width: null,
   height: null,
   durationS: null,

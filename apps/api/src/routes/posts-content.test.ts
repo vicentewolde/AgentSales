@@ -536,6 +536,29 @@ describe("publicar y programar un post", () => {
       "published",
     );
   });
+
+  it("enlace y withoutUrl a la vez es 400; withoutUrl solo vale (en simulación se ignora)", async () => {
+    const s = await approvedPost();
+    const [publication] = await s.deps.publications.listBySubject({
+      kind: "post",
+      id: s.post.id,
+    });
+    const id = publication?.id ?? "";
+    await s.move(s.post.id, id, ["publishing", "awaiting_manual_confirm"]);
+    const both = await s.broker(`/publications/${id}/confirm`, {
+      method: "POST",
+      json: { url: "https://www.linkedin.com/feed/update/urn:li:share:1/", withoutUrl: true },
+    });
+    expect(both.status).toBe(400);
+    const alone = await s.broker(`/publications/${id}/confirm`, {
+      method: "POST",
+      json: { withoutUrl: true },
+    });
+    expect(alone.status).toBe(200);
+    expect(publicationConfirmResponseSchema.parse(await alone.json()).publication.status).toBe(
+      "published",
+    );
+  });
 });
 
 describe("permisos de las rutas nuevas (ADR-0022, `posts.manage`)", () => {
