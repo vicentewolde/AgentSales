@@ -7,6 +7,7 @@ import {
   cardSource,
   cardSourceText,
   cardText,
+  coverFromText,
   describeCardPlan,
   POST_CARDS,
   postCardDeck,
@@ -258,5 +259,77 @@ describe("postCardPlan: el caso de las 10 tarjetas", () => {
     // Sin redes fijadas (null), solo cuentan las que tienen texto: aquí, solo Discord.
     const open = postCardPlan(post("carousel"), [text("discord", points(6, "Discord"))], BRAND);
     expect(open.cards).toHaveLength(8);
+  });
+});
+
+describe("tarjetas de un idioma: la portada y los puntos salen del texto de ese idioma", () => {
+  const bilingual = [
+    text(
+      "x",
+      "Fijar el precio es difícil. Estas son tres claves.\n- Mira el mercado\n- Revisa los gastos",
+      "es",
+    ),
+    text("x", "Pricing is hard. Here are three keys.\n- Check the market\n- Review costs", "en"),
+  ];
+  const carousel = post("carousel", ["x"]);
+
+  it("coverFromText: su primera oración, sin punto final, emojis ni hashtags, y el resto del texto", () => {
+    expect(coverFromText("🏡 Fijar el precio es difícil. Y mucho.\n- Uno primero #casa")).toEqual({
+      cover: "Fijar el precio es difícil",
+      rest: "Y mucho.\n- Uno primero #casa",
+    });
+    // Sin primera oración que sirva (empieza con una viñeta o está vacío): no hay título.
+    expect(coverFromText("- Uno primero\n- Dos después")).toBeNull();
+    expect(coverFromText("  \n ")).toBeNull();
+  });
+
+  it("en español: portada y puntos en español, aunque el tema esté en otro idioma", () => {
+    const plan = postCardPlan({ ...carousel, topic: "How to set a price" }, bilingual, BRAND, {
+      language: "es",
+    });
+    expect(plan.cards.map((card) => [card.role, card.text])).toEqual([
+      ["cover", "Fijar el precio es difícil"],
+      ["point", "Mira el mercado"],
+      ["point", "Revisa los gastos"],
+      ["closing", "AgentPey"],
+    ]);
+    expect(plan.source).toEqual({ platform: "x", language: "es" });
+  });
+
+  it("en inglés: todo sale del texto en inglés, sin mezclar", () => {
+    const plan = postCardPlan(carousel, bilingual, BRAND, { language: "en" });
+    expect(plan.cards.map((card) => card.text)).toEqual([
+      "Pricing is hard",
+      "Check the market",
+      "Review costs",
+      "AgentPey",
+    ]);
+    expect(describeCardPlan(plan, "carousel")).toContain("del texto en inglés");
+  });
+
+  it("si el idioma pedido no tiene texto, no usa el de otro: portada con el tema y sin puntos", () => {
+    const plan = postCardPlan(carousel, [bilingual[0] as (typeof bilingual)[number]], BRAND, {
+      language: "en",
+    });
+    expect(plan.cards.map((card) => [card.role, card.text])).toEqual([
+      ["cover", "Cómo fijar el precio"],
+      ["closing", "AgentPey"],
+    ]);
+    expect(plan.source).toBeNull();
+  });
+
+  it("una imagen sola lleva la primera frase del texto de su idioma", () => {
+    const plan = postCardPlan(post("image", ["x"]), bilingual, BRAND, { language: "en" });
+    expect(plan.cards).toEqual([
+      { role: "cover", text: "Pricing is hard", detail: null, position: 1, total: 1 },
+    ]);
+    expect(describeCardPlan(plan, "image")).toBe(
+      "1 tarjeta con la primera frase del texto en inglés.",
+    );
+  });
+
+  it("sin idioma (un pedido anterior), la portada sigue siendo el tema", () => {
+    const plan = postCardPlan(carousel, bilingual, BRAND);
+    expect(plan.cards[0]?.text).toBe("Cómo fijar el precio");
   });
 });

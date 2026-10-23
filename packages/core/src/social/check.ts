@@ -7,10 +7,11 @@ import {
 } from "../content/check.js";
 import { CAROUSEL_MAX_ITEMS, CAROUSEL_MIN_ITEMS } from "../content/compose.js";
 import type { EditorialProfileView } from "../editorial-profile.js";
-import type { PostKind, PostPlatform } from "../enums.js";
+import { LANGUAGES, type Language, type PostKind, type PostPlatform } from "../enums.js";
 import { foldText } from "../listing-validator/normalizers.js";
 import type { Media } from "../media.js";
 import type { Post } from "../post.js";
+import { type CardLanguages, hiddenCardIds } from "../post-card-languages.js";
 import { operatorBriefOf, xLinksOf } from "./brief.js";
 import {
   DISCORD_MAX_FILES,
@@ -37,6 +38,12 @@ export type PostCheckContext = {
   kind: PostKind;
   /** Los originales del post: cuántas imágenes y videos subió el operador. */
   media: { images: number; videos: number };
+  /**
+   * Lo mismo por idioma del texto (F9.5, tarjetas por idioma): las tarjetas son de un idioma y cada
+   * texto se publica por separado, así que su revisión cuenta solo las imágenes de **su** idioma
+   * (más las que subió el usuario). Sin una entrada, vale `media`.
+   */
+  mediaByLanguage?: Partial<Record<Language, { images: number; videos: number }>>;
   /** Todo el texto que es fuente de hechos, junto (ver `buildPostCheckContext`). */
   sources: string;
   /** Los enlaces del brief del operador (`linkKey`): los únicos permitidos en X. */
@@ -84,10 +91,28 @@ export function buildPostCheckContext(params: {
     "facts" | "audience" | "pillars" | "defaultHashtags" | "avoid"
   >;
   broker: Pick<Broker, "brandName" | "fixedHashtags">;
-  media: readonly Pick<Media, "role" | "kind">[];
+  media: readonly (Pick<Media, "role" | "kind"> & { id?: string })[];
+  /** El idioma de las tarjetas del post (`loadCardLanguages`); sin él, no se separan por idioma. */
+  cards?: CardLanguages;
 }): PostCheckContext {
   const { post, profile, broker } = params;
   const originals = params.media.filter((item) => item.role === "original");
+  const counts = (items: readonly Pick<Media, "kind">[]) => ({
+    images: items.filter((item) => item.kind === "image").length,
+    videos: items.filter((item) => item.kind === "video").length,
+  });
+  const cards = params.cards ?? new Map();
+  const mediaByLanguage: Partial<Record<Language, { images: number; videos: number }>> = {};
+  if (cards.size > 0) {
+    for (const language of LANGUAGES) {
+      const hidden = hiddenCardIds(
+        originals.map((item) => item.id ?? ""),
+        cards,
+        language,
+      );
+      mediaByLanguage[language] = counts(originals.filter((item) => !hidden.has(item.id ?? "")));
+    }
+  }
   const sources = [
     profileSources(profile, broker),
     operatorBriefOf(post) ?? "",
@@ -97,10 +122,8 @@ export function buildPostCheckContext(params: {
     .join("\n");
   return {
     kind: post.kind,
-    media: {
-      images: originals.filter((item) => item.kind === "image").length,
-      videos: originals.filter((item) => item.kind === "video").length,
-    },
+    media: counts(originals),
+    ...(cards.size > 0 ? { mediaByLanguage } : {}),
     sources,
     xLinks: xLinksOf(post),
     xLinkAllowed: post.xLinkAllowed,
@@ -455,8 +478,12 @@ const unsupported = (message: string): MediaProblem => ({
  * (un formato que la red no publica o más archivos de los que admite) es `MEDIA_NOT_SUPPORTED`
  * (error: el operador cambia el tipo del post o quita archivos).
  */
-function mediaProblem(platform: PostPlatform, ctx: PostCheckContext): MediaProblem | null {
-  const { kind, media } = ctx;
+function mediaProblem(
+  platform: PostPlatform,
+  ctx: PostCheckContext,
+  media: PostCheckContext["media"],
+): MediaProblem | null {
+  const { kind } = ctx;
   if (kind === "video") {
     return media.videos === 0
       ? missing("Falta el video: el post es de video y aún no tiene ninguno. Súbelo o consíguelo")
@@ -586,7 +613,7 @@ export function unsupportedFacts(text: string, sources: string): string[] {
  */
 export function checkPostContent(
   platform: PostPlatform,
-  text: { body: string; hashtags: readonly string[] },
+  text: { body: string; hashtags: readonly string[]; language?: Language },
   ctx: PostCheckContext,
 ): ContentCheck[] {
   const checks: ContentCheck[] = [];
@@ -663,13 +690,16 @@ export function checkPostContent(
     );
   }
 
-  const problem = mediaProblem(platform, ctx);
+  // Las imágenes de **este** texto: sus tarjetas (las de su idioma) y lo que subió el usuario.
+  const media =
+    (text.language === undefined ? undefined : ctx.mediaByLanguage?.[text.language]) ?? ctx.media;
+  const problem = mediaProblem(platform, ctx, media);
   if (problem !== null) add(problem.code, problem.message);
   // Instagram publica una imagen suelta con la primera foto (F9-T13): las demás no salen.
-  if (platform === "instagram" && ctx.kind === "image" && ctx.media.images > 1) {
+  if (platform === "instagram" && ctx.kind === "image" && media.images > 1) {
     add(
       "MEDIA_UNUSED",
-      `Instagram publicará solo la primera de ${ctx.media.images} fotos; usa carrusel para publicarlas todas`,
+      `Instagram publicará solo la primera de ${media.images} fotos; usa carrusel para publicarlas todas`,
     );
   }
 

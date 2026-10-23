@@ -209,9 +209,11 @@ describe("/posts/:id/images", () => {
       await (await s.admin(`/posts/${s.post.id}/images`)).json(),
     );
     expect(options.cards).toEqual({
-      count: 2,
+      languages: [
+        { language: "es", count: 2, existing: 0, message: "2 tarjetas: portada y cierre." },
+      ],
       existing: 0,
-      message: "2 tarjetas: portada y cierre.",
+      unknown: 0,
     });
 
     // Una foto que subió el usuario y dos tarjetas de un pedido terminado.
@@ -245,7 +247,8 @@ describe("/posts/:id/images", () => {
     const withCards = postImageOptionsResponseSchema.parse(
       await (await s.admin(`/posts/${s.post.id}/images`)).json(),
     );
-    expect(withCards.cards?.existing).toBe(2);
+    // Un pedido anterior al idioma: sus tarjetas cuentan aparte, sin idioma conocido.
+    expect(withCards.cards).toMatchObject({ existing: 2, unknown: 2 });
 
     // Lo de otra marca es 404 y no borra nada.
     const foreign = await s.other(`/posts/${s.post.id}/images/cards`, { method: "DELETE" });
@@ -261,6 +264,64 @@ describe("/posts/:id/images", () => {
     expect(
       (await s.deps.media.listOriginals({ kind: "post", id: s.post.id })).map((item) => item.id),
     ).toEqual([upload.id]);
+  });
+
+  it("las tarjetas llevan su idioma: el detalle del post lo dice y DELETE ?language= quita solo ese idioma", async () => {
+    const s = await setup();
+    const media = (checksum: string, sortOrder: number) =>
+      s.deps.media.create({
+        listingId: null,
+        postId: s.post.id,
+        brokerId: s.brand.id,
+        kind: "image",
+        storagePath: `posts/${s.post.id}/original/${checksum}.jpg`,
+        mime: "image/jpeg",
+        bytes: 10,
+        checksum,
+        sortOrder,
+        isCover: false,
+      });
+    const upload = await media("u".repeat(64), 0);
+    const es = await media("e".repeat(64), 1);
+    const en = await media("n".repeat(64), 2);
+    const shared = await media("s".repeat(64), 3);
+    for (const [language, ids] of [
+      ["es", [es.id, shared.id]],
+      ["en", [en.id, shared.id]],
+    ] as const) {
+      const run = await s.postImageRuns.create({
+        postId: s.post.id,
+        brokerId: s.brand.id,
+        source: "card",
+        request: { source: "card", format: "4:5", language },
+        createdBy: null,
+      });
+      await s.postImageRuns.markRunning(run.id);
+      await s.postImageRuns.markSucceeded(run.id, ids);
+    }
+    const detail = (await (await s.admin(`/posts/${s.post.id}`)).json()) as {
+      media: { id: string; cardLanguages: string[] | null }[];
+    };
+    expect(Object.fromEntries(detail.media.map((item) => [item.id, item.cardLanguages]))).toEqual({
+      [upload.id]: null,
+      [es.id]: ["es"],
+      [en.id]: ["en"],
+      [shared.id]: ["es", "en"],
+    });
+
+    expect(
+      (await s.admin(`/posts/${s.post.id}/images/cards?language=fr`, { method: "DELETE" })).status,
+    ).toBe(400);
+    const removed = await s.admin(`/posts/${s.post.id}/images/cards?language=es`, {
+      method: "DELETE",
+    });
+    expect(postImageCardsRemovedResponseSchema.parse(await removed.json())).toEqual({
+      removed: 1,
+      leftover: 0,
+    });
+    expect(
+      (await s.deps.media.listOriginals({ kind: "post", id: s.post.id })).map((item) => item.id),
+    ).toEqual([upload.id, en.id, shared.id]);
   });
 
   it("lo de otra marca es 404; un pedido inválido es 400", async () => {

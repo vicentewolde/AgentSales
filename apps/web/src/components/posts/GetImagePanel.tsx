@@ -4,7 +4,14 @@ import type {
   PostJson,
   StockPhotoView,
 } from "@agentsales/api/contracts";
-import { formatUsd, POST_IMAGE_FORMATS, type PostImageFormat } from "@agentsales/core";
+import {
+  formatUsd,
+  LANGUAGE_TEXT,
+  type Language,
+  POST_IMAGE_FORMATS,
+  type PostImageFormat,
+  type PostKind,
+} from "@agentsales/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
 import {
@@ -56,6 +63,14 @@ const FORMAT_TEXT: Readonly<Record<PostImageFormat, string>> = {
 
 const SOURCE_TEXT = { card: "Tarjetas", stock: "Biblioteca", ai: "IA" } as const;
 
+/** De dónde salió un pedido; las tarjetas dicen su idioma. */
+function sourceText(run: PostImageRunView): string {
+  const language = run.request.source === "card" ? run.request.language : undefined;
+  return language === undefined
+    ? SOURCE_TEXT[run.source]
+    : `${SOURCE_TEXT[run.source]} en ${LANGUAGE_TEXT[language]}`;
+}
+
 /** Lo que falta en el servidor para una fuente, en simple. */
 function Missing({ what, variable }: { what: string; variable: string | null }) {
   return (
@@ -98,7 +113,7 @@ function RunStatus({ run }: { run: PostImageRunView | undefined }) {
   if (run.status === "queued" || run.status === "running") {
     return (
       <p role="status" className="text-sm text-fg-muted">
-        Consiguiendo la imagen ({SOURCE_TEXT[run.source]})…
+        Consiguiendo la imagen ({sourceText(run)})…
       </p>
     );
   }
@@ -113,7 +128,7 @@ function RunStatus({ run }: { run: PostImageRunView | undefined }) {
   return (
     <p role="status" className="text-sm text-success-800">
       Listo: {count === 1 ? "1 imagen quedó" : `${count} medios quedaron`} en el post (
-      {SOURCE_TEXT[run.source]}
+      {sourceText(run)}
       {run.costUsd === null ? "" : `, ${formatUsd(run.costUsd)}`}). Revísalos arriba.
     </p>
   );
@@ -203,6 +218,225 @@ function StockTab({
   );
 }
 
+type CardsData = NonNullable<PostImageOptionsResponse["cards"]>;
+
+const tarjetas = (n: number) => (n === 1 ? "1 tarjeta" : `${n} tarjetas`);
+
+/**
+ * Lo que el post ya tiene de pedidos anteriores, dicho en simple: las de este idioma (`own`) y las de
+ * un pedido anterior al idioma (`unknown`, sin idioma conocido). `name` es el idioma si hay varios.
+ */
+function existingText(own: number, unknown: number, name: string | null): string {
+  if (own === 0 && unknown === 0) return "Este post ya tiene tarjetas en otro idioma.";
+  if (name === null) {
+    return `Este post ya tiene ${tarjetas(own + unknown)} de ${own + unknown === 1 ? "un pedido anterior" : "pedidos anteriores"}.`;
+  }
+  const mine = own === 0 ? "" : `${tarjetas(own)} en ${name}`;
+  const old =
+    unknown === 0 ? "" : `${tarjetas(unknown)} de un pedido anterior, sin idioma conocido`;
+  return `Este post ya tiene ${[mine, old].filter((part) => part !== "").join(" y ")}.`;
+}
+
+/**
+ * La pestaña de las tarjetas de la marca. Cada pedido de tarjetas es de **un idioma** (el del texto
+ * del que salen los puntos y el título de la portada): un selector elige el idioma y un segundo botón
+ * pide las de cada idioma, una después de otra. Cada texto se publica con las tarjetas de su idioma.
+ */
+function CardsTab({
+  kind,
+  cards,
+  format,
+  onFormat,
+  busy,
+  request,
+  remove,
+}: {
+  kind: PostKind;
+  cards: CardsData | null;
+  format: PostImageFormat;
+  onFormat: (format: PostImageFormat) => void;
+  busy: boolean;
+  request: ReturnType<typeof useRequestPostImage>;
+  remove: ReturnType<typeof useRemovePostCards>;
+}) {
+  const video = kind === "video";
+  const languages = cards?.languages ?? [];
+  const [picked, setPicked] = useState<Language | null>(null);
+  const selected = languages.find((item) => item.language === picked) ?? languages[0];
+  const language = selected?.language;
+  const several = languages.length > 1;
+  // Por defecto se quitan las tarjetas anteriores: lo normal es rehacerlas, no sumarlas.
+  const [replace, setReplace] = useState(true);
+  const [confirmRemove, setConfirmRemove] = useState<"language" | "all" | null>(null);
+  // Lo que se rehace: las de ese idioma y las de un pedido anterior al idioma (de idioma desconocido).
+  const unknown = cards?.unknown ?? 0;
+  const existingOf = (item: { existing: number } | undefined) => (item?.existing ?? 0) + unknown;
+  const own = selected?.existing ?? 0;
+  const existing = existingOf(selected);
+  const existingAny = languages.some((item) => existingOf(item) > 0);
+  const total = cards?.existing ?? 0;
+  const name = language === undefined ? "" : LANGUAGE_TEXT[language];
+  const send = (chosen: readonly Language[], anyExisting: boolean) => {
+    const [first, ...rest] = chosen;
+    request.mutate({
+      source: "card",
+      format: video ? "9:16" : format,
+      ...(first === undefined ? {} : { language: first }),
+      ...(rest.length > 0 ? { thenLanguages: rest } : {}),
+      ...(anyExisting && replace ? { replaceCards: true } : {}),
+    });
+  };
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-fg-muted">
+        {video
+          ? "Une en un video la portada (el título del texto), un punto del texto por tarjeta y el cierre con tu marca, con la música del post. Sin costo."
+          : kind === "carousel"
+            ? "Una portada con el título del texto, una tarjeta por punto del texto y un cierre con tu marca, sobre tus colores y tu logo. Sin costo."
+            : "Una tarjeta con el título del texto sobre tus colores y tu logo. Sin costo."}{" "}
+        {several && "Cada texto se publica con las tarjetas de su idioma: haz las de cada idioma."}
+      </p>
+      {several && (
+        <Field label="Idioma de las tarjetas">
+          <Select
+            width="auto"
+            value={language}
+            onChange={(event) =>
+              setPicked(
+                languages.find((item) => item.language === event.target.value)?.language ?? null,
+              )
+            }
+          >
+            {languages.map((item) => (
+              <option key={item.language} value={item.language}>
+                {LANGUAGE_TEXT[item.language]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      )}
+      {selected !== undefined && (
+        <p role="status" className="text-sm font-medium text-fg">
+          {selected.count === null ? selected.message : `Saldrán ${selected.message}`}
+        </p>
+      )}
+      {several &&
+        languages
+          .filter((item) => item.language !== language)
+          .map((item) => (
+            <p key={item.language} className="text-sm text-fg-muted">
+              En {LANGUAGE_TEXT[item.language]}:{" "}
+              {item.count === null ? item.message : `saldrían ${item.message}`}
+            </p>
+          ))}
+      {existingAny && (
+        <div className="space-y-2 rounded-md bg-warning-50 p-3 text-sm text-warning-800">
+          <p>
+            {video
+              ? "Este post ya tiene un video de tarjetas de un pedido anterior."
+              : existingText(own, unknown, several ? name : null)}{" "}
+            Si no las quitas, las nuevas se suman; si las quitas, se reemplazan cuando las nuevas
+            estén listas (si algo falla, se quedan las que tenías).{" "}
+            {several &&
+              "Solo se quitan las del idioma que haces: las de los otros idiomas no se tocan. "}
+            Solo se quitan las tarjetas: lo que subiste tú, las fotos de la biblioteca y las
+            imágenes con IA no se tocan (salvo que una foto tuya sea idéntica a una tarjeta).
+          </p>
+          <label className="flex items-center gap-2 text-fg">
+            <input
+              type="checkbox"
+              checked={replace}
+              onChange={(event) => setReplace(event.target.checked)}
+            />
+            Quitar las tarjetas anteriores
+          </label>
+        </div>
+      )}
+      {!video && <FormatSelect value={format} onChange={onFormat} />}
+      <div className="flex flex-wrap gap-2">
+        <Button
+          loading={busy}
+          onClick={() => send(language === undefined ? [] : [language], existing > 0)}
+        >
+          {video
+            ? several
+              ? `Hacer video de las tarjetas en ${name}`
+              : "Hacer video de las tarjetas"
+            : several
+              ? `Hacer tarjetas en ${name}`
+              : "Hacer tarjetas"}
+        </Button>
+        {several && (
+          <Button
+            variant="secondary"
+            disabled={busy}
+            onClick={() =>
+              send(
+                languages.map((item) => item.language),
+                existingAny,
+              )
+            }
+          >
+            {video ? "Hacer el video de cada idioma" : "Hacer las tarjetas de cada idioma"}
+          </Button>
+        )}
+        {existing > 0 && confirmRemove === null && (
+          <Button variant="secondary" disabled={busy} onClick={() => setConfirmRemove("language")}>
+            {several
+              ? `Solo quitar las tarjetas en ${name}`
+              : "Solo quitar las tarjetas anteriores"}
+          </Button>
+        )}
+        {several && total > 0 && confirmRemove === null && (
+          <Button variant="secondary" disabled={busy} onClick={() => setConfirmRemove("all")}>
+            Quitar todas las tarjetas
+          </Button>
+        )}
+      </div>
+      {confirmRemove !== null && (
+        <div
+          role="alertdialog"
+          aria-label="Confirmar quitar las tarjetas"
+          className="space-y-2 rounded-md bg-danger-50 p-3 text-sm text-danger-800"
+        >
+          <p>
+            {confirmRemove === "all" || !several
+              ? "¿Quitar todas las tarjetas anteriores del post sin hacer otras? No se puede deshacer."
+              : `¿Quitar las tarjetas en ${name} del post sin hacer otras? Las de los otros idiomas se quedan. No se puede deshacer.`}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="danger"
+              loading={remove.isPending}
+              onClick={() =>
+                remove.mutate(confirmRemove === "language" && several ? language : undefined, {
+                  onSettled: () => setConfirmRemove(null),
+                })
+              }
+            >
+              Sí, quitarlas
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={remove.isPending}
+              onClick={() => setConfirmRemove(null)}
+            >
+              Cancelar
+            </Button>
+          </div>
+        </div>
+      )}
+      {remove.data !== undefined && remove.data.leftover > 0 && (
+        <p role="status" className="text-sm text-warning-800">
+          Se quitaron las tarjetas, pero {remove.data.leftover} archivo(s) no se pudieron borrar del
+          almacenamiento. No afectan al post.
+        </p>
+      )}
+      {remove.error !== null && <ErrorAlert error={remove.error} />}
+    </div>
+  );
+}
+
 /**
  * «Conseguir imagen» de un post (F9.5-T25, ADR-0038): tres pestañas, en este orden: tarjetas de la
  * marca (siempre), la biblioteca de Pixabay y crear con IA (estas dos, solo con su clave en el
@@ -225,9 +459,6 @@ export function GetImagePanel({
   const options = usePostImageOptions(post.id, open);
   const request = useRequestPostImage(post.id);
   const remove = useRemovePostCards(post.id);
-  // Por defecto se quitan las tarjetas anteriores: lo normal es rehacerlas, no sumarlas.
-  const [replace, setReplace] = useState(true);
-  const [confirmRemove, setConfirmRemove] = useState(false);
   const queryClient = useQueryClient();
   const latest = options.data?.runs[0];
   const wasActive = useRef(false);
@@ -258,7 +489,6 @@ export function GetImagePanel({
     );
   }
   const data = options.data;
-  const existing = data?.cards?.existing ?? 0;
   return (
     <section
       id={GET_IMAGE_ANCHOR}
@@ -316,99 +546,15 @@ export function GetImagePanel({
             <p className="text-sm text-fg-muted">Cargando…</p>
           )
         ) : tab === "card" ? (
-          <div className="space-y-3">
-            <p className="text-sm text-fg-muted">
-              {video
-                ? "Une en un video la portada (el tema), un punto del texto por tarjeta y el cierre con tu marca, con la música del post. Sin costo."
-                : post.kind === "carousel"
-                  ? "Una portada con el tema, una tarjeta por punto del texto y un cierre con tu marca, sobre tus colores y tu logo. Sin costo."
-                  : "Una tarjeta con el tema del post sobre tus colores y tu logo. Sin costo."}
-            </p>
-            {data.cards !== null && (
-              <p role="status" className="text-sm font-medium text-fg">
-                {data.cards.count === null ? data.cards.message : `Saldrán ${data.cards.message}`}
-              </p>
-            )}
-            {existing > 0 && (
-              <div className="space-y-2 rounded-md bg-warning-50 p-3 text-sm text-warning-800">
-                <p>
-                  {video
-                    ? "Este post ya tiene un video de tarjetas de un pedido anterior."
-                    : existing === 1
-                      ? "Este post ya tiene 1 tarjeta de un pedido anterior."
-                      : `Este post ya tiene ${existing} tarjetas de pedidos anteriores.`}{" "}
-                  Si no las quitas, las nuevas se suman; si las quitas, se reemplazan cuando las
-                  nuevas estén listas (si algo falla, se quedan las que tenías). Solo se quitan las
-                  tarjetas: lo que subiste tú, las fotos de la biblioteca y las imágenes con IA no
-                  se tocan (salvo que una foto tuya sea idéntica a una tarjeta).
-                </p>
-                <label className="flex items-center gap-2 text-fg">
-                  <input
-                    type="checkbox"
-                    checked={replace}
-                    onChange={(event) => setReplace(event.target.checked)}
-                  />
-                  Quitar las tarjetas anteriores
-                </label>
-              </div>
-            )}
-            {!video && <FormatSelect value={format} onChange={setFormat} />}
-            <div className="flex flex-wrap gap-2">
-              <Button
-                loading={busy}
-                onClick={() =>
-                  request.mutate({
-                    source: "card",
-                    format: video ? "9:16" : format,
-                    ...(existing > 0 && replace ? { replaceCards: true } : {}),
-                  })
-                }
-              >
-                {video ? "Hacer video de las tarjetas" : "Hacer tarjetas"}
-              </Button>
-              {existing > 0 && !confirmRemove && (
-                <Button variant="secondary" disabled={busy} onClick={() => setConfirmRemove(true)}>
-                  Solo quitar las tarjetas anteriores
-                </Button>
-              )}
-            </div>
-            {existing > 0 && confirmRemove && (
-              <div
-                role="alertdialog"
-                aria-label="Confirmar quitar las tarjetas"
-                className="space-y-2 rounded-md bg-danger-50 p-3 text-sm text-danger-800"
-              >
-                <p>
-                  ¿Quitar las tarjetas anteriores del post sin hacer otras? No se puede deshacer.
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="danger"
-                    loading={remove.isPending}
-                    onClick={() =>
-                      remove.mutate(undefined, { onSettled: () => setConfirmRemove(false) })
-                    }
-                  >
-                    Sí, quitarlas
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    disabled={remove.isPending}
-                    onClick={() => setConfirmRemove(false)}
-                  >
-                    Cancelar
-                  </Button>
-                </div>
-              </div>
-            )}
-            {remove.data !== undefined && remove.data.leftover > 0 && (
-              <p role="status" className="text-sm text-warning-800">
-                Se quitaron las tarjetas, pero {remove.data.leftover} archivo(s) no se pudieron
-                borrar del almacenamiento. No afectan al post.
-              </p>
-            )}
-            {remove.error !== null && <ErrorAlert error={remove.error} />}
-          </div>
+          <CardsTab
+            kind={post.kind}
+            cards={data.cards}
+            format={format}
+            onFormat={setFormat}
+            busy={busy}
+            request={request}
+            remove={remove}
+          />
         ) : video ? (
           <p className="text-sm text-fg-muted">
             Un post de video usa el video de las tarjetas o un video que subas.

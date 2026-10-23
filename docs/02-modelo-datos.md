@@ -297,7 +297,7 @@ Lo que se pidió con «Conseguir imagen»: tarjetas de la marca, una foto de la 
 | broker_id | uuid FK | La marca del post. Repite a propósito el `broker_id` de `posts`: el gasto del mes se suma y se reserva por aquí sin cruzar con `posts` |
 | source | enum `post_image_source` | `card`, `stock` o `ai` |
 | status | enum `post_image_run_status` default `queued` | `queued`, `running`, `succeeded` o `failed` |
-| request | jsonb | `postImageRequestSchema` (core): la proporción y, según la fuente, el id de la foto y la búsqueda, o la indicación para la IA. Sin secretos ni URLs |
+| request | jsonb | `postImageRequestSchema` (core): la proporción y, según la fuente, el id de la foto y la búsqueda, o la indicación para la IA. En las **tarjetas**, también el `language` del pedido (`es` o `en`: el idioma del texto del que salen; los pedidos anteriores no lo traen) y `thenLanguages` (los idiomas que faltan: el worker pide el siguiente al terminar bien). Sin secretos ni URLs |
 | media_ids | uuid[] default `{}` | Los medios que quedaron en el post, en orden (también los que ya estaban con el mismo contenido). Sin FK a propósito: es un historial, y un medio que se borra después no lo cambia |
 | cost_usd | numeric(10,4) | Lo que costó (solo la IA): el precio configurado (`IMAGE_AI_PRICE_USD`), **reservado antes de llamar** en una transacción con un candado por marca (solo si cabe en el tope del mes); se devuelve si Google rechazó el pedido sin cobrar. `null` sin costo |
 | model | text | El modelo de IA que la hizo (`IMAGE_AI_MODEL` de ese momento) |
@@ -306,6 +306,8 @@ Lo que se pidió con «Conseguir imagen»: tarjetas de la marca, una foto de la 
 | started_at, finished_at | timestamptz | |
 
 Índices `(post_id, created_at)`, `(broker_id, created_at)` (el gasto del mes) y el único parcial `post_image_runs_one_active_per_post` (uno en cola o corriendo por post). Borrar un corredor (`purge`) borra sus pedidos antes que sus posts.
+
+**El idioma de una tarjeta no es una columna de `media`:** se deduce de estos pedidos (`cardLanguagesOf`): un medio de `media_ids` de un pedido de tarjetas terminado es una tarjeta de su `request.language`. Así no hay nada que mantener al día (sin migración; las tarjetas anteriores al idioma quedan «de idioma desconocido»).
 
 ### platform_catalog — catálogo de las plataformas (ADR-0015, F4-T01)
 Datos públicos que solo se leen con token y cambian con el tiempo: en Mercado Libre, categorías (con sus hijas y `settings`), atributos de una hoja y ubicaciones de Chile. Se bajan a pedido y vencen a los 7 días. Sin secretos ni datos del corredor. Entidad en core: `platformCatalogEntrySchema`.

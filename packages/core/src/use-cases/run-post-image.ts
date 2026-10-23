@@ -28,6 +28,7 @@ import {
   imageAiPrompt,
   POST_IMAGE_LIMITS,
   type PostImageRequest,
+  type PostImageRun,
   postImageNotNeeded,
   postImageSourceNotConfigured,
   sniffImage,
@@ -73,6 +74,8 @@ export type RunPostImageResult =
       /** Tarjetas anteriores quitadas (`replaceCards`) y claves de R2 que no se pudieron borrar. */
       replaced: number;
       leftover: string[];
+      /** El pedido del idioma que seguía (`thenLanguages`), si se pidió y se pudo crear. */
+      chained: string | null;
     }
   | { outcome: "failed"; code: string };
 
@@ -143,12 +146,14 @@ async function produce(
   if (post.kind === "text") throw postImageNotNeeded(post.id);
   if (request.source === "card") {
     const contents = await deps.contents.listCurrent(postSubject(post.id));
-    // Un solo texto, en el idioma principal de la marca, y no más tarjetas de las que admite la
-    // red más estricta del post.
-    const [language] = editorialProfileView(
+    // Un solo texto, de **un** idioma (el del pedido; en uno anterior al idioma, el principal de la
+    // marca), y no más tarjetas de las que admite la red más estricta del post. La portada y el
+    // cierre salen de ese mismo texto: nada de otro idioma.
+    const [primary] = editorialProfileView(
       broker.id,
       await deps.editorialProfiles.get(broker.id),
     ).languages;
+    const language = request.language ?? primary;
     const deck = postCardDeck(
       { ...post, kind: post.kind },
       contents,
@@ -234,6 +239,38 @@ async function produce(
   ];
 }
 
+/**
+ * «Hacer las tarjetas de cada idioma»: al terminar bien el pedido de un idioma, el worker pide el
+ * siguiente (un post tiene un solo pedido activo a la vez). Si no se puede crear, el idioma que ya
+ * quedó no se pierde: el usuario pide el otro a mano.
+ */
+async function chainNextLanguage(
+  deps: Pick<RunPostImageDeps, "runs" | "queue">,
+  run: PostImageRun,
+): Promise<string | null> {
+  const request = run.request;
+  if (request.source !== "card") return null;
+  const [next, ...rest] = request.thenLanguages ?? [];
+  if (next === undefined) return null;
+  try {
+    const created = await deps.runs.create({
+      postId: run.postId,
+      brokerId: run.brokerId,
+      source: "card",
+      request: { ...request, language: next, thenLanguages: rest },
+      createdBy: run.createdBy,
+    });
+    await deps.queue.enqueue(
+      "post.image",
+      { postImageRunId: created.id },
+      { singletonKey: created.id },
+    );
+    return created.id;
+  } catch {
+    return null;
+  }
+}
+
 const tooMany = (postId: string) =>
   new AppError(
     "POST_IMAGE_TOO_MANY",
@@ -310,7 +347,14 @@ export async function runPostImage(
         let replaced = 0;
         if (replace) {
           const keep = new Set(files.map((file) => file.sha256));
-          const old = new Set(await cardMediaIds({ runs: deps.runs, media }, post.id));
+          // Solo las tarjetas del idioma que se rehace (las de otro idioma se quedan).
+          const old = new Set(
+            await cardMediaIds(
+              { runs: deps.runs, media },
+              post.id,
+              run.request.source === "card" ? run.request.language : undefined,
+            ),
+          );
           const doomed = listed.filter((item) => old.has(item.id) && !keep.has(item.checksum));
           if (doomed.length > 0) {
             assertCardsRemovable(await publications.listBySubject(postSubject(post.id)), post.id);
@@ -356,7 +400,14 @@ export async function runPostImage(
     // Las variantes (miniatura, 4:5, reel…), como después de una subida.
     await deps.queue.enqueue("post.media", { postId: post.id }, { singletonKey: post.id });
     await deps.runs.markSucceeded(run.id, mediaIds);
-    return { outcome: "succeeded", mediaIds, created, replaced, leftover };
+    return {
+      outcome: "succeeded",
+      mediaIds,
+      created,
+      replaced,
+      leftover,
+      chained: await chainNextLanguage(deps, run),
+    };
   } catch (error) {
     // Después de llamar a la IA nada se reintenta solo (cobraría otra vez): el pedido falla.
     if (isAppError(error) && error.retriable && !params.isLastAttempt && !attempt.aiCalled) {

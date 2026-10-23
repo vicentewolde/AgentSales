@@ -464,6 +464,8 @@ const jobs = buildJobs({
       editorialProfiles: createEditorialProfileRepository(database.db),
       platformAccounts,
       media: repositories.media,
+      // El idioma de las tarjetas: la revisión de cada texto cuenta las imágenes de su idioma.
+      postImageRuns,
       postLock,
       // Con `fake`, el borrador de ejemplo de un post (no el de un aviso).
       llm: createLlmProvider(socialLlmProviderOptions(env, process.env)),

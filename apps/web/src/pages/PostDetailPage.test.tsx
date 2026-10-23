@@ -524,6 +524,73 @@ describe("panel: un post sin imágenes (F9.5-T21)", () => {
     expect(await screen.findByRole("button", { name: "Quitar la aprobación" })).toBeTruthy();
   });
 
+  /** Un carrusel de X en español e inglés con tarjetas por pedido (cada pedido, de un idioma). */
+  async function withCards(languages: { es?: number; en?: number }) {
+    const s = await setup();
+    await s.deps.posts.update(s.post.id, { kind: "carousel" });
+    await s.draft([
+      { platform: "x", language: "es", body: "Hola" },
+      { platform: "x", language: "en", body: "Hello" },
+    ]);
+    const cardMedia = (name: string, sortOrder: number) =>
+      s.deps.media.create({
+        listingId: null,
+        postId: s.post.id,
+        brokerId: s.brand.id,
+        kind: "image",
+        storagePath: `posts/${s.post.id}/original/${name}.jpg`,
+        mime: "image/jpeg",
+        bytes: 10,
+        checksum: name.padEnd(64, "0"),
+        sortOrder,
+        isCover: false,
+      });
+    const shared = await cardMedia("cierre", 0);
+    let order = 1;
+    for (const language of ["es", "en"] as const) {
+      const count = languages[language];
+      if (count === undefined) continue;
+      const own = [];
+      for (let index = 0; index < count; index += 1) {
+        own.push((await cardMedia(`${language}-${index}`, order++)).id);
+      }
+      const run = await s.deps.postImageRuns.create({
+        postId: s.post.id,
+        brokerId: s.brand.id,
+        source: "card",
+        request: { source: "card", format: "4:5", language },
+        createdBy: null,
+      });
+      await s.deps.postImageRuns.markRunning(run.id);
+      await s.deps.postImageRuns.markSucceeded(run.id, [...own, shared.id]);
+    }
+    return s;
+  }
+
+  it("las tarjetas de cada idioma: la revisión de cada texto cuenta las suyas, no las de los dos", async () => {
+    // 3 + 3 tarjetas y el cierre compartido: 7 en el post, pero 4 por texto (X admite hasta 4).
+    const s = await withCards({ es: 3, en: 3 });
+    await s.open();
+    expect(screen.queryByRole("list", { name: "Qué falta o qué corregir" })).toBeNull();
+    for (const name of [/^X · español/, /^X · inglés/]) {
+      expect(screen.getByRole("tab", { name }).textContent).not.toContain("!");
+    }
+    expect(screen.queryByText(/Este texto está en/u)).toBeNull();
+  });
+
+  it("un texto sin tarjetas de su idioma lo dice, con qué hacer", async () => {
+    const s = await withCards({ es: 2 });
+    await s.open();
+    // El español tiene las suyas: sin aviso.
+    expect(screen.queryByText(/Este texto está en español, pero/u)).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: /^X · inglés/ }));
+    expect(
+      await screen.findByText(
+        "Este texto está en inglés, pero las tarjetas del post están en español: en «Conseguir imagen» haz las tarjetas en inglés.",
+      ),
+    ).toBeTruthy();
+  });
+
   it("aprobado el texto, publicar y programar esperan las imágenes: el aviso lleva a subirlas", async () => {
     const s = await setup();
     await s.deps.posts.update(s.post.id, { kind: "image" });

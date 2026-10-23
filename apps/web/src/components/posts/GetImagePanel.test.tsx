@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { PostKind } from "@agentsales/core";
+import { emptyEditorialProfileData, type Language, type PostKind } from "@agentsales/core";
 import { createFakeStockPhotoProvider } from "@agentsales/core/testing";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
@@ -24,7 +24,9 @@ const photo = (id: string, tags: string[]) => ({
   author: "autora",
 });
 
-async function setup(options: { kind?: PostKind; keys?: boolean; capUsd?: number } = {}) {
+async function setup(
+  options: { kind?: PostKind; keys?: boolean; capUsd?: number; languages?: Language[] } = {},
+) {
   const pricing = { priceUsd: 0.04, monthlyCapUsd: options.capUsd ?? 2 };
   const h = harness({
     deps:
@@ -41,6 +43,12 @@ async function setup(options: { kind?: PostKind; keys?: boolean; capUsd?: number
         : {},
   });
   const brand = await h.brokers.create(brokerData("vinny"), { kind: "brand" });
+  if (options.languages !== undefined) {
+    await h.deps.editorialProfiles.upsert(brand.id, {
+      ...emptyEditorialProfileData(),
+      languages: options.languages,
+    });
+  }
   const post = await h.deps.posts.create({
     brokerId: brand.id,
     topic: "Cómo fijar el precio",
@@ -75,9 +83,11 @@ describe("panel: conseguir imagen", () => {
     fireEvent.click(within(panel).getByRole("tab", { name: "Tarjetas de la marca" }));
     fireEvent.click(within(panel).getByRole("button", { name: "Hacer tarjetas" }));
     await waitFor(() => expect(s.requests).toContain(`POST /posts/${s.post.id}/images`));
-    expect(await within(panel).findByText(/Consiguiendo la imagen \(Tarjetas\)/u)).toBeTruthy();
+    expect(
+      await within(panel).findByText(/Consiguiendo la imagen \(Tarjetas en español\)/u),
+    ).toBeTruthy();
     const [run] = await s.deps.postImageRuns.listByPost(s.post.id, 1);
-    expect(run?.request).toEqual({ source: "card", format: "4:5" });
+    expect(run?.request).toEqual({ source: "card", format: "4:5", language: "es" });
   });
 
   it("antes de hacer las tarjetas, dice cuántas saldrán y por qué", async () => {
@@ -130,7 +140,12 @@ describe("panel: conseguir imagen", () => {
     fireEvent.click(within(panel).getByRole("button", { name: "Hacer tarjetas" }));
     await waitFor(() => expect(s.requests).toContain(`POST /posts/${s.post.id}/images`));
     const [run] = await s.deps.postImageRuns.listByPost(s.post.id, 1);
-    expect(run?.request).toEqual({ source: "card", format: "4:5", replaceCards: true });
+    expect(run?.request).toEqual({
+      source: "card",
+      format: "4:5",
+      language: "es",
+      replaceCards: true,
+    });
     // Hasta que el worker termina, el post conserva lo que tenía.
     expect(await s.remaining()).toHaveLength(3);
   });
@@ -144,7 +159,7 @@ describe("panel: conseguir imagen", () => {
     fireEvent.click(within(panel).getByRole("button", { name: "Hacer tarjetas" }));
     await waitFor(() => expect(s.requests).toContain(`POST /posts/${s.post.id}/images`));
     const [run] = await s.deps.postImageRuns.listByPost(s.post.id, 1);
-    expect(run?.request).toEqual({ source: "card", format: "4:5" });
+    expect(run?.request).toEqual({ source: "card", format: "4:5", language: "es" });
     expect(await s.remaining()).toHaveLength(3);
   });
 
@@ -203,6 +218,155 @@ describe("panel: conseguir imagen", () => {
     expect(await s.remaining()).toHaveLength(3);
   });
 
+  describe("tarjetas en cada idioma", () => {
+    it("con dos idiomas: elige el idioma (el principal primero) y pide las tarjetas de ese idioma", async () => {
+      const s = await setup({ kind: "carousel", languages: ["en", "es"] });
+      const panel = await openPanel();
+      const select = await within(panel).findByRole("combobox", { name: "Idioma de las tarjetas" });
+      expect(
+        within(select)
+          .getAllByRole("option")
+          .map((option) => option.textContent),
+      ).toEqual(["inglés", "español"]);
+      // Cada idioma dice cuántas tarjetas saldrían.
+      expect(await within(panel).findByText(/Saldrán 2 tarjetas: portada y cierre/u)).toBeTruthy();
+      expect(within(panel).getByText(/En español: saldrían 2 tarjetas/u)).toBeTruthy();
+      fireEvent.change(select, { target: { value: "es" } });
+      fireEvent.click(within(panel).getByRole("button", { name: "Hacer tarjetas en español" }));
+      await waitFor(() => expect(s.requests).toContain(`POST /posts/${s.post.id}/images`));
+      const [run] = await s.deps.postImageRuns.listByPost(s.post.id, 1);
+      expect(run?.request).toEqual({ source: "card", format: "4:5", language: "es" });
+      expect(await within(panel).findByText(/Tarjetas en español/u)).toBeTruthy();
+    });
+
+    it("«Hacer las tarjetas de cada idioma» pide el primero y deja el otro para después", async () => {
+      const s = await setup({ kind: "carousel", languages: ["en", "es"] });
+      const panel = await openPanel();
+      fireEvent.click(
+        await within(panel).findByRole("button", { name: "Hacer las tarjetas de cada idioma" }),
+      );
+      await waitFor(() => expect(s.requests).toContain(`POST /posts/${s.post.id}/images`));
+      const [run] = await s.deps.postImageRuns.listByPost(s.post.id, 1);
+      expect(run?.request).toEqual({
+        source: "card",
+        format: "4:5",
+        language: "en",
+        thenLanguages: ["es"],
+      });
+    });
+
+    it("con un solo idioma no hay selector ni botón de cada idioma", async () => {
+      await setup({ kind: "carousel", languages: ["es"] });
+      const panel = await openPanel();
+      expect(await within(panel).findByRole("button", { name: "Hacer tarjetas" })).toBeTruthy();
+      expect(within(panel).queryByRole("combobox", { name: "Idioma de las tarjetas" })).toBeNull();
+      expect(
+        within(panel).queryByRole("button", { name: "Hacer las tarjetas de cada idioma" }),
+      ).toBeNull();
+    });
+
+    /** Tarjetas en español (dos) y una foto del usuario. */
+    async function withSpanishCards(tagged = true) {
+      const s = await setup({ kind: "carousel", languages: ["es", "en"] });
+      const media = (checksum: string, sortOrder: number) =>
+        s.deps.media.create({
+          listingId: null,
+          postId: s.post.id,
+          brokerId: s.post.brokerId,
+          kind: "image",
+          storagePath: `posts/${s.post.id}/original/${checksum}.jpg`,
+          mime: "image/jpeg",
+          bytes: 10,
+          checksum,
+          sortOrder,
+          isCover: false,
+        });
+      const upload = await media("u".repeat(64), 0);
+      const cards = [await media("c".repeat(64), 1), await media("d".repeat(64), 2)];
+      const run = await s.deps.postImageRuns.create({
+        postId: s.post.id,
+        brokerId: s.post.brokerId,
+        source: "card",
+        request: { source: "card", format: "4:5", ...(tagged ? { language: "es" as const } : {}) },
+        createdBy: null,
+      });
+      await s.deps.postImageRuns.markRunning(run.id);
+      await s.deps.postImageRuns.markSucceeded(
+        run.id,
+        cards.map((card) => card.id),
+      );
+      const remaining = async () =>
+        (await s.deps.media.listOriginals({ kind: "post", id: s.post.id })).map((item) => item.id);
+      return { ...s, upload, cards, remaining };
+    }
+
+    it("las tarjetas de un pedido anterior al idioma se dicen aparte y se rehacen en cualquier idioma", async () => {
+      const s = await withSpanishCards(false);
+      const panel = await openPanel();
+      expect(
+        await within(panel).findByText(
+          /Este post ya tiene 2 tarjetas de un pedido anterior, sin idioma conocido/u,
+        ),
+      ).toBeTruthy();
+      fireEvent.click(within(panel).getByRole("button", { name: "Hacer tarjetas en español" }));
+      await waitFor(() => expect(s.requests).toContain(`POST /posts/${s.post.id}/images`));
+      const [run] = await s.deps.postImageRuns.listByPost(s.post.id, 1);
+      expect(run?.request).toEqual({
+        source: "card",
+        format: "4:5",
+        language: "es",
+        replaceCards: true,
+      });
+    });
+
+    it("reemplazar cuenta y quita solo las del idioma que se hace", async () => {
+      const s = await withSpanishCards();
+      const panel = await openPanel();
+      // Español (el primero): ya tiene 2.
+      expect(
+        await within(panel).findByText(/Este post ya tiene 2 tarjetas en español/u),
+      ).toBeTruthy();
+      fireEvent.change(within(panel).getByRole("combobox", { name: "Idioma de las tarjetas" }), {
+        target: { value: "en" },
+      });
+      // Inglés: no tiene; avisa que las hay en otro idioma y no ofrece quitar las de inglés.
+      expect(await within(panel).findByText(/ya tiene tarjetas en otro idioma/u)).toBeTruthy();
+      expect(
+        within(panel).queryByRole("button", { name: "Solo quitar las tarjetas en inglés" }),
+      ).toBeNull();
+      fireEvent.click(within(panel).getByRole("button", { name: "Hacer tarjetas en inglés" }));
+      await waitFor(() => expect(s.requests).toContain(`POST /posts/${s.post.id}/images`));
+      const [run] = await s.deps.postImageRuns.listByPost(s.post.id, 1);
+      // En inglés no hay nada que reemplazar: las de español no se tocan.
+      expect(run?.request).toEqual({ source: "card", format: "4:5", language: "en" });
+      expect(await s.remaining()).toHaveLength(3);
+    });
+
+    it("«Solo quitar las tarjetas en español» quita ese idioma; «Quitar todas» las quita todas", async () => {
+      const s = await withSpanishCards();
+      const panel = await openPanel();
+      fireEvent.click(
+        await within(panel).findByRole("button", { name: "Solo quitar las tarjetas en español" }),
+      );
+      expect(within(panel).getByText(/Las de los otros idiomas se quedan/u)).toBeTruthy();
+      fireEvent.click(within(panel).getByRole("button", { name: "Sí, quitarlas" }));
+      await waitFor(async () => expect(await s.remaining()).toEqual([s.upload.id]));
+    });
+
+    it("«Quitar todas las tarjetas» pide confirmación y quita las de todos los idiomas", async () => {
+      const s = await withSpanishCards();
+      const panel = await openPanel();
+      fireEvent.click(
+        await within(panel).findByRole("button", { name: "Quitar todas las tarjetas" }),
+      );
+      expect(
+        within(panel).getByText(/Quitar todas las tarjetas anteriores del post/u),
+      ).toBeTruthy();
+      fireEvent.click(within(panel).getByRole("button", { name: "Sí, quitarlas" }));
+      await waitFor(async () => expect(await s.remaining()).toEqual([s.upload.id]));
+    });
+  });
+
   it("un post de video hace el video de las tarjetas (9:16) y no ofrece fotos", async () => {
     const s = await setup({ kind: "video" });
     const panel = await openPanel();
@@ -211,7 +375,7 @@ describe("panel: conseguir imagen", () => {
     );
     await waitFor(() => expect(s.requests).toContain(`POST /posts/${s.post.id}/images`));
     const [run] = await s.deps.postImageRuns.listByPost(s.post.id, 1);
-    expect(run?.request).toEqual({ source: "card", format: "9:16" });
+    expect(run?.request).toEqual({ source: "card", format: "9:16", language: "es" });
     fireEvent.click(within(panel).getByRole("tab", { name: "Biblioteca (Pixabay)" }));
     expect(within(panel).getByText(/Un post de video usa el video de las tarjetas/u)).toBeTruthy();
   });

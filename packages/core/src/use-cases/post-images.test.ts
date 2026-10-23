@@ -8,6 +8,7 @@ import {
   IMAGE_AI_NOT_CHARGED,
   monthlyImageSpend,
 } from "../image-ai-budget.js";
+import { cardLanguagesOf } from "../post-card-languages.js";
 import type { PostImageRequest } from "../post-image.js";
 import {
   createFakeCardRenderer,
@@ -28,6 +29,7 @@ import {
   createInMemoryPublicationRepository,
   fakeJpeg,
 } from "../testing/index.js";
+import { getPostContent } from "./get-post-content.js";
 import {
   getPostImageOptions,
   getPostImageRun,
@@ -117,7 +119,8 @@ async function setup(
   const generator = createFakeImageGenerator({ model: "nano-test" });
   const cards = createFakeCardRenderer();
   const processor = createInMemoryMediaProcessor({ version: "1" });
-  const body = options.body ?? "Tres claves:\n- Mira el mercado\n- Revisa los gastos";
+  // Solo viñetas: sin una primera oración que sirva de título, la portada usa el tema del post.
+  const body = options.body ?? "- Mira el mercado\n- Revisa los gastos";
   const texts: Text[] =
     options.texts ?? (body === "" ? [] : [{ platform: "instagram", language: "es", body }]);
   const contents = { listCurrent: async () => texts as never };
@@ -199,7 +202,7 @@ describe("requestPostImage", () => {
   it("un post de video pide sus tarjetas en 9:16 y no acepta una foto", async () => {
     const s = await setup({ kind: "video" });
     const run = await s.request({ source: "card", format: "4:5" });
-    expect(run.request).toEqual({ source: "card", format: "9:16" });
+    expect(run.request).toEqual({ source: "card", format: "9:16", language: "es" });
     await s.runs.markFailed(run.id, { code: "X", message: "x" });
     expect(await codeOf(s.request({ source: "ai", prompt: "una casa", format: "9:16" }))).toBe(
       "POST_IMAGE_INVALID",
@@ -592,17 +595,31 @@ describe("tarjetas de un carrusel para X y Discord con cuatro textos", () => {
     const s = await caseOf();
     const options = await getPostImageOptions(s.api, ADMIN, s.post.id);
     expect(options.cards).toEqual({
-      count: 4,
+      languages: [
+        {
+          language: "es",
+          count: 4,
+          existing: 0,
+          message:
+            "4 tarjetas: X admite hasta 4 imágenes por post; portada, 2 puntos y cierre, del texto en español.",
+        },
+        {
+          language: "en",
+          count: 4,
+          existing: 0,
+          message:
+            "4 tarjetas: X admite hasta 4 imágenes por post; portada, 2 puntos y cierre, del texto en inglés.",
+        },
+      ],
       existing: 0,
-      message:
-        "4 tarjetas: X admite hasta 4 imágenes por post; portada, 2 puntos y cierre, del texto en español.",
+      unknown: 0,
     });
   });
 
   it("un video sin texto: las opciones piden el texto primero; un post de texto no tiene tarjetas", async () => {
     const video = await setup({ kind: "video", body: "" });
     expect((await getPostImageOptions(video.api, ADMIN, video.post.id)).cards).toMatchObject({
-      count: null,
+      languages: [{ language: "es", count: null }],
     });
     const text = await setup({ kind: "text" });
     expect((await getPostImageOptions(text.api, ADMIN, text.post.id)).cards).toBeNull();
@@ -884,5 +901,238 @@ describe("quitar las tarjetas anteriores", () => {
     expect(await ids(s)).toHaveLength(5);
     await s.posts.update(s.post.id, { status: "archived" });
     expect(await codeOf(removePostCards(s.api, ADMIN, s.post.id))).toBe("POST_ARCHIVED");
+  });
+});
+
+describe("tarjetas por idioma", () => {
+  // Un post bilingüe para X: cada texto tiene su primera oración (el título de su portada) y sus
+  // puntos. El tema del post está en español.
+  const bilingual: Text[] = [
+    {
+      platform: "x",
+      language: "es",
+      body: "Fijar el precio es difícil. Tres claves:\n- Mira el mercado\n- Revisa los gastos",
+    },
+    {
+      platform: "x",
+      language: "en",
+      body: "Pricing is hard. Three keys:\n- Check the market\n- Review costs",
+    },
+  ];
+  const caseOf = (extra: Parameters<typeof setup>[0] = {}) =>
+    setup({ texts: bilingual, platforms: ["x"], languages: ["en", "es"], ...extra });
+  type Case = Awaited<ReturnType<typeof caseOf>>;
+  const originals = (s: Case) => s.media.listOriginals({ kind: "post", id: s.post.id });
+  /** El idioma de cada tarjeta, como lo entiende la publicación. */
+  const languagesOfMedia = (s: Case) => cardLanguagesOf(s.runs.all());
+
+  it("el pedido guarda su idioma: el que pide el usuario o, si no dice, el principal de la marca", async () => {
+    const s = await caseOf();
+    const first = await s.request({ source: "card", format: "4:5" });
+    expect(first.request).toEqual({ source: "card", format: "4:5", language: "en" });
+    await s.runs.markFailed(first.id, { code: "X", message: "x" });
+    const second = await s.request({ source: "card", format: "4:5", language: "es" });
+    expect(second.request).toMatchObject({ language: "es" });
+  });
+
+  it("cada idioma hace sus tarjetas con su texto: portada, puntos y cierre, sin mezclar", async () => {
+    const s = await caseOf();
+    const es = await s.request({ source: "card", format: "4:5", language: "es" });
+    expect(await s.work(es.id)).toMatchObject({ outcome: "succeeded", created: 4 });
+    expect(s.cards.calls.map((call) => [call.card.role, call.card.text])).toEqual([
+      ["cover", "Fijar el precio es difícil"],
+      ["point", "Mira el mercado"],
+      ["point", "Revisa los gastos"],
+      ["closing", "AgentPey"],
+    ]);
+    s.cards.calls.length = 0;
+    const en = await s.request({ source: "card", format: "4:5", language: "en" });
+    // El cierre con la marca es idéntico: es el mismo medio y no se duplica.
+    expect(await s.work(en.id)).toMatchObject({ outcome: "succeeded", created: 3 });
+    expect(s.cards.calls.map((call) => [call.card.role, call.card.text])).toEqual([
+      ["cover", "Pricing is hard"],
+      ["point", "Check the market"],
+      ["point", "Review costs"],
+      ["closing", "AgentPey"],
+    ]);
+    const languages = languagesOfMedia(s);
+    const count = (language: Language) =>
+      [...languages].filter(([, list]) => list.includes(language)).length;
+    expect(count("es")).toBe(4);
+    expect(count("en")).toBe(4);
+    expect(await originals(s)).toHaveLength(7);
+  });
+
+  it("«cada idioma»: al terminar el primero, el worker pide el siguiente con su idioma", async () => {
+    const s = await caseOf();
+    const first = await s.request({
+      source: "card",
+      format: "4:5",
+      language: "es",
+      thenLanguages: ["en", "es"],
+    });
+    // Sin repetir el idioma del propio pedido.
+    expect(first.request).toMatchObject({ language: "es", thenLanguages: ["en"] });
+    const result = await s.work(first.id);
+    expect(result).toMatchObject({ outcome: "succeeded", chained: expect.any(String) });
+    const next = s.runs.all().find((item) => item.id !== first.id);
+    expect(next).toMatchObject({
+      status: "queued",
+      request: { source: "card", language: "en", thenLanguages: [] },
+    });
+    expect(s.queue.jobs.at(-1)).toEqual({
+      name: "post.image",
+      data: { postImageRunId: next?.id },
+      options: { singletonKey: next?.id },
+    });
+    // El segundo no encadena nada más.
+    expect(await s.work(next?.id ?? "")).toMatchObject({ outcome: "succeeded", chained: null });
+    expect(await originals(s)).toHaveLength(7);
+  });
+
+  it("si el primer idioma falla, no se pide el siguiente", async () => {
+    const s = await caseOf();
+    const first = await s.request({
+      source: "card",
+      format: "4:5",
+      language: "es",
+      thenLanguages: ["en"],
+    });
+    s.worker.cards = {
+      render: async () => {
+        throw new AppError("CARD_RENDER_FAILED", "no se pudo dibujar");
+      },
+    } as never;
+    expect(await s.work(first.id)).toMatchObject({ outcome: "failed" });
+    expect(s.runs.all()).toHaveLength(1);
+  });
+
+  it("las opciones cuentan las tarjetas por idioma", async () => {
+    const s = await caseOf();
+    await s.work((await s.request({ source: "card", format: "4:5", language: "es" })).id);
+    const options = await getPostImageOptions(s.api, ADMIN, s.post.id);
+    expect(options.cards).toMatchObject({
+      languages: [
+        { language: "en", existing: 0, count: 4 },
+        { language: "es", existing: 4, count: 4 },
+      ],
+      existing: 4,
+      unknown: 0,
+    });
+    // El mensaje de cada idioma dice de qué texto sale.
+    expect(options.cards?.languages[0]?.message).toContain("del texto en inglés");
+    expect(options.cards?.languages[1]?.message).toContain("del texto en español");
+  });
+
+  describe("rehacer y quitar por idioma", () => {
+    async function bothLanguages() {
+      const s = await caseOf();
+      await s.work((await s.request({ source: "card", format: "4:5", language: "es" })).id);
+      await s.work((await s.request({ source: "card", format: "4:5", language: "en" })).id);
+      const languages = languagesOfMedia(s);
+      const idsOf = (language: Language, only = false) =>
+        [...languages]
+          .filter(([, list]) => (only ? list.length === 1 : true) && list.includes(language))
+          .map(([id]) => id);
+      return { s, idsOf };
+    }
+
+    it("rehacer las de un idioma no toca las del otro ni el cierre que comparten", async () => {
+      const { s, idsOf } = await bothLanguages();
+      const run = await s.request({
+        source: "card",
+        format: "4:5",
+        language: "es",
+        replaceCards: true,
+      });
+      // Otro texto en español: sus puntos cambian; la portada y el cierre se reutilizan.
+      s.worker.contents = {
+        listCurrent: async () =>
+          [
+            {
+              platform: "x",
+              language: "es",
+              body: "Fijar el precio es difícil. Otro:\n- Uno aquí\n- Dos aquí",
+            },
+            bilingual[1],
+          ] as never,
+      };
+      expect(await s.work(run.id)).toMatchObject({ outcome: "succeeded", replaced: 2 });
+      const left = (await originals(s)).map((item) => item.id);
+      for (const id of idsOf("en")) expect(left).toContain(id);
+    });
+
+    it("rehacer las de un idioma quita también las de un pedido anterior al idioma", async () => {
+      const s = await caseOf();
+      const old = await s.runs.create({
+        postId: s.post.id,
+        brokerId: s.broker.id,
+        source: "card",
+        request: { source: "card", format: "4:5" },
+        createdBy: null,
+      });
+      await s.runs.markRunning(old.id);
+      const legacy = await s.media.create({
+        listingId: null,
+        postId: s.post.id,
+        brokerId: s.broker.id,
+        kind: "image",
+        storagePath: `posts/${s.post.id}/original/vieja.jpg`,
+        mime: "image/jpeg",
+        bytes: 1,
+        checksum: "9".repeat(64),
+        sortOrder: 0,
+        isCover: false,
+      });
+      await s.runs.markSucceeded(old.id, [legacy.id]);
+      const run = await s.request({
+        source: "card",
+        format: "4:5",
+        language: "en",
+        replaceCards: true,
+      });
+      expect(await s.work(run.id)).toMatchObject({ outcome: "succeeded", replaced: 1 });
+      expect((await originals(s)).map((item) => item.id)).not.toContain(legacy.id);
+    });
+
+    it("quitar un idioma deja las del otro; sin idioma, quita todas (también el cierre compartido)", async () => {
+      const { s, idsOf } = await bothLanguages();
+      const removed = await removePostCards(s.api, ADMIN, s.post.id, "es");
+      // Solo las 3 exclusivas del español: el cierre lo usa también el inglés.
+      expect(removed.removed).toBe(3);
+      const left = (await originals(s)).map((item) => item.id);
+      expect(left.sort()).toEqual(idsOf("en").sort());
+      expect((await removePostCards(s.api, ADMIN, s.post.id)).removed).toBe(4);
+      expect(await originals(s)).toHaveLength(0);
+    });
+
+    it("la revisión de cada texto cuenta las imágenes de su idioma: 7 en el post, 4 en cada texto", async () => {
+      const { s } = await bothLanguages();
+      const texts = bilingual.map((text) => ({ ...text, hashtags: [] }));
+      const base = {
+        posts: s.posts,
+        brokers: s.brokers,
+        editorialProfiles: s.api.editorialProfiles,
+        media: s.media,
+        contents: { listCurrent: async () => texts as never },
+        contentRuns: { latest: async () => null },
+        publications: s.publications,
+      };
+      const codesOf = async (postImageRuns?: typeof s.runs) => {
+        const result = await getPostContent({ ...base, postImageRuns }, ADMIN, s.post.id);
+        return result.contents.map((item) => item.checks.map((check) => check.code));
+      };
+      // Con el idioma de las tarjetas, cada texto cumple el tope de X (4 imágenes).
+      expect(await codesOf(s.runs)).toEqual([[], []]);
+      // Sin él, las 7 tarjetas del post se contarían en cada texto.
+      expect(await codesOf()).toEqual([["MEDIA_NOT_SUPPORTED"], ["MEDIA_NOT_SUPPORTED"]]);
+    });
+
+    it("las opciones cuentan 7 tarjetas en total y 4 por idioma", async () => {
+      const { s } = await bothLanguages();
+      const options = await getPostImageOptions(s.api, ADMIN, s.post.id);
+      expect(options.cards?.existing).toBe(7);
+      expect(options.cards?.languages.map((item) => item.existing)).toEqual([4, 4]);
+    });
   });
 });

@@ -1,9 +1,10 @@
 import type { PostMediaItem } from "@agentsales/api/contracts";
-import { type PostKind, type PostPlatform, socialCaption } from "@agentsales/core";
+import { type Language, type PostKind, type PostPlatform, socialCaption } from "@agentsales/core";
 import { DiscordPreview } from "./DiscordPreview.js";
 import { InstagramPostPreview, InstagramReelPreview } from "./InstagramPreview.js";
 import { LinkedInPreview } from "./LinkedInPreview.js";
 import {
+  mediaForLanguage,
   type PreviewImage,
   type PreviewText,
   type PreviewVideo,
@@ -22,6 +23,7 @@ export function PostPreview({
   platform,
   kind,
   media,
+  language,
   text,
   accountName,
   draft = false,
@@ -30,11 +32,17 @@ export function PostPreview({
   platform: PostPlatform;
   kind: PostKind;
   media: readonly PostMediaItem[];
+  /** El idioma del texto: lleva las tarjetas de su idioma (F9.5, tarjetas por idioma). */
+  language: Language;
   text: Pick<PreviewText, "body" | "hashtags">;
   accountName: string;
   draft?: boolean;
 }) {
-  const { images, video, problem } = postPreviewMedia(platform, kind, media);
+  const { images, video, problem } = postPreviewMedia(
+    platform,
+    kind,
+    mediaForLanguage(media, language),
+  );
   return (
     <div className="space-y-2">
       {problem !== null && (

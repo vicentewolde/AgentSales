@@ -75,6 +75,8 @@ export function postImageJob(deps: PostImageJobDeps): Job {
               media: result.mediaIds.length,
               created: result.created,
               replaced: result.replaced,
+              // «Hacer las tarjetas de cada idioma»: el pedido del idioma que seguía.
+              chained: result.chained !== null,
             },
             "imágenes del post conseguidas",
           );

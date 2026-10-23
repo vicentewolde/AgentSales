@@ -1,4 +1,5 @@
 import { editorialProfileView } from "../editorial-profile.js";
+import { LANGUAGES, type Language } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
 import {
   assertImageAiBudget,
@@ -6,6 +7,7 @@ import {
   imageAiSpentThisMonth,
   wouldPassImageAiCap,
 } from "../image-ai-budget.js";
+import { LANGUAGE_TEXT } from "../labels.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { ContentRepository } from "../ports/content-repository.js";
 import type { EditorialProfileRepository } from "../ports/editorial-profile-repository.js";
@@ -30,7 +32,12 @@ import {
 } from "../post-image.js";
 import { postSubject } from "../subject.js";
 import type { User } from "../user.js";
-import { assertCardsRemovable, cardMediaIds, deleteStoredFiles } from "./post-cards-cleanup.js";
+import {
+  assertCardsRemovable,
+  cardMediaIds,
+  countCards,
+  deleteStoredFiles,
+} from "./post-cards-cleanup.js";
 import { assertPostAccess } from "./posts.js";
 
 // Conseguir imágenes para un post (F9.5-T25, ADR-0038), del lado de la API: qué fuentes hay, buscar
@@ -81,12 +88,18 @@ export type PostImageOptions = {
     };
   };
   /**
-   * Las tarjetas de la marca antes de pedirlas: cuántas saldrían y por qué (`message`, listo para
-   * mostrar: «4 tarjetas: X admite hasta 4 imágenes por post (…)»), y cuántas tarjetas de pedidos
-   * anteriores tiene ya el post (`existing`, lo que «Quitar las tarjetas anteriores» borraría).
-   * `count` es `null` si todavía no se pueden armar (un video sin texto redactado).
+   * Las tarjetas de la marca antes de pedirlas, **por idioma** (los de la marca y los de los textos
+   * del post): cuántas saldrían y por qué (`message`, listo para mostrar: «4 tarjetas: X admite
+   * hasta 4 imágenes por post (…)»), y cuántas tarjetas de ese idioma tiene ya el post
+   * (`existing`, lo que «Quitar las tarjetas anteriores» de ese idioma borraría). `count` es `null`
+   * si todavía no se pueden armar (un video sin texto redactado). `existing` (arriba) cuenta todas
+   * las tarjetas sin repetir y `unknown` las de un pedido anterior al idioma.
    */
-  cards: { count: number | null; message: string; existing: number } | null;
+  cards: {
+    languages: { language: Language; count: number | null; message: string; existing: number }[];
+    existing: number;
+    unknown: number;
+  } | null;
   /** Lo que se propone buscar y pedir (editable). */
   suggestions: { query: string; prompt: string };
   /** Los últimos pedidos del post, del más nuevo al más viejo. */
@@ -107,38 +120,61 @@ async function usablePost(deps: Pick<PostImageDeps, "posts">, actor: Actor, post
   return post as Post & { kind: Exclude<Post["kind"], "text"> };
 }
 
-/** El plan de tarjetas del post (cuántas y por qué), o `null` si todavía no se puede armar. */
+/** El idioma principal de la marca: el primero de su perfil editorial. */
+async function primaryLanguage(
+  deps: Pick<PostImageDeps, "editorialProfiles">,
+  brokerId: string,
+): Promise<Language | undefined> {
+  const [primary] = editorialProfileView(
+    brokerId,
+    await deps.editorialProfiles.get(brokerId),
+  ).languages;
+  return primary;
+}
+
+/**
+ * El plan de tarjetas del post en cada idioma (cuántas y por qué), o `null` si todavía no se puede
+ * armar. Los idiomas son los de la marca y los de los textos que el post ya tiene.
+ */
 async function cardsInfo(deps: PostImageDeps, post: Post): Promise<PostImageOptions["cards"]> {
   if (post.kind === "text") return null;
-  const existing = (await cardMediaIds(deps, post.id)).length;
+  const counts = await countCards(deps, post.id);
   const broker = await deps.brokers.findById(post.brokerId);
   if (broker === null) return null;
   const profile = editorialProfileView(broker.id, await deps.editorialProfiles.get(broker.id));
   const contents = await deps.contents.listCurrent(postSubject(post.id));
-  try {
-    const [language] = profile.languages;
-    const plan = postCardPlan(
-      { ...post, kind: post.kind },
-      contents,
-      broker,
-      language === undefined ? {} : { language },
-    );
-    return {
-      count: plan.cards.length,
-      message: describeCardPlan(plan, post.kind),
-      existing,
-    };
-  } catch (error) {
-    // Un video sin texto redactado: se dice en simple, no es un error de la pantalla.
-    if (isAppError(error) && error.code === "POST_IMAGE_NEEDS_TEXT") {
-      return {
-        count: null,
-        message: "Para el video de las tarjetas hace falta el texto redactado: pídelo primero.",
+  // Los de la marca, con el principal primero, y después los de los textos que ya tiene el post.
+  const languages = [
+    ...profile.languages,
+    ...LANGUAGES.filter(
+      (language) =>
+        !profile.languages.includes(language) &&
+        contents.some((item) => item.language === language),
+    ),
+  ];
+  const entries: NonNullable<PostImageOptions["cards"]>["languages"] = [];
+  for (const language of languages) {
+    const existing = counts.byLanguage[language] ?? 0;
+    try {
+      const plan = postCardPlan({ ...post, kind: post.kind }, contents, broker, { language });
+      entries.push({
+        language,
+        count: plan.cards.length,
+        message: describeCardPlan(plan, post.kind),
         existing,
-      };
+      });
+    } catch (error) {
+      // Un video sin texto redactado en ese idioma: se dice en simple, no es un error de la pantalla.
+      if (!isAppError(error) || error.code !== "POST_IMAGE_NEEDS_TEXT") throw error;
+      entries.push({
+        language,
+        count: null,
+        message: `Para el video de las tarjetas hace falta el texto en ${LANGUAGE_TEXT[language]}: pídelo primero.`,
+        existing,
+      });
     }
-    throw error;
   }
+  return { languages: entries, existing: counts.total, unknown: counts.unknown };
 }
 
 /** Las fuentes, lo propuesto y los últimos pedidos (`GET /posts/:id/images`). */
@@ -226,10 +262,11 @@ async function assertNoActiveRun(deps: Pick<PostImageDeps, "runs">, postId: stri
 async function removeCardsOf(
   deps: PostImageDeps,
   postId: string,
+  language?: Language,
 ): Promise<{ removed: number; leftover: number }> {
-  if ((await cardMediaIds(deps, postId)).length === 0) return { removed: 0, leftover: 0 };
+  if ((await cardMediaIds(deps, postId, language)).length === 0) return { removed: 0, leftover: 0 };
   const { removed, paths } = await deps.postLock.run(postId, async (repos) => {
-    const ids = await cardMediaIds({ runs: deps.runs, media: repos.media }, postId);
+    const ids = await cardMediaIds({ runs: deps.runs, media: repos.media }, postId, language);
     if (ids.length === 0) return { removed: 0, paths: [] };
     assertCardsRemovable(await repos.publications.listBySubject(postSubject(postId)), postId);
     return {
@@ -245,8 +282,12 @@ async function removeCardsOf(
  * Antes de crear un pedido con `replaceCards`: si las tarjetas actuales no se pueden quitar
  * (`POST_CARDS_IN_USE`), se avisa ya, sin esperar al worker. No borra nada.
  */
-async function assertReplaceable(deps: PostImageDeps, postId: string): Promise<void> {
-  if ((await cardMediaIds(deps, postId)).length === 0) return;
+async function assertReplaceable(
+  deps: PostImageDeps,
+  postId: string,
+  language: Language | undefined,
+): Promise<void> {
+  if ((await cardMediaIds(deps, postId, language)).length === 0) return;
   await deps.postLock.run(postId, async (repos) => {
     assertCardsRemovable(await repos.publications.listBySubject(postSubject(postId)), postId);
   });
@@ -255,19 +296,21 @@ async function assertReplaceable(deps: PostImageDeps, postId: string): Promise<v
 /**
  * Quita las tarjetas anteriores de un post (`DELETE /posts/:id/images/cards`): solo los medios que
  * salieron de sus pedidos de tarjetas, nunca una foto o un video que el usuario subió ni una foto de
- * la biblioteca o una imagen con IA. Con otro pedido en curso, `POST_IMAGE_RUN_ACTIVE`; con
+ * la biblioteca o una imagen con IA. Con `language`, solo las de ese idioma (y las de un pedido
+ * anterior al idioma); sin él, todas. Con otro pedido en curso, `POST_IMAGE_RUN_ACTIVE`; con
  * publicaciones que las usan, `POST_CARDS_IN_USE`. Sin tarjetas, no hace nada (`removed: 0`).
  */
 export async function removePostCards(
   deps: PostImageDeps,
   actor: Actor,
   postId: string,
+  language?: Language,
 ): Promise<{ removed: number; leftover: number }> {
   const post = assertPostAccess(actor, await deps.posts.get(postId), postId);
   if (post.status === "archived") throw postArchived(postId);
   if (!canDraftPost(post.status)) throw postNotReady(post);
   await assertNoActiveRun(deps, post.id);
-  return removeCardsOf(deps, post.id);
+  return removeCardsOf(deps, post.id, language);
 }
 
 /**
@@ -302,14 +345,33 @@ export async function requestPostImage(
     if (broker === null) throw postNotReady(post);
     await assertImageAiBudget(deps, broker, pricing, (deps.now ?? (() => new Date()))());
   }
+  // Las tarjetas son de un idioma (el pedido; si no lo trae, el principal de la marca): así queda
+  // guardado, y de ahí las toma la publicación de cada texto.
+  const language =
+    request.source === "card"
+      ? (request.language ?? (await primaryLanguage(deps, post.brokerId)))
+      : undefined;
   if (request.source === "card" && request.replaceCards === true) {
     // Aquí no se borra nada: las tarjetas anteriores las quita el worker cuando las nuevas ya están
     // hechas (si el pedido falla, el post conserva las que tenía). Solo se avisa si no se podrá.
     await assertNoActiveRun(deps, post.id);
-    await assertReplaceable(deps, post.id);
+    await assertReplaceable(deps, post.id, language);
   }
   const normalized: PostImageRequest =
-    request.source === "card" && post.kind === "video" ? { ...request, format: "9:16" } : request;
+    request.source !== "card"
+      ? request
+      : {
+          ...request,
+          ...(post.kind === "video" ? { format: "9:16" as const } : {}),
+          ...(language === undefined ? {} : { language }),
+          ...(request.thenLanguages === undefined
+            ? {}
+            : {
+                thenLanguages: request.thenLanguages.filter(
+                  (other, index, all) => other !== language && all.indexOf(other) === index,
+                ),
+              }),
+        };
   const run = await deps.runs.create({
     postId: post.id,
     brokerId: post.brokerId,

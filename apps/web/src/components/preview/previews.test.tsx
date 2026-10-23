@@ -25,6 +25,7 @@ const item = (id: string, kind: "image" | "video"): PostMediaItem => ({
   height: null,
   durationS: null,
   variants: kind === "image" ? ["thumb", "ig_4x5"] : ["thumb", "ig_reel", "x_video"],
+  cardLanguages: null,
 });
 
 const images = ["i1", "i2", "i3", "i4", "i5"].map((id) => item(id, "image"));
@@ -44,6 +45,7 @@ function preview(
       platform={platform}
       kind={kind}
       media={media}
+      language="es"
       text={text}
       accountName="@marca"
     />,
@@ -84,6 +86,34 @@ describe("vista previa por red", () => {
     cleanup();
     preview("instagram", "text", { body: "Hola", hashtags: [] });
     expect(screen.getByRole("note").textContent).toBe("Instagram necesita una imagen o un video.");
+  });
+
+  it("la vista previa de un texto muestra las tarjetas de su idioma, no las del otro", () => {
+    const card = (id: string, cardLanguages: PostMediaItem["cardLanguages"]) => ({
+      ...item(id, "image"),
+      cardLanguages,
+    });
+    const cards = [card("es1", ["es"]), card("es2", ["es"]), card("en1", ["en"])];
+    const figure = preview("instagram", "carousel", { body: "Hola", hashtags: [] }, cards);
+    expect(srcs(figure)).toEqual([
+      "https://r2.example/es1-thumb.jpg",
+      "https://r2.example/es2-thumb.jpg",
+    ]);
+    cleanup();
+    render(
+      <PostPreview
+        label="Vista previa en inglés"
+        platform="x"
+        kind="carousel"
+        media={cards}
+        language="en"
+        text={{ body: "Hello", hashtags: [] }}
+        accountName="@marca"
+      />,
+    );
+    expect(srcs(screen.getByRole("figure", { name: "Vista previa en inglés" }))).toEqual([
+      "https://r2.example/en1-thumb.jpg",
+    ]);
   });
 
   it("X: el texto entero con los hashtags y hasta 4 imágenes en grilla", () => {
@@ -174,6 +204,7 @@ describe("vista previa por red", () => {
         platform="x"
         kind="text"
         media={[]}
+        language="es"
         text={{ body: "Hola", hashtags: [] }}
         accountName="@marca"
         draft

@@ -13,6 +13,7 @@ import { createContentRunRepository } from "./repositories/content-runs.js";
 import { createContentRepository } from "./repositories/contents.js";
 import { createMediaRepository } from "./repositories/media.js";
 import { createPlatformAccountRepository } from "./repositories/platform-accounts.js";
+import { createPostImageRunRepository } from "./repositories/post-image-runs.js";
 import { createPostRepository, createPostUploadRepository } from "./repositories/posts.js";
 import { createPublicationRepository } from "./repositories/publications.js";
 import { posts } from "./schema.js";
@@ -52,6 +53,7 @@ export function createPostLock(
             contentRuns: createContentRunRepository(tx),
             contents: createContentRepository(tx),
             publications: createPublicationRepository(tx),
+            postImageRuns: createPostImageRunRepository(tx),
             platformAccounts: createPlatformAccountRepository(tx, { secretBox }),
           });
         }),

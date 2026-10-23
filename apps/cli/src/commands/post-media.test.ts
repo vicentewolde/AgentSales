@@ -1,3 +1,4 @@
+import { emptyEditorialProfileData } from "@agentsales/core";
 import {
   createFakeStockPhotoProvider,
   createInMemoryPostImageRunRepository,
@@ -79,7 +80,7 @@ describe("agentsales post media", () => {
     await expect(runPostMedia(s.deps, s.post.id, { card: true, format: "9:16" })).resolves.toBe(0);
     expect(s.h.text()).toContain("Listo: 1 medio quedó en el post (tarjetas)");
     const [run] = await s.postImageRuns.listByPost(s.post.id, 1);
-    expect(run?.request).toEqual({ source: "card", format: "9:16" });
+    expect(run?.request).toEqual({ source: "card", format: "9:16", language: "es" });
     expect(s.h.queue.jobs.at(-1)?.name).toBe("post.image");
   });
 
@@ -93,9 +94,52 @@ describe("agentsales post media", () => {
     const s = await setup();
     await expect(runPostMedia(s.deps, s.post.id, { card: true, replace: true })).resolves.toBe(0);
     const [run] = await s.postImageRuns.listByPost(s.post.id, 1);
-    expect(run?.request).toEqual({ source: "card", format: "4:5", replaceCards: true });
+    expect(run?.request).toEqual({
+      source: "card",
+      format: "4:5",
+      language: "es",
+      replaceCards: true,
+    });
     await expect(runPostMedia(s.deps, s.post.id, { replace: true })).resolves.toBe(1);
     expect(s.h.errors()).toContain("--replace va con --card");
+  });
+
+  it("--language pide las tarjetas de un idioma; all, las de cada idioma una después de otra", async () => {
+    const s = await setup();
+    await s.h.editorialProfiles.upsert(s.post.brokerId, {
+      ...emptyEditorialProfileData(),
+      languages: ["en", "es"],
+    });
+    await expect(runPostMedia(s.deps, s.post.id, { card: true, language: "es" })).resolves.toBe(0);
+    const [one] = await s.postImageRuns.listByPost(s.post.id, 1);
+    expect(one?.request).toEqual({ source: "card", format: "4:5", language: "es" });
+    await expect(runPostMedia(s.deps, s.post.id, { card: true, language: "all" })).resolves.toBe(0);
+    const [all] = await s.postImageRuns.listByPost(s.post.id, 1);
+    expect(all?.request).toEqual({
+      source: "card",
+      format: "4:5",
+      language: "en",
+      thenLanguages: ["es"],
+    });
+    expect(s.h.text()).toContain("Después se hacen las tarjetas en español");
+    // Un idioma que no existe o sin --card: el motivo, sin llamar.
+    await expect(runPostMedia(s.deps, s.post.id, { card: true, language: "fr" })).resolves.toBe(1);
+    expect(s.h.errors()).toContain("--language debe ser es, en o all");
+    await expect(runPostMedia(s.deps, s.post.id, { language: "es" })).resolves.toBe(1);
+    expect(s.h.errors()).toContain("--language va con --card");
+  });
+
+  it("sin fuente, con dos idiomas dice cuántas saldrían en cada uno", async () => {
+    const s = await setup();
+    await s.h.editorialProfiles.upsert(s.post.brokerId, {
+      ...emptyEditorialProfileData(),
+      languages: ["en", "es"],
+    });
+    await runPostMedia(s.deps, s.post.id);
+    const text = s.h.text();
+    expect(text).toContain("En inglés: saldrían 1 tarjeta con el tema del post.");
+    expect(text).toContain("En español: saldrían 1 tarjeta con el tema del post.");
+    expect(text).toContain("--language es|en|all");
   });
 
   it("--stock lista los resultados sin personas y sin URLs firmadas; --pick elige uno", async () => {

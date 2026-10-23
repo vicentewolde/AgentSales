@@ -15,6 +15,7 @@ import type { Media } from "../media.js";
 import type { LockedRepositories } from "../ports/listing-lock.js";
 import type { PostLockedRepositories } from "../ports/post-lock.js";
 import type { Post } from "../post.js";
+import { loadCardLanguages, mediaForLanguage } from "../post-card-languages.js";
 import type { Publication, PublicationActor } from "../publication.js";
 import { ACTIVE_PUBLICATION_STATUSES } from "../publication-state.js";
 import { X_MAX_IMAGES } from "../social/networks.js";
@@ -350,7 +351,10 @@ export type PostPublicationOpening = {
  * ya está; si es de otro, se informa en `skipped`.
  */
 export async function planPostPublications(
-  repos: Pick<PostLockedRepositories, "platformAccounts" | "media" | "publications">,
+  repos: Pick<
+    PostLockedRepositories,
+    "platformAccounts" | "media" | "publications" | "postImageRuns"
+  >,
   { post, content }: { post: Post; content: Content },
 ): Promise<PostPublicationOpening> {
   const accounts = (
@@ -359,10 +363,16 @@ export async function planPostPublications(
   if (accounts.length === 0) return { toCreate: [], skipped: [] };
 
   const subject = postSubject(post.id);
+  // Las tarjetas son de un idioma: una publicación toma las de su texto (las únicas que haya, si no
+  // hay de su idioma); lo que subió el usuario va igual en todos los idiomas.
   const item = postPublicationPlan(
     content.platform,
     post.kind,
-    await repos.media.listBySubject(subject),
+    mediaForLanguage(
+      await repos.media.listBySubject(subject),
+      await loadCardLanguages(repos.postImageRuns, post.id),
+      content.language,
+    ),
   );
   const active = (await repos.publications.listBySubject(subject)).filter(
     (publication) =>

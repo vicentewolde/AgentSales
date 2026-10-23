@@ -17,6 +17,7 @@ import {
   getPostImageRun,
   type JobQueue,
   listPosts,
+  loadCardLanguages,
   type MediaRepository,
   type MediaStorage,
   PENDING_PUBLICATION_STATUSES,
@@ -72,6 +73,7 @@ import {
   postContentParamSchema,
   postDraftBodySchema,
   postImageBodySchema,
+  postImageCardsQuerySchema,
   postImageRunParamSchema,
   postImageStockQuerySchema,
   postPublishBodySchema,
@@ -173,6 +175,8 @@ export function postRoutes(deps: PostRoutesDeps) {
   /** Los originales del post con sus URLs, su miniatura y las variantes que ya tiene. */
   const mediaOf = async (postId: string): Promise<PostMediaItem[]> => {
     const all = await deps.media.listBySubject(postSubject(postId));
+    // El idioma de cada tarjeta (de los pedidos de tarjetas): el panel muestra a cada texto las suyas.
+    const cards = await loadCardLanguages(deps.postImageRuns, postId);
     const variants = new Map<string, ProcessedMediaVariant[]>();
     const thumbs = new Map<string, string>();
     for (const item of all) {
@@ -204,6 +208,7 @@ export function postRoutes(deps: PostRoutesDeps) {
             height: item.height,
             durationS: item.durationS,
             variants: (variants.get(item.id) ?? []).sort(),
+            cardLanguages: cards.has(item.id) ? [...(cards.get(item.id) ?? [])] : null,
           };
         }),
     );
@@ -400,15 +405,21 @@ export function postRoutes(deps: PostRoutesDeps) {
       )
       // Quitar las tarjetas anteriores del post (solo las de sus pedidos de tarjetas; nunca lo que
       // el usuario subió).
-      .delete("/:id/images/cards", validated("param", idParamSchema), async (c) => {
-        const result = await removePostCards(
-          imageDeps,
-          requireAuth(c).user,
-          c.req.valid("param").id,
-        );
-        const body: PostImageCardsRemovedResponse = result;
-        return c.json(body, 200);
-      })
+      .delete(
+        "/:id/images/cards",
+        validated("param", idParamSchema),
+        validated("query", postImageCardsQuerySchema),
+        async (c) => {
+          const result = await removePostCards(
+            imageDeps,
+            requireAuth(c).user,
+            c.req.valid("param").id,
+            c.req.valid("query").language,
+          );
+          const body: PostImageCardsRemovedResponse = result;
+          return c.json(body, 200);
+        },
+      )
       // F9-T12: pedir los textos (el worker los redacta con `post.draft`; la corrida se sigue en
       // `GET /content-runs/:id`).
       .post(

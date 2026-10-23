@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { contentRunErrorSchema } from "./content.js";
+import { LANGUAGES } from "./enums.js";
 import { AppError } from "./errors.js";
 
 // Conseguir imágenes para un post sin medios (F9.5-T25, ADR-0038): tarjetas de la marca, una foto
@@ -51,6 +52,17 @@ export const postImageRequestSchema = z.discriminatedUnion("source", [
      * solo ellas, nunca una foto o un video que el usuario subió.
      */
     replaceCards: z.boolean().optional(),
+    /**
+     * El idioma de las tarjetas: el del texto del que salen los puntos y el título de la portada.
+     * Cada pedido es de **un** idioma; la publicación de un texto usa las tarjetas de su idioma.
+     * Los pedidos anteriores a este campo no lo traen (sus tarjetas no tienen idioma conocido).
+     */
+    language: z.enum(LANGUAGES).optional(),
+    /**
+     * Los idiomas que faltan después de este («Hacer las tarjetas de cada idioma»): al terminar
+     * bien, el worker pide el siguiente (un post tiene un solo pedido activo a la vez).
+     */
+    thenLanguages: z.array(z.enum(LANGUAGES)).max(LANGUAGES.length).optional(),
   }),
   /**
    * Una foto de la biblioteca: su id (el worker la vuelve a pedir a Pixabay con ese id, nunca con

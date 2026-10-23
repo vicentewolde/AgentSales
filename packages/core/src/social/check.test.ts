@@ -342,6 +342,62 @@ describe("checkPostContent: medios", () => {
     expect(codes("instagram", "Fotos.", withMedia("carousel", 5))).toEqual([]);
   });
 
+  it("las tarjetas son de un idioma: cada texto cuenta las imágenes de su idioma, no las de los dos", () => {
+    // Una foto del usuario y tarjetas en español (4) y en inglés (4, una compartida con el español).
+    const originals = [
+      { id: "foto", role: "original" as const, kind: "image" as const },
+      ...["es1", "es2", "es3", "en1", "en2", "en3", "cierre"].map((id) => ({
+        id,
+        role: "original" as const,
+        kind: "image" as const,
+      })),
+    ];
+    const cards = new Map<string, readonly ("es" | "en")[]>([
+      ["es1", ["es"]],
+      ["es2", ["es"]],
+      ["es3", ["es"]],
+      ["en1", ["en"]],
+      ["en2", ["en"]],
+      ["en3", ["en"]],
+      ["cierre", ["es", "en"]],
+    ]);
+    const build = (withCards: boolean) =>
+      buildPostCheckContext({
+        post: { ...OPERATOR_POST, kind: "carousel" },
+        profile: PROFILE,
+        broker: BRAND,
+        media: originals,
+        ...(withCards ? { cards } : {}),
+      });
+    const x = (language: "es" | "en", ctx: PostCheckContext) =>
+      checkPostContent("x", { body: "Fotos.", hashtags: [], language }, ctx).map(
+        (item) => item.code,
+      );
+    const message = (language: "es" | "en", ctx: PostCheckContext) =>
+      checkPostContent("x", { body: "Fotos.", hashtags: [], language }, ctx)[0]?.message;
+    // Sin separar por idioma, las 8 imágenes pasan el tope de X (4).
+    expect(x("es", build(false))).toEqual(["MEDIA_NOT_SUPPORTED"]);
+    expect(message("es", build(false))).toContain("tiene 8 imágenes");
+    // Por idioma, cada texto cuenta las suyas: la foto, sus 3 tarjetas y el cierre compartido (5).
+    expect(message("en", build(true))).toContain("tiene 5 imágenes");
+    // Sin la foto y con una tarjeta menos por idioma, cada idioma cumple por separado.
+    const lean = buildPostCheckContext({
+      post: { ...OPERATOR_POST, kind: "carousel" },
+      profile: PROFILE,
+      broker: BRAND,
+      media: originals.filter(
+        (item) => item.id !== "foto" && item.id !== "es3" && item.id !== "en3",
+      ),
+      cards,
+    });
+    expect(lean.mediaByLanguage).toEqual({
+      es: { images: 3, videos: 0 },
+      en: { images: 3, videos: 0 },
+    });
+    expect(x("es", lean)).toEqual([]);
+    expect(x("en", lean)).toEqual([]);
+  });
+
   it("Instagram necesita imagen o video, y TikTok solo video", () => {
     expect(codes("instagram", "Solo texto.", withMedia("text", 0))).toEqual([
       "MEDIA_NOT_SUPPORTED",

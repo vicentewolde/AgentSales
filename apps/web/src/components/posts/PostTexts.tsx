@@ -27,6 +27,7 @@ import { Alert } from "../ui/Alert.js";
 import { Badge } from "../ui/Badge.js";
 import { Button } from "../ui/Button.js";
 import { Field, Input, Textarea } from "../ui/Field.js";
+import { cardLanguageNotice } from "./card-language.js";
 import { type PostContentView, postContents } from "./labels.js";
 import { needsXLinkMark, X_LINK_COST_TEXT } from "./XLinkControl.js";
 
@@ -234,9 +235,13 @@ function TextTab({
   const unapproveBlocked = lockReason ?? unapproveBlockedReason(content, publications);
   const blocked = approved ? unapproveBlocked : approveBlocked;
   // Por qué no se edita o no se aprueba, a la vista y en tono de aviso (F9.5-T15), sin repetir.
-  const notices = [...new Set([editBlocked, blocked])].filter(
-    (notice): notice is string => notice !== null,
-  );
+  const notices = [
+    ...new Set([
+      editBlocked,
+      blocked,
+      post.kind === "text" ? null : cardLanguageNotice(media, content.language),
+    ]),
+  ].filter((notice): notice is string => notice !== null);
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -293,6 +298,7 @@ function TextTab({
         platform={platform}
         kind={post.kind}
         media={media}
+        language={content.language}
         text={draft ?? content}
         accountName={accountName}
         draft={draftDiffers(draft, content)}

@@ -2,6 +2,7 @@ import type { BrokerRepository } from "./broker-repository.js";
 import type { ContentRepository, ContentRunRepository } from "./content-repository.js";
 import type { MediaRepository } from "./media-repository.js";
 import type { PlatformAccountRepository } from "./platform-account-repository.js";
+import type { PostImageRunRepository } from "./post-image-run-repository.js";
 import type { PostRepository, PostUploadRepository } from "./post-repository.js";
 import type { PublicationRepository } from "./publication-repository.js";
 
@@ -17,6 +18,12 @@ export type PostLockedRepositories = {
   contentRuns: ContentRunRepository;
   contents: ContentRepository;
   publications: PublicationRepository;
+  /**
+   * Los pedidos de imágenes del post (solo para leer): de ellos sale el idioma de cada tarjeta, y
+   * con él, qué tarjetas lleva la publicación de cada texto (F9.5, tarjetas por idioma). Opcional:
+   * sin él, las tarjetas no se separan por idioma, como antes. El candado de Postgres siempre lo trae.
+   */
+  postImageRuns?: Pick<PostImageRunRepository, "listByPost">;
   /** Sin `withCredentialsLock`: el candado de credenciales nunca se anida con otro (ADR-0015). */
   platformAccounts: Omit<PlatformAccountRepository, "withCredentialsLock">;
 };
