@@ -61,7 +61,7 @@ export function MercadoLibreConnectBox({
   }
   const { authorize: authorizeCommand, paste } = mercadoLibreConnectCommands(broker.slug);
   return (
-    <div className="mt-3 rounded-lg border border-line bg-slate-50 p-3 text-sm">
+    <div className="mt-3 rounded-lg border border-line bg-canvas p-3 text-sm">
       <p className="font-medium">{label}</p>
       <p className="mt-1 text-fg-muted">
         Se conecta desde la terminal, en dos pasos (con la API corriendo):

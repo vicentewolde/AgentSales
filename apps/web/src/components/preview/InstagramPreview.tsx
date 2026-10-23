@@ -46,7 +46,7 @@ function Carousel({ images }: { images: readonly PreviewImage[] }) {
             </li>
           ))}
         </ul>
-        <span className="absolute top-2 right-2 rounded-full bg-black/60 px-2 py-0.5 text-xs font-medium text-white tabular-nums">
+        <span className="absolute top-2 right-2 rounded-full bg-fg/75 px-2 py-0.5 text-xs font-medium text-surface tabular-nums">
           {page + 1}/{images.length}
           <span className="sr-only"> imágenes</span>
         </span>
@@ -57,7 +57,7 @@ function Carousel({ images }: { images: readonly PreviewImage[] }) {
             key={image.id}
             className={cx(
               "size-1.5 rounded-full",
-              index === page ? "bg-brand-600" : "bg-slate-300",
+              index === page ? "bg-brand-600" : "bg-line-strong",
             )}
           />
         ))}
@@ -93,7 +93,7 @@ export function InstagramPostPreview({
       <article className="max-w-sm overflow-hidden rounded-lg border border-line bg-surface">
         <Header accountName={accountName} />
         {images.length === 0 || single === undefined ? (
-          <p className="flex aspect-[4/5] items-center justify-center bg-slate-100 p-4 text-center text-sm text-fg-subtle">
+          <p className="flex aspect-[4/5] items-center justify-center bg-sand p-4 text-center text-sm text-fg-subtle">
             {noMedia}
           </p>
         ) : images.length === 1 ? (
@@ -142,7 +142,7 @@ export function InstagramReelPreview({
         label="Reel de Instagram"
         className="aspect-[9/16] w-52 rounded-lg"
       >
-        <div className="pointer-events-none absolute inset-x-0 bottom-12 space-y-1 px-3 text-white drop-shadow">
+        <div className="pointer-events-none absolute inset-x-0 bottom-12 space-y-1 px-3 text-surface drop-shadow">
           <p className="flex items-center gap-2 text-sm font-semibold">
             <Avatar name={accountName} className="size-6 text-xs" />
             <span className="truncate">{accountName}</span>

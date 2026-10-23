@@ -61,7 +61,7 @@ export function RunProgress({
   retrying: boolean;
 }) {
   return (
-    <div className="mt-2 rounded-lg border border-line bg-slate-50 p-4">
+    <div className="mt-2 rounded-lg border border-line bg-canvas p-4">
       <Stages run={run} />
       {stuckInQueue(run, checkedAt) && !stopped && (
         <p role="alert" className="mt-2 text-sm text-warning-800">

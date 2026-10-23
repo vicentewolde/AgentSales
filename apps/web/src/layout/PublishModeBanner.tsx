@@ -3,14 +3,14 @@ import { useHealth } from "../queries/health.js";
 
 // En simulación, una franja discreta; en vivo, roja y en negrita: tiene que verse siempre.
 const TONE = {
-  live: { bar: "bg-danger-700 font-semibold text-white", dot: "bg-surface" },
+  live: { bar: "bg-danger-700 font-semibold text-surface", dot: "bg-surface" },
   "dry-run": {
     bar: "border-b border-success-200 bg-success-50 font-medium text-success-800",
     dot: "bg-success-500",
   },
   unknown: {
-    bar: "border-b border-line bg-slate-100 font-medium text-fg-muted",
-    dot: "bg-slate-400",
+    bar: "border-b border-line-strong bg-sand font-medium text-fg-muted",
+    dot: "bg-fg-subtle",
   },
 } as const;
 

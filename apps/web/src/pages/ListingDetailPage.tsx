@@ -6,31 +6,46 @@ import { ContentSection } from "../components/content/ContentSection.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { ListingActions } from "../components/listing/ListingActions.js";
 import { StatusBadge } from "../components/StatusBadge.js";
+import { HomeIllustration } from "../components/ui/illustrations.js";
 import { PageHeader } from "../components/ui/PageHeader.js";
+import { cx } from "../components/ui/styles.js";
 import { useListing } from "../queries/listings.js";
 
 type Detail = ListingDetailResponse;
 
+/**
+ * La galería grande con que abre la ficha (F9.5-T26): la primera foto ocupa dos columnas y dos filas
+ * y las demás la rodean, como en un aviso de revista.
+ */
 function Gallery({ media, externalRef }: { media: Detail["media"]; externalRef: string }) {
   if (media.length === 0) {
     return (
-      <p className="mt-2 text-sm text-warning-700">
-        Sin fotos ni videos. Agrégalos a su carpeta y vuelve a importar.
-      </p>
+      <div className="mt-3 flex flex-col items-center gap-3 rounded-3xl bg-sand px-6 py-10 text-center">
+        <HomeIllustration className="w-36" />
+        <p className="text-sm font-medium text-warning-800">
+          Sin fotos ni videos. Agrégalos a su carpeta y vuelve a importar.
+        </p>
+      </div>
     );
   }
   return (
-    <ul className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3">
+    <ul className="mt-3 grid grid-cols-2 gap-2 overflow-hidden rounded-3xl sm:grid-cols-4 sm:auto-rows-[11rem] sm:gap-3 lg:auto-rows-[13.5rem]">
       {media.map((item, index) => (
-        <li key={item.id} className="relative overflow-hidden rounded-lg bg-slate-100">
+        <li
+          key={item.id}
+          className={cx(
+            "relative aspect-[4/3] overflow-hidden bg-sand sm:aspect-auto",
+            index === 0 && "col-span-2 sm:row-span-2",
+          )}
+        >
           {item.kind === "image" ? (
-            <a href={item.url} target="_blank" rel="noreferrer">
+            <a href={item.url} target="_blank" rel="noreferrer" className="block h-full">
               <img
                 // La miniatura JPEG si existe (desde F2-T12): los navegadores no muestran HEIC.
                 src={item.thumbUrl ?? item.url}
                 alt={`Foto ${index + 1} de ${externalRef}`}
                 loading="lazy"
-                className="aspect-[4/3] w-full object-cover"
+                className="h-full w-full object-cover transition duration-500 hover:scale-[1.02]"
               />
             </a>
           ) : (
@@ -41,11 +56,11 @@ function Gallery({ media, externalRef }: { media: Detail["media"]; externalRef: 
               controls
               preload="metadata"
               aria-label={`Video ${index + 1} de ${externalRef}`}
-              className="aspect-[4/3] w-full bg-black object-contain"
+              className="h-full w-full bg-fg object-contain"
             />
           )}
           {item.isCover && (
-            <span className="absolute top-2 left-2 rounded-md bg-brand-900/80 px-2 py-0.5 text-xs font-medium text-white">
+            <span className="pointer-events-none absolute top-3 left-3 rounded-full bg-surface/95 px-2.5 py-1 text-xs font-semibold text-fg shadow-xs">
               Portada
             </span>
           )}
@@ -54,6 +69,8 @@ function Gallery({ media, externalRef }: { media: Detail["media"]; externalRef: 
     </ul>
   );
 }
+
+const PANEL = "rounded-3xl bg-surface p-6 shadow-card";
 
 function DetailView({ detail }: { detail: Detail }) {
   const { listing, media, fields } = detail;
@@ -70,6 +87,12 @@ function DetailView({ detail }: { detail: Detail }) {
 
   return (
     <>
+      <div className="mb-8">
+        {/* La galería abre la ficha, antes del título: su rótulo no es un encabezado. */}
+        <p className="text-sm font-medium text-fg-subtle">Fotos y videos ({media.length})</p>
+        <Gallery media={media} externalRef={listing.externalRef} />
+      </div>
+
       <PageHeader
         title={
           <>
@@ -81,7 +104,7 @@ function DetailView({ detail }: { detail: Detail }) {
         description={
           <>
             <p className="font-medium tabular-nums text-fg-subtle">{listing.externalRef}</p>
-            <p className="mt-1 text-xl font-semibold tabular-nums tracking-tight text-fg">
+            <p className="mt-2 font-display text-[2rem] leading-tight tabular-nums text-fg">
               {formatListingPrice(listing)}
             </p>
           </>
@@ -89,17 +112,9 @@ function DetailView({ detail }: { detail: Detail }) {
       />
       <ListingActions id={listing.id} status={listing.status} />
 
-      <div className="mt-6 rounded-xl border border-line bg-surface p-5 shadow-xs">
-        <h2 className="text-lg font-semibold">Fotos y videos ({media.length})</h2>
-        <Gallery media={media} externalRef={listing.externalRef} />
-      </div>
-
-      <div className="mt-6 grid gap-6 md:grid-cols-2">
-        <section
-          aria-labelledby="datos"
-          className="rounded-xl border border-line bg-surface p-5 shadow-xs"
-        >
-          <h2 id="datos" className="text-lg font-semibold">
+      <div className="mt-8 grid gap-6 md:grid-cols-2">
+        <section aria-labelledby="datos" className={PANEL}>
+          <h2 id="datos" className="text-xl font-semibold">
             Datos
           </h2>
           <dl className="mt-2 space-y-2 text-sm">
@@ -134,11 +149,8 @@ function DetailView({ detail }: { detail: Detail }) {
           </dl>
         </section>
 
-        <section
-          aria-labelledby="atributos"
-          className="rounded-xl border border-line bg-surface p-5 shadow-xs"
-        >
-          <h2 id="atributos" className="text-lg font-semibold">
+        <section aria-labelledby="atributos" className={PANEL}>
+          <h2 id="atributos" className="text-xl font-semibold">
             Atributos
           </h2>
           {attributes.length === 0 ? (
@@ -182,11 +194,14 @@ export function ListingDetailPage() {
     (detail.error.code === "LISTING_NOT_FOUND" || detail.error.code === "REQUEST_INVALID");
 
   return (
-    <section className="mx-auto max-w-5xl">
-      <Link to="/propiedades" className="text-sm font-medium text-fg-muted hover:text-fg">
+    <section className="mx-auto max-w-6xl">
+      <Link
+        to="/propiedades"
+        className="-ml-1 inline-flex min-h-11 items-center rounded-full px-1 text-sm font-medium text-fg-muted hover:text-fg"
+      >
         ← Propiedades
       </Link>
-      <div className="mt-3">
+      <div className="mt-2">
         {detail.isPending && <p className="text-fg-muted">Cargando la propiedad…</p>}
         {notFound && (
           <p role="alert" className="text-fg-muted">

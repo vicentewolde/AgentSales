@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, Suspense, useEffect } from "react";
+import { type ReactNode, Suspense, useEffect, useId, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { onSessionExpired } from "../api/session-events.js";
 import { BrokerSelector } from "../components/BrokerSelector.js";
@@ -7,11 +7,13 @@ import { clearAllOneTimeLinks } from "../components/brokers/one-time-link-store.
 import {
   CalendarIcon,
   ChartIcon,
+  CloseIcon,
   HomeIcon,
   LightbulbIcon,
   LinkIcon,
   LogoMark,
   LogoutIcon,
+  MenuIcon,
   PencilIcon,
   PulseIcon,
   StarIcon,
@@ -66,7 +68,7 @@ export const MENU: readonly MenuItem[] = [
 ];
 
 const ENTRY =
-  "group flex items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors";
+  "group flex min-h-11 items-center gap-3 whitespace-nowrap rounded-lg px-3.5 py-2 text-[0.9375rem] transition-colors";
 
 function MenuEntry({ item }: { item: MenuItem }) {
   const Icon = item.icon;
@@ -90,8 +92,8 @@ function MenuEntry({ item }: { item: MenuItem }) {
         cx(
           ENTRY,
           isActive
-            ? "bg-brand-50 text-brand-800"
-            : "text-fg-muted hover:bg-slate-100 hover:text-fg",
+            ? "bg-surface font-semibold text-fg shadow-xs"
+            : "font-medium text-fg-muted hover:bg-sand-strong/60 hover:text-fg",
         )
       }
     >
@@ -100,7 +102,7 @@ function MenuEntry({ item }: { item: MenuItem }) {
           <Icon
             className={cx(
               "size-5 shrink-0",
-              isActive ? "text-brand-600" : "text-fg-subtle group-hover:text-fg-muted",
+              isActive ? "text-brand-700" : "text-fg-muted group-hover:text-fg",
             )}
           />
           {item.label}
@@ -148,20 +150,20 @@ function UserMenu() {
   const { select } = useBrokerScope();
   if (me.data === undefined) return null;
   return (
-    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3 md:mt-auto md:block md:pt-4">
+    <div className="mt-4 rounded-2xl bg-sand-strong p-3 md:mt-auto">
       <div className="flex min-w-0 items-center gap-3 px-1">
         <span
           aria-hidden="true"
-          className="grid size-8 shrink-0 place-items-center rounded-full bg-slate-100 text-xs font-semibold text-fg-muted"
+          className="grid size-9 shrink-0 place-items-center rounded-full bg-brand-700 text-xs font-semibold text-surface"
         >
           {initials(me.data.name)}
         </span>
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-fg">{me.data.name}</p>
-          <p className="hidden truncate text-xs text-fg-subtle md:block">{me.data.email}</p>
+          <p className="truncate text-sm font-semibold text-fg">{me.data.name}</p>
+          <p className="truncate text-xs text-fg-muted">{me.data.email}</p>
         </div>
       </div>
-      <div className="flex flex-wrap gap-1 md:mt-2">
+      <div className="mt-2 flex flex-wrap gap-1">
         <Link to="/cuenta" className={cx(buttonClasses("ghost", "sm"), "px-2")}>
           <UserIcon className="size-4" />
           Mi cuenta
@@ -198,6 +200,12 @@ export function Layout() {
 
 function LayoutBody() {
   useSessionGuard();
+  // El menú del celular: cerrado al cambiar de página.
+  const [open, setOpen] = useState(false);
+  const menuId = useId();
+  const { pathname } = useLocation();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: basta con el cambio de página.
+  useEffect(() => setOpen(false), [pathname]);
   const role = useRole();
   const createsBrokers = useCan("brokers.create");
   const brand = useScopedBrokerKind() === "brand";
@@ -210,29 +218,44 @@ function LayoutBody() {
       (item.listings !== true || !brand),
   );
   return (
-    // En pantalla ancha, un marco fijo: la barra lateral y el contenido se desplazan cada uno.
+    // En pantalla ancha, un marco fijo: la barra lateral y el contenido se desplazan cada uno. En el
+    // celular, la barra queda arriba y el menú se abre con un botón (F9.5-T26).
     <div className="flex min-h-screen flex-col bg-canvas md:h-screen md:min-h-0">
       <PublishModeBanner />
       <div className="flex flex-1 flex-col md:min-h-0 md:flex-row">
         <nav
           aria-label="Menú principal"
-          className="flex flex-col border-b border-line bg-surface px-3 py-3 md:w-64 md:shrink-0 md:overflow-y-auto md:border-r md:border-b-0 md:px-4 md:py-5"
+          className="flex flex-col bg-sand px-4 py-3 md:w-68 md:shrink-0 md:overflow-y-auto md:px-5 md:py-7"
         >
-          <p className="flex items-center gap-2.5 px-1 text-fg">
-            <LogoMark className="size-8" />
-            <span className="text-base font-semibold tracking-tight">AgentSales</span>
-          </p>
-          <BrokerSelector />
-          <ul className="mt-3 flex gap-1 overflow-x-auto [scrollbar-width:none] md:mt-5 md:flex-col">
-            {menu.map((item) => (
-              <li key={item.label} className="shrink-0">
-                <MenuEntry item={item} />
-              </li>
-            ))}
-          </ul>
-          <UserMenu />
+          <div className="flex items-center justify-between gap-3">
+            <p className="flex items-center gap-3 px-1 text-fg">
+              <LogoMark className="size-9" />
+              <span className="font-display text-[1.375rem] font-semibold">AgentSales</span>
+            </p>
+            <button
+              type="button"
+              aria-expanded={open}
+              aria-controls={menuId}
+              onClick={() => setOpen((current) => !current)}
+              className={cx(buttonClasses("ghost", "sm"), "min-h-11 px-3 md:hidden")}
+            >
+              {open ? <CloseIcon className="size-5" /> : <MenuIcon className="size-5" />}
+              Menú
+            </button>
+          </div>
+          <div id={menuId} className={cx("flex-1 flex-col md:flex", open ? "flex" : "hidden")}>
+            <BrokerSelector />
+            <ul className="mt-4 flex flex-col gap-1 md:mt-6">
+              {menu.map((item) => (
+                <li key={item.label}>
+                  <MenuEntry item={item} />
+                </li>
+              ))}
+            </ul>
+            <UserMenu />
+          </div>
         </nav>
-        <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 md:overflow-y-auto md:px-10 md:py-8">
+        <main className="min-w-0 flex-1 px-4 py-6 sm:px-8 md:overflow-y-auto md:px-12 md:py-10">
           <div className="mx-auto w-full max-w-6xl">
             <Suspense fallback={<Loading />}>
               <Outlet />

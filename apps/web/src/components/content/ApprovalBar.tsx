@@ -36,7 +36,7 @@ export function ApprovalBar({
   const channel = PLATFORM_TEXT[content.platform];
 
   return (
-    <div className="mb-3 rounded-lg border border-line bg-slate-50 p-3">
+    <div className="mb-3 rounded-lg border border-line bg-canvas p-3">
       <div className="flex flex-wrap items-center gap-2">
         {approved && <Badge tone="success">Aprobado</Badge>}
         <Button

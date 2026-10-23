@@ -96,7 +96,7 @@ export const discordConnectCommand = (slug: string) =>
  */
 export function DiscordConnectBox({ broker, reconnect }: { broker: Broker; reconnect: boolean }) {
   return (
-    <div className="mt-3 rounded-lg border border-line bg-slate-50 p-3 text-sm">
+    <div className="mt-3 rounded-lg border border-line bg-canvas p-3 text-sm">
       <p className="font-medium">{reconnect ? "Reconectar Discord" : "Conectar Discord"}</p>
       <p className="mt-1 text-fg-muted">
         La URL del webhook es secreta: se conecta desde la terminal, sin pegarla aquí.
