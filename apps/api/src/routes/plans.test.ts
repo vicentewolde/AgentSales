@@ -296,6 +296,37 @@ describe("/plans: pedir, seguir y ver las ideas", () => {
   });
 });
 
+describe("/plans: el pedido del operador (F9.5-T23)", () => {
+  it("se manda con el plan, se guarda y vuelve en la vista; la idea de ejemplo lo refleja", async () => {
+    const s = await setup();
+    const requested = await s.broker("/plans", {
+      method: "POST",
+      json: { platforms: ["linkedin"], count: 2, guidance: "  solo ideas para principiantes " },
+    });
+    expect(requested.status).toBe(202);
+    const { plan } = planRequestResponseSchema.parse(await requested.json());
+    expect(plan.guidance).toBe("solo ideas para principiantes");
+    await s.work(plan.id);
+    const detail = planDetailResponseSchema.parse(
+      await (await s.broker(`/plans/${plan.id}`)).json(),
+    );
+    expect(detail.plan.guidance).toBe("solo ideas para principiantes");
+    expect(detail.ideas.map((idea) => idea.topic)).toContain(
+      "Según tu pedido: solo ideas para principiantes",
+    );
+    const list = planListResponseSchema.parse(await (await s.broker("/plans")).json());
+    expect(list.plans[0]?.guidance).toBe("solo ideas para principiantes");
+  });
+
+  it("un pedido de más de 500 caracteres es 400 PLAN_RUN_INVALID y no encola nada", async () => {
+    const s = await setup();
+    const long = await s.broker("/plans", { method: "POST", json: { guidance: "a".repeat(501) } });
+    expect(long.status).toBe(400);
+    expect((await errorOf(long)).code).toBe("PLAN_RUN_INVALID");
+    expect(s.queue.jobs).toEqual([]);
+  });
+});
+
 describe("/plans: permisos (ADR-0022, `posts.manage`)", () => {
   it("un plan o una idea de otra marca no existe (404); el administrador elige la marca", async () => {
     const s = await setup();
