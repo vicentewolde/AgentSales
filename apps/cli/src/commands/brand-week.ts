@@ -96,6 +96,16 @@ export function runPostApproveWeek(deps: ApproveWeekDeps, options: PostApproveWe
       deps.print(`${c.bold(broker.brandName)} · ${planWeekText(week.week)} (hora de Chile)`);
     }
     if (week.posts.length === 0) {
+      if (options.json) {
+        deps.print(
+          JSON.stringify(
+            { week: week.week, lastDay: week.lastDay, ideas: week.ideas, posts: [] },
+            null,
+            2,
+          ),
+        );
+        return 0;
+      }
       deps.print(
         week.ideas > 0
           ? `No hay ideas aceptadas esa semana: ${week.ideas} siguen sin decidir (agentsales plan show <plan>).`
@@ -123,7 +133,11 @@ export function runPostApproveWeek(deps: ApproveWeekDeps, options: PostApproveWe
       }),
       postWeekApproveResponseSchema,
     );
-    const problems = result.posts.reduce((total, post) => total + post.problems.length, 0);
+    // Lo que ya salió no es un problema: repetir la semana con posts publicados sale bien.
+    const problems = result.posts.reduce(
+      (total, post) => total + post.problems.filter((p) => p.kind !== "nothing_left").length,
+      0,
+    );
     if (options.json) {
       deps.print(JSON.stringify(result, null, 2));
       return problems > 0 ? 1 : 0;
