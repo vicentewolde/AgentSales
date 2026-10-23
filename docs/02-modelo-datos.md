@@ -293,12 +293,12 @@ Lo que se pidió con «Conseguir imagen»: tarjetas de la marca, una foto de la 
 |---|---|---|
 | id | uuid PK | |
 | post_id | uuid FK | |
-| broker_id | uuid FK | La marca del post: el gasto del mes se suma por aquí |
+| broker_id | uuid FK | La marca del post. Repite a propósito el `broker_id` de `posts`: el gasto del mes se suma y se reserva por aquí sin cruzar con `posts` |
 | source | enum `post_image_source` | `card`, `stock` o `ai` |
 | status | enum `post_image_run_status` default `queued` | `queued`, `running`, `succeeded` o `failed` |
 | request | jsonb | `postImageRequestSchema` (core): la proporción y, según la fuente, el id de la foto y la búsqueda, o la indicación para la IA. Sin secretos ni URLs |
-| media_ids | uuid[] default `{}` | Los medios que quedaron en el post, en orden (también los que ya estaban con el mismo contenido) |
-| cost_usd | numeric(10,4) | Lo que costó (solo la IA): el precio configurado (`IMAGE_AI_PRICE_USD`), anotado apenas el proveedor entrega la imagen; un reintento que vuelve a llamar suma. `null` sin costo |
+| media_ids | uuid[] default `{}` | Los medios que quedaron en el post, en orden (también los que ya estaban con el mismo contenido). Sin FK a propósito: es un historial, y un medio que se borra después no lo cambia |
+| cost_usd | numeric(10,4) | Lo que costó (solo la IA): el precio configurado (`IMAGE_AI_PRICE_USD`), **reservado antes de llamar** en una transacción con un candado por marca (solo si cabe en el tope del mes); se devuelve si Google rechazó el pedido sin cobrar. `null` sin costo |
 | model | text | El modelo de IA que la hizo (`IMAGE_AI_MODEL` de ese momento) |
 | error | jsonb | `{ code, message }` cuando `status = failed` |
 | created_by | uuid FK null | Quién la pidió (`set null` si se borra el usuario) |
