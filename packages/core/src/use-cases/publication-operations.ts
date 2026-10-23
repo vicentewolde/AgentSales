@@ -14,6 +14,7 @@ import {
   type RemoteState,
   remoteStateSchema,
 } from "../publication.js";
+import { liveModeMismatch } from "../publish-mode.js";
 import { listingIdOf, listingSubject } from "../subject.js";
 import { accessTokenProvider } from "./ensure-access-token.js";
 import { expireAccountIfRejected } from "./platform-auth.js";
@@ -277,8 +278,16 @@ export async function listingBackToReadyIfLast(
 
 /** El modo que pide la API para las operaciones (D11 de F3): lo usan pausar, reactivar y cerrar. */
 export type OperationModeDeps = {
-  /** El `PUBLISH_MODE` de la API: una publicación de `live` exige la API en `live`. */
+  /**
+   * El modo de este pedido para la publicación: el de su marca (`effectivePublishMode`, ADR-0036).
+   * Una publicación de `live` lo exige en `live`.
+   */
   apiMode: PublishMode;
+  /**
+   * El `PUBLISH_MODE` del servidor, solo para explicar un `PUBLISH_MODE_MISMATCH`: en `live`, la
+   * causa es la marca apagada. Nunca decide el modo.
+   */
+  serverMode?: PublishMode;
   queue: JobQueue;
 };
 
@@ -354,11 +363,13 @@ export async function operatePublication(
   let remote: RemoteState | undefined;
   if (live) {
     if (deps.apiMode !== "live") {
-      throw new AppError(
-        "PUBLISH_MODE_MISMATCH",
-        "Esta publicación está en vivo, pero AgentSales está en simulación: no se cambió nada en la plataforma",
-        { details: { publicationId } },
-      );
+      throw liveModeMismatch({
+        what: "Esta publicación está en vivo",
+        nothing: "no se cambió nada en la plataforma",
+        serverMode: deps.serverMode,
+        portal: found.platform === "portal_inmobiliario",
+        publicationId,
+      });
     }
     if (operation === "close" && !confirmed) {
       throw new AppError(

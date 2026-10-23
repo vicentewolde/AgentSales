@@ -13,7 +13,14 @@ import { type ApiClient, createHealthFetcher, unwrap } from "../api-client.js";
 import { type CliContext, exitWith, type Terminal } from "../context.js";
 import { CliError, guarded, type Io } from "../output.js";
 import { publicationName } from "./publication-view.js";
-import { fetchBrokers, platformOption, resolveListingId } from "./shared.js";
+import {
+  brokersGoLive,
+  fetchBrokers,
+  listingBrokerId,
+  platformOption,
+  publicationBrokerId,
+  resolveListingId,
+} from "./shared.js";
 
 // F6-T11 (spec F6 §4.3): programar, reprogramar y desprogramar desde la CLI, en hora de Chile.
 
@@ -59,12 +66,22 @@ export function atOption(text: string): Date {
   }
 }
 
-/** En vivo, programar pide la misma confirmación que publicar (spec F6 §4.3). */
-export async function confirmLive(deps: ScheduleDeps, yes: boolean): Promise<boolean | null> {
+/**
+ * En vivo, programar pide la misma confirmación que publicar (spec F6 §4.3). Desde F9.5-T22
+ * (ADR-0036) solo si la marca de lo que se programa está en vivo (`brokerIds`, que se piden solo con
+ * el servidor en vivo); una marca que no se sabe pregunta igual.
+ */
+export async function confirmLive(
+  deps: ScheduleDeps,
+  yes: boolean,
+  brokerIds: () => Promise<readonly (string | undefined)[]>,
+): Promise<boolean | null> {
   const { publishMode } = await createHealthFetcher(deps.client)();
-  if (publishMode !== "live" || yes) return publishMode === "live";
+  if (publishMode !== "live") return false;
+  if (!(await brokersGoLive(deps.client, await brokerIds()))) return false;
+  if (yes) return true;
   const confirmed = await deps.confirm(
-    "La API está EN VIVO: a la hora se publica de verdad, sin volver a preguntar. ¿Programar?",
+    "La API está EN VIVO y la marca también: a la hora se publica de verdad, sin volver a preguntar. ¿Programar?",
   );
   if (!confirmed) {
     deps.printError(deps.colors.yellow("No se programó nada: confirma en la terminal o usa --yes"));
@@ -100,7 +117,30 @@ export function runSchedule(deps: ScheduleDeps, refs: readonly string[], options
     }
     const platforms = options.platform?.map((option) => platformOption(option));
     const spacingMinutes = spacingOf(options.spacing);
-    const live = await confirmLive(deps, options.yes ?? false);
+    // Las propiedades antes de preguntar: la pregunta depende de su marca (ADR-0036).
+    const brokers = options.publication === undefined ? await fetchBrokers(deps.client) : null;
+    const refOf = new Map<string, string>();
+    const listingIds: string[] = [];
+    if (brokers !== null) {
+      for (const ref of refs) {
+        const id = await resolveListingId(deps.client, ref.trim(), brokers, options.broker);
+        refOf.set(id, ref.trim());
+        listingIds.push(id);
+      }
+    }
+    const publicationId = options.publication?.trim();
+    const live = await confirmLive(deps, options.yes ?? false, async () =>
+      publicationId !== undefined
+        ? [
+            await unwrap(
+              deps.client.publications[":id"].$get({ param: { id: publicationId } }),
+              publicationResponseSchema,
+            )
+              .then(({ publication }) => publicationBrokerId(deps.client, publication))
+              .catch(() => undefined),
+          ]
+        : Promise.all(listingIds.map((id) => listingBrokerId(deps.client, id))),
+    );
     if (live === null) return 1;
 
     if (options.publication !== undefined) {
@@ -117,14 +157,6 @@ export function runSchedule(deps: ScheduleDeps, refs: readonly string[], options
       return 0;
     }
 
-    const brokers = await fetchBrokers(deps.client);
-    const refOf = new Map<string, string>();
-    const listingIds: string[] = [];
-    for (const ref of refs) {
-      const id = await resolveListingId(deps.client, ref.trim(), brokers, options.broker);
-      refOf.set(id, ref.trim());
-      listingIds.push(id);
-    }
     const { results, notes } = await unwrap(
       deps.client.schedule.$post({
         json: {

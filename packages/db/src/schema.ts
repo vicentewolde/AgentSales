@@ -123,6 +123,12 @@ export const brokers = pgTable("brokers", {
    * formulario automático de Marketplace. La migración `0009` marca así a los que ya existían.
    */
   operatorOwned: boolean("operator_owned").notNull().default(false),
+  /**
+   * La segunda llave del modo en vivo (F9.5-T22, ADR-0036): la marca publica de verdad solo si el
+   * servidor está en `PUBLISH_MODE=live` y esta columna es `true`. Nace apagada; la cambia solo el
+   * administrador y solo en un corredor propio.
+   */
+  liveEnabled: boolean("live_enabled").notNull().default(false),
   /** Tope de gasto de IA del mes en dólares (spec F7 §4.7); `null` = sin tope. */
   llmMonthlyCapUsd: numeric("llm_monthly_cap_usd", { precision: 10, scale: 2 }),
   /**

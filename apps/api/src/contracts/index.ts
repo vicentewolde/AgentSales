@@ -52,6 +52,7 @@ import {
   PUBLICATION_FORMATS,
   PUBLICATION_RESOLUTIONS,
   PUBLICATION_STATUSES,
+  PUBLISH_MODES,
   postImageRequestSchema,
   postImageRunSchema,
   postSchema,
@@ -233,7 +234,15 @@ export type MusicTrackView = z.infer<typeof musicTrackViewSchema>;
 export const musicTrackListResponseSchema = z.object({ tracks: z.array(musicTrackViewSchema) });
 export type MusicTrackListResponse = z.infer<typeof musicTrackListResponseSchema>;
 
-export const brokerListResponseSchema = z.object({ brokers: z.array(brokerSchema) });
+/**
+ * Un corredor tal como lo ve el panel y la CLI: sus datos más el modo con que publicaría hoy
+ * (`effectiveMode`, F9.5-T22, ADR-0036): `live` solo con el servidor en `live`, la marca encendida y
+ * propia. Lo calcula la API con `effectivePublishMode`; los clientes no lo rederivan.
+ */
+export const brokerViewSchema = brokerSchema.extend({ effectiveMode: z.enum(PUBLISH_MODES) });
+export type BrokerView = z.infer<typeof brokerViewSchema>;
+
+export const brokerListResponseSchema = z.object({ brokers: z.array(brokerViewSchema) });
 export type BrokerListResponse = z.infer<typeof brokerListResponseSchema>;
 
 /** Extensiones que acepta la subida del panel (la API y el formulario revisan las mismas). */
@@ -1344,7 +1353,15 @@ export const marketplaceManualBodySchema = z
  */
 export const brokerPatchBodySchema = brokerBrandBodySchema
   .extend(brokerSettingsBodySchema.shape)
-  .extend({ autoPublish: z.boolean().optional() })
+  .extend({
+    autoPublish: z.boolean().optional(),
+    /**
+     * F9.5-T22 (ADR-0036): encender o apagar el modo en vivo de la marca (solo el administrador, solo
+     * un corredor propio). Encender exige `liveConfirm` con el `slug` del corredor.
+     */
+    liveEnabled: z.boolean().optional(),
+    liveConfirm: z.string().max(100).optional(),
+  })
   .strict();
 
 export const onboardingStepSchema = z.object({
@@ -1355,7 +1372,7 @@ export const onboardingStepSchema = z.object({
 });
 export type OnboardingStepView = z.infer<typeof onboardingStepSchema>;
 
-export const brokerResponseSchema = z.object({ broker: brokerSchema });
+export const brokerResponseSchema = z.object({ broker: brokerViewSchema });
 export type BrokerResponse = z.infer<typeof brokerResponseSchema>;
 /** `GET /brokers/:id`, `POST /brokers` y `PATCH /brokers/:id`: el corredor y su lista de alta. */
 export const brokerDetailResponseSchema = brokerResponseSchema.extend({

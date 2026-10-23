@@ -1,12 +1,13 @@
 import type { Broker } from "../broker.js";
 import type { Content } from "../content.js";
-import { LISTING_PLATFORMS, type Platform } from "../enums.js";
+import { LISTING_PLATFORMS, type Platform, type PublishMode } from "../enums.js";
 import { isAppError } from "../errors.js";
 import type { Listing } from "../listing.js";
 import type { PlatformAccount } from "../platform-account.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { ContentRepository } from "../ports/content-repository.js";
 import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
+import { effectiveDryRun } from "../publish-mode.js";
 import { listingSubject } from "../subject.js";
 import { type ApproveContentDeps, approveContent } from "./approve-content.js";
 import { type PublishListingDeps, publishListing } from "./publish-listing.js";
@@ -22,10 +23,11 @@ export type AutoPublishDeps = ApproveContentDeps &
     contents: Pick<ContentRepository, "get" | "listCurrent">;
     platformAccounts: Pick<PlatformAccountRepository, "listByBroker">;
     /**
-     * El modo **del worker** (`PUBLISH_MODE`): es el único camino en que el worker fija el modo de
-     * una publicación (spec F6 §4.10).
+     * El modo **del servidor** (`PUBLISH_MODE` del worker): es el único camino en que el worker fija
+     * el modo de una publicación (spec F6 §4.10). El modo de cada una lo da `effectivePublishMode`
+     * con el corredor del aviso (F9.5-T22, ADR-0036).
      */
-    dryRun: boolean;
+    serverMode: PublishMode;
   };
 
 /**
@@ -106,6 +108,7 @@ export async function autoPublishListing(
   const broker = await deps.brokers.findById(listing.brokerId);
   if (!autoPublishApplies(listing, broker) || broker === null) return { outcome: "off" };
 
+  const dryRun = effectiveDryRun(deps.serverMode, broker);
   const connected = connectedPlatforms(await deps.platformAccounts.listByBroker(broker.id));
   const channels: AutoPublishChannel[] = [];
   for (const content of autoPublishContents(
@@ -117,6 +120,7 @@ export async function autoPublishListing(
         listingId,
         platform: content.platform,
         contentId: content.id,
+        dryRun,
       }),
     );
   }
@@ -125,7 +129,12 @@ export async function autoPublishListing(
 
 async function autoPublishChannel(
   deps: AutoPublishDeps,
-  { listingId, platform, contentId }: { listingId: string; platform: Platform; contentId: string },
+  {
+    listingId,
+    platform,
+    contentId,
+    dryRun,
+  }: { listingId: string; platform: Platform; contentId: string; dryRun: boolean },
 ): Promise<AutoPublishChannel> {
   try {
     await approveContent(deps, { contentId, actor: "system" });
@@ -142,14 +151,14 @@ async function autoPublishChannel(
         listingId,
         platform,
         at: now,
-        dryRun: deps.dryRun,
+        dryRun,
         actor: "system",
         reason: "auto_publish",
         minLead: false,
       });
       return { platform, result: "reminder" };
     }
-    await publishListing(deps, { listingId, platform, dryRun: deps.dryRun, actor: "system" });
+    await publishListing(deps, { listingId, platform, dryRun, actor: "system" });
     return { platform, result: "published" };
   } catch (error) {
     const code = codeOf(error);

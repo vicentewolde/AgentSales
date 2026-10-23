@@ -12,6 +12,7 @@ import {
   type RemoteState,
 } from "../publication.js";
 import { assemblePublishInput, toPublishListing } from "../publish/input.js";
+import { liveModeMismatch } from "../publish-mode.js";
 import { listingIdOf, listingSubject } from "../subject.js";
 import {
   codeOf,
@@ -128,11 +129,13 @@ export async function updatePortalPublication(
   ];
   if (live) {
     if (deps.apiMode !== "live") {
-      throw new AppError(
-        "PUBLISH_MODE_MISMATCH",
-        "Este aviso está en vivo, pero AgentSales está en simulación: no se cambió nada en la plataforma",
-        { details: { publicationId } },
-      );
+      throw liveModeMismatch({
+        what: "Este aviso está en vivo",
+        nothing: "no se cambió nada en la plataforma",
+        serverMode: deps.serverMode,
+        portal: true,
+        publicationId,
+      });
     }
     if (!confirmed) {
       throw new AppError(

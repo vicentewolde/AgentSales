@@ -4,8 +4,9 @@ import { cx } from "../ui/styles.js";
 /**
  * «simulación» o «en vivo» de una publicación (D4 del spec F9.5): el modo fijado o, mientras no se
  * fija (`modeFixed: false`: una aprobada, una descartada sin intento, una fallida que no empezó en
- * vivo), el del sistema (`publishMode` de `/health`, el del banner). Si ese todavía no se sabe, nada:
- * mejor callar que decir «simulación» sin saberlo.
+ * vivo), el de su marca (F9.5-T22, ADR-0036: `useBrokerPublishMode` o `useBrokerModeOf`, el
+ * servidor de `/health` con la llave de la marca). Si ese todavía no se sabe, nada: mejor callar que
+ * decir «simulación» sin saberlo.
  */
 export function PublicationMode({
   publication,
@@ -15,7 +16,7 @@ export function PublicationMode({
   liveOnly = false,
 }: {
   publication: { dryRun: boolean; modeFixed: boolean };
-  /** El modo del sistema (`undefined` mientras no se sabe). */
+  /** El modo de la marca de la publicación (`undefined` mientras no se sabe). */
   publishMode: PublishMode | undefined;
   className?: string;
   /** Lo que va antes del texto, dentro de él (un separador: si no hay modo, tampoco separador). */

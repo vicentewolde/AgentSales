@@ -7,6 +7,7 @@ import {
   brokerSheetDraft,
   createBroker,
   type EditorialProfileRepository,
+  effectivePublishMode,
   type LogoNormalizer,
   MAX_BROKER_TEMPLATE_BYTES,
   MAX_LOGO_BYTES,
@@ -14,6 +15,7 @@ import {
   type MediaStorage,
   onboardingSteps,
   type PlatformAccountRepository,
+  type PublishMode,
   purgeBroker,
   purgeBrokerSummary,
   type RawBrokerSheet,
@@ -31,6 +33,7 @@ import {
   type BrokerPurgeSummaryResponse,
   type BrokerResponse,
   type BrokerTemplateDraftResponse,
+  type BrokerView,
   brokerCreateBodySchema,
   brokerDeleteBodySchema,
   brokerLogoFormSchema,
@@ -45,6 +48,8 @@ import { validated } from "../validation.js";
 
 export type BrokerRoutesDeps = {
   brokers: BrokerRepository;
+  /** El modo del servidor (`PUBLISH_MODE`): con la marca da el `effectiveMode` de cada corredor. */
+  publishMode: PublishMode;
   media: Pick<MediaRepository, "findByStoragePath" | "create">;
   /** Subir el logo y, al borrar un corredor (F9.5-T14), recorrer sus prefijos y borrar sus archivos. */
   storage: Pick<MediaStorage, "put" | "list" | "delete">;
@@ -73,6 +78,11 @@ const MULTIPART_OVERHEAD_BYTES = 64 * 1024;
  * spec F6 §4.10), el logo y la planilla. Lo de otro corredor no existe: `ownedBy` en `app.ts`.
  */
 export function brokerRoutes(deps: BrokerRoutesDeps) {
+  /** El corredor con el modo con que publicaría hoy (ADR-0036). */
+  const viewOf = (broker: Broker): BrokerView => ({
+    ...broker,
+    effectiveMode: effectivePublishMode(deps.publishMode, broker),
+  });
   /** El corredor con su lista de alta: sus usuarios, sus cuentas y su perfil editorial (una fila). */
   const detail = async (broker: Broker): Promise<BrokerDetailResponse> => {
     const [users, accounts, editorialProfile] = await Promise.all([
@@ -80,7 +90,10 @@ export function brokerRoutes(deps: BrokerRoutesDeps) {
       deps.platformAccounts.listByBroker(broker.id),
       deps.editorialProfiles.get(broker.id),
     ]);
-    return { broker, onboarding: onboardingSteps({ broker, users, accounts, editorialProfile }) };
+    return {
+      broker: viewOf(broker),
+      onboarding: onboardingSteps({ broker, users, accounts, editorialProfile }),
+    };
   };
   const brokerOf = async (id: string): Promise<Broker> => {
     const broker = await deps.brokers.findById(id);
@@ -97,7 +110,9 @@ export function brokerRoutes(deps: BrokerRoutesDeps) {
     new Hono<AppEnv>()
       .get("/", async (c) => {
         // Un corredor ve solo el suyo (spec F7 §4.4); el administrador, todos.
-        const body: BrokerListResponse = { brokers: await deps.brokers.list(requestScope(c)) };
+        const body: BrokerListResponse = {
+          brokers: (await deps.brokers.list(requestScope(c))).map(viewOf),
+        };
         return c.json(body, 200);
       })
       .post("/", validated("json", brokerCreateBodySchema), async (c) => {
@@ -142,12 +157,27 @@ export function brokerRoutes(deps: BrokerRoutesDeps) {
         validated("param", idParamSchema),
         validated("json", brokerPatchBodySchema),
         async (c) => {
-          const broker = await updateBroker(
-            deps,
-            requireAuth(c).user,
-            c.req.valid("param").id,
-            c.req.valid("json"),
-          );
+          const { user } = requireAuth(c);
+          const id = c.req.valid("param").id;
+          const input = c.req.valid("json");
+          // El modo en vivo (F9.5-T22, ADR-0036) se registra cada vez que cambia: quién, qué marca
+          // y a qué valor (también cuando se apaga solo al dejar de ser propio).
+          const touchesLive = input.liveEnabled !== undefined || input.operatorOwned !== undefined;
+          const before = touchesLive ? await deps.brokers.findById(id) : null;
+          const broker = await updateBroker(deps, user, id, input);
+          if (before !== null && before.liveEnabled !== broker.liveEnabled) {
+            deps.logger.info(
+              {
+                actorUserId: user.id,
+                actorRole: user.role,
+                slug: broker.slug,
+                liveEnabled: broker.liveEnabled,
+              },
+              broker.liveEnabled
+                ? "modo en vivo de la marca encendido"
+                : "modo en vivo de la marca apagado",
+            );
+          }
           return c.json(await detail(broker), 200);
         },
       )
@@ -171,7 +201,7 @@ export function brokerRoutes(deps: BrokerRoutesDeps) {
           const { id } = c.req.valid("param");
           const bytes = new Uint8Array(await c.req.valid("form").logo.arrayBuffer());
           const broker = await setBrokerLogo(deps, requireAuth(c).user, { brokerId: id, bytes });
-          const body: BrokerResponse = { broker };
+          const body: BrokerResponse = { broker: viewOf(broker) };
           return c.json(body, 200);
         },
       )

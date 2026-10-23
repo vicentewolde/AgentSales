@@ -36,6 +36,7 @@ const sheetOf = (overrides: Partial<Broker> = {}) =>
     fixedHashtags: ["#uno", "#dos"],
     autoPublish: false,
     operatorOwned: false,
+    liveEnabled: false,
     llmMonthlyCapUsd: null,
     kind: "broker",
     ...overrides,

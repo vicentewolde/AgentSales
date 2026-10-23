@@ -8,6 +8,7 @@ import type { PublicationRepository } from "../ports/publication-repository.js";
 import { type AccessTokenProvider, storedAccessToken } from "../ports/publisher.js";
 import type { PlatformTokenRefresher } from "../ports/token-refresher.js";
 import type { Publication, PublicationActor } from "../publication.js";
+import { liveModeMismatch } from "../publish-mode.js";
 import { runOnSubject, type SubjectLocks } from "../subject-lock.js";
 import { ROTATING_TOKEN_PLATFORMS, rotatingAccessTokenProvider } from "./ensure-access-token.js";
 import { expireAccountIfRejected } from "./platform-auth.js";
@@ -27,7 +28,10 @@ import { publicationNotFound } from "./publication-start.js";
  * publicación).
  */
 export type RetireRemovalDeps = {
+  /** El modo de este pedido para la publicación: el de su marca (ADR-0036). */
   apiMode: PublishMode;
+  /** El `PUBLISH_MODE` del servidor, solo para explicar un `PUBLISH_MODE_MISMATCH` (nunca decide). */
+  serverMode?: PublishMode;
   platformAccounts: Pick<
     PlatformAccountRepository,
     "get" | "getCredentials" | "changeStatus" | "withCredentialsLock"
@@ -206,11 +210,12 @@ async function removeRemote(
     throw deleteUnsupported(publication, "Esta red no se borra desde AgentSales");
   }
   if (removal.apiMode !== "live") {
-    throw new AppError(
-      "PUBLISH_MODE_MISMATCH",
-      "Esta publicación está en vivo, pero AgentSales está en simulación: no se borró nada en la red",
-      { details: { publicationId } },
-    );
+    throw liveModeMismatch({
+      what: "Esta publicación está en vivo",
+      nothing: "no se borró nada en la red",
+      serverMode: removal.serverMode,
+      publicationId,
+    });
   }
   const account = await removal.platformAccounts.get(publication.platformAccountId);
   if (account === null || account.status !== "connected") {

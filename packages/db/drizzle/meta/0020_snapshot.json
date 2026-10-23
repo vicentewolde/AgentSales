@@ -1,5 +1,5 @@
 {
-  "id": "03f75868-eeb9-4d39-9fbd-33c76940ce21",
+  "id": "a091b8b6-c44e-4dc2-8111-76b013e9fe97",
   "prevId": "9ac1ca4a-e63e-4d67-a97a-7edc17351a12",
   "version": "7",
   "dialect": "postgresql",
@@ -97,6 +97,13 @@
         },
         "operator_owned": {
           "name": "operator_owned",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "live_enabled": {
+          "name": "live_enabled",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
@@ -2108,215 +2115,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.post_image_runs": {
-      "name": "post_image_runs",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "post_id": {
-          "name": "post_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "broker_id": {
-          "name": "broker_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "source": {
-          "name": "source",
-          "type": "post_image_source",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "post_image_run_status",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'queued'"
-        },
-        "request": {
-          "name": "request",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "media_ids": {
-          "name": "media_ids",
-          "type": "uuid[]",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::uuid[]"
-        },
-        "cost_usd": {
-          "name": "cost_usd",
-          "type": "numeric(10, 4)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "model": {
-          "name": "model",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "error": {
-          "name": "error",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "started_at": {
-          "name": "started_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "finished_at": {
-          "name": "finished_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "post_image_runs_post_created_idx": {
-          "name": "post_image_runs_post_created_idx",
-          "columns": [
-            {
-              "expression": "post_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "post_image_runs_broker_created_idx": {
-          "name": "post_image_runs_broker_created_idx",
-          "columns": [
-            {
-              "expression": "broker_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "post_image_runs_one_active_per_post": {
-          "name": "post_image_runs_one_active_per_post",
-          "columns": [
-            {
-              "expression": "post_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"status\" IN ('queued', 'running')",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "post_image_runs_post_id_posts_id_fk": {
-          "name": "post_image_runs_post_id_posts_id_fk",
-          "tableFrom": "post_image_runs",
-          "tableTo": "posts",
-          "columnsFrom": [
-            "post_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "post_image_runs_broker_id_brokers_id_fk": {
-          "name": "post_image_runs_broker_id_brokers_id_fk",
-          "tableFrom": "post_image_runs",
-          "tableTo": "brokers",
-          "columnsFrom": [
-            "broker_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "post_image_runs_created_by_users_id_fk": {
-          "name": "post_image_runs_created_by_users_id_fk",
-          "tableFrom": "post_image_runs",
-          "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.post_uploads": {
       "name": "post_uploads",
       "schema": "",
@@ -3691,25 +3489,6 @@
         "linkedin",
         "discord",
         "tiktok"
-      ]
-    },
-    "public.post_image_run_status": {
-      "name": "post_image_run_status",
-      "schema": "public",
-      "values": [
-        "queued",
-        "running",
-        "succeeded",
-        "failed"
-      ]
-    },
-    "public.post_image_source": {
-      "name": "post_image_source",
-      "schema": "public",
-      "values": [
-        "card",
-        "stock",
-        "ai"
       ]
     },
     "public.post_kind": {

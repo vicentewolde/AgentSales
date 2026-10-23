@@ -217,7 +217,9 @@ describe("Mi marca (F7-T18)", () => {
         if (method === "POST" && /\/brokers\/[^/]+\/logo$/.test(path)) {
           intercepted.push(path);
           return new Response(
-            JSON.stringify({ broker: { ...createdBroker, logoMediaId: "logo-1" } }),
+            JSON.stringify({
+              broker: { ...createdBroker, logoMediaId: "logo-1", effectiveMode: "dry-run" },
+            }),
             {
               status: 200,
               headers: { "content-type": "application/json" },

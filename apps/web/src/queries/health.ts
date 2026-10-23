@@ -1,8 +1,9 @@
-import type { PublishMode } from "@agentsales/core";
-import { healthReportSchema } from "@agentsales/core";
+import { effectivePublishMode, healthReportSchema, type PublishMode } from "@agentsales/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { createContext, useContext } from "react";
 import { unwrap } from "../api/client.js";
 import { useApiClient } from "../api/context.js";
+import { brokerKeys, fetchBrokerList } from "./brokers.js";
 
 /** Cada sondeo despierta Neon (ADR-0007): 30 s, solo en la página Estado y con la pestaña visible. */
 export const HEALTH_REFETCH_MS = 30_000;
@@ -25,14 +26,23 @@ export function useHealth({ poll = false }: { poll?: boolean } = {}) {
 }
 
 /**
- * Pide `/health` de nuevo (sin caché) y devuelve el modo de la API: lo usa el panel justo antes de
- * publicar, para no confiar en un modo leído al abrir la página (D11). Un pedido por clic.
+ * El corredor o la marca del sujeto que se está mirando (una propiedad o un post, F9.5-T22): lo
+ * ponen las páginas de un solo sujeto. Con él, `useFreshPublishMode` da el modo de esa marca.
+ */
+export const SubjectBrokerContext = createContext<string | undefined>(undefined);
+
+/**
+ * Pide `/health` de nuevo (sin caché) y devuelve el modo con que se publicaría ahora (D11): lo usa
+ * el panel justo antes de publicar, para no confiar en un modo leído al abrir la página. Desde
+ * F9.5-T22 (ADR-0036), dentro de un `SubjectBrokerContext` relee también la marca y da su modo
+ * efectivo; sin marca, o si no se pudo leer, el del servidor (pregunta de más, nunca de menos).
  */
 export function useFreshPublishMode() {
   const client = useApiClient();
   const queryClient = useQueryClient();
-  return async (): Promise<PublishMode> =>
-    (
+  const brokerId = useContext(SubjectBrokerContext);
+  return async (): Promise<PublishMode> => {
+    const server = (
       await queryClient.fetchQuery({
         queryKey: healthKeys.all,
         queryFn: ({ signal }) =>
@@ -40,4 +50,15 @@ export function useFreshPublishMode() {
         staleTime: 0,
       })
     ).publishMode;
+    if (brokerId === undefined) return server;
+    const brokers = await queryClient
+      .fetchQuery({
+        queryKey: brokerKeys.all,
+        queryFn: ({ signal }) => fetchBrokerList(client, signal),
+        staleTime: 0,
+      })
+      .catch(() => undefined);
+    const broker = brokers?.find((item) => item.id === brokerId);
+    return broker === undefined ? server : effectivePublishMode(server, broker);
+  };
 }

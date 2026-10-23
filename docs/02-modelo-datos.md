@@ -56,6 +56,7 @@ Desde F9 (ADR-0029), `content_runs`, `contents` y `publications` cuelgan de **un
 | tone | text null | Guía de tono para la IA |
 | fixed_hashtags | text[] | |
 | auto_publish | boolean default false | Si es true, al terminar una corrida de textos se aprueba lo que no tiene errores y se publica solo (F6-T09, ADR-0019; Marketplace queda como recordatorio). Solo lo cambian el panel y la CLI (`BrokerRepository.setAutoPublish`), nunca la hoja Corredor |
+| live_enabled | boolean not null default false | La segunda llave del modo en vivo (F9.5-T22, ADR-0036; migración `0020`): una publicación sale de verdad solo con `PUBLISH_MODE=live` en el servidor **y** esta columna en `true` **y** `operator_owned`. Nace `false` (también en las filas que ya había y en el seed). La cambia solo el administrador (`BrokerRepository.setLiveEnabled`, `brokers live <slug> on|off`), solo en un corredor propio y repitiendo el `slug` para encender; si el corredor deja de ser propio, se apaga. Una versión anterior a la `0020` la ignora |
 | operator_owned | boolean default false | Corredor propio del operador (F7, spec §4.7, ADR-0023): su IA usa `LLM_PROVIDER` (el plan del operador) y puede usar el formulario automático de Marketplace; los demás, la API de Anthropic y Marketplace a mano. La migración `0009` marcó `true` los que ya existían. Lo cambia solo el administrador (`BrokerRepository.setSettings`) |
 | llm_monthly_cap_usd | numeric(10,2) null | Tope de gasto de IA del mes de Chile, en dólares (F7, spec §4.7); `null` = sin tope. Solo el administrador (`setSettings`) |
 | kind | enum `broker_kind` default `broker` | `broker` (corredor con propiedades) o `brand` (una marca que solo publica posts), F9 y ADR-0029 (migración `0014`; los que ya existían quedaron `broker`). Se fija al crear (`agentsales brokers create --kind brand`, `POST /brokers`) y no lo cambian la hoja Corredor ni `update`. Solo dice qué ve el panel (en una marca, sin Propiedades, Importar, Portal, Marketplace ni la publicación automática) y **no decide permisos**; podrá sumar valores (`org`, `office`) con `ALTER TYPE … ADD VALUE` |
@@ -465,7 +466,7 @@ Son **aditivas salvo la `0015`**, que además quita el `NOT NULL` de `listing_id
 | `0017_f9_subida_grande` | T17 | `post_upload_status` suma `uploaded` |
 | `0018_f9_plan_ideas` | T20 | `posts.platforms` (`text[]` nulo) y el único parcial `plan_runs_one_active_per_broker` |
 
-**F9.5 (lista para mostrar):** `0019_f95_musica` (T19) agrega `listings.music_track_id` y `posts.music_track_id` (texto nulo): aditiva; la versión anterior no las lee, y volver atrás no pide deshacerla. `0020_f95_imagenes_post` (T25) agrega la tabla `post_image_runs` con sus tipos `post_image_source` y `post_image_run_status`: aditiva; la versión anterior no la lee, y volver atrás no pide deshacerla.
+**F9.5 (lista para mostrar):** `0019_f95_musica` (T19) agrega `listings.music_track_id` y `posts.music_track_id` (texto nulo): aditiva; la versión anterior no las lee, y volver atrás no pide deshacerla. `0020_f95_en_vivo_por_marca` (T22) agrega `brokers.live_enabled` (ver `brokers`). `0021_f95_imagenes_post` (T25) agrega la tabla `post_image_runs` con sus tipos `post_image_source` y `post_image_run_status`: aditiva; la versión anterior no la lee, y volver atrás no pide deshacerla.
 
 ## Reglas de datos
 

@@ -6,6 +6,7 @@ import { manualConfirmPending } from "../marketplace/limits.js";
 import type { LockedRepositories } from "../ports/listing-lock.js";
 import type { Publication, PublicationActor } from "../publication.js";
 import { outcomeUnknownPending } from "../publish/outcome.js";
+import { liveModeMismatch } from "../publish-mode.js";
 import { listingSubject } from "../subject.js";
 import { manualTasksOf } from "../tracking/manual-tasks.js";
 import {
@@ -260,7 +261,7 @@ async function pausedByListing(
  * nada publicado, ni en vivo ni simulado (la tabla de §4.8): primero se cierra.
  */
 function requireLiveCompatible(
-  deps: Pick<ChangeListingStatusDeps, "apiMode">,
+  deps: Pick<ChangeListingStatusDeps, "apiMode" | "serverMode">,
   action: ListingAction,
   publications: readonly Publication[],
   portal: readonly PortalStep[],
@@ -279,11 +280,13 @@ function requireLiveCompatible(
     (step) => publications.find((p) => p.id === step.publicationId)?.dryRun === false,
   );
   if (touchesLive && deps.apiMode !== "live") {
-    throw new AppError(
-      "PUBLISH_MODE_MISMATCH",
-      "La propiedad tiene un aviso de Portal en vivo, pero AgentSales está en simulación: no se cambió nada",
-      { details: { action } },
-    );
+    throw liveModeMismatch({
+      what: "La propiedad tiene un aviso de Portal en vivo",
+      nothing: "no se cambió nada",
+      serverMode: deps.serverMode,
+      portal: true,
+      details: { action },
+    });
   }
 }
 

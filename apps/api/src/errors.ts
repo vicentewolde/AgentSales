@@ -106,6 +106,9 @@ const CONFLICTS = new Set([
   "BROKER_HAS_ACTIVE_PUBLICATIONS",
   // F9 (ADR-0029): cargar propiedades en una marca o activar su publicación automática.
   "BROKER_IS_BRAND",
+  // F9.5-T22 (ADR-0036): encender el modo en vivo de un corredor que no es propio, o sin repetir su slug.
+  "LIVE_NOT_ALLOWED",
+  "LIVE_NOT_CONFIRMED",
   // F9-T05 (spec F9 §4.2): pedir o aprobar los textos de un post que es una idea sin aceptar o
   // está archivado.
   "POST_NOT_READY",
