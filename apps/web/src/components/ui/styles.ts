@@ -18,7 +18,7 @@ const BUTTON_BASE =
 const BUTTON_VARIANT: Readonly<Record<ButtonVariant, string>> = {
   primary: "bg-brand-700 text-surface shadow-xs not-disabled:hover:bg-brand-800",
   secondary:
-    "border border-line-strong bg-surface text-fg shadow-xs not-disabled:hover:border-brand-300 not-disabled:hover:bg-canvas",
+    "border border-line-strong bg-surface text-fg shadow-xs not-disabled:hover:border-brand-700 not-disabled:hover:bg-canvas",
   danger: "bg-danger-700 text-surface shadow-xs not-disabled:hover:bg-danger-800",
   ghost: "text-fg-muted not-disabled:hover:bg-sand not-disabled:hover:text-fg",
   link: "py-1 text-brand-800 underline underline-offset-2 not-disabled:hover:text-brand-900",
@@ -51,8 +51,8 @@ export type BadgeTone =
   | "accent";
 
 export const BADGE_TONE: Readonly<Record<BadgeTone, { badge: string; dot: string }>> = {
-  neutral: { badge: "bg-surface text-fg-muted ring-1 ring-line-strong", dot: "bg-fg-subtle" },
-  muted: { badge: "bg-sand text-fg-muted", dot: "bg-line-strong" },
+  neutral: { badge: "bg-surface text-fg-muted ring-1 ring-line-soft", dot: "bg-fg-subtle" },
+  muted: { badge: "bg-sand text-fg-muted", dot: "bg-line-soft" },
   brand: { badge: "bg-brand-50 text-brand-900", dot: "bg-brand-500" },
   info: { badge: "bg-info-50 text-info-800", dot: "bg-info-500" },
   success: { badge: "bg-success-50 text-success-800", dot: "bg-success-500" },
@@ -64,9 +64,12 @@ export const BADGE_TONE: Readonly<Record<BadgeTone, { badge: string; dot: string
 export const BADGE_BASE =
   "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ring-inset";
 
-/** Un campo de texto, una lista o un área de texto (sin el ancho: lo pone quien lo usa). */
+/**
+ * Un campo de texto, una lista o un área de texto (sin el ancho: lo pone quien lo usa). El borde es
+ * de control (`line-strong`, 3:1) y el foco conserva un contorno visible además del anillo suave.
+ */
 export const FIELD_CONTROL =
-  "block min-h-11 rounded-lg border border-line-strong bg-surface px-3.5 py-2 text-[0.9375rem] text-fg shadow-xs placeholder:text-fg-subtle focus:border-brand-700 focus:outline-none focus:ring-3 focus:ring-brand-200 disabled:cursor-not-allowed disabled:bg-canvas disabled:text-fg-subtle aria-invalid:border-danger-600";
+  "block min-h-11 rounded-lg border border-line-strong bg-surface px-3.5 py-2 text-[0.9375rem] text-fg shadow-xs placeholder:text-fg-subtle focus:border-brand-700 focus:ring-3 focus:ring-brand-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 disabled:cursor-not-allowed disabled:bg-canvas disabled:text-fg-subtle aria-invalid:border-danger-600";
 
 /** Un selector de archivos: el botón con la forma de un botón secundario. */
 export const FILE_INPUT =

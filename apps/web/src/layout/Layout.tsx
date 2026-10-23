@@ -67,6 +67,10 @@ export const MENU: readonly MenuItem[] = [
   { label: "Estado", to: "/estado", adminOnly: true, icon: PulseIcon },
 ];
 
+/** El botón «Menú» del celular (en pantalla ancha, el menú siempre está a la vista). */
+const MENU_TOGGLE =
+  "inline-flex min-h-11 items-center gap-2 rounded-full px-3 text-sm font-semibold text-fg-muted transition-colors hover:bg-sand-strong hover:text-fg md:hidden";
+
 const ENTRY =
   "group flex min-h-11 items-center gap-3 whitespace-nowrap rounded-lg px-3.5 py-2 text-[0.9375rem] transition-colors";
 
@@ -164,13 +168,13 @@ function UserMenu() {
         </div>
       </div>
       <div className="mt-2 flex flex-wrap gap-1">
-        <Link to="/cuenta" className={cx(buttonClasses("ghost", "sm"), "px-2")}>
+        <Link to="/cuenta" className={buttonClasses("ghost", "sm")}>
           <UserIcon className="size-4" />
           Mi cuenta
         </Link>
         <button
           type="button"
-          className={cx(buttonClasses("ghost", "sm"), "px-2")}
+          className={buttonClasses("ghost", "sm")}
           disabled={logout.isPending}
           onClick={() =>
             logout.mutate(undefined, {
@@ -200,12 +204,20 @@ export function Layout() {
 
 function LayoutBody() {
   useSessionGuard();
-  // El menú del celular: cerrado al cambiar de página.
+  // El menú del celular: se cierra al cambiar de página y con Escape.
   const [open, setOpen] = useState(false);
   const menuId = useId();
   const { pathname } = useLocation();
   // biome-ignore lint/correctness/useExhaustiveDependencies: basta con el cambio de página.
   useEffect(() => setOpen(false), [pathname]);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
   const role = useRole();
   const createsBrokers = useCan("brokers.create");
   const brand = useScopedBrokerKind() === "brand";
@@ -237,7 +249,7 @@ function LayoutBody() {
               aria-expanded={open}
               aria-controls={menuId}
               onClick={() => setOpen((current) => !current)}
-              className={cx(buttonClasses("ghost", "sm"), "min-h-11 px-3 md:hidden")}
+              className={MENU_TOGGLE}
             >
               {open ? <CloseIcon className="size-5" /> : <MenuIcon className="size-5" />}
               Menú

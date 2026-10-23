@@ -17,7 +17,7 @@ export function HomeIllustration({ className = "w-40" }: IllustrationProps) {
       className={className}
     >
       <circle cx="124" cy="30" r="15" className="fill-accent-100" />
-      <path d="M14 104h132" strokeWidth={2} className="stroke-line-strong" />
+      <path d="M14 104h132" strokeWidth={2} className="stroke-line-soft" />
       <path
         d="M46 104V62l34-26 34 26v42"
         strokeWidth={2.25}
@@ -84,7 +84,7 @@ export function ArmchairIllustration({ className = "w-40" }: IllustrationProps) 
       focusable="false"
       className={className}
     >
-      <path d="M14 104h132" strokeWidth={2} className="stroke-line-strong" />
+      <path d="M14 104h132" strokeWidth={2} className="stroke-line-soft" />
       <path d="M118 104V46" strokeWidth={2} className="stroke-accent-700" />
       <path d="M108 104h20" strokeWidth={2} className="stroke-accent-700" />
       <path

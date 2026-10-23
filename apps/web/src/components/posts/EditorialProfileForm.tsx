@@ -203,7 +203,7 @@ function CadenceEditor({
                   })
                 }
                 className={cx(
-                  "size-8 rounded-full border text-sm font-medium transition-colors",
+                  "size-8 rounded-full border text-sm font-medium transition-colors pointer-coarse:size-11",
                   on
                     ? "border-brand-700 bg-brand-700 text-surface"
                     : "border-line-strong bg-surface text-fg-muted hover:bg-canvas",
@@ -231,14 +231,14 @@ function CadenceEditor({
               {row.hours.map((hour) => (
                 <li
                   key={hour}
-                  className="inline-flex items-center gap-1 rounded-full bg-sand py-0.5 pr-1 pl-2.5 text-sm text-fg ring-1 ring-line-strong ring-inset"
+                  className="inline-flex items-center gap-1 rounded-full bg-sand py-0.5 pr-1 pl-2.5 text-sm text-fg ring-1 ring-line-soft ring-inset"
                 >
                   {hour}
                   <button
                     type="button"
                     aria-label={`Quitar las ${hour} de ${name}`}
                     onClick={() => onChange({ hours: row.hours.filter((item) => item !== hour) })}
-                    className="rounded-full px-1 text-fg-subtle hover:bg-sand-strong hover:text-fg"
+                    className="inline-grid size-6 place-items-center rounded-full text-fg-subtle hover:bg-sand-strong hover:text-fg pointer-coarse:size-11"
                   >
                     ×
                   </button>

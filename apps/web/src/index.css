@@ -84,7 +84,10 @@
   --color-sand: #efe5d6; /* la barra lateral y los rellenos suaves */
   --color-sand-strong: #e4d6c1; /* la nota de la barra y lo que se marca sobre arena */
   --color-line: #efe5d6; /* separadores */
-  --color-line-strong: #dccdb8; /* bordes de campos y botones secundarios */
+  --color-line-soft: #dccdb8; /* bordes decorativos: insignias, vacíos, banners */
+  /* Bordes de controles (campos, botones secundarios, casillas): 3:1 sobre el fondo y las
+   * tarjetas (WCAG 1.4.11). */
+  --color-line-strong: #988770;
   --color-fg: #2b231d; /* madera oscura */
   --color-fg-muted: #4a3d32;
   --color-fg-subtle: #6b5d50;
@@ -137,6 +140,21 @@
   input[type="radio"],
   progress {
     accent-color: var(--color-brand-700);
+  }
+
+  /*
+   * En una pantalla táctil, cada casilla se toca en 44 px: la etiqueta que la envuelve (toda ella
+   * es clicable) crece a ese alto y la casilla se agranda (F9.5-T26, WCAG 2.5.5).
+   */
+  @media (pointer: coarse) {
+    label:has(> input[type="checkbox"], > input[type="radio"]) {
+      min-height: 2.75rem;
+    }
+    input[type="checkbox"],
+    input[type="radio"] {
+      width: 1.25rem;
+      height: 1.25rem;
+    }
   }
 
   ::selection {

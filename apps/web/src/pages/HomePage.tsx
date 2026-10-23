@@ -22,6 +22,7 @@ import {
   type RecentPublication,
   recentPublications,
 } from "../components/agenda/agenda.js";
+import { daySummary, greetingLine, todayText } from "../components/agenda/today.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { PublicationMode } from "../components/publications/PublicationMode.js";
 import { safeExternalUrl } from "../components/publications/publications.js";
@@ -210,6 +211,9 @@ function RecentEntry({
           · {formatChileTime(publication.publishedAt)}
           <PublicationMode publication={publication} publishMode={publishMode} prefix=" · " />
         </span>
+        <span className="mt-1.5 mr-3 inline-flex align-middle">
+          <Badge tone="success">Publicada</Badge>
+        </span>
         {url !== null && (
           <a
             href={url}
@@ -275,40 +279,6 @@ function Block<T>({
   return <ul className={listClassName}>{children(items)}</ul>;
 }
 
-const TODAY = new Intl.DateTimeFormat("es-CL", {
-  timeZone: CHILE_TIME_ZONE,
-  weekday: "long",
-  day: "numeric",
-  month: "long",
-});
-const HOUR = new Intl.DateTimeFormat("es-CL", {
-  timeZone: CHILE_TIME_ZONE,
-  hour: "numeric",
-  hourCycle: "h23",
-});
-
-/** «Buenos días», «Buenas tardes» o «Buenas noches», por la hora de Chile. */
-function greeting(now: Date): string {
-  const hour = Number(HOUR.format(now));
-  if (hour >= 5 && hour < 12) return "Buenos días";
-  if (hour >= 12 && hour < 20) return "Buenas tardes";
-  return "Buenas noches";
-}
-
-/** La frase del día: lo que te toca y lo que sale en la semana. */
-function summary(todo: number | undefined, upcoming: number | undefined): string | null {
-  if (todo === undefined || upcoming === undefined) return null;
-  const first =
-    todo === 0
-      ? "Hoy no tienes nada pendiente."
-      : `Hoy tienes ${todo === 1 ? "1 cosa" : `${todo} cosas`} por revisar.`;
-  const second =
-    upcoming === 0
-      ? "En los próximos 7 días no hay nada programado."
-      : `En los próximos 7 días ${upcoming === 1 ? "sale 1 publicación" : `salen ${upcoming} publicaciones`}.`;
-  return `${first} ${second}`;
-}
-
 /** La imagen de bienvenida: la portada de una propiedad o una ilustración de hogar. */
 function Welcome({ tracking, brand }: { tracking: TrackingResponse | undefined; brand: boolean }) {
   const row = tracking?.rows.find((candidate) => candidate.coverUrl !== null);
@@ -319,11 +289,7 @@ function Welcome({ tracking, brand }: { tracking: TrackingResponse | undefined; 
       .join(" en ");
     return (
       <figure className="relative m-0 min-h-64 overflow-hidden rounded-3xl bg-sand shadow-lift lg:min-h-72">
-        <img
-          src={cover}
-          alt={`Portada de ${row.listing.externalRef}`}
-          className="absolute inset-0 h-full w-full object-cover"
-        />
+        <img src={cover} alt={name} className="absolute inset-0 h-full w-full object-cover" />
         <figcaption className="absolute bottom-4 left-4 max-w-[calc(100%-2rem)] truncate rounded-full bg-surface/95 px-3.5 py-2 text-sm text-fg">
           {name} · {LISTING_STATUS_TEXT[row.listing.status]}
         </figcaption>
@@ -348,7 +314,7 @@ export function HomePage() {
   const agenda = useAgenda(broker);
   const tracking = useTracking(false, broker);
   const brand = useScopedBrokerKind() === "brand";
-  const name = useMe().data?.name.trim().split(/\s+/)[0];
+  const name = useMe().data?.name;
   // El modo del sistema (el del banner), para `PublicationMode` (D4 del spec F9.5).
   const publishMode = useHealth().data?.publishMode;
   const now = new Date();
@@ -359,8 +325,7 @@ export function HomePage() {
     .sort((a, b) => (a.at?.getTime() ?? 0) - (b.at?.getTime() ?? 0));
   const recent = tracking.data === undefined ? undefined : recentPublications(tracking.data, now);
   const covers = coversOf(tracking.data);
-  const today = TODAY.format(now);
-  const phrase = summary(todo?.length, upcoming?.length);
+  const phrase = daySummary(todo?.length, upcoming?.length);
 
   return (
     <section>
@@ -369,14 +334,10 @@ export function HomePage() {
           <div className="flex flex-wrap items-baseline gap-x-2.5 text-fg-subtle">
             <h1 className="text-xl font-semibold text-brand-800">Hoy</h1>
             <span aria-hidden="true">·</span>
-            <span className="text-[0.9375rem]">
-              {today.charAt(0).toUpperCase()}
-              {today.slice(1)}
-            </span>
+            <span className="text-[0.9375rem]">{todayText(now)}</span>
           </div>
           <p className="font-display text-[2.5rem] leading-[1.05] text-fg sm:text-[3.25rem]">
-            {greeting(now)}
-            {name === undefined || name === "" ? "" : `, ${name}`}
+            {greetingLine(now, name)}
           </p>
           {phrase !== null && <p className="max-w-md text-lg text-fg-muted">{phrase}</p>}
           <div className="mt-2 flex flex-wrap gap-3">

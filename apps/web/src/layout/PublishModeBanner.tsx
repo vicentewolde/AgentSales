@@ -9,7 +9,7 @@ const TONE = {
     dot: "bg-success-500",
   },
   unknown: {
-    bar: "border-b border-line-strong bg-sand font-medium text-fg-muted",
+    bar: "border-b border-line-soft bg-sand font-medium text-fg-muted",
     dot: "bg-fg-subtle",
   },
 } as const;

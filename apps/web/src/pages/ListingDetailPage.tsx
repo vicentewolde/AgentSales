@@ -13,11 +13,34 @@ import { useListing } from "../queries/listings.js";
 
 type Detail = ListingDetailResponse;
 
+/** La portada primero y lo demás en su orden (F9.5-T26). */
+const coverFirst = <T extends { isCover: boolean }>(media: readonly T[]): T[] => [
+  ...media.filter((item) => item.isCover),
+  ...media.filter((item) => !item.isCover),
+];
+
 /**
- * La galería grande con que abre la ficha (F9.5-T26): la primera foto ocupa dos columnas y dos filas
- * y las demás la rodean, como en un aviso de revista.
+ * La forma de la galería según cuántos medios hay: uno a todo el ancho; de dos a cuatro, una fila
+ * pareja; desde cinco, el mosaico con la portada en dos columnas y dos filas.
  */
-function Gallery({ media, externalRef }: { media: Detail["media"]; externalRef: string }) {
+function galleryLayout(count: number): { list: string; item: (index: number) => string } {
+  if (count === 1) {
+    return { list: "grid-cols-1", item: () => "aspect-[16/9]" };
+  }
+  if (count <= 4) {
+    const columns = { 2: "sm:grid-cols-2", 3: "sm:grid-cols-3", 4: "sm:grid-cols-4" }[count];
+    return { list: cx("grid-cols-2", columns), item: () => "aspect-[4/3]" };
+  }
+  return {
+    list: "grid-cols-2 sm:grid-cols-4 sm:auto-rows-[11rem] lg:auto-rows-[13.5rem]",
+    item: (index) => cx("aspect-[4/3] sm:aspect-auto", index === 0 && "col-span-2 sm:row-span-2"),
+  };
+}
+
+/** La galería grande con que abre la ficha (F9.5-T26), como en un aviso de revista. */
+function Gallery({ media: given, externalRef }: { media: Detail["media"]; externalRef: string }) {
+  const media = coverFirst(given);
+  const layout = galleryLayout(media.length);
   if (media.length === 0) {
     return (
       <div className="mt-3 flex flex-col items-center gap-3 rounded-3xl bg-sand px-6 py-10 text-center">
@@ -29,15 +52,12 @@ function Gallery({ media, externalRef }: { media: Detail["media"]; externalRef: 
     );
   }
   return (
-    <ul className="mt-3 grid grid-cols-2 gap-2 overflow-hidden rounded-3xl sm:grid-cols-4 sm:auto-rows-[11rem] sm:gap-3 lg:auto-rows-[13.5rem]">
+    <ul
+      aria-label="Galería"
+      className={cx("mt-3 grid gap-2 overflow-hidden rounded-3xl bg-sand sm:gap-3", layout.list)}
+    >
       {media.map((item, index) => (
-        <li
-          key={item.id}
-          className={cx(
-            "relative aspect-[4/3] overflow-hidden bg-sand sm:aspect-auto",
-            index === 0 && "col-span-2 sm:row-span-2",
-          )}
-        >
+        <li key={item.id} className={cx("relative overflow-hidden", layout.item(index))}>
           {item.kind === "image" ? (
             <a href={item.url} target="_blank" rel="noreferrer" className="block h-full">
               <img
@@ -71,6 +91,49 @@ function Gallery({ media, externalRef }: { media: Detail["media"]; externalRef: 
 }
 
 const PANEL = "rounded-3xl bg-surface p-6 shadow-card";
+
+/** Las cifras destacadas de la ficha, de los campos de siempre (los de la planilla). */
+const KEY_FIGURES = [
+  { key: "dormitorios", one: "dormitorio", many: "dormitorios" },
+  { key: "banos", one: "baño", many: "baños" },
+  { key: "sup_util_m2", one: "útiles", many: "útiles", unit: " m²" },
+  { key: "estacionamientos", one: "estacionamiento", many: "estacionamientos" },
+] as const;
+
+/**
+ * Dormitorios, baños, m² útiles y estacionamientos en serif, como en la muestra (F9.5-T26): solo
+ * los que la propiedad tiene con un número; nada se inventa.
+ */
+function KeyFigures({
+  attributes,
+  entries,
+}: {
+  attributes: Readonly<Record<string, unknown>>;
+  entries: readonly { key: string; value: string; extra: boolean }[];
+}) {
+  const figures = KEY_FIGURES.flatMap((figure) => {
+    const raw = attributes[figure.key];
+    const entry = entries.find((candidate) => candidate.key === figure.key && !candidate.extra);
+    if (typeof raw !== "number" || entry === undefined) return [];
+    const unit = "unit" in figure ? figure.unit : "";
+    return [
+      { ...figure, text: `${entry.value}${unit}`, label: raw === 1 ? figure.one : figure.many },
+    ];
+  });
+  if (figures.length === 0) return null;
+  return (
+    <ul aria-label="Cifras destacadas" className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {figures.map((figure) => (
+        <li key={figure.key} className="rounded-2xl bg-surface px-4 py-3.5 shadow-xs">
+          <span className="block font-display text-[1.625rem] leading-tight text-fg tabular-nums">
+            {figure.text}
+          </span>
+          <span className="text-sm text-fg-subtle">{figure.label}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 function DetailView({ detail }: { detail: Detail }) {
   const { listing, media, fields } = detail;
@@ -111,6 +174,7 @@ function DetailView({ detail }: { detail: Detail }) {
         }
       />
       <ListingActions id={listing.id} status={listing.status} />
+      <KeyFigures attributes={listing.attributes} entries={attributes} />
 
       <div className="mt-8 grid gap-6 md:grid-cols-2">
         <section aria-labelledby="datos" className={PANEL}>

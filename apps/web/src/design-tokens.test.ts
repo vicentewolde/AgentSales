@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ALERT_TONE, BADGE_TONE, buttonClasses } from "./components/ui/styles.js";
+import { ALERT_TONE, BADGE_TONE, buttonClasses, FIELD_CONTROL } from "./components/ui/styles.js";
 
 // F9.5-T26: la paleta acogedora pasa AA (WCAG 2.2, 1.4.3) con los valores reales de `index.css`, y
 // no queda ningún color del diseño anterior (la paleta por defecto de Tailwind) en el panel.
@@ -9,8 +9,11 @@ const css = readFileSync(new URL("./index.css", import.meta.url), "utf8");
 
 /** Los colores del tema: `--color-brand-700: #a8532f;` → `brand-700` → `#a8532f`. */
 const TOKENS: ReadonlyMap<string, string> = new Map(
-  [...css.matchAll(/--color-([a-z0-9-]+):\s*(#[0-9a-f]{6})\s*;/gi)].map(
-    ([, name, hex]) => [name as string, (hex as string).toLowerCase()] as const,
+  [...css.matchAll(/--color-(?<name>[a-z0-9-]+):\s*(?<hex>#[0-9a-f]{6})\s*;/gi)].flatMap(
+    ({ groups }) =>
+      groups?.name === undefined || groups.hex === undefined
+        ? []
+        : [[groups.name, groups.hex.toLowerCase()] as const],
   ),
 );
 
@@ -32,8 +35,9 @@ function luminance(color: string): number {
 
 /** El contraste entre dos colores, de 1 a 21. */
 function contrast(a: string, b: string): number {
-  const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
-  return (light + 0.05) / (dark + 0.05);
+  const first = luminance(a);
+  const second = luminance(b);
+  return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
 }
 
 /** Texto normal: 4,5:1. Íconos y bordes que dan información: 3:1 (1.4.11). */
@@ -53,7 +57,8 @@ describe("la paleta (F9.5-T26)", () => {
     expect(hex("surface")).toBe("#fffcf7");
     expect(hex("sand")).toBe("#efe5d6");
     expect(hex("sand-strong")).toBe("#e4d6c1");
-    expect(hex("line-strong")).toBe("#dccdb8");
+    // El borde y separador suave de la muestra; el de los controles es más oscuro (1.4.11).
+    expect(hex("line-soft")).toBe("#dccdb8");
     expect(hex("fg")).toBe("#2b231d");
     expect(hex("fg-muted")).toBe("#4a3d32");
     expect(hex("fg-subtle")).toBe("#6b5d50");
@@ -120,6 +125,23 @@ describe("la paleta (F9.5-T26)", () => {
     ).toBeGreaterThanOrEqual(TEXT);
   });
 
+  it.each(["canvas", "surface"])(
+    "el borde de los controles se distingue sobre %s (1.4.11, 3:1)",
+    (bg) => {
+      expect(contrast(hex("line-strong"), hex(bg))).toBeGreaterThanOrEqual(GRAPHIC);
+      // Los campos y el botón secundario usan ese borde, no el suave.
+      expect(FIELD_CONTROL).toContain("border-line-strong");
+      expect(buttonClasses("secondary")).toContain("border-line-strong");
+      // Al pasar el cursor o con el foco, el borde terracota también se distingue.
+      expect(contrast(hex("brand-700"), hex(bg))).toBeGreaterThanOrEqual(GRAPHIC);
+    },
+  );
+
+  it("el campo con foco conserva un contorno visible, no solo el anillo suave", () => {
+    expect(FIELD_CONTROL).toContain("focus-visible:outline-brand-700");
+    expect(FIELD_CONTROL).not.toContain("outline-none");
+  });
+
   it("el foco se ve sobre el fondo y las tarjetas", () => {
     for (const bg of ["canvas", "surface", "sand"]) {
       expect(contrast(hex("brand-700"), hex(bg))).toBeGreaterThanOrEqual(GRAPHIC);
@@ -133,7 +155,7 @@ describe("sin colores del diseño anterior (F9.5-T26)", () => {
   const OLD =
     /\b(?:bg|text|border|ring|fill|stroke|outline|divide|from|via|to|accent|decoration|placeholder|shadow)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|white|black)\b/;
   const root = new URL("./", import.meta.url);
-  const files = (readdirSync(root, { recursive: true }) as string[]).filter(
+  const files = readdirSync(root, { recursive: true, encoding: "utf8" }).filter(
     (path) => /\.(tsx?|css)$/.test(path) && !/\.test\.tsx?$/.test(path),
   );
 
@@ -150,7 +172,9 @@ describe("sin colores del diseño anterior (F9.5-T26)", () => {
     const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
     expect(html).not.toMatch(/fonts\.googleapis\.com|fonts\.gstatic\.com/);
     const fonts = readFileSync(new URL("./fonts.css", import.meta.url), "utf8");
-    const sources = [...fonts.matchAll(/url\("([^"]+)"\)/g)].map(([, url]) => url as string);
+    const sources = [...fonts.matchAll(/url\("(?<url>[^"]+)"\)/g)].flatMap(({ groups }) =>
+      groups?.url === undefined ? [] : [groups.url],
+    );
     expect(sources).toHaveLength(4);
     for (const source of sources) {
       // Un archivo del paquete (Vite lo copia a `dist/assets`), solo de los subconjuntos latinos.

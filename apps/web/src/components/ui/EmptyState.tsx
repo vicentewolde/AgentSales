@@ -20,7 +20,7 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center rounded-3xl border border-dashed border-line-strong bg-surface/70 px-6 py-10 text-center">
+    <div className="flex flex-col items-center rounded-3xl border border-dashed border-line-soft bg-surface/70 px-6 py-10 text-center">
       <span className="relative inline-flex">
         {illustration ?? <HomeIllustration className="w-36" />}
         {icon !== undefined && (
