@@ -537,7 +537,7 @@ describe("publicar y programar un post", () => {
     );
   });
 
-  it("enlace y withoutUrl a la vez es 400; withoutUrl solo vale (en simulación se ignora)", async () => {
+  it("enlace y withoutUrl a la vez es 400; withoutUrl en otra red que no es LinkedIn también", async () => {
     const s = await approvedPost();
     const [publication] = await s.deps.publications.listBySubject({
       kind: "post",
@@ -550,14 +550,14 @@ describe("publicar y programar un post", () => {
       json: { url: "https://www.linkedin.com/feed/update/urn:li:share:1/", withoutUrl: true },
     });
     expect(both.status).toBe(400);
+    // Discord no se confirma sin enlace, tampoco en simulación: solo LinkedIn.
     const alone = await s.broker(`/publications/${id}/confirm`, {
       method: "POST",
       json: { withoutUrl: true },
     });
-    expect(alone.status).toBe(200);
-    expect(publicationConfirmResponseSchema.parse(await alone.json()).publication.status).toBe(
-      "published",
-    );
+    expect(alone.status).toBe(400);
+    expect((await errorOf(alone)).code).toBe("PUBLISHED_URL_REQUIRED");
+    expect((await s.deps.publications.get(id))?.status).toBe("awaiting_manual_confirm");
   });
 });
 

@@ -490,7 +490,7 @@ describe("publications resolve, retry, confirm y not-published con posts", () =>
     expect(s.publicationsOf(post.id)[0]?.status).toBe("published");
   });
 
-  it("confirm --no-url confirma sin enlace; con --url-stdin a la vez no vale y no cambia nada (F9.5)", async () => {
+  it("confirm --no-url: con --url-stdin a la vez no vale, y en una red que no es LinkedIn tampoco (F9.5)", async () => {
     const s = await setup();
     const { post, publication } = await approvedPost(s);
     await s.move(post.id, publication.id, ["publishing", "awaiting_manual_confirm"]);
@@ -502,9 +502,11 @@ describe("publications resolve, retry, confirm y not-published con posts", () =>
     expect(s.h.errors()).not.toContain("urn:li:share");
     expect(s.publicationsOf(post.id)[0]?.status).toBe("awaiting_manual_confirm");
 
+    // Discord no se confirma sin enlace (solo LinkedIn): la API lo rechaza y no cambia nada.
     s.setStdin(null);
-    expect(await runConfirmPublication(s.deps(), publication.id, { url: false })).toBe(0);
-    expect(s.publicationsOf(post.id)[0]?.status).toBe("published");
+    expect(await runConfirmPublication(s.deps(), publication.id, { url: false })).toBe(1);
+    expect(s.h.errors()).toContain("PUBLISHED_URL_REQUIRED");
+    expect(s.publicationsOf(post.id)[0]?.status).toBe("awaiting_manual_confirm");
   });
 
   it("la agenda sugiere retry para una fallida de un post", async () => {
