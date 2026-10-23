@@ -30,7 +30,8 @@ export const ACCOUNT_STATUS_TONE: Readonly<Record<PlatformAccountStatus, BadgeTo
 /** El tono de la insignia de estado de una publicación. */
 export const PUBLICATION_STATUS_TONE: Readonly<Record<PublicationStatus, BadgeTone>> = {
   approved: "brand",
-  scheduled: "info",
+  // Programada: una píldora clara con borde, como una cita en la agenda (F9.5-T26).
+  scheduled: "neutral",
   publishing: "warning",
   awaiting_manual_confirm: "warning",
   published: "success",

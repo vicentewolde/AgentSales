@@ -3,7 +3,7 @@ import { useBrokers } from "../queries/brokers.js";
 import { useBrokerScope, useRole, useScopedBroker } from "../scope/broker-scope.js";
 import { Select } from "./ui/Field.js";
 
-const BOX = "mt-4 rounded-lg border border-line bg-slate-50 px-3 py-2.5";
+const BOX = "mt-5 rounded-2xl bg-surface px-3.5 py-3 shadow-xs";
 const CAPTION = "block text-xs font-medium text-fg-subtle";
 
 /**

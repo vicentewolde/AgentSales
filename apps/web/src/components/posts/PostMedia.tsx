@@ -116,7 +116,7 @@ export function PostMedia({
                 <span
                   role="img"
                   aria-label={`${item.kind === "video" ? "Video" : "Foto"} ${index + 1}`}
-                  className="flex h-28 w-28 items-center justify-center rounded-lg border border-line bg-slate-100"
+                  className="flex h-28 w-28 items-center justify-center rounded-lg border border-line bg-sand"
                 >
                   {item.kind === "video" ? "video" : "foto"}
                 </span>

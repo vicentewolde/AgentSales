@@ -33,7 +33,7 @@ export function ConnectBox({
   }
   const command = tokenStdinCommand(broker.slug);
   return (
-    <div className="mt-3 rounded-lg border border-line bg-slate-50 p-3 text-sm">
+    <div className="mt-3 rounded-lg border border-line bg-canvas p-3 text-sm">
       <p className="font-medium">{label}</p>
       <p className="mt-1 text-fg-muted">
         Meta no acepta la conexión desde localhost: se conecta con el token del panel de Meta, en
