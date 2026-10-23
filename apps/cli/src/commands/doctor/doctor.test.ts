@@ -609,8 +609,39 @@ describe("runDoctor", () => {
     expect(report.items.find((i) => i.name === "PUBLISH_MODE")).toMatchObject({
       level: "warn",
       emphasis: "danger",
-      detail: "LIVE: las publicaciones son reales (según la API)",
+      detail:
+        "LIVE: el servidor permite publicar de verdad; salen de verdad solo las marcas en vivo (según la API)",
     });
+  });
+
+  it("las marcas en vivo (F9.5-T22): en rojo si publican de verdad, informativo en simulación, y nada sin la lista", async () => {
+    const run = async (extra: Partial<HealthReport>) =>
+      (
+        await runDoctor(
+          deps({
+            env: {
+              ok: true,
+              env: { ...env, PUBLISH_MODE: extra.publishMode ?? "dry-run" },
+            },
+            fetchHealth: async () => ({ ...healthy, ...extra }),
+          }),
+        )
+      ).items.find((i) => i.name === "Marcas en vivo");
+    expect(await run({ publishMode: "live", liveBrokers: ["vinny"] })).toMatchObject({
+      level: "warn",
+      emphasis: "danger",
+      detail: "publican de verdad: vinny",
+    });
+    expect(await run({ publishMode: "live", liveBrokers: [] })).toMatchObject({
+      level: "ok",
+      detail: "ninguna: todo sale en simulación",
+    });
+    expect(await run({ publishMode: "dry-run", liveBrokers: ["vinny"] })).toMatchObject({
+      level: "ok",
+      detail: expect.stringContaining("en simulación mientras el servidor esté en dry-run"),
+    });
+    expect(await run({ publishMode: "live" })).toBeUndefined();
+    expect(await run({ publishMode: "live", liveBrokers: null })).toMatchObject({ level: "warn" });
   });
 
   it("si la API corre en otro modo que el .env, es un error", async () => {
@@ -714,7 +745,13 @@ describe("renderDoctor", () => {
     );
 
     expect(renderDoctor(report, c)).toContain(
-      c.bold(c.bgRed(c.white(" LIVE: las publicaciones son reales (según la API) "))),
+      c.bold(
+        c.bgRed(
+          c.white(
+            " LIVE: el servidor permite publicar de verdad; salen de verdad solo las marcas en vivo (según la API) ",
+          ),
+        ),
+      ),
     );
   });
 });

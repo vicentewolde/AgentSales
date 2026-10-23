@@ -198,6 +198,25 @@ describe("POST /publications/:id/pause, /resume y /close", () => {
     expect(calls).toEqual([]);
   });
 
+  it("con el servidor en live pero la marca apagada (ADR-0036), pausar y cerrar una de live es 409 PUBLISH_MODE_MISMATCH, sin llamar", async () => {
+    const { t, post, errorOf, calls } = await setup({ publishMode: "live" });
+    const publication = await published(t, false);
+    const listing = await t.listings.get(t.listingId);
+    await t.brokers.setLiveEnabled(listing?.brokerId ?? "", false);
+
+    for (const path of ["pause", "close"]) {
+      const response = await post(`/publications/${publication.id}/${path}`, { confirmed: true });
+      expect(response.status, path).toBe(409);
+      expect((await errorOf(response)).code).toBe("PUBLISH_MODE_MISMATCH");
+    }
+    expect(calls).toEqual([]);
+
+    // Encendida otra vez, sí llama.
+    await t.brokers.setLiveEnabled(listing?.brokerId ?? "", true);
+    expect((await post(`/publications/${publication.id}/pause`)).status).toBe(200);
+    expect(calls.map((call) => call.operation)).toEqual(["pause"]);
+  });
+
   it("una de dry-run se cambia en simulación, sin llamar a Mercado Libre", async () => {
     const { t, post, calls } = await setup({ publishMode: "dry-run" });
     const publication = await published(t, true);

@@ -118,6 +118,7 @@ describe("slugify y brokerDiffers", () => {
       logoMediaId: null,
       autoPublish: true,
       operatorOwned: false,
+      liveEnabled: false,
       llmMonthlyCapUsd: null,
       kind: "broker",
     };

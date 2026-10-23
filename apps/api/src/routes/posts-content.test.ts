@@ -303,6 +303,74 @@ describe("publicar y programar un post", () => {
     });
   });
 
+  it("con el servidor en live, programar y publicar usan el modo de la marca (ADR-0036): apagada o ajena, simulación; encendida y propia, de verdad", async () => {
+    const at = inHours(3);
+    const modeOf = async (prepare: (s: Awaited<ReturnType<typeof setup>>) => Promise<void>) => {
+      const s = await setup({ publishMode: "live" });
+      await prepare(s);
+      await s.broker(`/posts/${s.post.id}/draft`, { method: "POST", json: {} });
+      await s.finishDraft(s.post.id);
+      await s.broker(`/posts/${s.post.id}/contents/discord/es/approve`, { method: "POST" });
+      const scheduled = postScheduleResponseSchema.parse(
+        await (
+          await s.broker(`/posts/${s.post.id}/schedule`, {
+            method: "POST",
+            json: { at, platforms: ["discord"] },
+          })
+        ).json(),
+      );
+      return scheduled.results[0]?.publications?.[0]?.dryRun;
+    };
+    // Nace apagada (y no propia): simulación.
+    expect(await modeOf(async () => {})).toBe(true);
+    // Propia pero apagada: simulación.
+    expect(
+      await modeOf(async (s) => {
+        await s.deps.brokers.setSettings(s.mine.id, { operatorOwned: true });
+      }),
+    ).toBe(true);
+    // Encendida (y propia): de verdad.
+    expect(
+      await modeOf(async (s) => {
+        await s.deps.brokers.setSettings(s.mine.id, { operatorOwned: true });
+        await s.deps.brokers.setLiveEnabled(s.mine.id, true);
+      }),
+    ).toBe(false);
+    // Publicar ya: lo mismo.
+    const on = await approvedPostWith({ owned: true, live: true });
+    const started = postPublishResponseSchema.parse(
+      await (
+        await on.broker(`/posts/${on.post.id}/publish`, {
+          method: "POST",
+          json: { platform: "discord" },
+        })
+      ).json(),
+    );
+    expect(started.started).toHaveLength(1);
+    expect(started.started.every((publication) => !publication.dryRun)).toBe(true);
+    const off = await approvedPostWith({ owned: true, live: false });
+    const simulated = postPublishResponseSchema.parse(
+      await (
+        await off.broker(`/posts/${off.post.id}/publish`, {
+          method: "POST",
+          json: { platform: "discord" },
+        })
+      ).json(),
+    );
+    expect(simulated.started).toHaveLength(1);
+    expect(simulated.started.every((publication) => publication.dryRun)).toBe(true);
+  });
+
+  async function approvedPostWith(options: { owned: boolean; live: boolean }) {
+    const s = await setup({ publishMode: "live" });
+    await s.deps.brokers.setSettings(s.mine.id, { operatorOwned: options.owned });
+    if (options.live) await s.deps.brokers.setLiveEnabled(s.mine.id, true);
+    await s.broker(`/posts/${s.post.id}/draft`, { method: "POST", json: {} });
+    await s.finishDraft(s.post.id);
+    await s.broker(`/posts/${s.post.id}/contents/discord/es/approve`, { method: "POST" });
+    return s;
+  }
+
   it("sin redes pedidas, la que no tiene texto aprobado no se informa; sin ninguna, NOTHING_TO_PUBLISH", async () => {
     const s = await setup();
     const response = await s.broker(`/posts/${s.post.id}/schedule`, {

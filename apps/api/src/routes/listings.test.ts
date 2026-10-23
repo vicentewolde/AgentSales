@@ -436,7 +436,10 @@ describe("GET /brokers", () => {
     const { app, broker } = await setup();
     const response = await app.request("/brokers");
     expect(response.status).toBe(200);
-    expect(brokerListResponseSchema.parse(await response.json())).toEqual({ brokers: [broker] });
+    // Con el modo efectivo (F9.5-T22): el servidor de la prueba está en simulación.
+    expect(brokerListResponseSchema.parse(await response.json())).toEqual({
+      brokers: [{ ...broker, effectiveMode: "dry-run" }],
+    });
   });
 });
 

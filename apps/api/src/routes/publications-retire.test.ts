@@ -80,6 +80,21 @@ describe("POST /publications/:id/retire con deleteRemote (F9-T19)", () => {
     expect(removed).toEqual([]);
   });
 
+  it("con el servidor en vivo pero la marca apagada (ADR-0036): 409 PUBLISH_MODE_MISMATCH sin llamar, y el mensaje dice cómo seguir", async () => {
+    const { t, removed, retire } = await setup();
+    const [brand] = await t.repos.brokers.list({ kind: "all" });
+    await t.repos.brokers.setLiveEnabled(brand?.id ?? "", false);
+
+    const response = await retire({ deleteRemote: true });
+
+    expect(response.status).toBe(409);
+    const error = errorBodySchema.parse(await response.json()).error;
+    expect(error.code).toBe("PUBLISH_MODE_MISMATCH");
+    expect(error.message).toContain("la marca está apagada");
+    expect(error.message).toContain("brokers live <slug> on --confirm <slug>");
+    expect(removed).toEqual([]);
+  });
+
   it("con la cuenta a mano es 409 RETIRE_DELETE_UNSUPPORTED; las dos opciones juntas, 400", async () => {
     const { removed, retire } = await setup({ mode: "manual" });
 

@@ -116,6 +116,7 @@ describe("GET /health", () => {
             serverVersion: () => "18.6",
             backupStatus: async () => status,
             autoPublishBrokers: async () => ["marca"],
+            liveBrokers: async () => ["marca"],
             llmKeyMissingBrokers: async () => ["ajeno"],
             workerHeartbeats: async () => [
               {
@@ -140,6 +141,8 @@ describe("GET /health", () => {
     expect(body.database).toEqual({ serverVersion: "18.6" });
     expect(body.backup).toEqual({ ...status, stale: true });
     expect(body.autoPublishBrokers).toEqual(["marca"]);
+    // F9.5-T22: las marcas con el modo en vivo encendido (solo el administrador ve el detalle).
+    expect(body.liveBrokers).toEqual(["marca"]);
     expect(body.llmKeyMissingBrokers).toEqual(["ajeno"]);
     // F9.5-T24: el worker se apaga solo y lo enciende el horario.
     expect(body.workerSchedule).toBe(true);
@@ -159,6 +162,7 @@ describe("GET /health", () => {
             autoPublishBrokers: async () => {
               throw new Error("sin base");
             },
+            liveBrokers: async () => ["marca"],
             llmKeyMissingBrokers: async () => ["ajeno"],
             workerHeartbeats: async () => [],
           },
@@ -171,6 +175,7 @@ describe("GET /health", () => {
     expect(body.database).toEqual({ serverVersion: null });
     expect(body.backup).toBeNull();
     expect(body.autoPublishBrokers).toBeNull();
+    expect(body.liveBrokers).toBeNull();
     expect(body.llmKeyMissingBrokers).toBeNull();
   });
 

@@ -233,15 +233,16 @@ export function publicationModeFixed(publication: {
 
 /**
  * El modo que el operador ve en una publicación (D4 del spec F9.5): el fijado (`dryRun`) o, si no lo
- * está, el del servidor (`publishMode` de `/health`). `null` si el que corresponde es el del
- * servidor y todavía no se sabe: mejor no decir nada que decir «simulación» sin saberlo.
+ * está, el que usaría al publicarla: desde F9.5-T22 (ADR-0036) el **de su marca**
+ * (`effectivePublishMode` con el `publishMode` de `/health`), no el del servidor. `null` si todavía
+ * no se sabe: mejor no decir nada que decir «simulación» sin saberlo.
  */
 export function shownPublicationMode(
   publication: { dryRun: boolean; modeFixed: boolean },
-  serverMode: PublishMode | null | undefined,
+  brandMode: PublishMode | null | undefined,
 ): PublishMode | null {
   if (publication.modeFixed) return publication.dryRun ? "dry-run" : "live";
-  return serverMode ?? null;
+  return brandMode ?? null;
 }
 
 /** Motivo del último intento fallido (`publications.last_error`): legible y sin secretos. */

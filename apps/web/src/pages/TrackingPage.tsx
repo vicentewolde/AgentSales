@@ -23,9 +23,9 @@ import { PublicationMode } from "../components/publications/PublicationMode.js";
 import { safeExternalUrl } from "../components/publications/publications.js";
 import { PublicationStatusBadge, StatusBadge } from "../components/StatusBadge.js";
 import { PageHeader } from "../components/ui/PageHeader.js";
-import { useHealth } from "../queries/health.js";
+import { useBrokerModeOf } from "../queries/brokers.js";
 import { useAgenda, useTracking } from "../queries/tracking.js";
-import { useBrokerFilter } from "../scope/broker-scope.js";
+import { useBrokerFilter, useScopedBroker } from "../scope/broker-scope.js";
 
 // F6-T13 (spec F6 §4.9): la agenda arriba y la matriz abajo. Se relee cada 60 s solo con la
 // pestaña a la vista (ADR-0007).
@@ -187,9 +187,12 @@ function CellPublication({
 export function TrackingMatrix({
   rows,
   publishMode,
+  modeOf,
 }: {
   rows: readonly Row[];
   publishMode?: PublishMode | undefined;
+  /** El modo de la marca de cada fila (F9.5-T22): manda sobre `publishMode`. */
+  modeOf?: (brokerId: string) => PublishMode | undefined;
 }) {
   if (rows.length === 0) return <p className="mt-2 text-sm text-fg-muted">Sin propiedades.</p>;
   return (
@@ -235,7 +238,7 @@ export function TrackingMatrix({
                           key={publication.id}
                           platform={platform}
                           publication={publication}
-                          publishMode={publishMode}
+                          publishMode={modeOf ? modeOf(row.listing.brokerId) : publishMode}
                         />
                       ))}
                     </ul>
@@ -256,7 +259,10 @@ export function TrackingPage() {
   const broker = useBrokerFilter();
   const agenda = useAgenda(broker);
   const tracking = useTracking(archived, broker);
-  const publishMode = useHealth().data?.publishMode;
+  // El modo de la marca (F9.5-T22, ADR-0036): en la agenda, el de la marca elegida (con «Todos» y
+  // el servidor en vivo no se dice); en la matriz, el de la marca de cada propiedad.
+  const modeOf = useBrokerModeOf();
+  const publishMode = modeOf(useScopedBroker()?.id);
   return (
     <section className="mx-auto max-w-6xl">
       <PageHeader title="Seguimiento" />
@@ -298,7 +304,7 @@ export function TrackingPage() {
           />
         )}
         {tracking.isPending && <p className="mt-2 text-sm text-fg-muted">Cargando…</p>}
-        {tracking.data && <TrackingMatrix rows={tracking.data.rows} publishMode={publishMode} />}
+        {tracking.data && <TrackingMatrix rows={tracking.data.rows} modeOf={modeOf} />}
       </section>
     </section>
   );

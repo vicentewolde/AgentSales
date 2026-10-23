@@ -497,12 +497,15 @@ describe("Marketplace · nunca espera sola ante un límite (F6, ADR-0018)", () =
 });
 
 describe("Marketplace a mano (F7-T15, ADR-0023)", () => {
-  /** Un corredor que no es propio, con la cuenta a mano en vez del perfil. */
+  /**
+   * La cuenta a mano en vez del perfil. El corredor sigue siendo propio: desde ADR-0036 solo un
+   * corredor propio publica en vivo, y la cuenta a mano es lo que pasa en el servidor (F8-T20).
+   */
   async function byHand(options: Parameters<typeof setup>[0] = {}) {
     const s = await setup(options);
     const listing = await s.t.listings.get(s.t.listingId);
     const brokerId = listing?.brokerId ?? "";
-    const broker = await s.t.brokers.setSettings(brokerId, { operatorOwned: false });
+    const broker = await s.t.brokers.setSettings(brokerId, {});
     const account = await connectManualMarketplaceAccount(
       {
         brokers: s.t.brokers,
@@ -622,7 +625,8 @@ describe("Marketplace a mano (F7-T15, ADR-0023)", () => {
   });
 
   it("una cuenta de perfil de un corredor que no es propio no abre el formulario", async () => {
-    const s = await setup();
+    // En simulación: un corredor que no es propio no publica en vivo (ADR-0036).
+    const s = await setup({ dryRun: true });
     const publication = await s.publish();
     const listing = await s.t.listings.get(s.t.listingId);
     await s.t.brokers.setSettings(listing?.brokerId ?? "", { operatorOwned: false });

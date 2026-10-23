@@ -300,7 +300,8 @@ const autoPublish: AutoPublishDeps = {
     ufConfigured: env.BCCH_API_TOKEN !== undefined,
     automation: marketplaceAutomation,
   },
-  dryRun: env.PUBLISH_MODE !== "live",
+  // El modo del servidor; el de cada aviso sale de su marca (`effectivePublishMode`, ADR-0036).
+  serverMode: env.PUBLISH_MODE,
 };
 // La API de Anthropic para los corredores y marcas que no son del operador (spec F7 §4.7).
 const apiLlm = ((options) => (options === null ? null : createLlmProvider(options)))(
@@ -821,7 +822,8 @@ try {
     await requestTokensRefresh();
     await requestPublicationDue();
     await requestBackup();
-    // El modo del worker solo decide si una publicación pedida en `live` se puede publicar (D11).
+    // El modo del servidor y el de la marca de cada publicación deciden si una pedida en `live` se
+    // puede publicar (D11, ADR-0036).
     logger.info(
       {
         jobs: jobs.map((job) => job.name),

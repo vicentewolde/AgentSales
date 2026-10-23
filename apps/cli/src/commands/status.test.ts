@@ -23,7 +23,9 @@ describe("renderPublishMode", () => {
   it("live se muestra en rojo", () => {
     const text = renderPublishMode("live", c);
 
-    expect(text).toContain(c.bgRed(c.white(" PUBLISH_MODE: LIVE — las publicaciones son reales ")));
+    expect(text).toContain(
+      c.bgRed(c.white(" PUBLISH_MODE: LIVE — el servidor permite publicar de verdad ")),
+    );
   });
 
   it("dry-run se muestra en verde", () => {
@@ -149,5 +151,62 @@ describe("runStatus · el worker (F8-T12)", () => {
       plain,
     );
     expect(off.text).toContain("⚠ worker   nunca ha corrido");
+  });
+});
+
+// F9.5-T22 (ADR-0036): el servidor permite, las marcas encendidas publican de verdad.
+describe("runStatus · marcas en vivo", () => {
+  it("con el servidor en vivo, dice en rojo cuáles marcas publican de verdad", async () => {
+    const result = await runStatus(
+      async () => report({ publishMode: "live", liveBrokers: ["agentpey", "vinny"] }),
+      c,
+    );
+    expect(result.text).toContain(
+      c.bgRed(c.white(" EN VIVO publican de verdad: agentpey, vinny ")),
+    );
+  });
+
+  it("con el servidor en vivo y ninguna marca encendida, dice que todo sale en simulación", async () => {
+    const result = await runStatus(
+      async () => report({ publishMode: "live", liveBrokers: [] }),
+      plain,
+    );
+    expect(result.text).toContain("Ninguna marca está en vivo: todo sale en simulación");
+  });
+
+  it("con el servidor en simulación, una marca encendida sigue en simulación", async () => {
+    const result = await runStatus(
+      async () => report({ publishMode: "dry-run", liveBrokers: ["vinny"] }),
+      plain,
+    );
+    expect(result.text).toContain(
+      "siguen en simulación mientras el servidor esté en dry-run): vinny",
+    );
+    expect(result.text).not.toContain("EN VIVO publican");
+  });
+
+  it("sin la lista (sin sesión de administrador) no dice nada; si la base no respondió, lo avisa", async () => {
+    expect(
+      (await runStatus(async () => report({ publishMode: "live" }), plain)).text,
+    ).not.toContain("marcas");
+    const down = await runStatus(
+      async () => report({ publishMode: "live", liveBrokers: null }),
+      plain,
+    );
+    expect(down.text).toContain("No se pudo saber qué marcas están en vivo");
+  });
+
+  it("auto_publish solo está EN VIVO en la marca encendida", async () => {
+    const result = await runStatus(
+      async () =>
+        report({
+          publishMode: "live",
+          liveBrokers: ["vinny"],
+          autoPublishBrokers: ["vinny", "cliente"],
+        }),
+      plain,
+    );
+    expect(result.text).toContain("auto_publish EN VIVO: publica sin tu revisión (vinny)");
+    expect(result.text).not.toContain("(vinny, cliente)");
   });
 });

@@ -42,7 +42,10 @@ export const PERMISSIONS = [
    * `instagram.connect`: renovar y desconectar siguen siendo de `accounts.manage`.
    */
   "tiktok.connect",
-  /** Publicación automática, tope de IA y "corredor propio". */
+  /**
+   * Publicación automática, tope de IA, "corredor propio" y, desde F9.5-T22 (ADR-0036), el modo en
+   * vivo de la marca (`live_enabled`, solo en un corredor propio y repitiendo el slug).
+   */
   "broker.settings",
   "brokers.create",
   /**

@@ -1,4 +1,5 @@
 import type { ListingListResponse, ListingQuery } from "@agentsales/api/contracts";
+import type { PublishMode } from "@agentsales/core";
 import {
   formatListingPrice,
   LISTING_STATUS_TEXT,
@@ -18,7 +19,8 @@ import { HomeIcon } from "../components/ui/icons.js";
 import { HomeIllustration } from "../components/ui/illustrations.js";
 import { PageHeader } from "../components/ui/PageHeader.js";
 import { Loading } from "../components/ui/Spinner.js";
-import { useHealth } from "../queries/health.js";
+import { useBrokerModeOf } from "../queries/brokers.js";
+import { SubjectBrokerContext } from "../queries/health.js";
 import { useListings } from "../queries/listings.js";
 import { useBrokerFilter } from "../scope/broker-scope.js";
 
@@ -138,7 +140,7 @@ export function ListingsPage() {
   const broker = useBrokerFilter();
   const filters = { ...filtersFrom(params), ...(broker === undefined ? {} : { broker }) };
   const listings = useListings(filters);
-  const health = useHealth();
+  const modeOf = useBrokerModeOf();
   const [selected, setSelected] = useState<ReadonlyMap<string, string>>(new Map());
   // Otro corredor en el selector: lo marcado era del anterior.
   // biome-ignore lint/correctness/useExhaustiveDependencies: basta con el cambio de corredor.
@@ -178,6 +180,20 @@ export function ListingsPage() {
   // Los filtros de la página (no el corredor del selector, que se quita en el menú).
   const filtered = Object.keys(filtersFrom(params)).length > 0;
 
+  // El modo del lote (F9.5-T22, ADR-0036): el de la marca de cada propiedad marcada. Todas en
+  // simulación → simulación; alguna en vivo → en vivo; si no se sabe de alguna, no se dice (y
+  // programar pregunta igual). Con una sola marca, la confirmación relee esa marca.
+  const selectedBrokers = [...selected.keys()].map(
+    (id) => listings.data?.find((listing) => listing.id === id)?.brokerId,
+  );
+  const selectedModes = selectedBrokers.map((brokerId) => modeOf(brokerId));
+  const batchMode: PublishMode | undefined = selectedModes.includes("live")
+    ? "live"
+    : selectedModes.every((mode) => mode === "dry-run")
+      ? "dry-run"
+      : undefined;
+  const distinctBrokers = new Set(selectedBrokers);
+  const batchBroker = distinctBrokers.size === 1 ? [...distinctBrokers][0] : undefined;
   return (
     <section>
       <PageHeader
@@ -280,11 +296,13 @@ export function ListingsPage() {
       </div>
 
       {selected.size > 0 && (
-        <BatchSchedule
-          selected={[...selected].map(([id, externalRef]) => ({ id, externalRef }))}
-          publishMode={health.data?.publishMode}
-          onClear={() => setSelected(new Map())}
-        />
+        <SubjectBrokerContext.Provider value={batchBroker}>
+          <BatchSchedule
+            selected={[...selected].map(([id, externalRef]) => ({ id, externalRef }))}
+            publishMode={batchMode}
+            onClear={() => setSelected(new Map())}
+          />
+        </SubjectBrokerContext.Provider>
       )}
 
       {listings.data && listings.data.length > 0 && (

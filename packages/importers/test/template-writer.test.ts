@@ -33,6 +33,7 @@ const broker: Broker = {
   fixedHashtags: ["#marcainventada", "#propiedades"],
   autoPublish: false,
   operatorOwned: false,
+  liveEnabled: false,
   llmMonthlyCapUsd: null,
   kind: "broker",
 };
@@ -56,6 +57,7 @@ describe("writeBrokerTemplate", () => {
       logoMediaId: _l,
       autoPublish: _a,
       operatorOwned: _o,
+      liveEnabled: _live,
       llmMonthlyCapUsd: _c,
       kind: _k,
       ...data
