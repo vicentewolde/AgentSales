@@ -29,6 +29,29 @@ const intInRange = (min: number, max: number, message: string) =>
 const positiveInt = (description: string) =>
   intInRange(1, Number.MAX_SAFE_INTEGER, `debe ser ${description}`);
 
+/**
+ * Dólares con hasta 4 decimales y punto (`0.034`, `2`), entre 0 y `max` (con `positive`, mayor que
+ * 0).
+ */
+const usdAmount = (max: number, options: { positive?: boolean } = {}) => {
+  const range = options.positive ? `mayor que 0 y hasta ${max}` : `entre 0 y ${max}`;
+  const message = `debe ser un monto en dólares con punto decimal (por ejemplo 0.034), ${range}`;
+  const amount = z.number().max(max, message);
+  return z
+    .string()
+    .trim()
+    .regex(/^\d+(\.\d{1,4})?$/, message)
+    .transform(Number)
+    .pipe(options.positive ? amount.positive(message) : amount.min(0, message));
+};
+
+/**
+ * El modelo y el precio por defecto de la IA de imágenes (F9.5-T25): los de la nota
+ * `imagenes-y-videos-generados.md` (2026-10-22), sin verificar hasta la prueba del operador (§7).
+ * `doctor` avisa si se cambió el modelo y no el precio.
+ */
+export const IMAGE_AI_DEFAULTS = { model: "gemini-nano-banana-2.1", priceUsd: 0.034 } as const;
+
 const port = intInRange(1, 65535, "debe ser un puerto entre 1 y 65535");
 
 /** Máximo de una URL prefirmada de R2 (ADR-0007). */
@@ -350,6 +373,17 @@ const envSchema = z
       `debe ser un número entero de minutos entre ${WORKER_CHECK_PERIOD_MINUTES} (cada cuánto revisa el horario) y 1440`,
     ).default(WORKER_STAY_AHEAD_DEFAULT_MINUTES),
 
+    // Imágenes de un post sin medios (F9.5-T25, ADR-0038): la biblioteca de Pixabay y la IA de
+    // imágenes de Google (Nano Banana). Sin la clave, esa pestaña dice qué falta y las tarjetas de
+    // la marca funcionan igual. El modelo y el precio por imagen van aquí, no en el código: cambian
+    // seguido (nota `imagenes-y-videos-generados.md` §7). El tope es por marca y por mes de Chile.
+    PIXABAY_API_KEY: z.string().optional(),
+    GEMINI_API_KEY: z.string().optional(),
+    IMAGE_AI_MODEL: z.string().trim().min(1).default(IMAGE_AI_DEFAULTS.model),
+    // Mayor que 0: un precio 0 dejaría crear sin anotar gasto (para apagar la IA, el tope en 0).
+    IMAGE_AI_PRICE_USD: usdAmount(5, { positive: true }).default(IMAGE_AI_DEFAULTS.priceUsd),
+    IMAGE_AI_MONTHLY_CAP_USD: usdAmount(1000).default(2),
+
     // Respaldo local (F6, spec §4.11): la carpeta de los volcados (fuera del proyecto) y, opcional,
     // la de `pg_dump` y `pg_restore` (Homebrew `libpq` no queda en el PATH: sin esto se busca en el
     // PATH y en `/opt/homebrew/opt/libpq/bin`).
@@ -666,4 +700,18 @@ export function withoutBackupCredentials(
     BACKUP_R2_ACCESS_KEY_ID: undefined,
     BACKUP_R2_SECRET_ACCESS_KEY: undefined,
   });
+}
+
+/**
+ * La clave de la IA de imágenes es solo del worker (F9.5-T25): la API solo necesita saber si existe
+ * (para ofrecer «Crear con IA» y revisar el tope). La quita de su configuración y de su entorno al
+ * arrancar, como `withoutBackupCredentials`, y devuelve si estaba.
+ */
+export function withoutImageAiKey(
+  env: Env,
+  processEnv: Record<string, string | undefined> = process.env,
+): { env: Env; imageAiConfigured: boolean } {
+  const imageAiConfigured = Boolean(env.GEMINI_API_KEY);
+  delete processEnv.GEMINI_API_KEY;
+  return { env: Object.freeze({ ...env, GEMINI_API_KEY: undefined }), imageAiConfigured };
 }

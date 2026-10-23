@@ -29,3 +29,11 @@ Un post de marca (F9) sin fotos no se puede publicar en Instagram, TikTok ni en 
 - **Pexels:** buena licencia, pero hoy no entrega claves nuevas de API y no está claro que permita re-hospedar.
 - **OpenAI `gpt-image-2.5-flare` como principal:** cobra por tokens sin un precio fijo por imagen y exige verificar la organización. Queda como segundo adaptador posible.
 - **Video con IA desde ya:** caro, lento, con resultados que caducan y modelos que se apagan; no hace falta para publicar a diario.
+
+## Seguimiento
+- **2026-10-22 (F9.5-T25, PR #249):**
+  - Los adaptadores van en la subruta `@agentsales/publishers/images` (`createPixabayStock` y `createGeminiImages`): `packages/publishers` también aloja clientes de terceros que no publican, como `./uf`.
+  - La IA recibe siempre «sin texto, letras, números, logos ni marcas de agua; sin personas reconocibles» (`IMAGE_AI_RULES`). La indicación propuesta sale del tema y la primera oración del brief, sin la IA de texto, y el usuario la edita.
+  - El tope es una variable del servidor (`IMAGE_AI_MONTHLY_CAP_USD`), igual para todas las marcas. Si un cliente necesita otro (F10), se agrega `brokers.image_ai_monthly_cap_usd`, como `llm_monthly_cap_usd`.
+  - El costo se **reserva** antes de llamar a Google, en una transacción con un candado por marca: solo si lo gastado en el mes más el precio no pasa el tope (dos pedidos a la vez de la misma marca se ordenan). Si Google rechaza el pedido antes de generar (un 429, la clave o un bloqueo de la indicación), la reserva se devuelve; un corte o una respuesta sin imagen quedan cobrados (se sobreestima, nunca se anota 0). Después de llamar, ningún error se reintenta solo: el pedido termina `failed` y el usuario pide otra imagen. Un intento cortado a medias con la reserva hecha no vuelve a llamar (`IMAGE_AI_INTERRUPTED`).
+

@@ -125,6 +125,14 @@ Detalle en `docs/integraciones/tiktok.md` (§0, lo que hace hoy AgentSales) y sp
 - **Publicar:** init con `FILE_UPLOAD`, el video (la variante `ig_reel`, 9:16) leído de R2 por trozos de 10 MiB con `Range` y subido en orden, y la consulta del estado (sin webhooks). Al llegar a `SEND_TO_USER_INBOX` la publicación queda en `awaiting_manual_confirm` hasta que el operador pega el enlace del video (`publications confirm`). `FAILED` la deja fallida (el reintento sube desde cero); el tope de 5 envíos pendientes por 24 h reprograma. En `dry-run` no se llama a TikTok. **Retirar:** TikTok no tiene cómo borrar por la API (D9 de F9.5): se borra a mano en la app y se marca con `publications retire <id>`; con `--delete` responde `TIKTOK_DELETE_UNSUPPORTED` sin llamar.
 - **Estado:** construido y probado solo con simulaciones (msw). **La prueba S6 del operador (spec F9 §4.8) es obligatoria antes de publicar de verdad.**
 
+## Imágenes para posts sin medios: Pixabay y Google (F9.5-T25, ADR-0038)
+
+No publican: consiguen una imagen que después entra como un medio más del post. Detalle en `docs/integraciones/imagenes-y-videos-generados.md` y en `docs/01-arquitectura.md`, «Imágenes de un post sin medios».
+
+- **Pixabay (biblioteca de fotos):** API REST con la clave en la consulta (`PIXABAY_API_KEY`; nunca se loguea la URL). 100 peticiones por minuto (un 429 se dice en simple), respuestas guardadas 24 h y **sin enlazar sus archivos**: la foto elegida se vuelve a pedir por su id y se descarga a R2 desde sus hosts (`pixabay.com`, `cdn.pixabay.com`), revisando tipo y tamaño. La licencia permite uso comercial y no exige crédito; el uso por varios clientes se pregunta a Pixabay en F10 (ADR-0038 §6 y nota §9).
+- **Google Nano Banana (IA de imágenes):** `generateContent` de la API de Gemini (`GEMINI_API_KEY` en la cabecera `x-goog-api-key`, solo en el worker), una imagen 1K por pedido en 4:5 o 9:16, sin texto dentro. **Qué datos del post van a Google:** solo la indicación, que propone el tema del post y la primera oración de su brief (el usuario la puede cambiar) más las reglas fijas; nunca el texto redactado, los medios ni datos de la marca. Modelo y precio en configuración (`IMAGE_AI_MODEL`, `IMAGE_AI_PRICE_USD`), tope por marca y mes (`IMAGE_AI_MONTHLY_CAP_USD`, US$2). Un bloqueo por contenido no se reintenta.
+- **Estado:** construido y probado solo con simulaciones (msw). La forma exacta del pedido a Google y el tamaño real de Pixabay son NO VERIFICADO hasta las pruebas sin riesgo del operador (nota §7).
+
 ## Yapo (post-MVP)
 
 Sin API pública conocida. Evaluar el mismo enfoque que Marketplace y revisar sus términos de uso antes.

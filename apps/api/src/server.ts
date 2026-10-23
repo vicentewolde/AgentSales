@@ -19,6 +19,7 @@ import {
   panelUrlOf,
   resolveBackupDir,
   withoutBackupCredentials,
+  withoutImageAiKey,
 } from "@agentsales/config";
 import {
   ALL_SCOPE,
@@ -45,6 +46,7 @@ import {
   createPlanRunRepository,
   createPlatformAccountRepository,
   createPlatformCatalogRepository,
+  createPostImageRunRepository,
   createPostLock,
   createPostRepository,
   createPostUploadRepository,
@@ -70,6 +72,7 @@ import {
 } from "@agentsales/publishers";
 // La subruta de Discord (F9-T14): solo el cliente del webhook, para conectarlo sin publicar.
 import { createDiscordWebhooks } from "@agentsales/publishers/discord";
+import { createPixabayStock } from "@agentsales/publishers/images";
 // La subruta de LinkedIn (F9-T15): solo su OAuth, para conectar el perfil sin publicar.
 import { createLinkedInAuth } from "@agentsales/publishers/linkedin";
 import { createTikTokAuth } from "@agentsales/publishers/tiktok";
@@ -97,7 +100,8 @@ const SHUTDOWN_TIMEOUT_MS = 30_000;
 loadAppEnvFile();
 // El token del bucket de respaldos es solo del worker (spec F8 §4.9, D13): la API lo quita de su
 // configuración y de su entorno al arrancar (en Fly los secretos llegan a los dos procesos).
-const env = withoutBackupCredentials(loadEnv());
+// La clave de la IA de imágenes también es solo del worker (F9.5-T25): la API sabe si está.
+const { env, imageAiConfigured } = withoutImageAiKey(withoutBackupCredentials(loadEnv()));
 // En internet (spec F8 §4.2): el host, el panel y los orígenes salen de `PUBLIC_URL`; sin ella, el Mac.
 const publicUrl = env.PUBLIC_URL;
 const https = publicUrl?.startsWith("https://") ?? false;
@@ -134,6 +138,11 @@ const secretBox = createSecretBox(env.APP_ENCRYPTION_KEY);
 // o, con el respaldo en R2 (F8-T13), en `system/` del bucket principal.
 let serverVersion: string | null = null;
 const brokers = createBrokerRepository(database.db);
+// El precio y el tope de las imágenes con IA (F9.5-T25), de la configuración.
+const imageAiPricing = {
+  priceUsd: env.IMAGE_AI_PRICE_USD,
+  monthlyCapUsd: env.IMAGE_AI_MONTHLY_CAP_USD,
+};
 const users = createUserRepository(database.db);
 const workerHeartbeats = createWorkerHeartbeatRepository(database.db);
 const backupStatus = backupStatusReader(
@@ -209,6 +218,14 @@ const app = createApp({
   editorialProfiles: createEditorialProfileRepository(database.db),
   // Los planes de ideas (F9-T21): la API los pide y lee; el worker los corre (`content.plan`).
   planRuns: createPlanRunRepository(database.db),
+  // Conseguir imágenes para un post (F9.5-T25): la API busca en la biblioteca y pide; el worker
+  // descarga y genera (`post.image`). Sin la clave, esa fuente dice qué falta.
+  postImageRuns: createPostImageRunRepository(database.db),
+  imageSources: {
+    stock: env.PIXABAY_API_KEY ? createPixabayStock({ apiKey: env.PIXABAY_API_KEY }) : null,
+    ai: imageAiConfigured ? imageAiPricing : null,
+  },
+  imageAiPricing,
   publications: createPublicationRepository(database.db),
   platformAccounts: createPlatformAccountRepository(database.db, { secretBox }),
   instagram: {

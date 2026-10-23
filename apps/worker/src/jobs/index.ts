@@ -6,6 +6,7 @@ import type { Job } from "./define.js";
 import { importRunJob } from "./import-run.js";
 import { type MarketplaceProfileJobDeps, marketplaceProfileJob } from "./marketplace-profile.js";
 import { type PostDraftJobDeps, postDraftJob } from "./post-draft.js";
+import { type PostImageJobDeps, postImageJob } from "./post-image.js";
 import { type PostMediaJobDeps, postMediaJob } from "./post-media.js";
 import { type PublicationDueJobDeps, publicationDueJob } from "./publication-due.js";
 import { type PublicationPublishJobDeps, publicationPublishJob } from "./publication-publish.js";
@@ -43,6 +44,8 @@ export type JobDeps = {
   postDraft: PostDraftJobDeps;
   /** El plan de ideas de la IA (spec F9 §4.9): repositorios, la IA y el id de las ideas. */
   contentPlan: ContentPlanJobDeps;
+  /** Conseguir imágenes para un post (F9.5-T25): tarjetas, biblioteca e IA. */
+  postImage: PostImageJobDeps;
 };
 
 /** Jobs que procesa el worker, con sus dependencias inyectadas. Los de ADR-0005 llegan en su fase. */
@@ -61,5 +64,6 @@ export function buildJobs(deps: JobDeps): readonly Job[] {
     postMediaJob(deps.postMedia),
     postDraftJob(deps.postDraft),
     contentPlanJob(deps.contentPlan),
+    postImageJob(deps.postImage),
   ];
 }

@@ -34,6 +34,7 @@ import {
   createInMemoryMetaDeletionRepository,
   createInMemoryPlanRunRepository,
   createInMemoryPlatformAccountRepository,
+  createInMemoryPostImageRunRepository,
   createInMemoryPostLock,
   createInMemoryPostRepository,
   createInMemoryPostUploadRepository,
@@ -495,6 +496,11 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     posts,
     postUploads,
     planRuns,
+    // F9.5-T25: sin claves, como un servidor recién instalado (solo las tarjetas); las pruebas de
+    // la biblioteca y la IA pasan sus dobles.
+    postImageRuns: createInMemoryPostImageRunRepository(),
+    imageSources: { stock: null, ai: null },
+    imageAiPricing: { priceUsd: 0.034, monthlyCapUsd: 2 },
     editorialProfiles: createInMemoryEditorialProfileRepository(),
     platformAccounts: createInMemoryPlatformAccountRepository({ nextId: randomUUID }),
     publications,

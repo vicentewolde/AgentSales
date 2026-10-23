@@ -13,10 +13,15 @@ import {
   type EditorialProfileRepository,
   editContent,
   getPostContent,
+  getPostImageOptions,
+  getPostImageRun,
   type JobQueue,
   listPosts,
   type MediaRepository,
   type MediaStorage,
+  type PostImageRun,
+  type PostImageRunRepository,
+  type PostImageSourcesConfig,
   type PostLock,
   type PostRepository,
   type PostUploadRepository,
@@ -29,8 +34,10 @@ import {
   postSubject,
   publishPost,
   requestContentRun,
+  requestPostImage,
   requestPostUploads,
   schedulePost,
+  searchStockPhotos,
   unapproveContent,
   updatePost,
 } from "@agentsales/core";
@@ -47,6 +54,10 @@ import {
   idParamSchema,
   type PostContentParam,
   type PostDetailResponse,
+  type PostImageOptionsResponse,
+  type PostImageRunResponse,
+  type PostImageRunView,
+  type PostImageStockResponse,
   type PostListResponse,
   type PostMediaItem,
   type PostPublishResponse,
@@ -56,6 +67,9 @@ import {
   type PostUploadResponse,
   postContentParamSchema,
   postDraftBodySchema,
+  postImageBodySchema,
+  postImageRunParamSchema,
+  postImageStockQuerySchema,
   postPublishBodySchema,
   postQuerySchema,
   postScheduleBodySchema,
@@ -102,7 +116,26 @@ export type PostRoutesDeps = EditContentDeps &
     maxVideoBytes: number;
     /** El id de una subida grande sin sha256 (va en su clave de R2, F9-T17). */
     newId: () => string;
+    /** Los pedidos de imágenes de los posts (F9.5-T25): `post.image` los atiende. */
+    postImageRuns: PostImageRunRepository;
+    /** La biblioteca y el precio de la IA, si el servidor tiene sus claves (F9.5-T25). */
+    imageSources: PostImageSourcesConfig;
   };
+
+/** Un pedido de imágenes para el panel y la CLI (sin el corredor ni quién lo pidió). */
+const imageRunView = (run: PostImageRun): PostImageRunView => ({
+  id: run.id,
+  postId: run.postId,
+  source: run.source,
+  status: run.status,
+  request: run.request,
+  mediaIds: run.mediaIds,
+  costUsd: run.costUsd,
+  model: run.model,
+  error: run.error,
+  createdAt: run.createdAt,
+  finishedAt: run.finishedAt,
+});
 
 /** Un filtro de fecha de la consulta (texto ISO ya validado) como `Date`. */
 const dateOf = (value: string | undefined): Date | undefined =>
@@ -168,6 +201,15 @@ export function postRoutes(deps: PostRoutesDeps) {
           };
         }),
     );
+  };
+
+  // F9.5-T25: conseguir imágenes (las fuentes, la biblioteca y los pedidos).
+  const imageDeps = {
+    posts: deps.posts,
+    brokers: deps.brokers,
+    runs: deps.postImageRuns,
+    queue: deps.queue,
+    sources: deps.imageSources,
   };
 
   return (
@@ -274,6 +316,55 @@ export function postRoutes(deps: PostRoutesDeps) {
         };
         return c.json(body, 200);
       })
+      // F9.5-T25 (ADR-0038): conseguir imágenes. Las fuentes, lo propuesto y los últimos pedidos;
+      // buscar en la biblioteca (una lectura); pedir (el worker las consigue con `post.image`) y
+      // seguir un pedido.
+      .get("/:id/images", validated("param", idParamSchema), async (c) => {
+        const options = await getPostImageOptions(
+          imageDeps,
+          requireAuth(c).user,
+          c.req.valid("param").id,
+        );
+        const body: PostImageOptionsResponse = { ...options, runs: options.runs.map(imageRunView) };
+        return c.json(body, 200);
+      })
+      .get(
+        "/:id/images/stock",
+        validated("param", idParamSchema),
+        validated("query", postImageStockQuerySchema),
+        async (c) => {
+          const { q, people } = c.req.valid("query");
+          const photos = await searchStockPhotos(
+            imageDeps,
+            requireAuth(c).user,
+            c.req.valid("param").id,
+            { text: q, withoutPeople: people !== "1" },
+          );
+          const body: PostImageStockResponse = { photos };
+          return c.json(body, 200);
+        },
+      )
+      .get("/:id/images/:runId", validated("param", postImageRunParamSchema), async (c) => {
+        const { id, runId } = c.req.valid("param");
+        const run = await getPostImageRun(imageDeps, requireAuth(c).user, id, runId);
+        const body: PostImageRunResponse = { run: imageRunView(run) };
+        return c.json(body, 200);
+      })
+      .post(
+        "/:id/images",
+        validated("param", idParamSchema),
+        validated("json", postImageBodySchema),
+        async (c) => {
+          const run = await requestPostImage(
+            imageDeps,
+            requireAuth(c).user,
+            c.req.valid("param").id,
+            c.req.valid("json"),
+          );
+          const body: PostImageRunResponse = { run: imageRunView(run) };
+          return c.json(body, 202);
+        },
+      )
       // F9-T12: pedir los textos (el worker los redacta con `post.draft`; la corrida se sigue en
       // `GET /content-runs/:id`).
       .post(

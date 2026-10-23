@@ -90,6 +90,13 @@ export {
   type InMemoryPlatformCatalogRepository,
 } from "./platform-catalog.js";
 export {
+  createFakeCardRenderer,
+  createFakeImageGenerator,
+  createFakeStockPhotoProvider,
+  createInMemoryPostImageRunRepository,
+  fakeJpeg,
+} from "./post-images.js";
+export {
   createPostPublicationScenario,
   POST_SCENARIO_TOKEN,
   type PostPublicationScenario,

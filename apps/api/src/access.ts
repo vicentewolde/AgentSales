@@ -111,6 +111,12 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "POST /posts/:id/archive": "session",
   "POST /posts/:id/uploads": "session",
   "POST /posts/:id/uploads/complete": "session",
+  // F9.5-T25 (ADR-0038): conseguir imágenes para un post (fuentes, biblioteca, pedir y seguir),
+  // con `posts.manage` revisado en core y lo ajeno 404.
+  "GET /posts/:id/images": "session",
+  "GET /posts/:id/images/stock": "session",
+  "GET /posts/:id/images/:runId": "session",
+  "POST /posts/:id/images": "session",
   // F9-T12: pedir los textos, editarlos, aprobarlos o quitarles la aprobación por red e idioma,
   // publicar una red y programar; con `posts.manage` revisado en core y lo ajeno 404.
   "POST /posts/:id/draft": "session",
