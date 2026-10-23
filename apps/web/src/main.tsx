@@ -3,6 +3,8 @@ import "./zod-config.js";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.js";
+// Las fuentes desde el propio sitio (F9.5-T26), antes que los estilos que las usan.
+import "./fonts.css";
 import "./index.css";
 
 const root = document.getElementById("root");

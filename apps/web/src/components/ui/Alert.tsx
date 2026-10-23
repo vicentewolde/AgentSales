@@ -29,7 +29,7 @@ export function Alert({
   const Icon = ICON[tone];
   return (
     <div
-      className={cx("flex gap-3 rounded-lg border p-4 text-sm", colors.box, className)}
+      className={cx("flex gap-3 rounded-2xl border p-4 text-sm", colors.box, className)}
       {...rest}
     >
       {icon && <Icon className={cx("mt-0.5 size-5 shrink-0", colors.icon)} />}

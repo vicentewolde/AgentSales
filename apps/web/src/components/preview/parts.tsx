@@ -40,7 +40,7 @@ export function Avatar({ name, className }: { name: string; className?: string }
     <span
       aria-hidden="true"
       className={cx(
-        "flex size-8 flex-none items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-700",
+        "flex size-8 flex-none items-center justify-center rounded-full bg-sand-strong text-sm font-semibold text-fg-muted",
         className,
       )}
     >
@@ -117,7 +117,7 @@ export function PreviewPhoto({
       <span
         role="img"
         aria-label={`${alt}, procesando…`}
-        className={cx("relative block overflow-hidden bg-slate-100", className)}
+        className={cx("relative block overflow-hidden bg-sand", className)}
       >
         {image.src !== null && (
           <img src={image.src} alt="" className="size-full object-cover opacity-40" />
@@ -136,10 +136,7 @@ export function PreviewPhoto({
       <span
         role="img"
         aria-label={alt}
-        className={cx(
-          "flex items-center justify-center bg-slate-100 text-xs text-fg-subtle",
-          className,
-        )}
+        className={cx("flex items-center justify-center bg-sand text-xs text-fg-subtle", className)}
       >
         foto
       </span>
@@ -150,7 +147,7 @@ export function PreviewPhoto({
       src={image.src}
       alt={alt}
       loading="lazy"
-      className={cx("bg-slate-100 object-cover", className)}
+      className={cx("bg-sand object-cover", className)}
     />
   );
 }
@@ -172,7 +169,7 @@ export function PreviewVideoBox({
   children?: ReactNode;
 }) {
   return (
-    <div className={cx("relative overflow-hidden bg-slate-900", className)}>
+    <div className={cx("relative overflow-hidden bg-fg", className)}>
       {video.src !== null ? (
         // biome-ignore lint/a11y/useMediaCaption: el texto del video va dibujado en él.
         <video
@@ -201,7 +198,7 @@ export function PreviewVideoBox({
           <span
             aria-hidden="true"
             className={cx(
-              "absolute inset-0 flex items-center justify-center text-white/90",
+              "absolute inset-0 flex items-center justify-center text-surface/90",
               video.processing === true ? "text-sm font-medium" : "text-3xl",
             )}
           >
@@ -228,7 +225,7 @@ export function Gallery({
   const [first, ...rest] = photos;
   if (first === undefined) {
     return (
-      <p className="flex aspect-[4/3] items-center justify-center bg-slate-100 text-sm text-fg-subtle">
+      <p className="flex aspect-[4/3] items-center justify-center bg-sand text-sm text-fg-subtle">
         Sin fotos todavía.
       </p>
     );
@@ -292,7 +289,7 @@ export function PhotoGrid({
           {hidden > 0 && index === shown.length - 1 && (
             <span
               aria-hidden="true"
-              className="absolute inset-0 flex items-center justify-center bg-black/50 text-lg font-semibold text-white"
+              className="absolute inset-0 flex items-center justify-center bg-fg/60 text-lg font-semibold text-surface"
             >
               +{hidden}
             </span>

@@ -72,7 +72,7 @@ export function MarketplaceConnectBox({
     login.mutate({ broker: broker.slug }, { onSuccess: setRequest });
   };
   return (
-    <div className="mt-3 rounded-lg border border-line bg-slate-50 p-3 text-sm">
+    <div className="mt-3 rounded-lg border border-line bg-canvas p-3 text-sm">
       <p className="font-medium">
         {connected
           ? "Iniciar sesión de nuevo en Facebook"

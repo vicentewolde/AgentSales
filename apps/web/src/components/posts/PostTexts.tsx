@@ -364,7 +364,7 @@ export function PostTexts({
       <div
         role="tablist"
         aria-label="Textos por red e idioma"
-        className="flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1"
+        className="flex flex-wrap gap-1 rounded-lg bg-sand p-1"
       >
         {texts.map((content) => {
           const active = keyOf(content) === keyOf(current);
@@ -409,7 +409,7 @@ export function PostTexts({
         role="tabpanel"
         id={`${ids}-panel`}
         aria-labelledby={`${ids}-${keyOf(current)}`}
-        className="mt-3 rounded-lg border border-line bg-slate-50/60 p-4"
+        className="mt-3 rounded-lg border border-line bg-canvas p-4"
       >
         <TextTab
           key={current.id}

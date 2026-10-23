@@ -195,7 +195,7 @@ function DraftBox({
           ? "Ya se están redactando."
           : null;
   return (
-    <div className="rounded-lg border border-line bg-slate-50 p-4 text-sm">
+    <div className="rounded-lg border border-line bg-canvas p-4 text-sm">
       {run !== null && (
         <p
           role="status"

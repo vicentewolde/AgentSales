@@ -21,24 +21,26 @@ export function PageHeader({
   back?: { to: string; label: string };
 }) {
   return (
-    <header className="mb-6">
+    <header className="mb-8">
       {back !== undefined && (
         <Link
           to={back.to}
-          className="-ml-1 mb-2 inline-flex items-center gap-1 rounded-md px-1 text-sm font-medium text-fg-muted hover:text-fg"
+          className="-ml-1 mb-3 inline-flex min-h-11 items-center gap-1.5 rounded-full px-1 text-sm font-medium text-fg-muted hover:text-fg"
         >
           <ChevronLeftIcon className="size-4" />
           {back.label}
         </Link>
       )}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <h1 className="text-2xl font-semibold tracking-tight text-fg">{title}</h1>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <h1 className="text-4xl leading-tight font-normal text-fg sm:text-[2.75rem]">
+              {title}
+            </h1>
             {meta}
           </div>
           {description !== undefined && (
-            <div className="mt-1.5 text-sm text-fg-muted">{description}</div>
+            <div className="mt-2 max-w-2xl text-base text-fg-subtle">{description}</div>
           )}
         </div>
         {actions !== undefined && (

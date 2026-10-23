@@ -22,7 +22,7 @@ export function TikTokPreview({
   return (
     <PreviewFrame label={label} network="TikTok" draft={draft}>
       {video === null ? (
-        <p className="flex aspect-[9/16] w-52 items-center justify-center rounded-lg bg-slate-100 p-4 text-center text-sm text-fg-subtle">
+        <p className="flex aspect-[9/16] w-52 items-center justify-center rounded-lg bg-sand p-4 text-center text-sm text-fg-subtle">
           Sin video todavía.
         </p>
       ) : (
@@ -31,7 +31,7 @@ export function TikTokPreview({
           label="Video para TikTok"
           className="aspect-[9/16] w-52 rounded-lg"
         >
-          <p className="pointer-events-none absolute inset-x-0 bottom-3 flex items-center gap-2 px-3 text-sm font-semibold text-white drop-shadow">
+          <p className="pointer-events-none absolute inset-x-0 bottom-3 flex items-center gap-2 px-3 text-sm font-semibold text-surface drop-shadow">
             <Avatar name={accountName} className="size-6 text-xs" />
             <span className="truncate">{accountName}</span>
           </p>
@@ -41,7 +41,7 @@ export function TikTokPreview({
         TikTok no recibe el texto: el video llega como borrador a la bandeja de la app y ahí pegas
         este texto antes de publicar.
       </p>
-      <div className="mt-1 max-w-sm rounded-md border border-dashed border-line-strong p-2">
+      <div className="mt-1 max-w-sm rounded-md border border-dashed border-line-soft p-2">
         <p className="text-xs font-medium text-fg-subtle">Texto para pegar en la app</p>
         <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-fg">{text}</p>
       </div>

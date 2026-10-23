@@ -33,21 +33,21 @@ export function Card({
       {...rest}
     >
       {header && (
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-4 py-3 sm:px-5">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-5 pt-5 pb-4 sm:px-6">
           <div className="min-w-0">
             {title !== undefined && (
-              <h2 id={headingId} className="text-base font-semibold text-fg">
+              <h2 id={headingId} className="text-xl font-semibold text-fg">
                 {title}
               </h2>
             )}
             {description !== undefined && (
-              <div className="mt-0.5 text-sm text-fg-muted">{description}</div>
+              <div className="mt-1 text-sm text-fg-subtle">{description}</div>
             )}
           </div>
           {actions !== undefined && <div className="flex flex-wrap gap-2">{actions}</div>}
         </div>
       )}
-      <div className={padded ? "p-4 sm:p-5" : undefined}>{children}</div>
+      <div className={padded ? "p-5 sm:p-6" : undefined}>{children}</div>
     </Tag>
   );
 }
