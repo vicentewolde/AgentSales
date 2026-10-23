@@ -1,4 +1,10 @@
-import { LLM_PROVIDERS, MERCADOLIBRE_SITE_ID, PUBLISH_MODES } from "@agentsales/core";
+import {
+  LLM_PROVIDERS,
+  MERCADOLIBRE_SITE_ID,
+  PUBLISH_MODES,
+  WORKER_CHECK_PERIOD_MINUTES,
+  WORKER_STAY_AHEAD_DEFAULT_MINUTES,
+} from "@agentsales/core";
 import { z } from "zod";
 
 /** `["a", "b", "c"]` → `"a", "b" o "c"` (para mensajes de error). */
@@ -23,15 +29,20 @@ const intInRange = (min: number, max: number, message: string) =>
 const positiveInt = (description: string) =>
   intInRange(1, Number.MAX_SAFE_INTEGER, `debe ser ${description}`);
 
-/** Dólares con hasta 4 decimales y punto (`0.034`, `2`), entre 0 y `max`. */
-const usdAmount = (max: number) => {
-  const message = `debe ser un monto en dólares con punto decimal (por ejemplo 0.034), entre 0 y ${max}`;
+/**
+ * Dólares con hasta 4 decimales y punto (`0.034`, `2`), entre 0 y `max` (con `positive`, mayor que
+ * 0).
+ */
+const usdAmount = (max: number, options: { positive?: boolean } = {}) => {
+  const range = options.positive ? `mayor que 0 y hasta ${max}` : `entre 0 y ${max}`;
+  const message = `debe ser un monto en dólares con punto decimal (por ejemplo 0.034), ${range}`;
+  const amount = z.number().max(max, message);
   return z
     .string()
     .trim()
     .regex(/^\d+(\.\d{1,4})?$/, message)
     .transform(Number)
-    .pipe(z.number().min(0, message).max(max, message));
+    .pipe(options.positive ? amount.positive(message) : amount.min(0, message));
 };
 
 const port = intInRange(1, 65535, "debe ser un puerto entre 1 y 65535");
@@ -339,6 +350,22 @@ const envSchema = z
       "debe ser un número entero de minutos entre 1 y 240",
     ).default(30),
 
+    // El worker se apaga solo (F9.5-T24, ADR-0037): tras estos minutos seguidos sin jobs activos ni
+    // nada programado que venza en los próximos WORKER_STAY_AHEAD_MINUTES, cierra limpio (exit 0) y
+    // la máquina queda detenida hasta la próxima revisión del horario (cada hora a los :50). Vacía
+    // o 0: nunca se apaga solo (como antes). Mira por lo menos el periodo de la revisión (60 min): por
+    // defecto 70, la próxima revisión y su atraso en GitHub (core, `worker-schedule.ts`).
+    WORKER_IDLE_EXIT_MINUTES: intInRange(
+      0,
+      1440,
+      "debe ser un número entero de minutos entre 0 (nunca) y 1440",
+    ).default(0),
+    WORKER_STAY_AHEAD_MINUTES: intInRange(
+      WORKER_CHECK_PERIOD_MINUTES,
+      1440,
+      `debe ser un número entero de minutos entre ${WORKER_CHECK_PERIOD_MINUTES} (cada cuánto revisa el horario) y 1440`,
+    ).default(WORKER_STAY_AHEAD_DEFAULT_MINUTES),
+
     // Imágenes de un post sin medios (F9.5-T25, ADR-0038): la biblioteca de Pixabay y la IA de
     // imágenes de Google (Nano Banana). Sin la clave, esa pestaña dice qué falta y las tarjetas de
     // la marca funcionan igual. El modelo y el precio por imagen van aquí, no en el código: cambian
@@ -346,7 +373,8 @@ const envSchema = z
     PIXABAY_API_KEY: z.string().optional(),
     GEMINI_API_KEY: z.string().optional(),
     IMAGE_AI_MODEL: z.string().trim().min(1).default("gemini-nano-banana-2.1"),
-    IMAGE_AI_PRICE_USD: usdAmount(5).default(0.034),
+    // Mayor que 0: un precio 0 dejaría crear sin anotar gasto (para apagar la IA, el tope en 0).
+    IMAGE_AI_PRICE_USD: usdAmount(5, { positive: true }).default(0.034),
     IMAGE_AI_MONTHLY_CAP_USD: usdAmount(1000).default(2),
 
     // Respaldo local (F6, spec §4.11): la carpeta de los volcados (fuera del proyecto) y, opcional,

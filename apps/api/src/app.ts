@@ -420,6 +420,10 @@ export function createApp(input: AppDeps) {
         ...(deps.healthDetails?.backupStatus === undefined
           ? {}
           : { backupStatus: deps.healthDetails.backupStatus }),
+        ...(deps.healthDetails?.workerHeartbeats === undefined
+          ? {}
+          : { workerHeartbeats: deps.healthDetails.workerHeartbeats }),
+        workerScheduled: deps.healthDetails?.workerIdleExit ?? false,
       }),
     )
     .route("/usage", usageRoutes(deps))

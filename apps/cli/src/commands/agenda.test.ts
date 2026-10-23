@@ -1,7 +1,7 @@
 import type { AgendaResponse, TrackingResponse } from "@agentsales/api/contracts";
 import { describe, expect, it } from "vitest";
 import { createColors } from "../colors.js";
-import { agendaCommands, renderAgenda } from "./agenda.js";
+import { agendaCommands, renderAgenda, START_WORKER_COMMANDS } from "./agenda.js";
 import { renderTrackingPosts } from "./tracking.js";
 
 // F9-T08 (spec F9 §4.2, §4.6 y §4.7): la agenda con posts y las clases nuevas, y los posts en el
@@ -117,6 +117,44 @@ describe("agenda con posts", () => {
     const text = renderAgenda([item({}), listing], c);
     expect(text).toContain("Próximas (7 días) (2)");
     expect(text.indexOf("Lo que aprendí")).toBeLessThan(text.indexOf("P1 ·"));
+  });
+});
+
+describe("agenda con el worker apagado (F9.5-T24)", () => {
+  // 2026-10-22 12:00 en Chile: la próxima revisión del horario es a las 12:50.
+  const NOW = new Date("2026-10-22T15:00:00.000Z");
+  const off = item({ kind: "worker_off", action: "wait_worker" });
+
+  it("con horario: dice que el worker está apagado, la próxima revisión y cómo encenderlo ya", () => {
+    const text = renderAgenda([off], c, NOW);
+    expect(text).toContain(
+      "El worker está apagado y hay algo por vencer (1) · sale cuando se encienda, en la próxima revisión: 2026-10-22 12:50",
+    );
+    expect(text).toContain(
+      "→ en el servidor: GitHub → Actions → «Encender el worker» → Run workflow",
+    );
+    expect(text).toContain("→ en el Mac: pnpm dev");
+  });
+
+  it("sin horario no promete la revisión: el worker debe estar encendido", () => {
+    const text = renderAgenda([{ ...off, action: "start_worker" }], c, NOW);
+    expect(text).toContain(
+      "El worker está apagado y hay algo por vencer (1) · sin horario: el worker debe estar encendido",
+    );
+    expect(text).not.toContain("próxima revisión");
+    expect(text).toContain("→ en el Mac: pnpm dev");
+  });
+
+  it("en un post, además, verlo; en un aviso, solo encenderlo", () => {
+    expect(agendaCommands(off)).toEqual(["agentsales post show post-1", ...START_WORKER_COMMANDS]);
+    expect(agendaCommands({ ...off, postId: null, listingId: "l1" })).toEqual([
+      ...START_WORKER_COMMANDS,
+    ]);
+  });
+
+  it("va antes que lo demás", () => {
+    const text = renderAgenda([item({}), off], c, NOW);
+    expect(text.indexOf("El worker está apagado")).toBeLessThan(text.indexOf("Próximas"));
   });
 });
 

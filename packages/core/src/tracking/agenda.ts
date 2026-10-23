@@ -4,6 +4,7 @@ import type { Platform, PublicationFormat } from "../enums.js";
 import type { BackupStatus } from "../health.js";
 import { isBackupStale } from "../health.js";
 import type { Listing } from "../listing.js";
+import { requiresManualConfirm } from "../marketplace/limits.js";
 import type { PlatformAccount } from "../platform-account.js";
 import { portalExpiry } from "../portal/expiry.js";
 import type { Post } from "../post.js";
@@ -14,6 +15,8 @@ import { scheduleState } from "../schedule.js";
 import { autoPublishApplies, autoPublishContents } from "../use-cases/auto-publish-listing.js";
 import { canRelist, relistedIds } from "../use-cases/relist-publication.js";
 import { STALE_PUBLISHING_MS } from "../use-cases/watch-publications.js";
+import type { WorkerStatus } from "../worker-heartbeat.js";
+import { nextWorkerCheck } from "../worker-schedule.js";
 import { isManualTask } from "./manual-tasks.js";
 import { accountTokenExpiry } from "./token-expiry.js";
 
@@ -22,6 +25,11 @@ import { accountTokenExpiry } from "./token-expiry.js";
 
 /**
  * Las clases de ítem, en el orden en que se muestran:
+ * - `worker_off`: el worker está apagado y una programada ya venció (y sale en cuanto se encienda) o
+ *   vence pronto (F9.5-T24, ADR-0037); reemplaza a su `upcoming`. Con el horario activado
+ *   (`worker.scheduled`), lo que vence antes de la próxima revisión, que lo enciende (`wait_worker`);
+ *   sin horario, lo que vence en las próximas 24 h, y hay que encenderlo (`start_worker`). Solo con el
+ *   estado del worker (`AgendaInput.worker`);
  * - `overdue`: programada que no salió (más de 12 h de atraso);
  * - `your_turn`: recordatorio de Marketplace con la hora vencida ("te toca");
  * - `outcome_unknown`: el intento se cortó después de enviar y no se sabe si salió (F9, ADR-0029
@@ -46,6 +54,7 @@ import { accountTokenExpiry } from "./token-expiry.js";
  * la propiedad (tareas a mano de una cerrada, `auto_publish`, Portal).
  */
 export const AGENDA_KINDS = [
+  "worker_off",
   "overdue",
   "your_turn",
   "outcome_unknown",
@@ -77,6 +86,10 @@ export const AGENDA_ACTIONS = [
   "confirm",
   /** `token_expiring`: volver a conectar la cuenta. */
   "reconnect",
+  /** `worker_off` sin horario: el worker debe estar encendido; hay que encenderlo. */
+  "start_worker",
+  /** `worker_off` con horario: sale en la próxima revisión, que lo enciende (o encenderlo ya). */
+  "wait_worker",
   "backup",
   "none",
 ] as const;
@@ -173,8 +186,16 @@ export type AgendaInput = {
   pendingReviews: readonly PendingReview[];
   /** `undefined`: no se informa el respaldo; `null`: nunca se respaldó. */
   backup?: BackupStatus | null;
+  /**
+   * El estado del worker según su latido (F9.5-T24), para `worker_off`. `undefined` (no se informa,
+   * por ejemplo a un corredor) o `null` (no se supo): sin `worker_off`.
+   */
+  worker?: (Pick<WorkerStatus, "running"> & { scheduled?: boolean }) | null;
   now: Date;
 };
+
+/** Sin horario, `worker_off` avisa lo que vence en este plazo con el worker apagado. */
+export const WORKER_OFF_UNSCHEDULED_MS = 24 * 60 * 60 * 1000;
 
 /** Hasta dónde mira `upcoming`. */
 export const AGENDA_UPCOMING_MS = 7 * 24 * 60 * 60 * 1000;
@@ -209,11 +230,18 @@ export function agendaItems(input: AgendaInput): AgendaItem[] {
   const listings = new Map(input.listings.map((listing) => [listing.id, listing]));
   const posts = new Map((input.posts ?? []).map((post) => [post.id, post]));
   const relisted = relistedIds(input.publications);
+  // Con el worker apagado, lo que vence antes de la próxima revisión del horario la espera (ADR-0037).
+  const workerOff: WorkerOff | null =
+    input.worker?.running !== false
+      ? null
+      : input.worker.scheduled === true
+        ? { scheduled: true, until: nextWorkerCheck(now) }
+        : { scheduled: false, until: new Date(now.getTime() + WORKER_OFF_UNSCHEDULED_MS) };
   const items: AgendaItem[] = [];
   for (const publication of input.publications) {
     const owner = ownerOf(publication, listings, posts);
     if (owner === null) continue;
-    const kindOf = kindForPublication(publication, owner, input, relisted);
+    const kindOf = kindForPublication(publication, owner, input, relisted, workerOff);
     if (kindOf === null) continue;
     items.push({
       kind: kindOf.kind,
@@ -345,11 +373,37 @@ function manualReadyAt(publication: Publication): Date {
   return parsed.success ? new Date(parsed.data.manual.readyAt) : publication.updatedAt;
 }
 
+/**
+ * El worker apagado: si lo enciende el horario y hasta cuándo lo que vence lo espera (la próxima
+ * revisión, o `null` si no hay ninguna; sin horario, las próximas 24 h).
+ */
+type WorkerOff = { scheduled: boolean; until: Date | null };
+
+/**
+ * Si una programada espera al worker apagado (`worker_off`): no es un recordatorio a mano
+ * (Marketplace) y ya venció sin pasar las 12 h (sale en cuanto se encienda), o vence antes de la
+ * próxima revisión (sin horario, en 24 h). Una atrasada sigue como `overdue`: ya no sale sola.
+ */
+function waitsForWorker(
+  publication: Publication,
+  state: ReturnType<typeof scheduleState>,
+  workerOff: WorkerOff,
+): boolean {
+  if (requiresManualConfirm(publication.platform) || publication.scheduledAt === null) return false;
+  if (state === "due") return true;
+  return (
+    state === "upcoming" &&
+    workerOff.until !== null &&
+    publication.scheduledAt.getTime() < workerOff.until.getTime()
+  );
+}
+
 function kindForPublication(
   publication: Publication,
   owner: AgendaOwner,
   input: AgendaInput,
   relisted: ReadonlySet<string>,
+  workerOff: WorkerOff | null,
 ): {
   kind: AgendaKind;
   action: AgendaAction;
@@ -364,6 +418,13 @@ function kindForPublication(
         return { kind: "overdue", action: "publish", at: publication.scheduledAt };
       if (state === "due" && publication.platform === "fb_marketplace") {
         return { kind: "your_turn", action: "publish", at: publication.scheduledAt };
+      }
+      if (workerOff !== null && waitsForWorker(publication, state, workerOff)) {
+        return {
+          kind: "worker_off",
+          action: workerOff.scheduled ? "wait_worker" : "start_worker",
+          at: publication.scheduledAt,
+        };
       }
       if (
         state === "upcoming" &&

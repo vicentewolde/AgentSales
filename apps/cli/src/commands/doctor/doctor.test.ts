@@ -781,6 +781,64 @@ describe("runDoctor · un servidor remoto", () => {
     expect(text).not.toContain(".env");
   });
 
+  const offWorker = {
+    running: false,
+    startedAt: "2026-10-15T12:00:00.000Z",
+    lastBeatAt: "2026-10-15T12:20:00.000Z",
+  };
+
+  it("dice la próxima revisión del horario del worker y, apagado, cómo encenderlo ya (F9.5-T24)", async () => {
+    const report = await runDoctor(
+      deps({
+        server,
+        fetchHealth: async () => ({
+          ...healthy,
+          environment: "production",
+          worker: offWorker,
+          workerSchedule: true,
+        }),
+      }),
+    );
+    // NOW es 2026-10-15 16:00 en Chile.
+    expect(report.items.find((item) => item.name === "Horario del worker")).toMatchObject({
+      level: "ok",
+      detail:
+        "próxima revisión 2026-10-15 16:50 (cada hora a los :50, de 06:50 a 22:50, hora de Chile)",
+    });
+    const worker = report.items.find((item) => item.name === "Worker");
+    expect(worker).toMatchObject({ level: "warn", detail: "apagado desde 2026-10-15 09:20" });
+    expect(worker?.hint).toContain("«Encender el worker»");
+    expect(worker?.hint).not.toContain("pnpm dev");
+    // En el Mac no hay horario.
+    const local = await runDoctor(deps());
+    expect(local.items.some((item) => item.name === "Horario del worker")).toBe(false);
+  });
+
+  it("sin horario no promete la revisión: el worker debe estar encendido (F9.5-T24)", async () => {
+    const report = await runDoctor(
+      deps({
+        server,
+        fetchHealth: async () => ({
+          ...healthy,
+          environment: "production",
+          worker: offWorker,
+          workerSchedule: false,
+        }),
+      }),
+    );
+    expect(report.items.find((item) => item.name === "Horario del worker")?.detail).toBe(
+      "sin horario: el worker no se apaga solo y debe estar encendido",
+    );
+    const worker = report.items.find((item) => item.name === "Worker");
+    expect(worker?.hint).toContain("Sin horario no se enciende solo");
+    expect(worker?.hint).not.toContain("próxima revisión");
+    // Un servidor anterior no lo informa: no se dice nada del horario.
+    const old = await runDoctor(
+      deps({ server, fetchHealth: async () => ({ ...healthy, worker: offWorker }) }),
+    );
+    expect(old.items.some((item) => item.name === "Horario del worker")).toBe(false);
+  });
+
   it("un respaldo atrasado del servidor aconseja mirar el worker, no pnpm db:backup (F8-T13)", async () => {
     const report = await runDoctor(
       deps({

@@ -424,6 +424,7 @@ export const CLOSE_REASON_TEXT: Readonly<Record<CloseReason, string>> = {
 
 /** El título de cada clase de la agenda (spec F6 §4.9), para la CLI y el panel. */
 export const AGENDA_KIND_TEXT: Readonly<Record<AgendaKind, string>> = {
+  worker_off: "El worker está apagado y hay algo por vencer",
   overdue: "Atrasadas",
   your_turn: "Te toca (Marketplace)",
   outcome_unknown: "No se sabe si salieron",

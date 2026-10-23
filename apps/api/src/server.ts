@@ -341,6 +341,9 @@ const app = createApp({
         .map((u) => u.email),
     // El latido del worker (F8-T12): si está encendido y desde cuándo.
     workerHeartbeats: () => workerHeartbeats.listLatest(WORKER_HEARTBEAT_LOOKBACK),
+    // Si el worker se apaga solo y lo enciende el horario (F9.5-T24): la API y el worker leen el mismo
+    // entorno (`fly.toml` o el `.env` con `pnpm dev`).
+    workerIdleExit: env.WORKER_IDLE_EXIT_MINUTES > 0,
   },
   logger,
   access,
