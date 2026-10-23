@@ -301,8 +301,75 @@ describe("agentsales plan", () => {
       "--platform",
       "--count",
       "--start",
+      "--guidance",
       "--no-wait",
     ]);
+  });
+
+  it("--guidance manda el pedido del operador: se guarda, la idea de ejemplo lo refleja y show lo muestra (F9.5-T23)", async () => {
+    const s = await setup();
+    expect(
+      await runPlanRequest(s.deps(), {
+        broker: "agentpey",
+        count: "2",
+        guidance: "solo ideas para principiantes",
+      }),
+    ).toBe(0);
+    const [plan] = await s.h.planRuns.listByBroker(s.brand.id);
+    expect(plan?.request).toMatchObject({ guidance: "solo ideas para principiantes" });
+    expect((await s.ideasOf()).map((idea) => idea.topic)).toContain(
+      "Según tu pedido: solo ideas para principiantes",
+    );
+    expect(s.h.text()).toContain("Pedido: solo ideas para principiantes");
+    // El perfil tiene temas: no avisa que está vacío.
+    expect(s.h.errors()).not.toContain("Tu perfil está vacío");
+    s.h.out.length = 0;
+    expect(await runPlanShow(s.deps(), plan?.id ?? "")).toBe(0);
+    expect(s.h.text()).toContain("Pedido: solo ideas para principiantes");
+    // Más de 500 caracteres: el error de la API con lo que se puede pedir.
+    expect(
+      await runPlanRequest(s.deps(), {
+        broker: "agentpey",
+        guidance: "a".repeat(501),
+        wait: false,
+      }),
+    ).toBe(1);
+    expect(s.h.errors()).toContain("PLAN_RUN_INVALID");
+    expect(s.h.errors()).toContain("el pedido (--guidance) hasta 500 caracteres");
+  });
+
+  it("con un plan en curso que tiene otro pedido, avisa que el pedido nuevo no se usó (F9.5-T23)", async () => {
+    const s = await setup();
+    expect(
+      await runPlanRequest(s.deps(), {
+        broker: "agentpey",
+        guidance: "Solo principiantes",
+        wait: false,
+      }),
+    ).toBe(0);
+    expect(s.h.errors()).not.toContain("Ya había un plan en curso");
+    expect(
+      await runPlanRequest(s.deps(), {
+        broker: "agentpey",
+        guidance: "Evita precios",
+        wait: false,
+      }),
+    ).toBe(0);
+    expect(s.h.errors()).toContain("Ya había un plan en curso; tu pedido nuevo no se usó");
+    expect(await s.h.planRuns.listByBroker(s.brand.id)).toHaveLength(1);
+  });
+
+  it("con el perfil vacío (sin temas ni hechos), avisa antes de pedir y sugiere brand edit (F9.5-T23)", async () => {
+    const s = await setup();
+    await s.h.editorialProfiles.upsert(s.brand.id, {
+      ...editorialProfileView(s.brand.id, null),
+      cadence: { linkedin: { postsPerWeek: 2, days: [], hours: [], languageGapHours: 6 } },
+    });
+    expect(await runPlanRequest(s.deps(), { broker: "agentpey", count: "1", wait: false })).toBe(0);
+    expect(s.h.errors()).toContain("Tu perfil está vacío: las ideas saldrán genéricas");
+    expect(s.h.errors()).toContain("agentsales brand edit --broker agentpey");
+    // Solo avisa: el plan se pide igual.
+    expect(s.h.queue.jobs.map((job) => job.name)).toEqual(["content.plan"]);
   });
 
   describe("--broker de plan list por commander (ensayo de la demo de F9)", () => {

@@ -15,11 +15,13 @@ import type { PostRepository } from "../ports/post-repository.js";
 import { postPlatforms } from "../social/brief.js";
 import {
   defaultPlanCount,
+  normalizePlanGuidance,
   PLAN_MAX_IDEAS,
   type PlanRunReport,
   type PlanRunRequest,
   planPeriod,
-  planRunReportSchema,
+  planRunRequestSchema,
+  readPlanRunReport,
 } from "../social/plan.js";
 import type { User } from "../user.js";
 
@@ -71,12 +73,23 @@ export type RequestPlanRunInput = {
   platforms?: readonly string[] | undefined;
   /** Cuántas ideas (1 a 20); por defecto, según la cadencia (`defaultPlanCount`). */
   count?: number | undefined;
+  /**
+   * El pedido del operador (F9.5-T23): «¿Qué quieres que trate este plan?», hasta 500 caracteres
+   * (`normalizePlanGuidance`). Guía temas y tono, nunca es fuente de hechos (ADR-0030).
+   */
+  guidance?: string | null | undefined;
 };
 
 export type RequestPlanRunResult = {
   run: PlanRun;
   /** `true` si la marca ya tenía un plan en cola o corriendo: se devuelve ese (y se reencola). */
   reused: boolean;
+  /**
+   * `true` si se devolvió un plan en curso (`reused`) y el pedido del operador que llegó no es el
+   * que ese plan tiene guardado: el nuevo no se usó (F9.5-T23; el panel y la CLI lo avisan con
+   * `PLAN_GUIDANCE_IGNORED_WARNING`).
+   */
+  guidanceIgnored: boolean;
 };
 
 /**
@@ -87,6 +100,9 @@ export type RequestPlanRunResult = {
  *   en su perfil), o todas las suyas. Sin ninguna, `POST_NO_PLATFORMS` (409);
  * - el período (`planPeriod`) y cuántas ideas (`defaultPlanCount`); fuera de rango,
  *   `PLAN_RUN_INVALID` (400);
+ * - el pedido del operador (`normalizePlanGuidance`, F9.5-T23), que se guarda en
+ *   `request.guidance`; más de 500 caracteres o con caracteres de control, `PLAN_RUN_INVALID` (400);
+ *   si se devuelve un plan en curso con otro pedido guardado, `guidanceIgnored`;
  * - con la marca en su tope de IA del mes, `LLM_BUDGET_EXCEEDED` (409; el worker lo revisa otra vez
  *   antes de llamar);
  * - si la marca ya tiene un plan en `queued` o `running`, lo devuelve (`reused`) y lo vuelve a
@@ -140,14 +156,29 @@ export async function requestPlanRun(
   if (!Number.isInteger(count) || count < 1 || count > PLAN_MAX_IDEAS) {
     throw invalid(`Un plan pide de 1 a ${PLAN_MAX_IDEAS} ideas`, { count });
   }
+  const guidance = normalizePlanGuidance(input.guidance);
   await assertLlmBudget(deps, broker, now);
 
   const owner: string = brokerId;
-  const request: PlanRunRequest = { platforms, count, days: period.days, requestedBy: actor.id };
-  const result = (await activePlanOf(deps, owner)) ?? (await createPlan());
+  const request: PlanRunRequest = {
+    platforms,
+    count,
+    days: period.days,
+    requestedBy: actor.id,
+    guidance,
+  };
+  const found = (await activePlanOf(deps, owner)) ?? (await createPlan());
+  const stored = planRunRequestSchema.safeParse(found.run.request);
+  const result: RequestPlanRunResult = {
+    ...found,
+    guidanceIgnored:
+      found.reused &&
+      guidance !== null &&
+      guidance !== (stored.success ? (stored.data.guidance ?? null) : null),
+  };
 
   /** Crea el plan; si otro pedido ganó la carrera (`PLAN_RUN_CONFLICT`), devuelve ese. */
-  async function createPlan(): Promise<RequestPlanRunResult> {
+  async function createPlan(): Promise<Omit<RequestPlanRunResult, "guidanceIgnored">> {
     try {
       const run = await deps.planRuns.create({
         brokerId: owner,
@@ -183,7 +214,7 @@ export async function requestPlanRun(
 async function activePlanOf(
   deps: Pick<RequestPlanRunDeps, "planRuns">,
   brokerId: string,
-): Promise<RequestPlanRunResult | null> {
+): Promise<Omit<RequestPlanRunResult, "guidanceIgnored"> | null> {
   const active = (await deps.planRuns.listByBroker(brokerId)).find(
     (run) => run.status === "queued" || run.status === "running",
   );
@@ -215,10 +246,11 @@ export async function getPlanRun(
   const scope = scopeOf(actor);
   if (run === null || !inScope(scope, run.brokerId)) throw planNotFound(planRunId);
   assertCan(actor, "posts.manage", run.brokerId);
-  const parsed = planRunReportSchema.safeParse(run.report);
+  // Tolerante: un descarte con un código desconocido se deja fuera, no anula el reporte.
+  const report = run.status === "succeeded" ? readPlanRunReport(run.report) : null;
   return {
     run,
-    report: run.status === "succeeded" && parsed.success ? parsed.data : null,
+    report,
     ideas: await deps.posts.list({ planRunId, brokerId: run.brokerId }, scope),
   };
 }

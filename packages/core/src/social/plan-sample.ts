@@ -20,35 +20,52 @@ const sampleDataSchema = z.object({
   ideas_pedidas: z.number().int().nonnegative().default(0),
   temas_recientes: z.array(z.string()).default([]),
   ideas_descartadas: z.array(z.string()).default([]),
+  pedido_del_operador: z.string().optional(),
 });
 
 /**
- * Ángulos de un tema: frases sin cifras ni nombres propios (pasan `unsupportedFacts`) y sin
- * palabras con peso en común (no se parecen entre sí, `topicSimilarity`). Son tantos como el tope
- * de ideas de un plan (`PLAN_MAX_IDEAS`): dentro de un plan, ninguno se repite.
+ * Ángulos de un tema: frases sin cifras ni nombres propios (pasan `unsupportedFacts`), sin palabras
+ * con peso en común (no se parecen entre sí, `topicSimilarity`) y sin primera persona del plural
+ * (pasan `FIRST_PERSON_PLURAL` con cualquier perfil, F9.5-T23). Son tantos como el tope de ideas de
+ * un plan (`PLAN_MAX_IDEAS`): dentro de un plan, ninguno se repite.
  */
 const ANGLES = [
-  "Lo que aprendimos esta semana",
-  "Cómo trabajamos por dentro",
-  "Una pregunta para quienes nos siguen",
-  "Un error que nos enseñó algo",
+  "Lo que se aprendió esta semana",
+  "Cómo se trabaja por dentro",
+  "Una pregunta para la comunidad",
+  "Un error que enseñó algo",
   "Lo que viene",
   "Detrás de escena",
-  "Una herramienta que usamos a diario",
+  "Una herramienta de uso diario",
   "Un consejo práctico",
   "Una decisión difícil",
-  "Lo que más nos preguntan",
+  "Las dudas más frecuentes",
   "Un mito común",
-  "Cómo empezamos",
-  "Lo que haríamos distinto",
-  "Un proceso que simplificamos",
-  "Lo que nos inspira",
-  "Una costumbre del equipo",
-  "Una idea que dejamos atrás",
+  "Cómo empezó todo",
+  "Lo que se haría distinto",
+  "Un proceso simplificado",
+  "Lo que inspira",
+  "Una costumbre de la casa",
+  "Una idea que quedó atrás",
   "Un día cualquiera",
   "Una recomendación sincera",
-  "Lo que todavía no sabemos",
+  "Lo que todavía no se sabe",
 ];
+
+/**
+ * El tema de la idea que refleja el pedido del operador (F9.5-T23): el pedido tal cual, recortado
+ * en una palabra. Si trae cifras o nombres que no están en el perfil, la verificación lo descarta
+ * (`FACT_NOT_IN_PROFILE`): así se prueba que el pedido no se vuelve un hecho.
+ */
+const PEDIDO_TOPIC_MAX = 100;
+function pedidoTopic(pedido: string): string | null {
+  const flat = pedido.replace(/\s+/g, " ").trim();
+  if (flat === "") return null;
+  const space = flat.lastIndexOf(" ", PEDIDO_TOPIC_MAX);
+  const cut =
+    flat.length <= PEDIDO_TOPIC_MAX ? flat : flat.slice(0, space > 0 ? space : PEDIDO_TOPIC_MAX);
+  return `Según tu pedido: ${cut}`;
+}
 
 /** Las vueltas que se agregan cuando un ángulo ya se usó (un plan tras otro no se repite). */
 const VARIANTS = ["", " (otra mirada)", " (en corto)", " (paso a paso)", " (lo esencial)"];
@@ -82,7 +99,9 @@ function readData(prompt: string): z.infer<typeof sampleDataSchema> | null {
  * empieza por una red pedida (por turno), con un formato que esa red admite (por turno) y, como
  * redes preferidas, esa y las demás pedidas que admiten el formato; las líneas por turno (entre las
  * de peso mayor que 0); y temas con un ángulo distinto cada uno que no repiten los recientes ni los
- * descartados. Sin fecha ni hora. Determinista: el mismo prompt da la misma respuesta.
+ * descartados. Sin fecha ni hora. Con `pedido_del_operador` (F9.5-T23), la primera idea lo
+ * refleja en su tema (`pedidoTopic`) y su porqué lo dice. Determinista: el mismo prompt da la misma
+ * respuesta.
  */
 export function samplePlanResponse(prompt: string): { ideas: PlanIdea[]; warnings: string[] } {
   const data = readData(prompt);
@@ -116,7 +135,8 @@ export function samplePlanResponse(prompt: string): { ideas: PlanIdea[]; warning
     const kinds = KINDS[platform];
     const kind = kinds[Math.floor(index / networks.length) % kinds.length] as PostKind;
     const pillar = pillars.length === 0 ? null : (pillars[index % pillars.length] ?? null);
-    const topic = nextTopic(pillar);
+    const pedido = index === 0 ? pedidoTopic(data.pedido_del_operador ?? "") : null;
+    const topic = pedido ?? nextTopic(pillar);
     if (topic === null) break;
     ideas.push({
       tema: topic,
@@ -126,7 +146,10 @@ export function samplePlanResponse(prompt: string): { ideas: PlanIdea[]; warning
         ...networks.filter((other) => other !== platform && kindProblem(other, kind) === null),
       ],
       formato: kind,
-      porque: "Suma un ángulo y un formato distintos al plan, y reparte las líneas del perfil.",
+      porque:
+        pedido === null
+          ? "Suma un ángulo y un formato distintos al plan, y reparte las líneas del perfil."
+          : "Responde a lo que pidió el operador para este plan.",
     });
   }
   return { ideas, warnings: [] };

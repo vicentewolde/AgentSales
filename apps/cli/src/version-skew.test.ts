@@ -304,7 +304,7 @@ describe("las fuentes nuevas de F9.5 contra una CLI anterior", () => {
     ]);
   });
 
-  it("plan show con descartes nuevos (IDEA_TOO_SIMILAR y NO_SLOT) y una red nueva no falla", async () => {
+  it("plan show con descartes nuevos (IDEA_TOO_SIMILAR, NO_SLOT y FIRST_PERSON_PLURAL) y una red nueva no falla", async () => {
     const h = harness({
       afterResponse: (url, method, response) =>
         method === "GET" && /^\/api\/plans\/[^/]+$/.test(pathOf(url))
@@ -318,6 +318,12 @@ describe("las fuentes nuevas de F9.5 contra una CLI anterior", () => {
                     message: "se parece a una idea reciente",
                   },
                   { topic: "Sin hueco", code: "NO_SLOT", message: "no quedó un horario libre" },
+                  // F9.5-T23.
+                  {
+                    topic: "Lo que nuestro equipo aprendió",
+                    code: "FIRST_PERSON_PLURAL",
+                    message: "habla en plural y la marca no es un equipo",
+                  },
                 ],
                 warnings: [],
               };
@@ -340,9 +346,12 @@ describe("las fuentes nuevas de F9.5 contra una CLI anterior", () => {
     expect(await runPlanShow(waitingDeps(h), plan.id)).toBe(0);
     const shown = h.text();
     expect(shown).toContain("threads");
-    expect(shown).toContain("Descartadas por las revisiones (2)");
+    expect(shown).toContain("Descartadas por las revisiones (3)");
     expect(shown).toContain("Otra vez lo mismo: se parece a una idea reciente");
     expect(shown).toContain("Sin hueco: no quedó un horario libre");
+    expect(shown).toContain(
+      "Lo que nuestro equipo aprendió: habla en plural y la marca no es un equipo",
+    );
     // El código del descarte ya es texto libre en el contrato; la red nueva es la que se avisa.
     expect(notices).toEqual([
       `${NEW_VALUES} (threads): se muestran tal como llegan; actualiza la CLI`,

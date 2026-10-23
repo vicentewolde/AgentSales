@@ -256,3 +256,79 @@ export function addAudience(text: string, example: string): string {
   if (trimmed.includes(example)) return text;
   return trimmed === "" ? example : `${trimmed} ${example}`;
 }
+
+// El asistente de 4 preguntas (F9.5-T23): con el perfil vacío, el plan lo ofrece antes de pedir
+// ideas. Las respuestas **llenan** el formulario del perfil para revisarlo; no se guarda nada hasta
+// que el operador aprieta «Guardar el perfil».
+
+/** Las 4 respuestas, como las escribe el operador. */
+export type WizardAnswers = {
+  /** ¿Qué haces? Va a los hechos (lo que la IA puede afirmar), una frase por línea. */
+  what: string;
+  /** ¿Para quién? Va al público. */
+  who: string;
+  /** ¿De qué temas hablas? Un tema por línea (o separados por comas en una sola línea). */
+  topics: string;
+  /** ¿Qué no dices? Va a las cosas que evitar, una por línea. */
+  avoid: string;
+};
+
+export const EMPTY_WIZARD_ANSWERS: WizardAnswers = { what: "", who: "", topics: "", avoid: "" };
+
+/**
+ * Los temas de la respuesta: uno por línea o, si es una sola línea, separados por comas (salvo que
+ * esa línea sea un ejemplo, que puede llevar comas: «El barrio: comercio, metro y parques»).
+ */
+export function wizardTopics(text: string): string[] {
+  const rows = lines(text);
+  const [only] = rows;
+  const names =
+    rows.length === 1 &&
+    only !== undefined &&
+    !PILLAR_EXAMPLES.some((example) => example.name === only)
+      ? only.split(",")
+      : rows;
+  const seen = new Set<string>();
+  return names
+    .map((name) => name.trim())
+    .filter((name) => {
+      const key = name.toLowerCase();
+      if (name === "" || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+/**
+ * El borrador del perfil con las respuestas del asistente encima de `base` (el perfil como está):
+ * los hechos y lo que evitar se suman sin repetir, el público se reemplaza si se respondió, y los
+ * temas se agregan con el peso de su ejemplo (o «Normal») si no estaban. La cadencia, los idiomas y
+ * los hashtags quedan como estaban. Los ejemplos de hechos llegan con `[corchetes]`: no se guardan
+ * hasta completarlos (`profileBody`).
+ */
+export function wizardDraft(base: Draft, answers: WizardAnswers): Draft {
+  const facts = lines(answers.what).reduce(addLine, base.facts);
+  const avoid = lines(answers.avoid).reduce(addLine, base.avoid);
+  const taken = new Set(base.pillars.map((pillar) => pillar.name.trim().toLowerCase()));
+  const pillars = [
+    ...base.pillars,
+    ...wizardTopics(answers.topics)
+      .filter((name) => !taken.has(name.toLowerCase()))
+      .map((name) => {
+        const example = PILLAR_EXAMPLES.find((item) => item.name === name);
+        return {
+          key: "",
+          name,
+          description: "",
+          weight: example === undefined ? DEFAULT_WEIGHT : weightOf(example.level),
+        };
+      }),
+  ];
+  return {
+    ...base,
+    audience: answers.who.trim() === "" ? base.audience : answers.who.trim(),
+    pillars,
+    facts,
+    avoid,
+  };
+}

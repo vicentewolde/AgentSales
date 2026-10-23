@@ -218,6 +218,8 @@ Volver atrás **no deshace migraciones** ni cambios de secretos. Por eso las mig
 
 **La `0019` (F9.5-T19, la música de los reels)** solo agrega `listings.music_track_id` y `posts.music_track_id` (texto nulo): una versión anterior las ignora y no hay nada que deshacer al volver atrás. Las pistas viven en R2 (`assets/musica/`), fuera de la base: se suben una vez por bucket con `pnpm music:upload <carpeta>` (con `ENV_FILE=.env.production`, el de producción; `docs/integraciones/musica-reels.md`).
 
+**Los planes con `FIRST_PERSON_PLURAL` (F9.5-T23, sin migración).** Al volver a una versión anterior a T23, un plan que tenga un descarte `FIRST_PERSON_PLURAL` muestra sus ideas pero no sus descartes ni sus advertencias (el código viejo no conoce ese código y deja el reporte en blanco). Desde T23 el reporte se lee con tolerancia y un código desconocido solo se salta.
+
 **Y con el video para Discord (F9.5-T10, sin migración).** `discord_video` es un valor nuevo de `media.variant` (texto en la base). Volver atrás a `v1.3.0` o antes funciona mientras no exista ninguna fila con ese valor; apenas `post.media` arme una (un post que va a Discord con un video de más de 20 MiB), el código viejo falla al leer los medios de ese post (`MEDIA_ROW_INVALID`) en el panel, la CLI y los trabajos que lo tocan. Para volver atrás igual, primero mira qué publicaciones de Discord usan esos medios y cancélalas o resuélvelas (las que no terminaron: `cli publications cancel <id>`, o `resolve` si quedaron en resultado dudoso), porque una publicación que apunta a un medio borrado no se puede volver a intentar:
 
 ```sql

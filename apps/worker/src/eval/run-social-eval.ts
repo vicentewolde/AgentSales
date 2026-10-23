@@ -123,6 +123,11 @@ export type SocialEvalCounts = {
   /** Descartadas porque la cadencia no les dejó una ranura libre (`NO_SLOT`, F9.5). */
   noSlot: number;
   /**
+   * Descartadas por hablar de «nosotros» sin que el perfil diga que la marca es un equipo
+   * (`FIRST_PERSON_PLURAL`, F9.5-T23).
+   */
+  firstPersonPlural: number;
+  /**
    * Aceptadas que se parecen a un tema del historial (advertencia: el plan descarta las parecidas
    * entre sí, no las parecidas a lo reciente, que solo compara iguales).
    */
@@ -326,6 +331,7 @@ const emptyCounts = (): SocialEvalCounts => ({
   discardedByCode: {},
   repeated: 0,
   noSlot: 0,
+  firstPersonPlural: 0,
   similar: 0,
   outsideProfile: 0,
   tooLong: 0,
@@ -377,6 +383,7 @@ function countProfile(evaluation: Omit<SocialProfileEvaluation, "counts">, reque
       counts.discardedByCode[code] = (counts.discardedByCode[code] ?? 0) + 1;
       if (REPEATED_CODES.includes(code)) counts.repeated += 1;
       if (code === "NO_SLOT") counts.noSlot += 1;
+      if (code === "FIRST_PERSON_PLURAL") counts.firstPersonPlural += 1;
       if (code === "FACT_NOT_IN_PROFILE") counts.outsideProfile += 1;
       if (code === "MASS_MENTION") counts.massMentions += 1;
     }
@@ -451,6 +458,7 @@ async function evaluateProfile(
     `■ ${item.name} · ${item.broker.brandName} · ${item.profile.languages.join(" y ")} · ` +
       `${period.firstDay} a ${period.lastDay}`,
   );
+  if (item.guidance !== undefined) deps.print(`  Pedido del operador: ${item.guidance}`);
 
   const planLlm = measured(deps.planLlm, usage.plan);
   try {
@@ -461,6 +469,8 @@ async function evaluateProfile(
       platforms: item.platforms,
       count: item.count,
       history: item.history,
+      // El pedido del operador (F9.5-T23): va a la IA, pero no a las fuentes de hechos.
+      guidance: item.guidance ?? null,
     });
     const result = await proposePlanIdeas(
       { llm: planLlm, onUsage: recordUsage(deps.planLlm, usage.plan) },
@@ -590,6 +600,7 @@ const chileTime = (iso: string) => formatChileTime(new Date(iso));
 function countsLine(counts: SocialEvalCounts): string {
   return (
     `repetidas ${counts.repeated} · sin ranura ${counts.noSlot} · ` +
+    `en plural ${counts.firstPersonPlural} · ` +
     `fuera del perfil ${counts.outsideProfile} · ` +
     `largos ${counts.tooLong} · escapes ${counts.escapes} · menciones masivas ${counts.massMentions}` +
     ` · fallas ${counts.failures} | ⚠ parecidas ${counts.similar} · términos a evitar ${counts.avoided}` +
