@@ -68,6 +68,7 @@ import {
   marketplaceTmpRootOf,
 } from "./content-tmp.js";
 import { type Heartbeat, startHeartbeat, workerProcessId } from "./heartbeat.js";
+import { createIdleProbe, type IdleExit, pendingJobsOf, startIdleExit } from "./idle-exit.js";
 import { failAbandonedPlanRuns, requeueQueuedPlanRuns } from "./jobs/content-plan.js";
 import {
   failAbandonedContentRuns,
@@ -91,10 +92,7 @@ import {
 import { createWorkerMarketplacePublisher } from "./marketplace/publisher.js";
 import { createMarketplaceWindows, sweepClosedWindows } from "./marketplace/windows.js";
 import { createWorkerPortal } from "./portal.js";
-import { stopWorker } from "./shutdown.js";
-
-/** Tiempo que se espera a que terminen los jobs en curso al apagar. */
-const GRACEFUL_STOP_MS = 30_000;
+import { type ShutdownReason, stopOptionsFor, stopWorker } from "./shutdown.js";
 
 // `ENV_FILE` es solo para los scripts (spec F8, D12): aquí se rechaza.
 loadAppEnvFile();
@@ -503,30 +501,47 @@ boss.on("warning", (warning) => logger.warn({ warning }, "aviso de pg-boss"));
 const queue = jobQueueFromBoss(boss);
 
 let shuttingDown = false;
+/** Por qué se está apagando (`null` mientras corre). */
+let shutdownReason: ShutdownReason | null = null;
 /** El latido (F8-T12): empieza cuando los jobs quedan registrados. */
 let heartbeat: Heartbeat | null = null;
+/** El apagado solo sin trabajo (F9.5-T24, ADR-0037): con el worker listo y `WORKER_IDLE_EXIT_MINUTES`. */
+let idleExit: IdleExit | null = null;
 const heartbeatErrors = createErrorThrottle(logger, "no se pudo anotar el latido del worker");
 
 async function shutdown(signal: string): Promise<void> {
+  const reason: ShutdownReason = signal === "idle" ? "idle" : "signal";
   if (shuttingDown) {
+    // Una señal durante el apagado solo (F9.5-T24): ya no se espera a los jobs, se cortan (Fly da
+    // 45 s después de SIGTERM).
+    if (reason === "signal" && shutdownReason === "idle") {
+      shutdownReason = "signal";
+      logger.info({ signal }, "señal durante el apagado solo: se cortan los jobs en curso");
+      jobsAbort.abort();
+    }
     return;
   }
   shuttingDown = true;
+  shutdownReason = reason;
+  idleExit?.stop();
   bossErrors.dispose();
   dbErrors.dispose();
   heartbeatErrors.dispose();
+  // Con una señal se cortan los handlers; solo, sin trabajo, no se corta nada (un intento de
+  // publicar cortado podría quedar `outcome_unknown`) y se espera más a los activos.
+  const { abortJobs, gracefulStopMs } = stopOptionsFor(reason);
   logger.info({ signal }, "apagando el worker: esperando los jobs en curso");
   const force = setTimeout(() => {
     logger.error("el apagado tardó demasiado; se fuerza la salida");
     process.exit(1);
-  }, GRACEFUL_STOP_MS + 10_000);
+  }, gracefulStopMs + 10_000);
   force.unref();
   try {
     await stopWorker(
       {
         abortJobs: () => jobsAbort.abort(),
         // graceful: deja de tomar jobs nuevos y espera a los activos antes de cerrar el pool.
-        stopBoss: () => boss.stop({ graceful: true, timeout: GRACEFUL_STOP_MS }),
+        stopBoss: () => boss.stop({ graceful: true, timeout: gracefulStopMs }),
         closeRenderer: () => renderer.close(),
         closeMarketplaceWindows: () => marketplaceWindows.closeAll(),
         stopHeartbeat: async () => {
@@ -535,6 +550,7 @@ async function shutdown(signal: string): Promise<void> {
         closeDatabase: () => database.close(),
       },
       logger,
+      { abortJobs },
     );
     logger.info("worker detenido");
     process.exit(0);
@@ -813,9 +829,36 @@ try {
       },
       "worker listo",
     );
-    logger.warn(
-      "Mientras el worker corre, Neon no se suspende y consume CU-horas: apágalo al terminar (ADR-0007).",
-    );
+    // Sin trabajo ni nada por vencer antes de la próxima revisión del horario, se apaga solo (exit
+    // 0); esa revisión lo vuelve a encender (`worker-schedule.yml`, cada hora a los :50; ADR-0037).
+    idleExit = shuttingDown
+      ? null
+      : startIdleExit({
+          idleMinutes: env.WORKER_IDLE_EXIT_MINUTES,
+          stayAheadMinutes: env.WORKER_STAY_AHEAD_MINUTES,
+          probe: createIdleProbe({
+            pendingJobs: pendingJobsOf(boss.getDb()),
+            publications,
+            ...(marketplaceAutomation
+              ? { openMarketplaceWindows: () => marketplaceWindows.size() }
+              : {}),
+          }),
+          onIdle: () => void shutdown("idle"),
+          logger,
+        });
+    if (idleExit === null) {
+      logger.warn(
+        "Mientras el worker corre, Neon no se suspende y consume CU-horas: apágalo al terminar (ADR-0007).",
+      );
+    } else {
+      logger.info(
+        {
+          idleMinutes: env.WORKER_IDLE_EXIT_MINUTES,
+          stayAheadMinutes: env.WORKER_STAY_AHEAD_MINUTES,
+        },
+        "el worker se apaga solo cuando no tiene trabajo ni nada por vencer antes de la próxima revisión",
+      );
+    }
   }
 } catch (error) {
   if (shuttingDown) {

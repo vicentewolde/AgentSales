@@ -125,6 +125,7 @@ describe("GET /health", () => {
                 stoppedAt: null,
               },
             ],
+            workerIdleExit: true,
             now: () => now,
           },
         },
@@ -140,6 +141,8 @@ describe("GET /health", () => {
     expect(body.backup).toEqual({ ...status, stale: true });
     expect(body.autoPublishBrokers).toEqual(["marca"]);
     expect(body.llmKeyMissingBrokers).toEqual(["ajeno"]);
+    // F9.5-T24: el worker se apaga solo y lo enciende el horario.
+    expect(body.workerSchedule).toBe(true);
     expect(healthReportSchema.parse(body)).toEqual(body);
   });
 

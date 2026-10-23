@@ -1277,6 +1277,7 @@ export {
 } from "./use-cases/set-broker-logo.js";
 export {
   DUE_BATCH_LIMIT,
+  dueQuery,
   type StartDueDeps,
   type StartDueResult,
   startDuePublications,
@@ -1328,6 +1329,8 @@ export {
   workerStatusSchema,
   workerStatusText,
 } from "./worker-heartbeat.js";
+// El horario del worker (F9.5-T24, ADR-0037): sus ventanas y la próxima.
+export * from "./worker-schedule.js";
 export {
   X_DEFAULT_SPEND_LIMIT_USD,
   X_MAX_SPEND_LIMIT_USD,

@@ -1,6 +1,7 @@
 # AgentSales en Fly.io (spec F8 §4.7 y §4.15, D1, T11): una app, una imagen (`Dockerfile`) y dos
-# procesos: `api` (con HTTPS, se apaga sola sin tráfico) y `worker` (sin servicio HTTP: no se apaga
-# solo; se enciende y se apaga a mano en modo demo, docs/10-despliegue.md). Desplegar es del
+# procesos: `api` (con HTTPS, se apaga sola sin tráfico) y `worker` (sin servicio HTTP; se enciende y
+# se apaga a mano en modo demo, o, con el horario activado, lo enciende `worker-schedule.yml` y se
+# apaga solo sin trabajo: F9.5-T24, ADR-0037; docs/10-despliegue.md, paso 8). Desplegar es del
 # operador (D8): `.github/workflows/deploy.yml`. Sintaxis verificada: docs/integraciones/hosting.md §14.
 # Aquí solo va lo que no es secreto; los secretos los pone el operador con `fly secrets import`.
 # Es la instancia `principal` (D19 de F9). Otra instancia del mismo código tiene su propio
@@ -30,6 +31,11 @@ swap_size_mb = 512            # para un pico breve del worker (Chromium y ffmpeg
   # El respaldo diario va al bucket de respaldos (spec F8 §4.9, D13); su token es un secreto.
   BACKUP_TARGET = "r2"
   BACKUP_R2_BUCKET = "agentsales-backups"
+  # El worker se apaga solo tras estos minutos sin trabajo ni nada que venza en los próximos
+  # WORKER_STAY_AHEAD_MINUTES (70 por defecto) (F9.5-T24, ADR-0037).
+  # Apagado hasta que el operador active el horario (docs/10-despliegue.md, paso 8): sin el workflow
+  # que lo enciende, nada programado saldría. Para activarlo, quita el `#` y despliega.
+  # WORKER_IDLE_EXIT_MINUTES = "10"
 
 [processes]
   api = "node apps/api/dist/src/server.js"
@@ -66,6 +72,7 @@ swap_size_mb = 512            # para un pico breve del worker (Chromium y ffmpeg
     [http_service.checks.headers]
       Host = "agentsales.agentpey.com"
 
+# Solo si sale con error: al apagarse solo (exit 0, F9.5-T24) la máquina queda detenida.
 [[restart]]
   policy = "on-failure"
   processes = ["worker"]

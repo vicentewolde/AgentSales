@@ -3,6 +3,7 @@ import {
   AGENDA_KIND_TEXT,
   AGENDA_KINDS,
   formatChileTime,
+  nextWorkerCheckText,
   PLATFORM_TEXT,
   publicationFormatText,
 } from "@agentsales/core";
@@ -45,6 +46,15 @@ function publicationCommands(item: Item): string[] | null {
 }
 
 /**
+ * Encender el worker (F9.5-T24, ADR-0037): en el servidor lo enciende el horario en su revisión de cada hora; para
+ * que salga ya, el workflow a mano. En el Mac, `pnpm dev`.
+ */
+export const START_WORKER_COMMANDS = [
+  "en el servidor: GitHub → Actions → «Encender el worker» → Run workflow (docs/10-despliegue.md, paso 8)",
+  "en el Mac: pnpm dev",
+] as const;
+
+/**
  * Los comandos de un post (F9-T08): verlo (`agentsales post show`, con sus textos y publicaciones)
  * y lo que se hace por el id de la publicación: resolver, confirmar, publicar ya o reintentar
  * (`publications retry`, F9-T12), reprogramar o desprogramar.
@@ -53,6 +63,9 @@ function postCommands(item: Item, postId: string): string[] {
   const show = `agentsales post show ${postId}`;
   const byId = publicationCommands(item);
   if (byId !== null) return [show, ...byId];
+  if (item.action === "start_worker" || item.action === "wait_worker") {
+    return [show, ...START_WORKER_COMMANDS];
+  }
   const retry = `agentsales publications retry ${item.publicationId}`;
   if (item.kind === "overdue") {
     return [
@@ -104,6 +117,9 @@ export function agendaCommands(item: Item): string[] {
       return [
         `agentsales accounts connect ${item.platform === null ? "<plataforma>" : platformShortName(item.platform)} --broker ${item.brokerSlug ?? "<slug>"}`,
       ];
+    case "start_worker":
+    case "wait_worker":
+      return [...START_WORKER_COMMANDS];
     case "backup":
       // En el servidor (F8-T13) el respaldo va a R2 y lo hace el worker: `pnpm db:backup` del Mac
       // no actualiza su estado.
@@ -150,13 +166,25 @@ function itemLine(item: Item, c: Colors): string {
   return `  ${parts.join(" · ")}${error}`;
 }
 
-export function renderAgenda(items: readonly Item[], c: Colors): string {
+export function renderAgenda(items: readonly Item[], c: Colors, now: Date = new Date()): string {
   if (items.length === 0) return c.green("Nada pendiente");
   const lines = [c.bold("Agenda")];
   for (const kind of AGENDA_KINDS) {
     const group = items.filter((item) => item.kind === kind);
     if (group.length === 0) continue;
-    lines.push("", c.bold(`${AGENDA_KIND_TEXT[kind] ?? kind} (${group.length})`));
+    // El worker apagado (F9.5-T24): lo que espera sale en la próxima revisión del horario.
+    const title = `${AGENDA_KIND_TEXT[kind] ?? kind} (${group.length})`;
+    lines.push(
+      "",
+      kind === "worker_off"
+        ? `${c.yellow(c.bold(title))} · ${
+            // Con horario (`wait_worker`), la revisión lo enciende; sin horario, no se enciende solo.
+            group.every((item) => item.action === "wait_worker")
+              ? `sale cuando se encienda, en la próxima revisión: ${nextWorkerCheckText(now)}`
+              : "sin horario: el worker debe estar encendido"
+          }`
+        : c.bold(title),
+    );
     for (const item of group) {
       lines.push(itemLine(item, c));
       for (const command of agendaCommands(item)) lines.push(c.dim(`    → ${command}`));
@@ -181,7 +209,7 @@ export function register(program: Command, ctx: CliContext): void {
   program
     .command("agenda")
     .description(
-      "Lo pendiente de propiedades y posts: atrasadas, recordatorios de Marketplace, lo que no se sabe si salió, atascadas, fallas, tareas a mano, lo que espera tu revisión o quedó aprobado sin publicar, cuentas por reconectar, Portal por vencer, próximas y el respaldo",
+      "Lo pendiente de propiedades y posts: el worker apagado con algo por vencer, atrasadas, recordatorios de Marketplace, lo que no se sabe si salió, atascadas, fallas, tareas a mano, lo que espera tu revisión o quedó aprobado sin publicar, cuentas por reconectar, Portal por vencer, próximas y el respaldo",
     )
     .option("--broker <slug>", "solo lo de un corredor o marca")
     .option("--json", "salida en JSON")
