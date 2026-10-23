@@ -3,6 +3,7 @@ import { userStateText } from "@agentsales/core";
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import { BrandForm } from "../components/brokers/BrandForm.js";
+import { LiveSwitch } from "../components/brokers/LiveSwitch.js";
 import { LogoAndTemplate } from "../components/brokers/LogoAndTemplate.js";
 import { OnboardingList } from "../components/brokers/OnboardingList.js";
 import { OneTimeLink, type OneTimeLinkKind } from "../components/brokers/OneTimeLink.js";
@@ -260,6 +261,7 @@ export function BrokerPage() {
           {update.isSuccess && "Guardado."}
         </p>
       </section>
+      <LiveSwitch broker={broker} />
       <LogoAndTemplate broker={broker} />
       <EditorialProfileSection brokerId={broker.id} />
       <BrokerUsers key={broker.id} brokerId={broker.id} />

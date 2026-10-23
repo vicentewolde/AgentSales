@@ -260,7 +260,8 @@ describe("publications pause, resume y close", () => {
 
     expect(await runPublicationOperation(deps({ h }), "pause", publication.id)).toBe(1);
     expect(h.errors()).toContain("PUBLISH_MODE_MISMATCH");
-    expect(h.errors()).toContain("PUBLISH_MODE=live pnpm dev");
+    expect(h.errors()).toContain("PUBLISH_MODE=live");
+    expect(h.errors()).toContain("brokers live <slug> on --confirm <slug>");
     expect(calls).toEqual([]);
   });
 

@@ -69,12 +69,14 @@ import { paintContentRunStatus, renderChecks } from "./content-view.js";
 import { paintPublicationStatus } from "./publication-view.js";
 import { atOption, collect, confirmLive } from "./schedule.js";
 import {
+  brokersGoLive,
   fetchBrokers,
   languageOption,
   manualConfirmHint,
   POST_PLATFORM_OPTION_NAMES,
   parseMusicTrack,
   platformShortName,
+  postBrokerId,
   postPlatformOption,
 } from "./shared.js";
 import { POST_STATUS_TEXT } from "./tracking.js";
@@ -1163,10 +1165,14 @@ export function runPostPublish(deps: PostDeps, id: string, options: PostPublishO
       }
     }
     const { publishMode } = await unwrap(deps.client.health.$get(), healthReportSchema);
-    if (publishMode === "live" && !options.yes) {
+    // Solo si la marca del post está en vivo (F9.5-T22, ADR-0036); si no se sabe, pregunta igual.
+    const live =
+      publishMode === "live" &&
+      (await brokersGoLive(deps.client, [await postBrokerId(deps.client, postId)]));
+    if (live && !options.yes) {
       const names = platforms.map((platform) => PLATFORM_TEXT[platform] ?? platform).join(", ");
       const confirmed = await deps.confirm(
-        `La API está en vivo (PUBLISH_MODE=live): ¿publicar el post de verdad en ${names}?`,
+        `La API está en vivo (PUBLISH_MODE=live) y la marca también: ¿publicar el post de verdad en ${names}?`,
       );
       if (!confirmed) {
         deps.printError(c.yellow("No se publicó nada: confirma en la terminal o usa --yes"));
@@ -1282,7 +1288,9 @@ export function runPostSchedule(deps: PostDeps, id: string, options: PostSchedul
     }
     const at = atOption(options.at);
     const platforms = options.platform?.map((option) => postPlatformOption(option));
-    const live = await confirmLive(deps, options.yes ?? false);
+    const live = await confirmLive(deps, options.yes ?? false, async () => [
+      await postBrokerId(deps.client, postId),
+    ]);
     if (live === null) return 1;
     const { results } = await unwrap(
       deps.client.posts[":id"].schedule.$post({

@@ -1,4 +1,10 @@
-import { brokerListResponseSchema, listingListResponseSchema } from "@agentsales/api/contracts";
+import {
+  type BrokerView,
+  brokerListResponseSchema,
+  listingDetailResponseSchema,
+  listingListResponseSchema,
+  postDetailResponseSchema,
+} from "@agentsales/api/contracts";
 import {
   type Broker,
   isListingPlatform,
@@ -101,9 +107,53 @@ export function brokerSlugOf(broker: string): string {
 }
 
 /** Los corredores por id, para mostrar de quién es cada aviso. */
-export async function fetchBrokers(client: ApiClient): Promise<Map<string, Broker>> {
+export async function fetchBrokers(client: ApiClient): Promise<Map<string, BrokerView>> {
   const { brokers } = await unwrap(client.brokers.$get(), brokerListResponseSchema);
   return new Map(brokers.map((broker) => [broker.id, broker]));
+}
+
+/** El corredor de una propiedad; `undefined` si no se pudo leer. */
+export async function listingBrokerId(
+  client: ApiClient,
+  listingId: string,
+): Promise<string | undefined> {
+  return unwrap(
+    client.listings[":id"].$get({ param: { id: listingId } }),
+    listingDetailResponseSchema,
+  )
+    .then((detail) => detail.listing.brokerId)
+    .catch(() => undefined);
+}
+
+/** La marca de un post; `undefined` si no se pudo leer. */
+export async function postBrokerId(client: ApiClient, postId: string): Promise<string | undefined> {
+  return unwrap(client.posts[":id"].$get({ param: { id: postId } }), postDetailResponseSchema)
+    .then((detail) => detail.post.brokerId)
+    .catch(() => undefined);
+}
+
+/** La marca de una publicación (la de su propiedad o su post); `undefined` si no se pudo leer. */
+export async function publicationBrokerId(
+  client: ApiClient,
+  publication: { listingId: string | null; postId: string | null },
+): Promise<string | undefined> {
+  if (publication.listingId !== null) return listingBrokerId(client, publication.listingId);
+  if (publication.postId !== null) return postBrokerId(client, publication.postId);
+  return undefined;
+}
+
+/**
+ * Si publicar en estas marcas saldría de verdad hoy (F9.5-T22, ADR-0036): con el `effectiveMode` de
+ * `GET /brokers` (el servidor y la llave de cada marca, calculado por la API). Una marca que no se
+ * sabe (o si la lista no se pudo leer) cuenta como en vivo: se pregunta de más, nunca de menos.
+ */
+export async function brokersGoLive(
+  client: ApiClient,
+  brokerIds: readonly (string | undefined)[],
+): Promise<boolean> {
+  const brokers = await fetchBrokers(client).catch(() => null);
+  if (brokers === null || brokerIds.length === 0) return true;
+  return brokerIds.some((id) => id === undefined || brokers.get(id)?.effectiveMode !== "dry-run");
 }
 
 const isUuid = (text: string) => z.uuid().safeParse(text).success;

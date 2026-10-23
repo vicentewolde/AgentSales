@@ -209,6 +209,123 @@ describe("updateBroker", () => {
   });
 });
 
+describe("updateBroker · modo en vivo (F9.5-T22, ADR-0036)", () => {
+  async function setup() {
+    const brokers = createInMemoryBrokerRepository();
+    const broker = await createBroker({ brokers }, ADMIN, base);
+    return { brokers, broker };
+  }
+  const ownedSetup = async () => {
+    const t = await setup();
+    await t.brokers.setSettings(t.broker.id, { operatorOwned: true });
+    return t;
+  };
+
+  it("una marca nueva nace apagada", async () => {
+    const { broker } = await setup();
+    expect(broker.liveEnabled).toBe(false);
+  });
+
+  it("el administrador enciende una marca propia repitiendo su slug, y la apaga sin confirmar", async () => {
+    const { brokers, broker } = await ownedSetup();
+    const on = await updateBroker({ brokers }, ADMIN, broker.id, {
+      liveEnabled: true,
+      liveConfirm: broker.slug,
+    });
+    expect(on.liveEnabled).toBe(true);
+    const off = await updateBroker({ brokers }, ADMIN, broker.id, { liveEnabled: false });
+    expect(off.liveEnabled).toBe(false);
+  });
+
+  it("encender sin repetir el slug (o con otro): LIVE_NOT_CONFIRMED, sin cambiar nada", async () => {
+    const { brokers, broker } = await ownedSetup();
+    await expect(
+      updateBroker({ brokers }, ADMIN, broker.id, { liveEnabled: true }),
+    ).rejects.toMatchObject({ code: "LIVE_NOT_CONFIRMED" });
+    await expect(
+      updateBroker({ brokers }, ADMIN, broker.id, { liveEnabled: true, liveConfirm: "otro" }),
+    ).rejects.toMatchObject({ code: "LIVE_NOT_CONFIRMED" });
+    expect((await brokers.findById(broker.id))?.liveEnabled).toBe(false);
+  });
+
+  it("un corredor que no es propio no se enciende: LIVE_NOT_ALLOWED", async () => {
+    const { brokers, broker } = await setup();
+    await expect(
+      updateBroker({ brokers }, ADMIN, broker.id, { liveEnabled: true, liveConfirm: broker.slug }),
+    ).rejects.toMatchObject({ code: "LIVE_NOT_ALLOWED" });
+    // Ni dejando de ser propio en el mismo pedido.
+    const owned = await ownedSetup();
+    await expect(
+      updateBroker({ brokers: owned.brokers }, ADMIN, owned.broker.id, {
+        operatorOwned: false,
+        liveEnabled: true,
+        liveConfirm: owned.broker.slug,
+      }),
+    ).rejects.toMatchObject({ code: "LIVE_NOT_ALLOWED" });
+    expect((await brokers.findById(broker.id))?.liveEnabled).toBe(false);
+  });
+
+  it("solo el administrador: el corredor, aunque sea el suyo, recibe FORBIDDEN", async () => {
+    const { brokers, broker } = await ownedSetup();
+    await expect(
+      updateBroker({ brokers }, brokerUser(broker.id), broker.id, {
+        liveEnabled: true,
+        liveConfirm: broker.slug,
+      }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect((await brokers.findById(broker.id))?.liveEnabled).toBe(false);
+  });
+
+  it("al dejar de ser propio apaga la llave ANTES de guardar los ajustes: si esa escritura falla, no queda ajeno y encendido", async () => {
+    const { brokers, broker } = await ownedSetup();
+    await updateBroker({ brokers }, ADMIN, broker.id, {
+      liveEnabled: true,
+      liveConfirm: broker.slug,
+    });
+    const failing = {
+      ...brokers,
+      findById: brokers.findById,
+      setLiveEnabled: brokers.setLiveEnabled,
+      setSettings: async () => {
+        throw new AppError("DB_UNAVAILABLE", "se cortó la base", { retriable: true });
+      },
+    };
+    await expect(
+      updateBroker({ brokers: failing }, ADMIN, broker.id, { operatorOwned: false }),
+    ).rejects.toMatchObject({ code: "DB_UNAVAILABLE" });
+    expect(await brokers.findById(broker.id)).toMatchObject({
+      operatorOwned: true,
+      liveEnabled: false,
+    });
+  });
+
+  it("al volverse propio la llave queda apagada (una vieja no se activa sola), salvo que el mismo pedido la encienda", async () => {
+    const { brokers, broker } = await setup();
+    // Una llave vieja, puesta a mano en la base mientras era ajeno.
+    await brokers.setLiveEnabled(broker.id, true);
+    const owned = await updateBroker({ brokers }, ADMIN, broker.id, { operatorOwned: true });
+    expect(owned).toMatchObject({ operatorOwned: true, liveEnabled: false });
+
+    const other = await setup();
+    const both = await updateBroker({ brokers: other.brokers }, ADMIN, other.broker.id, {
+      operatorOwned: true,
+      liveEnabled: true,
+      liveConfirm: other.broker.slug,
+    });
+    expect(both).toMatchObject({ operatorOwned: true, liveEnabled: true });
+  });
+
+  it("si el corredor deja de ser propio, el modo en vivo se apaga solo", async () => {
+    const { brokers, broker } = await ownedSetup();
+    await updateBroker({ brokers }, ADMIN, broker.id, {
+      liveEnabled: true,
+      liveConfirm: broker.slug,
+    });
+    const updated = await updateBroker({ brokers }, ADMIN, broker.id, { operatorOwned: false });
+    expect(updated).toMatchObject({ operatorOwned: false, liveEnabled: false });
+  });
+});
+
 describe("onboardingSteps", () => {
   const broker = contentBrokerFixture({ logoMediaId: null, whatsapp: null });
   const user = {

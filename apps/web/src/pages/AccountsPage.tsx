@@ -20,8 +20,7 @@ import { DiscordConnectBox, OAuthConnectBox } from "../components/accounts/Socia
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { PageHeader } from "../components/ui/PageHeader.js";
 import { useAccounts } from "../queries/accounts.js";
-import { useBrokers } from "../queries/brokers.js";
-import { useHealth } from "../queries/health.js";
+import { useBrokerModeOf, useBrokers } from "../queries/brokers.js";
 import { useBrokerFilter, useCan } from "../scope/broker-scope.js";
 
 /** Las cuentas de un canal del corredor y si hay que ofrecer conectar o reconectar. */
@@ -308,7 +307,8 @@ export function AccountsPage() {
   const shownBrokers = (brokers.data ?? []).filter(
     (item) => broker === undefined || item.slug === broker,
   );
-  const health = useHealth();
+  // El modo de cada marca (F9.5-T22, ADR-0036), para el aviso de la publicación automática.
+  const modeOf = useBrokerModeOf();
   const error = accounts.error ?? brokers.error;
   const now = new Date();
   const retry = () => {
@@ -355,7 +355,7 @@ export function AccountsPage() {
               broker={item}
               data={accounts.data}
               now={now}
-              publishMode={health.data?.publishMode}
+              publishMode={modeOf(item.id)}
               manage={manage}
             />
           ))}

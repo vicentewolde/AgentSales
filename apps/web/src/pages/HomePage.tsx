@@ -42,9 +42,9 @@ import { ArmchairIllustration, HomeIllustration } from "../components/ui/illustr
 import { Loading } from "../components/ui/Spinner.js";
 import { buttonClasses, cx } from "../components/ui/styles.js";
 import { useMe } from "../queries/auth.js";
-import { useHealth } from "../queries/health.js";
+import { useBrokerPublishMode } from "../queries/brokers.js";
 import { useAgenda, useTracking } from "../queries/tracking.js";
-import { useBrokerFilter, useScopedBrokerKind } from "../scope/broker-scope.js";
+import { useBrokerFilter, useScopedBroker, useScopedBrokerKind } from "../scope/broker-scope.js";
 
 // F9.5-T03 (spec F9.5, D11): la portada «Hoy». Tres bloques con lo que ya traen `GET /agenda` (lo
 // que pide acción y lo programado a 7 días) y `GET /tracking` (lo publicado, por `publishedAt`),
@@ -315,8 +315,9 @@ export function HomePage() {
   const tracking = useTracking(false, broker);
   const brand = useScopedBrokerKind() === "brand";
   const name = useMe().data?.name;
-  // El modo del sistema (el del banner), para `PublicationMode` (D4 del spec F9.5).
-  const publishMode = useHealth().data?.publishMode;
+  // El modo de la marca elegida (F9.5-T22, ADR-0036), para `PublicationMode` (D4 del spec F9.5):
+  // con «Todos» y el servidor en vivo no se sabe de qué marca es, y no se dice.
+  const publishMode = useBrokerPublishMode(useScopedBroker()?.id);
   const now = new Date();
 
   const todo = agenda.data?.filter(needsAction);

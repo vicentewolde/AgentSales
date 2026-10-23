@@ -5,10 +5,11 @@ import {
   brokerResponseSchema,
   brokerTemplateDraftResponseSchema,
 } from "@agentsales/api/contracts";
+import { effectivePublishMode, type PublishMode, type PublishModeBroker } from "@agentsales/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { unwrap } from "../api/client.js";
+import { type ApiClient, unwrap } from "../api/client.js";
 import { useApiClient } from "../api/context.js";
-import { healthKeys } from "./health.js";
+import { healthKeys, useHealth } from "./health.js";
 import { trackingKeys } from "./tracking.js";
 
 export const brokerKeys = {
@@ -16,15 +17,52 @@ export const brokerKeys = {
   detail: (id: string) => [...brokerKeys.all, "detail", id] as const,
 };
 
+/** `GET /brokers` (con el alcance de la sesión). */
+export const fetchBrokerList = async (client: ApiClient, signal?: AbortSignal) =>
+  (await unwrap(client.brokers.$get(undefined, { init: { signal } }), brokerListResponseSchema))
+    .brokers;
+
 /** Los corredores, para el selector de Importar y Cuentas. */
 export function useBrokers() {
   const client = useApiClient();
   return useQuery({
     queryKey: brokerKeys.all,
-    queryFn: async ({ signal }) =>
-      (await unwrap(client.brokers.$get(undefined, { init: { signal } }), brokerListResponseSchema))
-        .brokers,
+    queryFn: ({ signal }) => fetchBrokerList(client, signal),
   });
+}
+
+/**
+ * El modo con que publicaría hoy la marca `brokerId` (F9.5-T22, ADR-0036): el del servidor de
+ * `/health` con la llave de la marca (`effectivePublishMode`). `undefined` si no se sabe: con el
+ * servidor en vivo y sin marca (por ejemplo, «Todos» en una lista de varias) o con la marca sin
+ * cargar, no se dice ni «simulación» ni «en vivo» (y las preguntas de «¿en vivo?» preguntan igual).
+ * Con el servidor en simulación, siempre `dry-run`.
+ */
+export function publishModeOf(
+  server: PublishMode | undefined,
+  brokers: readonly (PublishModeBroker & { id: string })[] | undefined,
+  brokerId: string | null | undefined,
+): PublishMode | undefined {
+  if (server === undefined) return undefined;
+  const broker =
+    brokerId === null || brokerId === undefined
+      ? undefined
+      : brokers?.find((item) => item.id === brokerId);
+  if (broker !== undefined) return effectivePublishMode(server, broker);
+  return server === "dry-run" ? "dry-run" : undefined;
+}
+
+/** `publishModeOf` para una marca, con `/health` y `GET /brokers` en caché. */
+export function useBrokerPublishMode(brokerId: string | null | undefined) {
+  const modeOf = useBrokerModeOf();
+  return modeOf(brokerId);
+}
+
+/** `publishModeOf` para listas con varias marcas (Hoy, Seguimiento, Calendario). */
+export function useBrokerModeOf() {
+  const server = useHealth().data?.publishMode;
+  const brokers = useBrokers().data;
+  return (brokerId: string | null | undefined) => publishModeOf(server, brokers, brokerId);
 }
 
 /**
@@ -78,6 +116,9 @@ export type BrokerFields = {
   fixedHashtags?: string[];
   operatorOwned?: boolean;
   llmMonthlyCapUsd?: number | null;
+  /** F9.5-T22 (ADR-0036): el modo en vivo de la marca; encender exige `liveConfirm` (el slug). */
+  liveEnabled?: boolean;
+  liveConfirm?: string;
 };
 
 /** `POST /brokers` (administrador). */
@@ -129,6 +170,8 @@ export function useUpdateBroker(id: string) {
     onSuccess: (detail) => {
       queryClient.setQueryData(brokerKeys.detail(id), detail);
       void queryClient.invalidateQueries({ queryKey: brokerKeys.all });
+      // El banner y el estado leen las marcas en vivo de `/health` (F9.5-T22).
+      void queryClient.invalidateQueries({ queryKey: healthKeys.all });
     },
   });
 }

@@ -83,6 +83,12 @@ export const healthReportSchema = z.object({
    */
   autoPublishBrokers: z.array(z.string()).nullable().optional(),
   /**
+   * Desde F9.5-T22 (ADR-0036): las marcas (slug) con el modo en vivo encendido (`live_enabled` y
+   * propias). Solo publican de verdad si además `publishMode` es `live`. `null` si la base no
+   * respondió. Opcional, como `database`.
+   */
+  liveBrokers: z.array(z.string()).nullable().optional(),
+  /**
    * Desde F7-T12 (spec §4.7): los corredores (slug) que usan la API de Anthropic cuando falta
    * `ANTHROPIC_API_KEY` (sus textos fallarán con `LLM_NOT_CONFIGURED`); vacía si no falta o con
    * `LLM_PROVIDER=fake`. `null` si la base no respondió. Opcional, como `database`.
@@ -106,3 +112,33 @@ export const healthReportSchema = z.object({
   adminsWithoutTotp: z.array(z.string()).nullable().optional(),
 });
 export type HealthReport = z.infer<typeof healthReportSchema>;
+
+/**
+ * Las marcas (slug) que publican de verdad ahora (ADR-0036): las encendidas (`liveBrokers`), y solo
+ * con el servidor en `live`; con el servidor en `dry-run`, ninguna. `null` si no se sabe: el reporte
+ * no trae la lista (sin sesión de administrador o una API anterior) o la base no respondió.
+ */
+export function brokersLiveNow(
+  report: Pick<HealthReport, "publishMode" | "liveBrokers">,
+): string[] | null {
+  if (report.publishMode !== "live") return [];
+  return report.liveBrokers ?? null;
+}
+
+/**
+ * De los corredores con `auto_publish`, los que publican sin revisión **de verdad** (el servidor en
+ * `live` y la marca encendida) y los que lo harían solo en simulación. Si no se sabe qué marcas
+ * están en vivo, se cuentan todos como en vivo: ante la duda, el aviso en rojo.
+ */
+export function splitAutoPublish(
+  report: Pick<HealthReport, "publishMode" | "liveBrokers" | "autoPublishBrokers">,
+): { live: string[]; simulated: string[] } {
+  const brokers = report.autoPublishBrokers ?? [];
+  if (report.publishMode !== "live") return { live: [], simulated: brokers };
+  const live = report.liveBrokers;
+  if (live === null || live === undefined) return { live: brokers, simulated: [] };
+  return {
+    live: brokers.filter((slug) => live.includes(slug)),
+    simulated: brokers.filter((slug) => !live.includes(slug)),
+  };
+}

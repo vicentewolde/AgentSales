@@ -58,6 +58,7 @@ import {
   publicationScheduleBodySchema,
 } from "../contracts/index.js";
 import type { AppLogger } from "../logger.js";
+import { isDryRun, listingMode, publicationMode } from "../publish-modes.js";
 import { validated } from "../validation.js";
 import { contentMedia } from "./content.js";
 import {
@@ -154,8 +155,6 @@ const publicationNotFound = (id: string) =>
     details: { publicationId: id },
   });
 
-const dryRunOf = (deps: Pick<PublicationRoutesDeps, "publishMode">) => deps.publishMode !== "live";
-
 /**
  * Publicar y mirar las publicaciones de un aviso (spec F3 §4.3 y §4.8): `GET` y `POST` bajo
  * `/listings/:id`. Se montan en `/listings`, junto a `listingRoutes`.
@@ -204,7 +203,7 @@ export function listingPublicationRoutes(deps: PublicationRoutesDeps) {
         const result = await publishListing(deps, {
           listingId: c.req.valid("param").id,
           platform,
-          dryRun: dryRunOf(deps),
+          dryRun: isDryRun(await listingMode(deps, c.req.valid("param").id)),
           actor: actorOf(c),
         });
         const body: ListingPublishResponse = {
@@ -220,7 +219,11 @@ export function listingPublicationRoutes(deps: PublicationRoutesDeps) {
     );
 }
 
-/** Las dependencias de pausar, reactivar y cerrar, con el modo de la API y los avisos al log. */
+/**
+ * Las dependencias de pausar, reactivar y cerrar, con los avisos al log. El modo (`apiMode`) no va
+ * aquí: depende de la marca de cada publicación (F9.5-T22, ADR-0036) y lo pone cada ruta. El del
+ * servidor (`serverMode`) solo explica un `PUBLISH_MODE_MISMATCH` (la marca apagada).
+ */
 export const operationDeps = (
   deps: Pick<
     PublicationRoutesDeps,
@@ -230,8 +233,8 @@ export const operationDeps = (
     | "platformAccounts"
     | "mercadoLibreRefresh"
     | "operationsFor"
-    | "publishMode"
     | "logger"
+    | "publishMode"
   >,
 ) => ({
   lock: deps.lock,
@@ -240,7 +243,7 @@ export const operationDeps = (
   platformAccounts: deps.platformAccounts,
   mercadoLibre: deps.mercadoLibreRefresh,
   operationsFor: deps.operationsFor,
-  apiMode: deps.publishMode,
+  serverMode: deps.publishMode,
   // Solo el paso y el código: nunca el token ni datos del aviso.
   onWarning: ({
     publicationId,
@@ -269,6 +272,11 @@ const operationBody = (result: OperatedPublication): PublicationOperationRespons
  */
 export function publicationRoutes(deps: PublicationRoutesDeps) {
   const operations = operationDeps(deps);
+  /** Las operaciones con el modo de la marca de esa publicación (ADR-0036). */
+  const operationsFor = async (publicationId: string) => ({
+    ...operations,
+    apiMode: await publicationMode(deps, publicationId),
+  });
   const timeout = () => AbortSignal.timeout(deps.operationTimeoutMs ?? OPERATION_TIMEOUT_MS);
   const operate = async (run: () => Promise<OperatedPublication>) => {
     try {
@@ -288,7 +296,7 @@ export function publicationRoutes(deps: PublicationRoutesDeps) {
     .post("/:id/publish", validated("param", idParamSchema), async (c) => {
       const { publication, requeued } = await startPublication(deps, {
         publicationId: c.req.valid("param").id,
-        dryRun: dryRunOf(deps),
+        dryRun: isDryRun(await publicationMode(deps, c.req.valid("param").id)),
         actor: actorOf(c),
       });
       const body: PublicationPublishResponse = {
@@ -302,11 +310,12 @@ export function publicationRoutes(deps: PublicationRoutesDeps) {
       validated("param", idParamSchema),
       validated("json", publicationScheduleBodySchema),
       async (c) => {
-        // Programar o reprogramar (spec F6 §4.3): el modo es el de la API ahora (D11).
+        // Programar o reprogramar (spec F6 §4.3): el modo es el de la API ahora y el de la marca
+        // (D11, ADR-0036).
         const publication = await schedulePublication(deps, {
           publicationId: c.req.valid("param").id,
           at: new Date(c.req.valid("json").at),
-          dryRun: dryRunOf(deps),
+          dryRun: isDryRun(await publicationMode(deps, c.req.valid("param").id)),
           actor: actorOf(c),
         });
         const body: PublicationResponse = { publication: publicationView(publication) };
@@ -333,6 +342,7 @@ export function publicationRoutes(deps: PublicationRoutesDeps) {
           publication = await updatePortalPublication(
             {
               ...operations,
+              apiMode: await publicationMode(deps, c.req.valid("param").id),
               contents: deps.contents,
               listings: deps.listings,
               brokers: deps.brokers,
@@ -360,8 +370,9 @@ export function publicationRoutes(deps: PublicationRoutesDeps) {
         const { confirmed } = c.req.valid("json");
         const publication = await relistPublication(deps, {
           publicationId: c.req.valid("param").id,
-          dryRun: dryRunOf(deps),
+          dryRun: isDryRun(await publicationMode(deps, c.req.valid("param").id)),
           actor: actorOf(c),
+          serverMode: deps.publishMode,
           ...(confirmed === undefined ? {} : { confirmed }),
         });
         const body: PublicationResponse = { publication: publicationView(publication) };
@@ -389,7 +400,8 @@ export function publicationRoutes(deps: PublicationRoutesDeps) {
           {
             ...deps,
             removal: {
-              apiMode: deps.publishMode,
+              apiMode: await publicationMode(deps, c.req.valid("param").id),
+              serverMode: deps.publishMode,
               platformAccounts: deps.platformAccounts,
               operationsFor: deps.operationsFor,
               refreshers: deps.tokenRefreshers ?? {},
@@ -413,8 +425,8 @@ export function publicationRoutes(deps: PublicationRoutesDeps) {
       },
     )
     .post("/:id/pause", validated("param", idParamSchema), async (c) => {
-      const body = await operate(() =>
-        pausePublication(operations, {
+      const body = await operate(async () =>
+        pausePublication(await operationsFor(c.req.valid("param").id), {
           publicationId: c.req.valid("param").id,
           actor: actorOf(c),
           signal: timeout(),
@@ -423,8 +435,8 @@ export function publicationRoutes(deps: PublicationRoutesDeps) {
       return c.json(body, 200);
     })
     .post("/:id/resume", validated("param", idParamSchema), async (c) => {
-      const body = await operate(() =>
-        resumePublication(operations, {
+      const body = await operate(async () =>
+        resumePublication(await operationsFor(c.req.valid("param").id), {
           publicationId: c.req.valid("param").id,
           actor: actorOf(c),
           signal: timeout(),
@@ -438,8 +450,8 @@ export function publicationRoutes(deps: PublicationRoutesDeps) {
       validated("json", publicationCloseBodySchema),
       async (c) => {
         const { confirmed } = c.req.valid("json");
-        const body = await operate(() =>
-          closePublication(operations, {
+        const body = await operate(async () =>
+          closePublication(await operationsFor(c.req.valid("param").id), {
             publicationId: c.req.valid("param").id,
             actor: actorOf(c),
             ...(confirmed === undefined ? {} : { confirmed }),

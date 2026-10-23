@@ -430,7 +430,8 @@ describe("job publication.publish · Marketplace a mano (F7-T15)", () => {
   it("con la cuenta a mano no activa ninguna ventana (la descarta) y lo registra", async () => {
     const t = await createPublicationScenario({ platform: "fb_marketplace" });
     const listing = await t.listings.get(t.listingId);
-    const broker = await t.brokers.setSettings(listing?.brokerId ?? "", { operatorOwned: false });
+    // El corredor sigue siendo propio: desde ADR-0036 solo uno propio publica en vivo.
+    const broker = await t.brokers.setSettings(listing?.brokerId ?? "", {});
     await connectManualMarketplaceAccount(
       {
         brokers: t.brokers,

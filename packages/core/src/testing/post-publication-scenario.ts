@@ -85,7 +85,7 @@ export async function createPostPublicationScenario(
     bodies?: Partial<Record<Platform, string>>;
   } = {},
 ) {
-  const broker = contentBrokerFixture({ kind: "brand" });
+  const broker = contentBrokerFixture({ kind: "brand", operatorOwned: true, liveEnabled: true });
   const brokers = createInMemoryBrokerRepository([broker]);
   const posts = createInMemoryPostRepository();
   const post = await posts.create({

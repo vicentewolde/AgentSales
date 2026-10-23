@@ -8,8 +8,9 @@ import {
 } from "@agentsales/core";
 import { useState } from "react";
 import { ApiError } from "../../api/client.js";
+import { useBrokerPublishMode } from "../../queries/brokers.js";
 import { useContentRun, useListingContent, useRequestContentRun } from "../../queries/content.js";
-import { useHealth } from "../../queries/health.js";
+import { SubjectBrokerContext } from "../../queries/health.js";
 import { useSetListingMusic } from "../../queries/listings.js";
 import { useListingPublications } from "../../queries/publications.js";
 import { ErrorAlert } from "../ErrorAlert.js";
@@ -49,7 +50,8 @@ export function ContentSection({
   const music = useSetListingMusic(listingId);
   // F3-T18: las publicaciones del aviso (aprobar, publicar y los bloqueos) y el modo de la API.
   const publications = useListingPublications(listingId);
-  const health = useHealth();
+  // El modo de la marca de la propiedad (F9.5-T22, ADR-0036), no el del servidor.
+  const publishMode = useBrokerPublishMode(brokerId);
   const pendingReason = prepareBlockedReason(publications.data ?? []);
   const [requestedId, setRequestedId] = useState<string | null>(null);
   const [confirmReplace, setConfirmReplace] = useState(false);
@@ -103,136 +105,138 @@ export function ContentSection({
     content.data.carousel.length === 0;
 
   return (
-    <section
-      aria-labelledby="contenido"
-      className="mt-6 rounded-xl border border-line bg-surface p-5 shadow-xs"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="contenido" className="text-lg font-semibold">
-          Contenido
-        </h2>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" disabled={busy || !preparable} onClick={prepare}>
-            Preparar contenido
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={busy || !preparable}
-            onClick={() => start(false)}
-          >
-            Rehacer imágenes
-          </Button>
-        </div>
-      </div>
-      {!canPrepareContent(listingStatus) && (
-        <p className="mt-2 text-sm text-fg-muted">{LISTING_NOT_PREPARABLE_TEXT}.</p>
-      )}
-      {canPrepareContent(listingStatus) && pendingReason !== null && (
-        <p className="mt-2 text-sm text-fg-muted">{pendingReason}</p>
-      )}
-      <MusicPicker
-        label="Música del reel"
-        value={music.isPending ? (music.variables ?? null) : musicTrackId}
-        onChange={(id) => music.mutate(id)}
-        saving={music.isPending}
-        error={music.error}
-        after={
-          preparable
-            ? "Al cambiarla, toca «Rehacer imágenes» para armar el reel con ella (tus textos no cambian)."
-            : "Se usa la próxima vez que prepares el contenido."
-        }
-      />
-      {publications.error && (
-        <ErrorAlert
-          error={publications.error}
-          onRetry={() => void publications.refetch()}
-          retrying={publications.isFetching}
-        />
-      )}
-
-      {confirmReplace && (
-        <div role="alert" className="mt-4 rounded-lg border border-warning-200 bg-warning-50 p-4">
-          <p className="font-semibold text-warning-800">Hay textos editados a mano o aprobados</p>
-          <p className="mt-1 text-sm text-warning-800">
-            {editedPlatforms.length > 0
-              ? `Revisaste ${editedPlatforms.join(", ")}: se reemplazarán por textos nuevos, que habrá que aprobar de nuevo.`
-              : "Se reemplazarán tus textos revisados por textos nuevos."}{" "}
-            Puedes rehacer solo las imágenes y conservar tus textos.
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
+    <SubjectBrokerContext.Provider value={brokerId}>
+      <section
+        aria-labelledby="contenido"
+        className="mt-6 rounded-xl border border-line bg-surface p-5 shadow-xs"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 id="contenido" className="text-lg font-semibold">
+            Contenido
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" disabled={busy || !preparable} onClick={prepare}>
+              Preparar contenido
+            </Button>
             <Button
               variant="secondary"
               size="sm"
-              disabled={request.isPending}
+              disabled={busy || !preparable}
               onClick={() => start(false)}
             >
-              Rehacer solo imágenes
-            </Button>
-            <Button size="sm" disabled={request.isPending} onClick={() => start(true, true)}>
-              Reemplazar mis textos
+              Rehacer imágenes
             </Button>
           </div>
         </div>
-      )}
-      {request.error && !editedConflict && <ErrorAlert error={request.error} />}
-
-      {/* Siempre montada: los lectores de pantalla anuncian los cambios de una región que ya estaba. */}
-      <p aria-live="polite" className="mt-4 font-medium text-fg">
-        {inProgress && tracked !== null ? `Preparando: ${contentRunProgressText(tracked)}…` : ""}
-      </p>
-      {inProgress && reused && (
-        <p className="text-sm text-fg-muted">
-          Ya había una preparación en curso de esta propiedad: se muestra esa.
-        </p>
-      )}
-      {inProgress && tracked !== null && (
-        <RunProgress
-          run={tracked}
-          checkedAt={run.dataUpdatedAt}
-          stopped={stopped}
-          onRetry={() => void run.refetch()}
-          retrying={run.isFetching}
+        {!canPrepareContent(listingStatus) && (
+          <p className="mt-2 text-sm text-fg-muted">{LISTING_NOT_PREPARABLE_TEXT}.</p>
+        )}
+        {canPrepareContent(listingStatus) && pendingReason !== null && (
+          <p className="mt-2 text-sm text-fg-muted">{pendingReason}</p>
+        )}
+        <MusicPicker
+          label="Música del reel"
+          value={music.isPending ? (music.variables ?? null) : musicTrackId}
+          onChange={(id) => music.mutate(id)}
+          saving={music.isPending}
+          error={music.error}
+          after={
+            preparable
+              ? "Al cambiarla, toca «Rehacer imágenes» para armar el reel con ella (tus textos no cambian)."
+              : "Se usa la próxima vez que prepares el contenido."
+          }
         />
-      )}
-      {run.error && !run.data && (
-        <ErrorAlert
-          error={run.error}
-          onRetry={() => void run.refetch()}
-          retrying={run.isFetching}
-        />
-      )}
-      {!inProgress && shown !== null && <RunResult run={shown} />}
-
-      {content.isPending && <p className="mt-4 text-sm text-fg-muted">Cargando el contenido…</p>}
-      {content.error && (
-        <ErrorAlert
-          error={content.error}
-          onRetry={() => void content.refetch()}
-          retrying={content.isFetching}
-        />
-      )}
-      {content.data &&
-        (empty ? (
-          !inProgress && (
-            <p className="mt-4 text-sm text-fg-muted">
-              Todavía no hay contenido. Prepáralo para ver cómo se vería en cada canal.
-            </p>
-          )
-        ) : (
-          <Preview
-            content={content.data}
-            brokerId={brokerId}
-            listingId={listingId}
-            lockReason={lockReason}
-            onReload={() => void content.refetch()}
-            listingStatus={listingStatus}
-            runActive={busy}
-            publications={publications.data ?? []}
-            publishMode={health.data?.publishMode}
-            listingPrice={listingPrice}
+        {publications.error && (
+          <ErrorAlert
+            error={publications.error}
+            onRetry={() => void publications.refetch()}
+            retrying={publications.isFetching}
           />
-        ))}
-    </section>
+        )}
+
+        {confirmReplace && (
+          <div role="alert" className="mt-4 rounded-lg border border-warning-200 bg-warning-50 p-4">
+            <p className="font-semibold text-warning-800">Hay textos editados a mano o aprobados</p>
+            <p className="mt-1 text-sm text-warning-800">
+              {editedPlatforms.length > 0
+                ? `Revisaste ${editedPlatforms.join(", ")}: se reemplazarán por textos nuevos, que habrá que aprobar de nuevo.`
+                : "Se reemplazarán tus textos revisados por textos nuevos."}{" "}
+              Puedes rehacer solo las imágenes y conservar tus textos.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={request.isPending}
+                onClick={() => start(false)}
+              >
+                Rehacer solo imágenes
+              </Button>
+              <Button size="sm" disabled={request.isPending} onClick={() => start(true, true)}>
+                Reemplazar mis textos
+              </Button>
+            </div>
+          </div>
+        )}
+        {request.error && !editedConflict && <ErrorAlert error={request.error} />}
+
+        {/* Siempre montada: los lectores de pantalla anuncian los cambios de una región que ya estaba. */}
+        <p aria-live="polite" className="mt-4 font-medium text-fg">
+          {inProgress && tracked !== null ? `Preparando: ${contentRunProgressText(tracked)}…` : ""}
+        </p>
+        {inProgress && reused && (
+          <p className="text-sm text-fg-muted">
+            Ya había una preparación en curso de esta propiedad: se muestra esa.
+          </p>
+        )}
+        {inProgress && tracked !== null && (
+          <RunProgress
+            run={tracked}
+            checkedAt={run.dataUpdatedAt}
+            stopped={stopped}
+            onRetry={() => void run.refetch()}
+            retrying={run.isFetching}
+          />
+        )}
+        {run.error && !run.data && (
+          <ErrorAlert
+            error={run.error}
+            onRetry={() => void run.refetch()}
+            retrying={run.isFetching}
+          />
+        )}
+        {!inProgress && shown !== null && <RunResult run={shown} />}
+
+        {content.isPending && <p className="mt-4 text-sm text-fg-muted">Cargando el contenido…</p>}
+        {content.error && (
+          <ErrorAlert
+            error={content.error}
+            onRetry={() => void content.refetch()}
+            retrying={content.isFetching}
+          />
+        )}
+        {content.data &&
+          (empty ? (
+            !inProgress && (
+              <p className="mt-4 text-sm text-fg-muted">
+                Todavía no hay contenido. Prepáralo para ver cómo se vería en cada canal.
+              </p>
+            )
+          ) : (
+            <Preview
+              content={content.data}
+              brokerId={brokerId}
+              listingId={listingId}
+              lockReason={lockReason}
+              onReload={() => void content.refetch()}
+              listingStatus={listingStatus}
+              runActive={busy}
+              publications={publications.data ?? []}
+              publishMode={publishMode}
+              listingPrice={listingPrice}
+            />
+          ))}
+      </section>
+    </SubjectBrokerContext.Provider>
   );
 }

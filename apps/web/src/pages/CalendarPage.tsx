@@ -27,8 +27,9 @@ import { ScheduleForm } from "../components/publications/ScheduleForm.js";
 import { PublicationStatusBadge } from "../components/StatusBadge.js";
 import { Button } from "../components/ui/Button.js";
 import { PageHeader } from "../components/ui/PageHeader.js";
+import { useBrokerModeOf } from "../queries/brokers.js";
 import { useCalendar, useMovePublication } from "../queries/calendar.js";
-import { useHealth } from "../queries/health.js";
+import { SubjectBrokerContext } from "../queries/health.js";
 import { useBrokerFilter, useRole } from "../scope/broker-scope.js";
 
 // F9-T18: el calendario de lo programado y lo publicado, con posts y avisos, por semana o por mes,
@@ -240,7 +241,8 @@ export function CalendarPage() {
   const anchor = validDay(params.get("dia")) ?? today;
   const broker = useBrokerFilter();
   const role = useRole();
-  const health = useHealth();
+  // El modo de la marca de cada entrada (F9.5-T22, ADR-0036), no el del servidor.
+  const modeOf = useBrokerModeOf();
   const calendar = useCalendar(rangeOfDays(visibleDays(view, anchor)), broker);
   const [moving, setMoving] = useState<CalendarEntryView | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -316,15 +318,17 @@ export function CalendarPage() {
         </p>
       )}
       {moving !== null && (
-        <MovePanel
-          entry={moving}
-          publishMode={health.data?.publishMode}
-          onDone={(at) => {
-            setMoving(null);
-            setNotice(`Quedó programada para el ${formatChileTime(at)} (hora de Chile).`);
-          }}
-          onCancel={() => setMoving(null)}
-        />
+        <SubjectBrokerContext.Provider value={moving.brokerId}>
+          <MovePanel
+            entry={moving}
+            publishMode={modeOf(moving.brokerId)}
+            onDone={(at) => {
+              setMoving(null);
+              setNotice(`Quedó programada para el ${formatChileTime(at)} (hora de Chile).`);
+            }}
+            onCancel={() => setMoving(null)}
+          />
+        </SubjectBrokerContext.Provider>
       )}
       {calendar.error && (
         <ErrorAlert

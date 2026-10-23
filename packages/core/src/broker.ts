@@ -23,6 +23,12 @@ export const brokerSchema = z.object({
   autoPublish: z.boolean(),
   /** Corredor propio del operador (spec F7 §4.7, ADR-0023): su plan de Claude y Marketplace automático. */
   operatorOwned: z.boolean(),
+  /**
+   * La segunda llave del modo en vivo (F9.5-T22, ADR-0036): solo con `PUBLISH_MODE=live` en el
+   * servidor y `liveEnabled` aquí, y siendo propio, sus publicaciones salen de verdad
+   * (`effectivePublishMode`). Nace apagada; solo el administrador la cambia.
+   */
+  liveEnabled: z.boolean(),
   /** Tope de gasto de IA del mes en dólares; `null` = sin tope (spec F7 §4.7). */
   llmMonthlyCapUsd: z.number().nonnegative().nullable(),
   /**
@@ -66,6 +72,37 @@ export function assertAutoPublishAllowed(broker: Pick<Broker, "kind" | "slug">):
     throw new AppError(
       "BROKER_IS_BRAND",
       `${broker.slug} es una marca: la publicación automática es de las propiedades y no se activa en una marca`,
+      { details: { slug: broker.slug } },
+    );
+  }
+}
+
+/**
+ * `LIVE_NOT_ALLOWED` (409) al encender el modo en vivo de un corredor que no es propio del
+ * operador (F9.5-T22, ADR-0036): hasta que haya un ADR de clientes, solo lo propio publica de verdad.
+ */
+export function assertLiveAllowed(broker: Pick<Broker, "operatorOwned" | "slug">): void {
+  if (!broker.operatorOwned) {
+    throw new AppError(
+      "LIVE_NOT_ALLOWED",
+      `${broker.slug} no es un corredor propio: solo lo propio del operador puede publicar en vivo`,
+      { details: { slug: broker.slug } },
+    );
+  }
+}
+
+/**
+ * `LIVE_NOT_CONFIRMED` (409) si, al encender el modo en vivo, no se repitió el `slug` del corredor:
+ * encender es publicar de verdad en sus redes, y el panel y la CLI piden escribirlo.
+ */
+export function assertLiveConfirmed(
+  broker: Pick<Broker, "slug">,
+  confirm: string | undefined,
+): void {
+  if (confirm?.trim() !== broker.slug) {
+    throw new AppError(
+      "LIVE_NOT_CONFIRMED",
+      `Para encender el modo en vivo repite el slug del corredor (${broker.slug})`,
       { details: { slug: broker.slug } },
     );
   }

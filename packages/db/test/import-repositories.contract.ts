@@ -189,6 +189,20 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       );
     });
 
+    it("setLiveEnabled enciende y apaga el modo en vivo sin tocar lo demás; nace apagado; un id desconocido → BROKER_NOT_FOUND (F9.5-T22)", async () => {
+      const created = await repos.brokers.create(brokerData(unique("en-vivo")));
+      expect(created.liveEnabled).toBe(false);
+      const on = await repos.brokers.setLiveEnabled(created.id, true);
+      expect(on).toEqual({ ...created, liveEnabled: true });
+      expect(await repos.brokers.findById(created.id)).toEqual(on);
+      expect(await repos.brokers.setLiveEnabled(created.id, false)).toEqual(created);
+      await expectAppError(
+        repos.brokers.setLiveEnabled(repos.missingId, true),
+        "BROKER_NOT_FOUND",
+        false,
+      );
+    });
+
     it("list devuelve los corredores por nombre de marca, sin distinguir mayúsculas", async () => {
       const c = await repos.brokers.create(
         brokerData(unique("lista-c"), { brandName: "ZZ marca c" }),

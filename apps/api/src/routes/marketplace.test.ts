@@ -585,6 +585,34 @@ describe("POST /publications/:id/confirm y /not-published (spec F5 §4.3)", () =
     expect(log.text()).toContain(`/publications/${id}/confirm`);
   });
 
+  it("con la marca apagada después de abrir el formulario (ADR-0036), confirmar con el enlace sigue funcionando: solo anota lo que hizo el operador", async () => {
+    const { app, t, awaiting } = await publicationSetup();
+    const id = await awaiting();
+    const listing = await t.listings.get(t.listingId);
+    await t.brokers.setLiveEnabled(listing?.brokerId ?? "", false);
+
+    const response = await app.request(`/publications/${id}/confirm`, post({ url: PASTED_URL }));
+
+    expect(response.status).toBe(200);
+    expect(publicationConfirmResponseSchema.parse(await response.json())).toMatchObject({
+      changed: true,
+      publication: { status: "published", externalUrl: CLEAN_URL, dryRun: false },
+    });
+  });
+
+  it("con la marca apagada, publicar Marketplace con el servidor en vivo abre el formulario en simulación", async () => {
+    const { t, publish } = await publicationSetup();
+    const listing = await t.listings.get(t.listingId);
+    await t.brokers.setLiveEnabled(listing?.brokerId ?? "", false);
+
+    const response = await publish();
+
+    expect(response.status).toBe(202);
+    const { started } = listingPublishResponseSchema.parse(await response.json());
+    expect(started).toHaveLength(1);
+    expect(started.every((publication) => publication.dryRun)).toBe(true);
+  });
+
   it("marcar como retirada una publicada en vivo pide haberla borrado a mano en Facebook", async () => {
     const { app, awaiting } = await publicationSetup();
     const id = await awaiting();

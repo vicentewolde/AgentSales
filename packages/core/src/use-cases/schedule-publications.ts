@@ -299,7 +299,11 @@ export async function scheduleListings(
     platforms?: readonly Platform[];
     at: Date;
     spacingMinutes?: number;
-    dryRun: boolean;
+    /**
+     * El modo de lo que se programa: uno solo, o el de cada propiedad según su marca (un lote del
+     * administrador puede mezclar marcas encendidas y apagadas, ADR-0036).
+     */
+    dryRun: boolean | ((listingId: string) => Promise<boolean>);
     actor: PublicationActor;
   },
 ): Promise<ScheduleListingsResult> {
@@ -332,13 +336,14 @@ export async function scheduleListings(
   for (const [index, listingId] of listingIds.entries()) {
     const when = new Date(first.getTime() + index * spacingMinutes * 60_000);
     const own: ScheduleListingOutcome[] = [];
+    const listingDryRun = typeof dryRun === "boolean" ? dryRun : await dryRun(listingId);
     for (const platform of channels) {
       try {
         const done = await scheduleChannel(fixed, {
           listingId,
           platform,
           at: when,
-          dryRun,
+          dryRun: listingDryRun,
           actor,
           reason: listingIds.length > 1 ? "batch" : "operator",
         });

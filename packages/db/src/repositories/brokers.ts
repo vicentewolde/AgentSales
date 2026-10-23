@@ -36,6 +36,7 @@ function toBroker(row: typeof brokers.$inferSelect): Broker {
     fixedHashtags: row.fixedHashtags,
     autoPublish: row.autoPublish,
     operatorOwned: row.operatorOwned,
+    liveEnabled: row.liveEnabled,
     // `numeric` llega como texto: a número (dos decimales).
     llmMonthlyCapUsd: row.llmMonthlyCapUsd === null ? null : Number(row.llmMonthlyCapUsd),
     kind: row.kind,
@@ -48,7 +49,7 @@ function toBroker(row: typeof brokers.$inferSelect): Broker {
   return parsed.data;
 }
 
-/** Columnas que escribe la hoja Corredor; nunca `logo_media_id`, `auto_publish` ni `kind`. */
+/** Columnas que escribe la hoja Corredor; nunca `logo_media_id`, `auto_publish`, `live_enabled` ni `kind`. */
 function columnsOf(data: BrokerData) {
   return {
     slug: data.slug,
@@ -180,6 +181,19 @@ export function createBrokerRepository(db: SchemaDatabase): BrokerRepository {
           Object.keys(set).length === 0
             ? await db.select().from(brokers).where(eq(brokers.id, id))
             : await db.update(brokers).set(set).where(eq(brokers.id, id)).returning();
+        if (row === undefined)
+          throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${id}`);
+        return toBroker(row);
+      });
+    },
+
+    setLiveEnabled(id, liveEnabled) {
+      return withDbErrors(async () => {
+        const [row] = await db
+          .update(brokers)
+          .set({ liveEnabled })
+          .where(eq(brokers.id, id))
+          .returning();
         if (row === undefined)
           throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${id}`);
         return toBroker(row);

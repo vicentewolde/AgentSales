@@ -1,21 +1,28 @@
 import {
   AppError,
+  type BrokerRepository,
   type ListingRepository,
+  type PublishMode,
   type ScheduleDeps,
   scheduleListings,
 } from "@agentsales/core";
 import { Hono } from "hono";
 import type { AppEnv } from "../auth.js";
 import { type ScheduleResponse, scheduleBodySchema } from "../contracts/index.js";
+import { isDryRun, listingMode } from "../publish-modes.js";
 import { requestScope } from "../scope.js";
 import { validated } from "../validation.js";
 import { actorOf, publicationView } from "./publication-views.js";
 
 export type ScheduleRoutesDeps = Omit<ScheduleDeps, "publications"> & {
-  /** El modo de lo que se programa (D11): el de la API ahora, nunca del cuerpo. */
-  publishMode: "dry-run" | "live";
-  /** Para revisar que cada propiedad del lote sea del corredor (spec F7 §4.4). */
-  listings: Pick<ListingRepository, "list">;
+  /**
+   * El modo **del servidor** (D11): con el de la marca de cada propiedad (ADR-0036) da el de lo que
+   * se programa; nunca sale del cuerpo.
+   */
+  publishMode: PublishMode;
+  brokers: Pick<BrokerRepository, "findById">;
+  /** Para revisar que cada propiedad del lote sea del corredor (spec F7 §4.4) y su marca. */
+  listings: Pick<ListingRepository, "list" | "get">;
 };
 
 /**
@@ -39,7 +46,7 @@ export function scheduleRoutes(deps: ScheduleRoutesDeps) {
     const result = await scheduleListings(deps, {
       listingIds,
       at: new Date(at),
-      dryRun: deps.publishMode !== "live",
+      dryRun: async (listingId) => isDryRun(await listingMode(deps, listingId)),
       actor: actorOf(c),
       ...(platforms === undefined ? {} : { platforms }),
       ...(spacingMinutes === undefined ? {} : { spacingMinutes }),

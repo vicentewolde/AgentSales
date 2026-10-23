@@ -31,7 +31,8 @@ import { PencilIcon } from "../components/ui/icons.js";
 import { PageHeader } from "../components/ui/PageHeader.js";
 import { Loading, Spinner } from "../components/ui/Spinner.js";
 import { cx } from "../components/ui/styles.js";
-import { useHealth } from "../queries/health.js";
+import { useBrokerModeOf } from "../queries/brokers.js";
+import { SubjectBrokerContext } from "../queries/health.js";
 import {
   useArchivePost,
   useEditorialProfile,
@@ -293,7 +294,8 @@ function PostNetworksNotice({
 export function PostDetailPage() {
   const { id = "" } = useParams();
   const post = usePost(id);
-  const health = useHealth();
+  // El modo de la marca del post (F9.5-T22, ADR-0036), no el del servidor.
+  const modeOf = useBrokerModeOf();
   const archive = useArchivePost(id);
   const [editing, setEditing] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
@@ -301,8 +303,8 @@ export function PostDetailPage() {
   if (post.error) return <ErrorAlert error={post.error} onRetry={() => void post.refetch()} />;
   if (post.data === undefined) return <Loading />;
   const { post: item, media, contents, latestRun, publications, uploadsInReview } = post.data;
-  const publishMode = health.data?.publishMode;
   const archived = item.status === "archived";
+  const publishMode = modeOf(item.brokerId);
   const runActive = latestRun !== null && !isTerminalContentRun(latestRun.status);
   const lockReason = archived
     ? "El post está archivado."
@@ -310,142 +312,144 @@ export function PostDetailPage() {
       ? "La IA está redactando los textos: espera a que termine."
       : null;
   return (
-    <div>
-      <PageHeader
-        back={{ to: "/contenido", label: "Contenido" }}
-        title={item.topic}
-        meta={<PostStatusBadge status={item.status} />}
-        description={
-          <>
-            <p>
-              {POST_KIND_LABEL[item.kind]}
-              {item.pillar !== null && ` · tema ${item.pillar}`}
-              {" · "}
-              {item.plannedAt === null
-                ? "sin fecha planeada"
-                : `planeado para el ${formatChileTime(item.plannedAt)} (hora de Chile)`}
-              {item.source === "ai" && " · propuesto por la IA"}
-              {" · "}
-              {item.platforms === null
-                ? "todas las redes de la marca"
-                : `redes: ${item.platforms.map((platform) => PLATFORM_TEXT[platform]).join(", ")}`}
-            </p>
-            {item.planRunId !== null && (
-              <p className="mt-1">
-                <Link
-                  to={`/plan?plan=${item.planRunId}`}
-                  className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-900"
-                >
-                  {item.status === "idea" ? "Acéptala o descártala en el plan" : "Ver el plan"}
-                </Link>
+    <SubjectBrokerContext.Provider value={item.brokerId}>
+      <div>
+        <PageHeader
+          back={{ to: "/contenido", label: "Contenido" }}
+          title={item.topic}
+          meta={<PostStatusBadge status={item.status} />}
+          description={
+            <>
+              <p>
+                {POST_KIND_LABEL[item.kind]}
+                {item.pillar !== null && ` · tema ${item.pillar}`}
+                {" · "}
+                {item.plannedAt === null
+                  ? "sin fecha planeada"
+                  : `planeado para el ${formatChileTime(item.plannedAt)} (hora de Chile)`}
+                {item.source === "ai" && " · propuesto por la IA"}
+                {" · "}
+                {item.platforms === null
+                  ? "todas las redes de la marca"
+                  : `redes: ${item.platforms.map((platform) => PLATFORM_TEXT[platform]).join(", ")}`}
               </p>
-            )}
-          </>
-        }
-        {...(!archived && !editing
-          ? {
-              actions: confirmArchive ? (
-                <span role="alert" className="flex flex-wrap items-center gap-2 text-sm text-fg">
-                  ¿Archivar? Ya no se edita ni se programa.
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    loading={archive.isPending}
-                    onClick={() =>
-                      archive.mutate(undefined, { onSettled: () => setConfirmArchive(false) })
-                    }
+              {item.planRunId !== null && (
+                <p className="mt-1">
+                  <Link
+                    to={`/plan?plan=${item.planRunId}`}
+                    className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-900"
                   >
-                    Sí, archivar
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => setConfirmArchive(false)}>
-                    Cancelar
-                  </Button>
-                </span>
-              ) : (
-                <>
-                  <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
-                    <PencilIcon className="size-4" />
-                    Editar el post
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => setConfirmArchive(true)}>
-                    Archivar
-                  </Button>
-                </>
-              ),
-            }
-          : {})}
-      />
-      {item.brief !== null && (
-        <div className="mb-6 rounded-xl border border-line bg-surface shadow-xs px-4 py-3">
-          <p className="text-xs font-medium text-fg-subtle">Brief</p>
-          <p className="mt-1 whitespace-pre-wrap text-sm text-fg">{item.brief}</p>
-        </div>
-      )}
-      {editing && (
-        <Card title="Editar el post" className="mb-6">
-          <PostEditForm post={item} onClose={() => setEditing(false)} />
-        </Card>
-      )}
-      {archive.error && <ErrorAlert error={archive.error} />}
+                    {item.status === "idea" ? "Acéptala o descártala en el plan" : "Ver el plan"}
+                  </Link>
+                </p>
+              )}
+            </>
+          }
+          {...(!archived && !editing
+            ? {
+                actions: confirmArchive ? (
+                  <span role="alert" className="flex flex-wrap items-center gap-2 text-sm text-fg">
+                    ¿Archivar? Ya no se edita ni se programa.
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      loading={archive.isPending}
+                      onClick={() =>
+                        archive.mutate(undefined, { onSettled: () => setConfirmArchive(false) })
+                      }
+                    >
+                      Sí, archivar
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setConfirmArchive(false)}>
+                      Cancelar
+                    </Button>
+                  </span>
+                ) : (
+                  <>
+                    <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
+                      <PencilIcon className="size-4" />
+                      Editar el post
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setConfirmArchive(true)}>
+                      Archivar
+                    </Button>
+                  </>
+                ),
+              }
+            : {})}
+        />
+        {item.brief !== null && (
+          <div className="mb-6 rounded-xl border border-line bg-surface shadow-xs px-4 py-3">
+            <p className="text-xs font-medium text-fg-subtle">Brief</p>
+            <p className="mt-1 whitespace-pre-wrap text-sm text-fg">{item.brief}</p>
+          </div>
+        )}
+        {editing && (
+          <Card title="Editar el post" className="mb-6">
+            <PostEditForm post={item} onClose={() => setEditing(false)} />
+          </Card>
+        )}
+        {archive.error && <ErrorAlert error={archive.error} />}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <div className="min-w-0 space-y-6">
-          <Card as="section" aria-label="Textos" title="Textos por red">
-            <div className="space-y-4">
-              <DraftBox post={item} run={latestRun} hasTexts={contents.length > 0} />
-              <PostNetworksNotice post={item} contents={contents} run={latestRun} />
-              <PostTexts
-                postId={item.id}
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+          <div className="min-w-0 space-y-6">
+            <Card as="section" aria-label="Textos" title="Textos por red">
+              <div className="space-y-4">
+                <DraftBox post={item} run={latestRun} hasTexts={contents.length > 0} />
+                <PostNetworksNotice post={item} contents={contents} run={latestRun} />
+                <PostTexts
+                  postId={item.id}
+                  post={item}
+                  contents={contents}
+                  media={media}
+                  publications={publications}
+                  lockReason={lockReason}
+                />
+              </div>
+            </Card>
+
+            <PostMedia
+              postId={item.id}
+              media={media}
+              lockReason={archived ? "El post está archivado." : null}
+              waiting={uploadsInReview}
+            />
+            <PostMusic
+              post={item}
+              media={media}
+              lockReason={archived ? "El post está archivado." : null}
+            />
+          </div>
+
+          <div className="min-w-0 space-y-6">
+            <XLinkControl
+              post={item}
+              contents={contents}
+              lockReason={archived ? "El post está archivado." : null}
+            />
+
+            <Card as="section" aria-label="Publicar" title="Publicar y programar">
+              <PostPublishBar
                 post={item}
+                postId={item.id}
                 contents={contents}
-                media={media}
                 publications={publications}
+                publishMode={publishMode}
                 lockReason={lockReason}
               />
-            </div>
-          </Card>
+            </Card>
 
-          <PostMedia
-            postId={item.id}
-            media={media}
-            lockReason={archived ? "El post está archivado." : null}
-            waiting={uploadsInReview}
-          />
-          <PostMusic
-            post={item}
-            media={media}
-            lockReason={archived ? "El post está archivado." : null}
-          />
-        </div>
-
-        <div className="min-w-0 space-y-6">
-          <XLinkControl
-            post={item}
-            contents={contents}
-            lockReason={archived ? "El post está archivado." : null}
-          />
-
-          <Card as="section" aria-label="Publicar" title="Publicar y programar">
-            <PostPublishBar
-              post={item}
-              postId={item.id}
-              contents={contents}
-              publications={publications}
-              publishMode={publishMode}
-              lockReason={lockReason}
-            />
-          </Card>
-
-          <Card as="section" aria-label="Publicaciones" title="Publicaciones">
-            <PostPublications
-              postId={item.id}
-              publications={publications}
-              publishMode={publishMode}
-              contents={contents}
-            />
-          </Card>
+            <Card as="section" aria-label="Publicaciones" title="Publicaciones">
+              <PostPublications
+                postId={item.id}
+                publications={publications}
+                publishMode={publishMode}
+                contents={contents}
+              />
+            </Card>
+          </div>
         </div>
       </div>
-    </div>
+    </SubjectBrokerContext.Provider>
   );
 }
