@@ -35,7 +35,16 @@ export type ServerAppOptions = {
   allowedHosts: readonly string[];
 };
 
-/** La CSP del panel (spec F8 §4.3): todo del mismo origen, salvo los medios y las subidas a R2. */
+/**
+ * Las miniaturas de la biblioteca de Pixabay (F9.5-T25): el panel las muestra para elegir, sin
+ * guardarlas; la elegida se descarga a R2 en el worker.
+ */
+export const STOCK_PREVIEW_ORIGINS = ["https://pixabay.com", "https://cdn.pixabay.com"] as const;
+
+/**
+ * La CSP del panel (spec F8 §4.3): todo del mismo origen, salvo los medios y las subidas a R2 (y,
+ * desde F9.5-T25, las miniaturas de la biblioteca).
+ */
 export function contentSecurityPolicy(storageOrigin: string) {
   return {
     defaultSrc: ["'self'"],
@@ -46,7 +55,7 @@ export function contentSecurityPolicy(storageOrigin: string) {
     scriptSrc: ["'self'"],
     styleSrc: ["'self'"],
     fontSrc: ["'self'", "data:"],
-    imgSrc: ["'self'", "data:", "blob:", storageOrigin],
+    imgSrc: ["'self'", "data:", "blob:", storageOrigin, ...STOCK_PREVIEW_ORIGINS],
     mediaSrc: ["'self'", "blob:", storageOrigin],
     connectSrc: ["'self'", storageOrigin],
   };

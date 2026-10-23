@@ -309,7 +309,9 @@ describe("cabeceras de seguridad", () => {
       const csp = response.headers.get("content-security-policy") ?? "";
       expect(csp).toContain("default-src 'self'");
       expect(csp).toContain("frame-ancestors 'none'");
-      expect(csp).toContain(`img-src 'self' data: blob: ${STORAGE_ORIGIN}`);
+      expect(csp).toContain(
+        `img-src 'self' data: blob: ${STORAGE_ORIGIN} https://pixabay.com https://cdn.pixabay.com`,
+      );
       expect(csp).toContain(`media-src 'self' blob: ${STORAGE_ORIGIN}`);
       expect(csp).toContain(`connect-src 'self' ${STORAGE_ORIGIN}`);
       expect(csp).toContain("script-src 'self'");

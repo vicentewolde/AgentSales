@@ -5,6 +5,7 @@ import { runTool, throwIfAborted } from "./run.js";
 import { FFMPEG_INSTALL_HINT, isSupportedFfmpeg, parseFfmpegVersion } from "./tools.js";
 import { encodeReelFromPhotos, processVideo } from "./video.js";
 
+export { CARD_RENDER_VERSION, createCardRenderer, textColorOn } from "./cards.js";
 export {
   DISCORD_VIDEO_SPEC,
   IMAGE_VARIANT_SPECS,

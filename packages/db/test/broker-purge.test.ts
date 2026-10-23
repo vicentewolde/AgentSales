@@ -16,6 +16,7 @@ import {
   media,
   planRuns,
   platformAccounts,
+  postImageRuns,
   posts,
   postUploads,
   publicationEvents,
@@ -287,6 +288,16 @@ async function seedBroker(
     bytes: 50,
     checksum: "b",
   });
+  // F9.5-T25: un pedido de imágenes del post, con gasto de IA.
+  await db.insert(postImageRuns).values({
+    postId: p,
+    brokerId: b,
+    source: "ai",
+    status: "succeeded",
+    request: { source: "ai", prompt: "una casa", format: "4:5" },
+    costUsd: 0.04,
+    model: "modelo",
+  });
   await db.insert(postUploads).values({
     postId: p,
     objectPath: `posts/${p}/original/pendiente.jpg`,
@@ -384,6 +395,7 @@ describe("BrokerPurgeRepository (PGlite)", () => {
       "plan_runs",
       "posts",
       "post_uploads",
+      "post_image_runs",
       "editorial_profiles",
       "import_runs",
     ]) {
@@ -430,6 +442,7 @@ describe("BrokerPurgeRepository (PGlite)", () => {
       content_runs: 2,
       media: 5,
       post_uploads: 1,
+      post_image_runs: 1,
       posts: 1,
       plan_runs: 1,
       editorial_profiles: 1,

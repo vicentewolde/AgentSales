@@ -311,6 +311,26 @@ Cada propiedad y cada post con video puede llevar **música de fondo** de una bi
 
 **Si una pista no está subida:** se puede elegir igual, pero el reel sale **sin música** y la preparación lo avisa («todavía no está subida a la biblioteca»). Cuando la subas, prepara de nuevo y el reel sale con ella.
 
+## Conseguir imagen para un post sin fotos (F9.5-T25)
+
+Un post de imagen, carrusel o video sin medios no se publica, pero su texto se aprueba igual. En su detalle, en **Fotos y videos**, el botón **«Conseguir imagen»** (y el enlace del aviso «Falta la imagen») abre tres pestañas. Nada se genera solo: siempre lo pides tú, y lo conseguido entra como una foto subida (pasa por la vista previa y la aprobación).
+
+1. **Tarjetas de la marca** (por defecto, US$0, sin claves): el tema del post sobre el color y el logo de la marca. En un **carrusel**, una portada, una tarjeta por punto del texto (sus viñetas, sus párrafos o sus oraciones) y un cierre con la marca y su `@cuenta` o su sitio. En un **post de video**, «Hacer video de las tarjetas» las une en un video 9:16 con la música del post (la que elegiste en «Música del reel»). El texto sale del post: pide los textos antes (un video de tarjetas los necesita). Elige 4:5 (Instagram) o 9:16 (reel e historia).
+2. **Biblioteca (Pixabay)**: busca con el tema del post (lo puedes cambiar), «Sin personas» viene marcado, y tocas la foto que quieres. El worker la descarga y la guarda en AgentSales (Pixabay no pide crédito). Si Pixabay recibió demasiadas búsquedas, espera un minuto.
+3. **Crear con IA (Nano Banana)**: una indicación propuesta desde el post (cámbiala si quieres), sin texto ni personas dentro de la imagen. Cuesta unos US$0,034 por imagen (`IMAGE_AI_PRICE_USD`), con un **tope de US$2 al mes por marca** (`IMAGE_AI_MONTHLY_CAP_USD`); al llegar, dice «Llegaste al tope de imágenes con IA de este mes». El gasto lo ves aparte del de texto en `pnpm -s cli usage` (la columna «Pedidos»). Si una imagen falla después de llamar a Google, no se reintenta sola (podría cobrar dos veces): pide otra. El modelo y el precio por defecto están sin verificar hasta tu prueba; si cambias `IMAGE_AI_MODEL`, cambia también `IMAGE_AI_PRICE_USD` (`doctor` te lo recuerda). Las imágenes no se marcan como IA (ADR-0038 §4).
+
+**Las claves (las sacas tú, `docs/07-checklist-cuentas.md`, «F9.5 · Imágenes para posts sin fotos»):** `PIXABAY_API_KEY` y `GEMINI_API_KEY` en `.env` y, para el servidor, en `.env.production` y los secretos de Fly (`docs/10-despliegue.md`, paso 2). Sin una de ellas, su pestaña dice qué falta y las tarjetas siguen funcionando. Antes de usar la IA de verdad, haz las pruebas sin riesgo de la nota `docs/integraciones/imagenes-y-videos-generados.md` §7 (una búsqueda y una descarga en Pixabay; una imagen 4:5 y una 9:16 con Nano Banana) y cuéntale a Claude qué salió: la forma exacta del pedido a Google está sin verificar.
+
+**Desde la CLI:**
+```bash
+pnpm -s cli post media <id>                                # qué fuentes hay y qué falta
+pnpm -s cli post media <id> --card [--format 9:16]          # tarjetas (un post de video: su video)
+pnpm -s cli post media <id> --stock "living luminoso"       # lista los resultados numerados
+pnpm -s cli post media <id> --stock "living luminoso" --pick 3   # o el id de la foto de la lista
+pnpm -s cli post media <id> --ai "Un living luminoso con plantas" [--format 9:16]
+```
+Espera hasta que el worker termina (con `pnpm dev` corriendo) y dice cuántos medios quedaron; `--no-wait` sale de inmediato. Nunca imprime una URL firmada.
+
 ## Pedir a la IA un plan de ideas (F9)
 
 Si no sabes qué publicar, la IA te propone **ideas con fecha** para las próximas semanas, con el perfil editorial de la marca (sus temas, sus hechos y su cadencia). **Una idea no se publica sola:** tú decides cuáles aceptar; al aceptar una, la IA redacta sus textos, y después los revisas, apruebas y programas como cualquier post. Cada plan gasta IA de la marca (entra a su tope del mes), aunque descartes todo.

@@ -93,6 +93,20 @@ export const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   POST_ARCHIVED: "El post está archivado: ya no se puede cambiar.",
   POST_PLATFORM_EXCLUDED: "Esa red no está entre las del post: agrégala con «Editar el post».",
   PLAN_RUN_CONFLICT: "Ya hay un plan en preparación: espera a que termine.",
+  // Conseguir imágenes para un post (F9.5-T25).
+  POST_IMAGE_NOT_NEEDED: "Este post es de solo texto: no necesita imágenes.",
+  POST_IMAGE_RUN_ACTIVE: "Ya se está consiguiendo una imagen para este post: espera a que termine.",
+  POST_IMAGE_NEEDS_TEXT:
+    "Para el video de las tarjetas, el post necesita su texto redactado: pide los textos primero.",
+  POST_IMAGE_TOO_MANY: "El post ya tiene 20 fotos o videos: quita alguno antes de conseguir más.",
+  POST_IMAGE_SOURCE_NOT_CONFIGURED:
+    "Esa fuente de imágenes no está configurada en el servidor: usa las tarjetas de la marca.",
+  IMAGE_AI_BUDGET_EXCEEDED: "Llegaste al tope de imágenes con IA de este mes.",
+  IMAGE_AI_BLOCKED:
+    "La IA no hizo la imagen por sus reglas de contenido: cambia la indicación y vuelve a intentar.",
+  STOCK_RATE_LIMITED:
+    "La biblioteca de fotos recibió demasiadas búsquedas: espera un minuto y vuelve a intentar.",
+  STOCK_PHOTO_NOT_FOUND: "Esa foto ya no está en la biblioteca: elige otra.",
   // El sistema. Los de infraestructura y los que traen un dato propio (cuántos archivos faltan, qué
   // otra publicación usa el aviso) no están: se muestran con el mensaje de la API.
   LLM_NOT_CONFIGURED: "La redacción con IA no está configurada.",

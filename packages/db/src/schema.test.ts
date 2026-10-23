@@ -19,6 +19,8 @@ import {
   PLAN_RUN_STATUSES,
   PLATFORM_ACCOUNT_STATUSES,
   PLATFORMS,
+  POST_IMAGE_RUN_STATUSES,
+  POST_IMAGE_SOURCES,
   POST_KINDS,
   POST_SOURCES,
   POST_STATUSES,
@@ -61,6 +63,9 @@ const EXPECTED_ENUMS: Record<string, readonly string[]> = {
   post_source: POST_SOURCES,
   post_status: POST_STATUSES,
   post_upload_status: POST_UPLOAD_STATUSES,
+  // F9.5-T25 (0021): los pedidos de imágenes de un post.
+  post_image_source: POST_IMAGE_SOURCES,
+  post_image_run_status: POST_IMAGE_RUN_STATUSES,
 };
 
 const EXPECTED_TABLES = [
@@ -83,6 +88,8 @@ const EXPECTED_TABLES = [
   "plan_runs",
   "platform_accounts",
   "platform_catalog",
+  // F9.5-T25 (0021): los pedidos de imágenes de un post (tarjetas, biblioteca e IA).
+  "post_image_runs",
   "post_uploads",
   "posts",
   "publication_events",

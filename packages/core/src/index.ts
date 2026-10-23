@@ -98,6 +98,19 @@ export * from "./enums.js";
 export { AppError, type AppErrorOptions, isAppError } from "./errors.js";
 export { type FieldDefinition, fieldDefinitionSchema } from "./field-definition.js";
 export * from "./health.js";
+// F9.5-T25 (ADR-0038): conseguir imágenes para un post sin medios (tarjetas, biblioteca e IA).
+export {
+  assertImageAiBudget,
+  type BrokerMonthlyImageSpend,
+  IMAGE_AI_BUDGET_MESSAGE,
+  IMAGE_AI_NOT_CHARGED,
+  type ImageAiPricing,
+  imageAiBudgetExceeded,
+  imageAiNotCharged,
+  imageAiSpentThisMonth,
+  monthlyImageSpend,
+  wouldPassImageAiCap,
+} from "./image-ai-budget.js";
 export { type ImportIssue, importReportIssues } from "./import-progress.js";
 export {
   IMPORT_BROKER_OUTCOMES,
@@ -497,6 +510,14 @@ export type {
 } from "./ports/broker-purge-repository.js";
 export type { BrokerRepository } from "./ports/broker-repository.js";
 export {
+  CARD_ROLES,
+  type CardBrand,
+  type CardRenderer,
+  type CardRole,
+  type CardSpec,
+  type RenderedCard,
+} from "./ports/card-renderer.js";
+export {
   type ContentChanges,
   type ContentRepository,
   type ContentRunRepository,
@@ -602,6 +623,18 @@ export {
   type TokenUpdate,
 } from "./ports/platform-account-repository.js";
 export type { PlatformCatalogRepository } from "./ports/platform-catalog-repository.js";
+export type {
+  BrokerImageSpend,
+  NewPostImageRun,
+  PostImageRunRepository,
+} from "./ports/post-image-run-repository.js";
+export type {
+  GeneratedImage,
+  ImageFile,
+  ImageGenerator,
+  StockPhoto,
+  StockPhotoProvider,
+} from "./ports/post-image-sources.js";
 export type { PostLock, PostLockedRepositories } from "./ports/post-lock.js";
 export {
   type NewPost,
@@ -688,6 +721,34 @@ export {
   postSchema,
   postUploadSchema,
 } from "./post.js";
+export {
+  cardPoints,
+  cardSourceText,
+  cardText,
+  POST_CARDS,
+  postCardDeck,
+} from "./post-cards.js";
+export {
+  IMAGE_AI_RULES,
+  imageAiPrompt,
+  isActivePostImageRun,
+  POST_IMAGE_FORMATS,
+  POST_IMAGE_LIMITS,
+  POST_IMAGE_RUN_STATUSES,
+  POST_IMAGE_SIZES,
+  POST_IMAGE_SOURCES,
+  type PostImageFormat,
+  type PostImageRequest,
+  type PostImageRun,
+  type PostImageRunStatus,
+  type PostImageSource,
+  postImageRequestSchema,
+  postImageRunActive,
+  postImageRunSchema,
+  postImageSourceNotConfigured,
+  postImageSuggestions,
+  sniffImage,
+} from "./post-image.js";
 export { formatListingPrice, formatNumber, formatPrice } from "./price.js";
 export {
   checkPublicationProgress,
@@ -1080,6 +1141,16 @@ export {
 } from "./use-cases/plan-ideas.js";
 export { expireAccountIfRejected, isAccessRejected } from "./use-cases/platform-auth.js";
 export {
+  getPostImageOptions,
+  getPostImageRun,
+  hasPeople,
+  type PostImageDeps,
+  type PostImageOptions,
+  type PostImageSourcesConfig,
+  requestPostImage,
+  searchStockPhotos,
+} from "./use-cases/post-images.js";
+export {
   type CloseAbandonedPostUploadsDeps,
   type CloseAbandonedPostUploadsResult,
   type CompletePostUploadsDeps,
@@ -1272,6 +1343,11 @@ export {
   type RunPlanResult,
   runPlan,
 } from "./use-cases/run-plan.js";
+export {
+  type RunPostImageDeps,
+  type RunPostImageResult,
+  runPostImage,
+} from "./use-cases/run-post-image.js";
 export {
   type ChannelScheduled,
   MAX_SCHEDULE_BATCH,

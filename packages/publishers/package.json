@@ -34,6 +34,11 @@
       "types": "./dist/src/x/index.d.ts",
       "default": "./dist/src/x/index.js"
     },
+    "./images": {
+      "@agentsales/source": "./src/images/index.ts",
+      "types": "./dist/src/images/index.d.ts",
+      "default": "./dist/src/images/index.js"
+    },
     "./uf": {
       "@agentsales/source": "./src/uf/index.ts",
       "types": "./dist/src/uf/index.d.ts",

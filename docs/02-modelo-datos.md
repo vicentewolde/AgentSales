@@ -36,6 +36,7 @@ erDiagram
   posts ||--o{ contents : tiene
   posts ||--o{ publications : "se publica en"
   posts ||--o{ post_uploads : "espera subidas"
+  posts ||--o{ post_image_runs : "consigue imágenes (F9.5)"
 ```
 
 Desde F9 (ADR-0029), `content_runs`, `contents` y `publications` cuelgan de **un** sujeto: un aviso (`listing_id`) o un post (`post_id`), nunca de los dos ni de ninguno (`CHECK (num_nonnulls(listing_id, post_id) = 1)`). Un medio cuelga de un aviso, de un post o de ninguno (el logo del corredor: `<= 1`). Las demás reglas de sujeto (un aviso solo de un corredor `kind = broker`; un post de cualquiera) son de core, no de la base.
@@ -286,6 +287,26 @@ El registro de las URL prefirmadas de R2 pedidas para un post (ADR-0025); `impor
 
 Índices `(post_id)` y `(status, expires_at)` (la limpieza periódica).
 
+### post_image_runs — pedidos de imágenes de un post (F9.5-T25, ADR-0038)
+Lo que se pidió con «Conseguir imagen»: tarjetas de la marca, una foto de la biblioteca (Pixabay) o una imagen con IA. El job `post.image` lo atiende; lo conseguido entra como medios del post (`media`, con `post_id`, como una foto subida). También es el registro del gasto de las imágenes con IA, aparte del de texto (`content_runs.llm_usage`). Entidad en core: `postImageRunSchema`.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| id | uuid PK | |
+| post_id | uuid FK | |
+| broker_id | uuid FK | La marca del post. Repite a propósito el `broker_id` de `posts`: el gasto del mes se suma y se reserva por aquí sin cruzar con `posts` |
+| source | enum `post_image_source` | `card`, `stock` o `ai` |
+| status | enum `post_image_run_status` default `queued` | `queued`, `running`, `succeeded` o `failed` |
+| request | jsonb | `postImageRequestSchema` (core): la proporción y, según la fuente, el id de la foto y la búsqueda, o la indicación para la IA. Sin secretos ni URLs |
+| media_ids | uuid[] default `{}` | Los medios que quedaron en el post, en orden (también los que ya estaban con el mismo contenido). Sin FK a propósito: es un historial, y un medio que se borra después no lo cambia |
+| cost_usd | numeric(10,4) | Lo que costó (solo la IA): el precio configurado (`IMAGE_AI_PRICE_USD`), **reservado antes de llamar** en una transacción con un candado por marca (solo si cabe en el tope del mes); se devuelve si Google rechazó el pedido sin cobrar. `null` sin costo |
+| model | text | El modelo de IA que la hizo (`IMAGE_AI_MODEL` de ese momento) |
+| error | jsonb | `{ code, message }` cuando `status = failed` |
+| created_by | uuid FK null | Quién la pidió (`set null` si se borra el usuario) |
+| started_at, finished_at | timestamptz | |
+
+Índices `(post_id, created_at)`, `(broker_id, created_at)` (el gasto del mes) y el único parcial `post_image_runs_one_active_per_post` (uno en cola o corriendo por post). Borrar un corredor (`purge`) borra sus pedidos antes que sus posts.
+
 ### platform_catalog — catálogo de las plataformas (ADR-0015, F4-T01)
 Datos públicos que solo se leen con token y cambian con el tiempo: en Mercado Libre, categorías (con sus hijas y `settings`), atributos de una hoja y ubicaciones de Chile. Se bajan a pedido y vencen a los 7 días. Sin secretos ni datos del corredor. Entidad en core: `platformCatalogEntrySchema`.
 
@@ -445,7 +466,7 @@ Son **aditivas salvo la `0015`**, que además quita el `NOT NULL` de `listing_id
 | `0017_f9_subida_grande` | T17 | `post_upload_status` suma `uploaded` |
 | `0018_f9_plan_ideas` | T20 | `posts.platforms` (`text[]` nulo) y el único parcial `plan_runs_one_active_per_broker` |
 
-**F9.5 (lista para mostrar):** `0019_f95_musica` (T19) agrega `listings.music_track_id` y `posts.music_track_id` (texto nulo): aditiva; la versión anterior no las lee, y volver atrás no pide deshacerla.
+**F9.5 (lista para mostrar):** `0019_f95_musica` (T19) agrega `listings.music_track_id` y `posts.music_track_id` (texto nulo): aditiva; la versión anterior no las lee, y volver atrás no pide deshacerla. `0020_f95_en_vivo_por_marca` (T22) agrega `brokers.live_enabled` (ver `brokers`). `0021_f95_imagenes_post` (T25) agrega la tabla `post_image_runs` con sus tipos `post_image_source` y `post_image_run_status`: aditiva; la versión anterior no la lee, y volver atrás no pide deshacerla.
 
 ## Reglas de datos
 

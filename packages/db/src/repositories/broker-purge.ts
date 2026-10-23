@@ -22,6 +22,7 @@ import {
   media,
   planRuns,
   platformAccounts,
+  postImageRuns,
   posts,
   postUploads,
   publicationEvents,
@@ -257,7 +258,15 @@ export function createBrokerPurgeRepository(db: SchemaDatabase): BrokerPurgeRepo
               .where(inArray(postUploads.postId, own.postIds))
               .returning({ id: postUploads.id }),
           );
-          // 4. Los posts, sus planes y el perfil editorial.
+          // 4. Los pedidos de imágenes de los posts (F9.5-T25), los posts, sus planes y el perfil
+          // editorial.
+          note(
+            "post_image_runs",
+            await tx
+              .delete(postImageRuns)
+              .where(eq(postImageRuns.brokerId, brokerId))
+              .returning({ id: postImageRuns.id }),
+          );
           const deletedPosts = await tx
             .delete(posts)
             .where(eq(posts.brokerId, brokerId))

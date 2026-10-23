@@ -35,6 +35,7 @@ import {
   createPlanRunRepository,
   createPlatformAccountRepository,
   createPlatformCatalogRepository,
+  createPostImageRunRepository,
   createPostLock,
   createPostRepository,
   createPostUploadRepository,
@@ -45,7 +46,7 @@ import {
 } from "@agentsales/db";
 import { createStaging, stagingRootOf } from "@agentsales/importers/staging";
 import { createLlmProvider } from "@agentsales/llm";
-import { createHtmlRenderer, createMediaProcessor } from "@agentsales/media";
+import { createCardRenderer, createHtmlRenderer, createMediaProcessor } from "@agentsales/media";
 import {
   createInstagramAuth,
   createInstagramPublisher,
@@ -53,6 +54,7 @@ import {
   MERCADOLIBRE_REFRESH_TIMEOUT_MS,
 } from "@agentsales/publishers";
 import { createDiscordPublisher } from "@agentsales/publishers/discord";
+import { createGeminiImages, createPixabayStock } from "@agentsales/publishers/images";
 import { createLinkedInPublisher } from "@agentsales/publishers/linkedin";
 import { marketplaceProfileDir, openMarketplaceProfile } from "@agentsales/publishers/marketplace";
 import { createTikTokAuth, createTikTokPublisher } from "@agentsales/publishers/tiktok";
@@ -79,6 +81,7 @@ import {
 import { type BackupTarget, backupStatusOf, requestBackupIfDue } from "./jobs/db-backup.js";
 import { IMPORT_ABANDONED, IMPORT_RUN_ABANDONED_AFTER_MS } from "./jobs/import-run.js";
 import { buildJobs } from "./jobs/index.js";
+import { failAbandonedPostImageRuns, requeueQueuedPostImageRuns } from "./jobs/post-image.js";
 import { enqueuePublicationDue } from "./jobs/publication-due.js";
 import { instagramNoteLogger, requeuePublishingPublications } from "./jobs/publication-publish.js";
 import { registerJobs } from "./jobs/registry.js";
@@ -265,6 +268,8 @@ const posts = createPostRepository(database.db);
 const postLock = createPostLock(database.db, { secretBox });
 // Los planes de ideas (spec F9 §4.9): sus ideas se guardan como posts en la misma transacción.
 const planRuns = createPlanRunRepository(database.db);
+// Los pedidos de imágenes de los posts (F9.5-T25): el job y el arranque (abandonados y en cola).
+const postImageRuns = createPostImageRunRepository(database.db);
 const marketplaceWindows = createMarketplaceWindows({
   publications,
   confirm: (publicationId, url) =>
@@ -482,6 +487,45 @@ const jobs = buildJobs({
     },
     signal: jobsAbort.signal,
   },
+  // Conseguir imágenes para un post (F9.5-T25, ADR-0038): las tarjetas siempre; la biblioteca y
+  // la IA solo con su clave. El modelo, el precio y el tope son de la configuración.
+  postImage: {
+    shared: {
+      runs: postImageRuns,
+      posts,
+      brokers: repositories.brokers,
+      contents: createContentRepository(database.db),
+      media: repositories.media,
+      storage,
+      postLock,
+      // Se arma más abajo (`jobQueueFromBoss`); los handlers corren después de arrancar.
+      queue: { enqueue: (name, data, options) => queue.enqueue(name, data, options) },
+      cards: createCardRenderer(),
+      stock: env.PIXABAY_API_KEY ? createPixabayStock({ apiKey: env.PIXABAY_API_KEY }) : null,
+      ai: env.GEMINI_API_KEY
+        ? {
+            generator: createGeminiImages({
+              apiKey: env.GEMINI_API_KEY,
+              model: env.IMAGE_AI_MODEL,
+            }),
+            model: env.IMAGE_AI_MODEL,
+            pricing: {
+              priceUsd: env.IMAGE_AI_PRICE_USD,
+              monthlyCapUsd: env.IMAGE_AI_MONTHLY_CAP_USD,
+            },
+          }
+        : null,
+      sha256: (bytes) => createHash("sha256").update(bytes).digest("hex"),
+    },
+    createProcessor: (workDir) =>
+      createMediaProcessor({
+        ffmpegPath: env.FFMPEG_PATH,
+        ffprobePath: env.FFPROBE_PATH,
+        workDir,
+      }),
+    tmpRoot: contentTmpRoot,
+    signal: jobsAbort.signal,
+  },
   dbBackup: {
     target: backupTarget,
     databaseUrl: env.DATABASE_URL,
@@ -646,6 +690,32 @@ async function requeuePlans(): Promise<void> {
   }
 }
 
+async function failAbandonedPostImages(): Promise<void> {
+  try {
+    const closed = await failAbandonedPostImageRuns(postImageRuns);
+    if (closed.length > 0) {
+      logger.warn({ postImageRunIds: closed }, "pedidos de imágenes abandonados cerrados");
+    }
+  } catch (error) {
+    logger.warn({ err: error }, "no se pudieron revisar los pedidos de imágenes abandonados");
+  }
+}
+
+async function requeuePostImages(): Promise<void> {
+  try {
+    const { requeued, failed } = await requeueQueuedPostImageRuns(postImageRuns, queue);
+    if (requeued > 0) logger.info({ requeued }, "pedidos de imágenes en cola reencolados");
+    if (failed.length > 0) {
+      logger.warn(
+        { postImageRunIds: failed },
+        "no se pudieron reencolar algunos pedidos de imágenes: se reintenta al próximo arranque",
+      );
+    }
+  } catch (error) {
+    logger.warn({ err: error }, "no se pudieron reencolar los pedidos de imágenes en cola");
+  }
+}
+
 async function resumeAutoPublish(): Promise<void> {
   try {
     const resumed = await resumeAutoPublishAtStart({ ...autoPublish, contentRuns }, logger);
@@ -801,6 +871,7 @@ try {
   await failAbandonedRuns();
   await failAbandonedContent();
   await failAbandonedPlans();
+  await failAbandonedPostImages();
   await cleanStaging(true);
   // Una señal durante el arranque: `shutdown` ya está deteniendo pg-boss; no se registra nada más.
   const registered =
@@ -816,6 +887,7 @@ try {
     if (shuttingDown) await heartbeat.stop();
     await requeueContent();
     await requeuePlans();
+    await requeuePostImages();
     await requeuePublications();
     await resumeAutoPublish();
     await requestLiveSyncs();

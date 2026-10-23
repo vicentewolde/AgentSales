@@ -17,6 +17,7 @@ La base de producción acumula corredores de prueba (de F3 a F9) que ensucian el
 
 ## Consecuencias
 - Un corredor borrado no se recupera sin restaurar un respaldo.
+- Un job que corre mientras se borra el corredor puede dejar archivos sin dueño en R2, igual que una corrida de contenido: desde F9.5-T25, también un `post.image` en curso (guarda el original en R2 antes de crear su medio, y el borrado ya no lo encuentra en la base). No se reintenta ni rompe nada; ocupan espacio hasta una limpieza a mano del prefijo `posts/<id>/`.
 - Las cuentas de Mercado Libre o Instagram que tenía ese corredor quedan sin conectar en AgentSales (se conectan de nuevo en otro corredor).
 
 ## Alternativas descartadas

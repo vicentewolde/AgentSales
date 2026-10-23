@@ -20,6 +20,8 @@ import {
   PLAN_RUN_STATUSES,
   PLATFORM_ACCOUNT_STATUSES,
   PLATFORMS,
+  POST_IMAGE_RUN_STATUSES,
+  POST_IMAGE_SOURCES,
   POST_KINDS,
   POST_SOURCES,
   POST_STATUSES,
@@ -81,6 +83,9 @@ export const postSourceEnum = pgEnum("post_source", POST_SOURCES);
 export const briefOriginEnum = pgEnum("brief_origin", BRIEF_ORIGINS);
 export const planRunStatusEnum = pgEnum("plan_run_status", PLAN_RUN_STATUSES);
 export const postUploadStatusEnum = pgEnum("post_upload_status", POST_UPLOAD_STATUSES);
+// F9.5-T25 (ADR-0038): de dónde sale una imagen de un post y el estado de su pedido.
+export const postImageSourceEnum = pgEnum("post_image_source", POST_IMAGE_SOURCES);
+export const postImageRunStatusEnum = pgEnum("post_image_run_status", POST_IMAGE_RUN_STATUSES);
 
 // ── Columnas comunes ─────────────────────────────────────────────────────
 
@@ -514,6 +519,49 @@ export const postUploads = pgTable(
     index("post_uploads_post_idx").on(t.postId),
     // Las pendientes que vencen (la limpieza periódica).
     index("post_uploads_status_expires_idx").on(t.status, t.expiresAt),
+  ],
+);
+
+/**
+ * Los pedidos de imágenes de un post (F9.5-T25, ADR-0038): tarjetas de la marca, una foto de la
+ * biblioteca o una imagen con IA. El job `post.image` los atiende; lo conseguido entra como medios
+ * del post (`media_ids`). `cost_usd` es el gasto de la IA (por marca, aparte del de texto), que se
+ * anota apenas el proveedor entrega la imagen.
+ */
+export const postImageRuns = pgTable(
+  "post_image_runs",
+  {
+    id: id(),
+    postId: uuid("post_id")
+      .notNull()
+      .references(() => posts.id),
+    brokerId: uuid("broker_id")
+      .notNull()
+      .references(() => brokers.id),
+    source: postImageSourceEnum("source").notNull(),
+    status: postImageRunStatusEnum("status").notNull().default("queued"),
+    /** `postImageRequestSchema` (core): lo elegido, sin secretos ni URLs. */
+    request: jsonb("request").notNull(),
+    /** Los medios que quedaron en el post, en orden. */
+    mediaIds: uuid("media_ids").array().notNull().default(sql`'{}'::uuid[]`),
+    costUsd: numeric("cost_usd", { precision: 10, scale: 4, mode: "number" }),
+    /** El modelo de IA que la hizo (`IMAGE_AI_MODEL` de ese momento). */
+    model: text("model"),
+    /** `{ code, message }` cuando `status = failed`. */
+    error: jsonb("error"),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    index("post_image_runs_post_created_idx").on(t.postId, t.createdAt),
+    // El gasto del mes por marca (`sumImageCost`).
+    index("post_image_runs_broker_created_idx").on(t.brokerId, t.createdAt),
+    // Un pedido activo (en cola o corriendo) por post.
+    uniqueIndex("post_image_runs_one_active_per_post")
+      .on(t.postId)
+      .where(sql`"status" IN ('queued', 'running')`),
   ],
 );
 

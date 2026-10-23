@@ -40,6 +40,7 @@ import {
   PLAN_RUN_STATUSES,
   PLATFORM_ACCOUNT_STATUSES,
   PLATFORMS,
+  POST_IMAGE_LIMITS,
   POST_KINDS,
   POST_LIMITS,
   POST_PLATFORMS,
@@ -52,6 +53,8 @@ import {
   PUBLICATION_RESOLUTIONS,
   PUBLICATION_STATUSES,
   PUBLISH_MODES,
+  postImageRequestSchema,
+  postImageRunSchema,
   postSchema,
   publicationErrorSchema,
   remoteStateSchema,
@@ -1275,9 +1278,24 @@ export const brokerUsageSchema = z.object({
   capReached: z.boolean(),
   runs: z.number().int(),
 });
+/**
+ * El gasto en imágenes con IA de un corredor en el mes (F9.5-T25, ADR-0038 §3), aparte del de
+ * texto: con el precio configurado (la cifra oficial es la de Google) y el tope del servidor.
+ */
+export const brokerImageUsageSchema = z.object({
+  brokerId: z.string(),
+  slug: z.string(),
+  spentUsd: z.number(),
+  images: z.number().int(),
+  capUsd: z.number(),
+  /** Otra imagen ya no cabe en el tope del mes. */
+  capReached: z.boolean(),
+});
 export const usageResponseSchema = z.object({
   month: z.string(),
   brokers: z.array(brokerUsageSchema),
+  /** F9.5-T25: un servidor anterior no lo manda: se lee vacío. */
+  images: z.array(brokerImageUsageSchema).default([]),
 });
 export type UsageResponse = z.infer<typeof usageResponseSchema>;
 
@@ -1694,6 +1712,66 @@ export const postUploadCompleteResponseSchema = z.object({
   media: z.array(postMediaItemSchema),
 });
 export type PostUploadCompleteResponse = z.infer<typeof postUploadCompleteResponseSchema>;
+
+// ── Conseguir imágenes para un post (F9.5-T25, ADR-0038) ─────────────────
+
+/** Un pedido de imágenes tal como viaja: las fechas como texto ISO se vuelven `Date`. */
+export const postImageRunViewSchema = postImageRunSchema
+  .omit({ brokerId: true, createdBy: true, startedAt: true, updatedAt: true })
+  .extend({ createdAt: z.coerce.date(), finishedAt: z.coerce.date().nullable() });
+export type PostImageRunView = z.infer<typeof postImageRunViewSchema>;
+
+/**
+ * `GET /posts/:id/images`: las tres fuentes (sin la clave, `available: false` y lo que falta), lo
+ * que se propone buscar y pedir (editable) y los últimos pedidos del post.
+ */
+export const postImageOptionsResponseSchema = z.object({
+  sources: z.object({
+    card: z.object({ available: z.literal(true) }),
+    stock: z.object({ available: z.boolean(), missing: z.string().nullable() }),
+    ai: z.object({
+      available: z.boolean(),
+      missing: z.string().nullable(),
+      priceUsd: z.number().nullable(),
+      capUsd: z.number().nullable(),
+      spentUsd: z.number(),
+      capReached: z.boolean(),
+    }),
+  }),
+  suggestions: z.object({ query: z.string(), prompt: z.string() }),
+  runs: z.array(postImageRunViewSchema),
+});
+export type PostImageOptionsResponse = z.infer<typeof postImageOptionsResponseSchema>;
+
+/** `POST /posts/:id/images`: tarjetas, una foto de la biblioteca (por su id) o una imagen con IA. */
+export const postImageBodySchema = postImageRequestSchema;
+export type PostImageBody = z.infer<typeof postImageBodySchema>;
+
+/** `POST /posts/:id/images` (202) y `GET /posts/:id/images/:runId`. */
+export const postImageRunResponseSchema = z.object({ run: postImageRunViewSchema });
+export type PostImageRunResponse = z.infer<typeof postImageRunResponseSchema>;
+
+export const postImageRunParamSchema = z.object({ id: z.uuid(), runId: z.uuid() });
+
+/** `GET /posts/:id/images/stock?q=…&people=1`: sin `people=1`, sin fotos con personas. */
+export const postImageStockQuerySchema = z.object({
+  q: z.string().trim().min(1, "Escribe qué buscar").max(POST_IMAGE_LIMITS.queryMaxChars),
+  people: z.enum(["0", "1"]).optional(),
+});
+
+/** Una foto de la biblioteca para elegir (la miniatura es de Pixabay: se muestra, no se publica). */
+export const stockPhotoSchema = z.object({
+  id: z.string(),
+  previewUrl: z.string(),
+  pageUrl: z.string(),
+  tags: z.array(z.string()),
+  width: z.number(),
+  height: z.number(),
+  author: z.string(),
+});
+export type StockPhotoView = z.infer<typeof stockPhotoSchema>;
+export const postImageStockResponseSchema = z.object({ photos: z.array(stockPhotoSchema) });
+export type PostImageStockResponse = z.infer<typeof postImageStockResponseSchema>;
 
 // ── Textos, aprobación, publicar y programar un post (F9-T12, spec F9 §4.10) ──
 
