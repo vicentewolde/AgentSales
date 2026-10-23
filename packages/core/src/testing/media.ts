@@ -255,6 +255,18 @@ export function createInMemoryMediaRepository(
           : null;
       return { media: structuredCopy(media), previousPath };
     },
+    async deleteOriginals(subject, ids) {
+      if (subject.kind !== "post") return [];
+      const own = ofSubject(subject);
+      const found = originals().filter((media) => ids.includes(media.id) && own(media));
+      const foundIds = new Set(found.map((media) => media.id));
+      const variants = [...stored.values()].filter(
+        (media) => media.parentMediaId !== null && foundIds.has(media.parentMediaId),
+      );
+      const deleted = [...found, ...variants];
+      for (const media of deleted) stored.delete(media.id);
+      return deleted.map((media) => media.storagePath);
+    },
     async deleteDerivative(id) {
       const current = stored.get(id);
       if (current === undefined || current.role === "original") return null;

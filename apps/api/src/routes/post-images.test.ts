@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import {
   errorBodySchema,
+  postImageCardsRemovedResponseSchema,
   postImageOptionsResponseSchema,
   postImageRunResponseSchema,
   postImageStockResponseSchema,
@@ -94,7 +95,9 @@ async function setup(options: { stock?: boolean; ai?: boolean } = {}) {
         method: init.method ?? "GET",
         headers: {
           authorization: `Bearer ${token}`,
-          ...(init.method === "POST" ? { origin: ORIGIN, "content-type": "application/json" } : {}),
+          ...(init.method === undefined || init.method === "GET"
+            ? {}
+            : { origin: ORIGIN, "content-type": "application/json" }),
         },
         ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
       });
@@ -198,6 +201,66 @@ describe("/posts/:id/images", () => {
       capUsd: 0.05,
       capReached: true,
     });
+  });
+
+  it("las opciones dicen cuántas tarjetas saldrán; DELETE /images/cards quita solo las tarjetas del post", async () => {
+    const s = await setup();
+    const options = postImageOptionsResponseSchema.parse(
+      await (await s.admin(`/posts/${s.post.id}/images`)).json(),
+    );
+    expect(options.cards).toEqual({
+      count: 2,
+      existing: 0,
+      message: "2 tarjetas: portada y cierre.",
+    });
+
+    // Una foto que subió el usuario y dos tarjetas de un pedido terminado.
+    const media = (checksum: string, sortOrder: number) =>
+      s.deps.media.create({
+        listingId: null,
+        postId: s.post.id,
+        brokerId: s.brand.id,
+        kind: "image",
+        storagePath: `posts/${s.post.id}/original/${checksum}.jpg`,
+        mime: "image/jpeg",
+        bytes: 10,
+        checksum,
+        sortOrder,
+        isCover: false,
+      });
+    const upload = await media("u".repeat(64), 0);
+    const cards = [await media("c".repeat(64), 1), await media("d".repeat(64), 2)];
+    const run = await s.postImageRuns.create({
+      postId: s.post.id,
+      brokerId: s.brand.id,
+      source: "card",
+      request: { source: "card", format: "4:5" },
+      createdBy: null,
+    });
+    await s.postImageRuns.markRunning(run.id);
+    await s.postImageRuns.markSucceeded(
+      run.id,
+      cards.map((card) => card.id),
+    );
+    const withCards = postImageOptionsResponseSchema.parse(
+      await (await s.admin(`/posts/${s.post.id}/images`)).json(),
+    );
+    expect(withCards.cards?.existing).toBe(2);
+
+    // Lo de otra marca es 404 y no borra nada.
+    const foreign = await s.other(`/posts/${s.post.id}/images/cards`, { method: "DELETE" });
+    expect(foreign.status).toBe(404);
+    expect(await s.deps.media.listOriginals({ kind: "post", id: s.post.id })).toHaveLength(3);
+
+    const removed = await s.admin(`/posts/${s.post.id}/images/cards`, { method: "DELETE" });
+    expect(removed.status).toBe(200);
+    expect(postImageCardsRemovedResponseSchema.parse(await removed.json())).toEqual({
+      removed: 2,
+      leftover: 0,
+    });
+    expect(
+      (await s.deps.media.listOriginals({ kind: "post", id: s.post.id })).map((item) => item.id),
+    ).toEqual([upload.id]);
   });
 
   it("lo de otra marca es 404; un pedido inválido es 400", async () => {

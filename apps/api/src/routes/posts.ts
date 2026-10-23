@@ -35,6 +35,7 @@ import {
   postContentId,
   postSubject,
   publishPost,
+  removePostCards,
   requestContentRun,
   requestPostImage,
   requestPostUploads,
@@ -56,6 +57,7 @@ import {
   idParamSchema,
   type PostContentParam,
   type PostDetailResponse,
+  type PostImageCardsRemovedResponse,
   type PostImageOptionsResponse,
   type PostImageRunResponse,
   type PostImageRunView,
@@ -104,7 +106,7 @@ export type PostRoutesDeps = EditContentDeps &
     /** Las publicaciones del post, solo para leer (los cambios van en el candado). */
     publications: Pick<PublicationRepository, "listBySubject">;
     /** Firmar las subidas, revisar que llegaron y las URLs de lectura (ADR-0025). */
-    storage: Pick<MediaStorage, "signedUploadUrl" | "list" | "signedReadUrl">;
+    storage: Pick<MediaStorage, "signedUploadUrl" | "list" | "signedReadUrl" | "delete">;
     /** `post.media`, al terminar una subida; `post.draft` y `publication.publish` (F9-T12). */
     queue: JobQueue;
     /**
@@ -233,9 +235,14 @@ export function postRoutes(deps: PostRoutesDeps) {
   const imageDeps = {
     posts: deps.posts,
     brokers: deps.brokers,
+    contents: deps.contents,
+    editorialProfiles: deps.editorialProfiles,
+    media: deps.media,
     runs: deps.postImageRuns,
     queue: deps.queue,
     sources: deps.imageSources,
+    postLock: deps.postLock,
+    storage: deps.storage,
   };
 
   return (
@@ -391,6 +398,17 @@ export function postRoutes(deps: PostRoutesDeps) {
           return c.json(body, 202);
         },
       )
+      // Quitar las tarjetas anteriores del post (solo las de sus pedidos de tarjetas; nunca lo que
+      // el usuario subió).
+      .delete("/:id/images/cards", validated("param", idParamSchema), async (c) => {
+        const result = await removePostCards(
+          imageDeps,
+          requireAuth(c).user,
+          c.req.valid("param").id,
+        );
+        const body: PostImageCardsRemovedResponse = result;
+        return c.json(body, 200);
+      })
       // F9-T12: pedir los textos (el worker los redacta con `post.draft`; la corrida se sigue en
       // `GET /content-runs/:id`).
       .post(

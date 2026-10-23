@@ -83,6 +83,21 @@ describe("agentsales post media", () => {
     expect(s.h.queue.jobs.at(-1)?.name).toBe("post.image");
   });
 
+  it("sin fuente dice cuántas tarjetas saldrían", async () => {
+    const s = await setup();
+    await runPostMedia(s.deps, s.post.id);
+    expect(s.h.text()).toContain("Saldrían 1 tarjeta con el tema del post.");
+  });
+
+  it("--card --replace pide quitar antes las tarjetas anteriores; --replace solo no vale", async () => {
+    const s = await setup();
+    await expect(runPostMedia(s.deps, s.post.id, { card: true, replace: true })).resolves.toBe(0);
+    const [run] = await s.postImageRuns.listByPost(s.post.id, 1);
+    expect(run?.request).toEqual({ source: "card", format: "4:5", replaceCards: true });
+    await expect(runPostMedia(s.deps, s.post.id, { replace: true })).resolves.toBe(1);
+    expect(s.h.errors()).toContain("--replace va con --card");
+  });
+
   it("--stock lista los resultados sin personas y sin URLs firmadas; --pick elige uno", async () => {
     const s = await setup({ keys: true });
     await expect(runPostMedia(s.deps, s.post.id, { stock: "living" })).resolves.toBe(0);

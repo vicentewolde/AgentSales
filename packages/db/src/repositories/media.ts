@@ -360,6 +360,35 @@ export function createMediaRepository(db: SchemaDatabase): MediaRepository {
       }
     },
 
+    deleteOriginals(subject, ids) {
+      if (subject.kind !== "post" || ids.length === 0) return Promise.resolve([]);
+      return withDbErrors(() =>
+        db.transaction(async (tx) => {
+          const originals = await tx
+            .select({ id: media.id })
+            .from(media)
+            .where(and(inArray(media.id, [...ids]), ofSubject(subject), isOriginal))
+            // Bloquea los originales: si `post.media` está guardando una variante (que ya los
+            // bloqueó con `no key update`), el borrado espera a que termine y se lleva también
+            // esa variante, en vez de fallar por la llave foránea. Si el borrado va primero,
+            // `upsertDerivative` ya no encuentra su original (`MEDIA_NOT_FOUND`, sin reintento).
+            .for("update");
+          const found = originals.map((row) => row.id);
+          if (found.length === 0) return [];
+          // Primero las variantes (cuelgan del original), después los originales.
+          const variants = await tx
+            .delete(media)
+            .where(inArray(media.parentMediaId, found))
+            .returning({ storagePath: media.storagePath });
+          const deleted = await tx
+            .delete(media)
+            .where(inArray(media.id, found))
+            .returning({ storagePath: media.storagePath });
+          return [...deleted, ...variants].map((row) => row.storagePath);
+        }),
+      );
+    },
+
     deleteDerivative(id) {
       return withDbErrors(async () => {
         const [deleted] = await db

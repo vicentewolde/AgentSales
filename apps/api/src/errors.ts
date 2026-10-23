@@ -142,6 +142,8 @@ const CONFLICTS = new Set([
   "POST_IMAGE_RUN_ACTIVE",
   "IMAGE_AI_BUDGET_EXCEEDED",
   "POST_IMAGE_NEEDS_TEXT",
+  // Cambiar las tarjetas de un post cuyas imágenes ya están en una publicación.
+  "POST_CARDS_IN_USE",
 ]);
 
 /**

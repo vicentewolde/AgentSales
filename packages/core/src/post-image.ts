@@ -43,7 +43,15 @@ export const POST_IMAGE_LIMITS = {
 /** Lo pedido (jsonb `request`): sin secretos ni URLs, solo lo que eligió el usuario. */
 export const postImageRequestSchema = z.discriminatedUnion("source", [
   /** Tarjetas de la marca: en un post de video, además el video de las tarjetas (9:16). */
-  z.object({ source: z.literal("card"), format: z.enum(POST_IMAGE_FORMATS) }),
+  z.object({
+    source: z.literal("card"),
+    format: z.enum(POST_IMAGE_FORMATS),
+    /**
+     * Quitar antes las tarjetas que este post ya tenía de pedidos anteriores (`removePostCards`):
+     * solo ellas, nunca una foto o un video que el usuario subió.
+     */
+    replaceCards: z.boolean().optional(),
+  }),
   /**
    * Una foto de la biblioteca: su id (el worker la vuelve a pedir a Pixabay con ese id, nunca con
    * una URL que mande el cliente) y la búsqueda con que se encontró.
@@ -174,6 +182,17 @@ export const postImageRunActive = (postId: string, runId: string | null) =>
     "POST_IMAGE_RUN_ACTIVE",
     "Ya se está consiguiendo una imagen para este post: espera a que termine",
     { details: { postId, runId } },
+  );
+
+/**
+ * `POST_CARDS_IN_USE` (409): las tarjetas ya están en una publicación aprobada, programada o
+ * publicada; quitarlas la dejaría sin sus imágenes.
+ */
+export const postCardsInUse = (postId: string) =>
+  new AppError(
+    "POST_CARDS_IN_USE",
+    "Las tarjetas ya están en una publicación aprobada, programada o publicada: quita la aprobación o cancela la publicación antes de cambiarlas",
+    { details: { postId } },
   );
 
 /** `POST_IMAGE_SOURCE_NOT_CONFIGURED` (503): falta la clave de la biblioteca o de la IA. */
