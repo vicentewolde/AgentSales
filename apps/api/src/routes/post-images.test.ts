@@ -256,6 +256,7 @@ describe("/posts/:id/images", () => {
     expect(removed.status).toBe(200);
     expect(postImageCardsRemovedResponseSchema.parse(await removed.json())).toEqual({
       removed: 2,
+      leftover: 0,
     });
     expect(
       (await s.deps.media.listOriginals({ kind: "post", id: s.post.id })).map((item) => item.id),

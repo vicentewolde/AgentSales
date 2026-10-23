@@ -34,6 +34,7 @@ import {
 } from "../post-image.js";
 import { scrubMessage } from "../redact.js";
 import { postSubject } from "../subject.js";
+import { assertCardsRemovable, cardMediaIds, deleteStoredFiles } from "./post-cards-cleanup.js";
 import { POST_UPLOAD } from "./post-uploads.js";
 
 // El job `post.image` (F9.5-T25, ADR-0038): consigue lo pedido (tarjetas, una foto de la biblioteca
@@ -49,7 +50,7 @@ export type RunPostImageDeps = {
   /** El idioma principal de la marca: el primero de su perfil editorial. */
   editorialProfiles: Pick<EditorialProfileRepository, "get">;
   media: Pick<MediaRepository, "get" | "listOriginals">;
-  storage: Pick<MediaStorage, "get" | "put" | "putStream">;
+  storage: Pick<MediaStorage, "get" | "put" | "putStream" | "delete">;
   postLock: PostLock;
   queue: JobQueue;
   cards: CardRenderer;
@@ -65,7 +66,14 @@ export type RunPostImageDeps = {
 
 export type RunPostImageResult =
   | { outcome: "skipped"; reason: "not_active" }
-  | { outcome: "succeeded"; mediaIds: string[]; created: number }
+  | {
+      outcome: "succeeded";
+      mediaIds: string[];
+      created: number;
+      /** Tarjetas anteriores quitadas (`replaceCards`) y claves de R2 que no se pudieron borrar. */
+      replaced: number;
+      leftover: string[];
+    }
   | { outcome: "failed"; code: string };
 
 /** Un archivo listo para guardar como original del post. */
@@ -255,7 +263,10 @@ export async function runPostImage(
     const broker = await deps.brokers.findById(post.brokerId);
     if (broker === null) throw new AppError("BROKER_NOT_FOUND", "La marca del post ya no existe");
     const before = await deps.media.listOriginals(postSubject(post.id));
-    if (before.length >= POST_UPLOAD.maxMediaPerPost) throw tooMany(post.id);
+    // Con `replaceCards` las tarjetas anteriores se quitan al final, cuando las nuevas ya están:
+    // el tope de medios se revisa entonces, ya sin ellas.
+    const replace = run.request.source === "card" && run.request.replaceCards === true;
+    if (!replace && before.length >= POST_UPLOAD.maxMediaPerPost) throw tooMany(post.id);
 
     const produced = await produce(deps, run.id, attempt, post, broker, run.request, params.signal);
     const files = produced.map((item) =>
@@ -287,42 +298,65 @@ export async function runPostImage(
       }
     }
 
-    const { mediaIds, created } = await deps.postLock.run(post.id, async ({ media }) => {
-      const originals = await media.listOriginals(postSubject(post.id));
-      const bySha = new Map(originals.map((item) => [item.checksum, item.id]));
-      const fresh = new Set(files.filter((file) => !bySha.has(file.sha256)).map((f) => f.sha256));
-      if (originals.length + fresh.size > POST_UPLOAD.maxMediaPerPost) throw tooMany(post.id);
-      let nextOrder = originals.reduce((max, item) => Math.max(max, item.sortOrder + 1), 0);
-      const ids: string[] = [];
-      let count = 0;
-      for (const file of files) {
-        const existing = bySha.get(file.sha256);
-        if (existing !== undefined) {
-          if (!ids.includes(existing)) ids.push(existing);
-          continue;
+    const { mediaIds, created, replacedPaths, replaced } = await deps.postLock.run(
+      post.id,
+      async ({ media, publications }) => {
+        const listed = await media.listOriginals(postSubject(post.id));
+        // Reemplazo (`replaceCards`): las tarjetas de pedidos anteriores que este pedido no reutiliza
+        // (el mismo contenido es el mismo medio) se quitan aquí, junto con la creación de las nuevas,
+        // así un pedido que falla antes no deja al post sin las que tenía.
+        let originals = listed;
+        let replacedPaths: string[] = [];
+        let replaced = 0;
+        if (replace) {
+          const keep = new Set(files.map((file) => file.sha256));
+          const old = new Set(await cardMediaIds({ runs: deps.runs, media }, post.id));
+          const doomed = listed.filter((item) => old.has(item.id) && !keep.has(item.checksum));
+          if (doomed.length > 0) {
+            assertCardsRemovable(await publications.listBySubject(postSubject(post.id)), post.id);
+            const ids = doomed.map((item) => item.id);
+            replacedPaths = await media.deleteOriginals(postSubject(post.id), ids);
+            originals = listed.filter((item) => !ids.includes(item.id));
+            replaced = ids.length;
+          }
         }
-        const record = await media.create({
-          listingId: null,
-          postId: post.id,
-          brokerId: post.brokerId,
-          kind: file.item.kind,
-          storagePath: file.path,
-          mime: file.mime,
-          bytes: file.bytes,
-          checksum: file.sha256,
-          sortOrder: nextOrder++,
-          isCover: false,
-        });
-        bySha.set(file.sha256, record.id);
-        ids.push(record.id);
-        count++;
-      }
-      return { mediaIds: ids, created: count };
-    });
+        const bySha = new Map(originals.map((item) => [item.checksum, item.id]));
+        const fresh = new Set(files.filter((file) => !bySha.has(file.sha256)).map((f) => f.sha256));
+        if (originals.length + fresh.size > POST_UPLOAD.maxMediaPerPost) throw tooMany(post.id);
+        let nextOrder = originals.reduce((max, item) => Math.max(max, item.sortOrder + 1), 0);
+        const ids: string[] = [];
+        let count = 0;
+        for (const file of files) {
+          const existing = bySha.get(file.sha256);
+          if (existing !== undefined) {
+            if (!ids.includes(existing)) ids.push(existing);
+            continue;
+          }
+          const record = await media.create({
+            listingId: null,
+            postId: post.id,
+            brokerId: post.brokerId,
+            kind: file.item.kind,
+            storagePath: file.path,
+            mime: file.mime,
+            bytes: file.bytes,
+            checksum: file.sha256,
+            sortOrder: nextOrder++,
+            isCover: false,
+          });
+          bySha.set(file.sha256, record.id);
+          ids.push(record.id);
+          count++;
+        }
+        return { mediaIds: ids, created: count, replacedPaths, replaced };
+      },
+    );
+    // Los archivos de las tarjetas quitadas: si uno no se puede borrar, queda suelto en el bucket.
+    const leftover = await deleteStoredFiles(deps.storage, replacedPaths);
     // Las variantes (miniatura, 4:5, reel…), como después de una subida.
     await deps.queue.enqueue("post.media", { postId: post.id }, { singletonKey: post.id });
     await deps.runs.markSucceeded(run.id, mediaIds);
-    return { outcome: "succeeded", mediaIds, created };
+    return { outcome: "succeeded", mediaIds, created, replaced, leftover };
   } catch (error) {
     // Después de llamar a la IA nada se reintenta solo (cobraría otra vez): el pedido falla.
     if (isAppError(error) && error.retriable && !params.isLastAttempt && !attempt.aiCalled) {

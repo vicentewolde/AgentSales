@@ -69,13 +69,11 @@ export function useRemovePostCards(postId: string) {
   const client = useApiClient();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async () =>
-      (
-        await unwrap(
-          client.posts[":id"].images.cards.$delete({ param: { id: postId } }),
-          postImageCardsRemovedResponseSchema,
-        )
-      ).removed,
+    mutationFn: () =>
+      unwrap(
+        client.posts[":id"].images.cards.$delete({ param: { id: postId } }),
+        postImageCardsRemovedResponseSchema,
+      ),
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: postImageKeys.options(postId) });
       void queryClient.invalidateQueries({ queryKey: postKeys.detail(postId), exact: true });

@@ -121,16 +121,18 @@ describe("panel: conseguir imagen", () => {
     return { ...s, upload, remaining };
   }
 
-  it("si el post ya tiene tarjetas, avisa y por defecto las quita al hacer nuevas (sin tocar lo subido)", async () => {
+  it("si el post ya tiene tarjetas, avisa y por defecto pide reemplazarlas (el worker las quita al terminar)", async () => {
     const s = await withPreviousCards();
     const panel = await openPanel();
     expect(await within(panel).findByText(/Este post ya tiene 2 tarjetas/u)).toBeTruthy();
     const box = within(panel).getByRole("checkbox", { name: "Quitar las tarjetas anteriores" });
     expect((box as HTMLInputElement).checked).toBe(true);
     fireEvent.click(within(panel).getByRole("button", { name: "Hacer tarjetas" }));
-    await waitFor(async () => expect(await s.remaining()).toEqual([s.upload.id]));
+    await waitFor(() => expect(s.requests).toContain(`POST /posts/${s.post.id}/images`));
     const [run] = await s.deps.postImageRuns.listByPost(s.post.id, 1);
     expect(run?.request).toEqual({ source: "card", format: "4:5", replaceCards: true });
+    // Hasta que el worker termina, el post conserva lo que tenía.
+    expect(await s.remaining()).toHaveLength(3);
   });
 
   it("si desmarca la casilla, las tarjetas nuevas se suman y no se quita nada", async () => {
@@ -146,16 +148,59 @@ describe("panel: conseguir imagen", () => {
     expect(await s.remaining()).toHaveLength(3);
   });
 
-  it("«Solo quitar las tarjetas anteriores» las borra sin pedir otras", async () => {
+  it("«Solo quitar las tarjetas anteriores» pide confirmación y después las borra sin pedir otras", async () => {
     const s = await withPreviousCards();
     const panel = await openPanel();
     fireEvent.click(
       await within(panel).findByRole("button", { name: "Solo quitar las tarjetas anteriores" }),
     );
+    // Antes de confirmar no se borra nada; "Cancelar" lo deja como estaba.
+    expect(s.requests).not.toContain(`DELETE /posts/${s.post.id}/images/cards`);
+    fireEvent.click(within(panel).getByRole("button", { name: "Cancelar" }));
+    expect(within(panel).queryByRole("alertdialog")).toBeNull();
+    expect(await s.remaining()).toHaveLength(3);
+
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Solo quitar las tarjetas anteriores" }),
+    );
+    fireEvent.click(within(panel).getByRole("button", { name: "Sí, quitarlas" }));
     await waitFor(async () => expect(await s.remaining()).toEqual([s.upload.id]));
     expect(s.requests).toContain(`DELETE /posts/${s.post.id}/images/cards`);
     await waitFor(() => expect(within(panel).queryByText(/Este post ya tiene/u)).toBeNull());
     expect(s.requests).not.toContain(`POST /posts/${s.post.id}/images`);
+  });
+
+  it("si una publicación ya usa las tarjetas, dice POST_CARDS_IN_USE en simple y no borra nada", async () => {
+    const s = await withPreviousCards();
+    const mediaIds = await s.remaining();
+    await s.deps.postLock.run(s.post.id, ({ publications }) =>
+      publications.create(
+        {
+          postId: s.post.id,
+          platformAccountId: "cuenta-1",
+          platform: "x",
+          format: "post",
+          contentId: "texto-1",
+          mediaIds,
+        },
+        { actor: "operator" },
+      ),
+    );
+    const panel = await openPanel();
+    // Reemplazar: el pedido se niega de inmediato.
+    fireEvent.click(await within(panel).findByRole("button", { name: "Hacer tarjetas" }));
+    expect(await within(panel).findByText(/ya están en una publicación aprobada/u)).toBeTruthy();
+    expect(await s.deps.postImageRuns.listByPost(s.post.id, 5)).toHaveLength(1);
+    // Solo quitar: igual.
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Solo quitar las tarjetas anteriores" }),
+    );
+    fireEvent.click(within(panel).getByRole("button", { name: "Sí, quitarlas" }));
+    await waitFor(() => expect(s.requests).toContain(`DELETE /posts/${s.post.id}/images/cards`));
+    expect(
+      (await within(panel).findAllByText(/ya están en una publicación aprobada/u)).length,
+    ).toBeGreaterThan(0);
+    expect(await s.remaining()).toHaveLength(3);
   });
 
   it("un post de video hace el video de las tarjetas (9:16) y no ofrece fotos", async () => {

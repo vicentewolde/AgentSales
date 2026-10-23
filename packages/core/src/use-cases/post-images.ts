@@ -23,7 +23,6 @@ import {
   POST_IMAGE_LIMITS,
   type PostImageRequest,
   type PostImageRun,
-  postCardsInUse,
   postImageNotNeeded,
   postImageRunActive,
   postImageSourceNotConfigured,
@@ -31,6 +30,7 @@ import {
 } from "../post-image.js";
 import { postSubject } from "../subject.js";
 import type { User } from "../user.js";
+import { assertCardsRemovable, cardMediaIds, deleteStoredFiles } from "./post-cards-cleanup.js";
 import { assertPostAccess } from "./posts.js";
 
 // Conseguir imágenes para un post (F9.5-T25, ADR-0038), del lado de la API: qué fuentes hay, buscar
@@ -63,9 +63,6 @@ export type PostImageDeps = {
   storage: Pick<MediaStorage, "delete">;
   now?: () => Date;
 };
-
-/** Cuántos pedidos de un post se leen para saber cuáles de sus medios son tarjetas. */
-const ALL_RUNS = 500;
 
 /** Lo que el panel y la CLI muestran antes de pedir. */
 export type PostImageOptions = {
@@ -108,26 +105,6 @@ async function usablePost(deps: Pick<PostImageDeps, "posts">, actor: Actor, post
   if (!canDraftPost(post.status)) throw postNotReady(post);
   if (post.kind === "text") throw postImageNotNeeded(postId);
   return post as Post & { kind: Exclude<Post["kind"], "text"> };
-}
-
-/**
- * Los ids de los medios del post que son tarjetas: los de sus pedidos de tarjetas terminados que
- * siguen siendo originales del post. Lo que el usuario subió, una foto de la biblioteca o una imagen
- * con IA nunca está aquí (el post no guarda de dónde salió un medio: lo dicen los pedidos).
- */
-async function cardMediaIds(
-  deps: Pick<PostImageDeps, "runs" | "media">,
-  postId: string,
-): Promise<string[]> {
-  const runs = await deps.runs.listByPost(postId, ALL_RUNS);
-  const fromCards = new Set(
-    runs
-      .filter((run) => run.source === "card" && run.status === "succeeded")
-      .flatMap((run) => run.mediaIds),
-  );
-  if (fromCards.size === 0) return [];
-  const all = await deps.media.listBySubject(postSubject(postId));
-  return all.filter((item) => item.role === "original" && fromCards.has(item.id)).map((i) => i.id);
 }
 
 /** El plan de tarjetas del post (cuántas y por qué), o `null` si todavía no se puede armar. */
@@ -239,35 +216,40 @@ async function assertNoActiveRun(deps: Pick<PostImageDeps, "runs">, postId: stri
   }
 }
 
-/** Las publicaciones que ya usan los medios del post (o los usaron): no se les quitan imágenes. */
-const KEEPS_ITS_MEDIA = new Set([
-  "approved",
-  "scheduled",
-  "publishing",
-  "awaiting_manual_confirm",
-  "published",
-  "paused",
-  "outcome_unknown",
-]);
-
 /**
  * Quita del post sus tarjetas (los medios de sus pedidos de tarjetas terminados) con sus variantes,
- * en el candado del post, y después sus archivos de R2 (si uno no se puede borrar, queda suelto en
- * el bucket sin afectar al post). Si alguna publicación aprobada, programada o publicada las usa,
- * `POST_CARDS_IN_USE` y no se borra nada. Devuelve cuántas tarjetas quitó.
+ * en el candado del post (que relee cuáles son tarjetas), y después sus archivos de R2 (si uno no
+ * se puede borrar, queda suelto en el bucket sin afectar al post: se cuenta en `leftover`). Si
+ * alguna publicación aprobada, programada o publicada las usa, `POST_CARDS_IN_USE` y no se borra
+ * nada.
  */
-async function removeCardsOf(deps: PostImageDeps, postId: string): Promise<number> {
-  const ids = await cardMediaIds(deps, postId);
-  if (ids.length === 0) return 0;
-  const paths = await deps.postLock.run(postId, async (repos) => {
-    const publications = await repos.publications.listBySubject(postSubject(postId));
-    if (publications.some((publication) => KEEPS_ITS_MEDIA.has(publication.status))) {
-      throw postCardsInUse(postId);
-    }
-    return repos.media.deleteOriginals(postSubject(postId), ids);
+async function removeCardsOf(
+  deps: PostImageDeps,
+  postId: string,
+): Promise<{ removed: number; leftover: number }> {
+  if ((await cardMediaIds(deps, postId)).length === 0) return { removed: 0, leftover: 0 };
+  const { removed, paths } = await deps.postLock.run(postId, async (repos) => {
+    const ids = await cardMediaIds({ runs: deps.runs, media: repos.media }, postId);
+    if (ids.length === 0) return { removed: 0, paths: [] };
+    assertCardsRemovable(await repos.publications.listBySubject(postSubject(postId)), postId);
+    return {
+      removed: ids.length,
+      paths: await repos.media.deleteOriginals(postSubject(postId), ids),
+    };
   });
-  await Promise.allSettled(paths.map((path) => deps.storage.delete(path)));
-  return ids.length;
+  const leftover = await deleteStoredFiles(deps.storage, paths);
+  return { removed, leftover: leftover.length };
+}
+
+/**
+ * Antes de crear un pedido con `replaceCards`: si las tarjetas actuales no se pueden quitar
+ * (`POST_CARDS_IN_USE`), se avisa ya, sin esperar al worker. No borra nada.
+ */
+async function assertReplaceable(deps: PostImageDeps, postId: string): Promise<void> {
+  if ((await cardMediaIds(deps, postId)).length === 0) return;
+  await deps.postLock.run(postId, async (repos) => {
+    assertCardsRemovable(await repos.publications.listBySubject(postSubject(postId)), postId);
+  });
 }
 
 /**
@@ -280,12 +262,12 @@ export async function removePostCards(
   deps: PostImageDeps,
   actor: Actor,
   postId: string,
-): Promise<{ removed: number }> {
+): Promise<{ removed: number; leftover: number }> {
   const post = assertPostAccess(actor, await deps.posts.get(postId), postId);
   if (post.status === "archived") throw postArchived(postId);
   if (!canDraftPost(post.status)) throw postNotReady(post);
   await assertNoActiveRun(deps, post.id);
-  return { removed: await removeCardsOf(deps, post.id) };
+  return removeCardsOf(deps, post.id);
 }
 
 /**
@@ -293,8 +275,8 @@ export async function removePostCards(
  * `post.image` (el worker las consigue y las agrega como medios). En un post de video, las tarjetas
  * van en 9:16 y el worker arma el video. Sin la clave de la biblioteca o de la IA,
  * `POST_IMAGE_SOURCE_NOT_CONFIGURED`; con la IA en el tope, `IMAGE_AI_BUDGET_EXCEEDED`; con otro
- * pedido en curso, `POST_IMAGE_RUN_ACTIVE`. Unas tarjetas con `replaceCards` quitan antes las
- * anteriores del post (`removePostCards`). Si no se pudo encolar, el pedido queda `failed`.
+ * pedido en curso, `POST_IMAGE_RUN_ACTIVE`. Unas tarjetas con `replaceCards` reemplazan las
+ * anteriores del post, pero lo hace el worker al terminar bien (`runPostImage`). Si no se pudo encolar, el pedido queda `failed`.
  */
 export async function requestPostImage(
   deps: PostImageDeps,
@@ -321,9 +303,10 @@ export async function requestPostImage(
     await assertImageAiBudget(deps, broker, pricing, (deps.now ?? (() => new Date()))());
   }
   if (request.source === "card" && request.replaceCards === true) {
-    // Con otro pedido en curso no se quita nada: se avisa antes de borrar.
+    // Aquí no se borra nada: las tarjetas anteriores las quita el worker cuando las nuevas ya están
+    // hechas (si el pedido falla, el post conserva las que tenía). Solo se avisa si no se podrá.
     await assertNoActiveRun(deps, post.id);
-    await removeCardsOf(deps, post.id);
+    await assertReplaceable(deps, post.id);
   }
   const normalized: PostImageRequest =
     request.source === "card" && post.kind === "video" ? { ...request, format: "9:16" } : request;

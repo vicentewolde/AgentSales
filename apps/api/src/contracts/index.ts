@@ -1758,9 +1758,13 @@ export const postImageOptionsResponseSchema = z.object({
 });
 export type PostImageOptionsResponse = z.infer<typeof postImageOptionsResponseSchema>;
 
-/** `DELETE /posts/:id/images/cards`: cuántas tarjetas anteriores se quitaron. */
+/**
+ * `DELETE /posts/:id/images/cards`: cuántas tarjetas anteriores se quitaron y cuántos archivos no
+ * se pudieron borrar del almacenamiento (quedan sueltos, sin afectar al post).
+ */
 export const postImageCardsRemovedResponseSchema = z.object({
   removed: z.number().int().nonnegative(),
+  leftover: z.number().int().nonnegative(),
 });
 export type PostImageCardsRemovedResponse = z.infer<typeof postImageCardsRemovedResponseSchema>;
 

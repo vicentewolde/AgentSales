@@ -245,4 +245,18 @@ describe("postCardPlan: el caso de las 10 tarjetas", () => {
     expect(empty.cards).toHaveLength(2);
     expect(empty.limit).toEqual({ max: 10, platform: null });
   });
+
+  it("con redes fijadas cuentan todas, aunque solo una tenga texto", () => {
+    // X y Discord fijadas, texto solo de Discord: el tope sigue siendo el de X.
+    const plan = postCardPlan(
+      post("carousel", ["x", "discord"]),
+      [text("discord", points(6, "Discord"))],
+      BRAND,
+    );
+    expect(plan.cards).toHaveLength(4);
+    expect(plan.limit).toEqual({ max: 4, platform: "x" });
+    // Sin redes fijadas (null), solo cuentan las que tienen texto: aquí, solo Discord.
+    const open = postCardPlan(post("carousel"), [text("discord", points(6, "Discord"))], BRAND);
+    expect(open.cards).toHaveLength(8);
+  });
 });

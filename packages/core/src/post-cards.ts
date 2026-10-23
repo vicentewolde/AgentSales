@@ -187,9 +187,9 @@ export function cardImageLimit(kind: PostKind, platforms: readonly PostPlatform[
 }
 
 /**
- * Las redes del post a las que sirven sus tarjetas: las que ya tienen texto vigente (dentro de las
- * que fijó el post, si fijó) o, sin textos, las que fijó el post; sin ninguna, `[]`. Solo las que
- * sirven al tipo del post (`kindProblem`), como al redactar.
+ * Las redes del post a las que sirven sus tarjetas: con redes fijadas (`platforms`), todas las que
+ * sirven al tipo del post, tengan texto o no; sin ellas (`null`, todas las de la marca), las que ya
+ * tienen texto vigente. Solo las que sirven al tipo (`kindProblem`), como al redactar.
  */
 export function cardPlatforms(
   post: Pick<Post, "kind"> & { platforms?: Post["platforms"] },
@@ -198,14 +198,13 @@ export function cardPlatforms(
   const serves = (platform: PostPlatform) =>
     ((post.platforms ?? null) === null || post.platforms?.includes(platform) === true) &&
     kindProblem(platform, post.kind) === null;
-  const withText = POST_PLATFORMS.filter(
+  // Con redes fijadas cuentan todas las que sirven al tipo, tengan texto o no: el texto de una
+  // puede llegar después y el tope es el de la red más estricta.
+  if (post.platforms != null) return POST_PLATFORMS.filter(serves);
+  return POST_PLATFORMS.filter(
     (platform) =>
       serves(platform) &&
       contents.some((item) => item.platform === platform && item.body.trim() !== ""),
-  );
-  if (withText.length > 0) return withText;
-  return POST_PLATFORMS.filter(
-    (platform) => (post.platforms ?? []).includes(platform) && serves(platform),
   );
 }
 

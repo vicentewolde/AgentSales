@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { BrokerData } from "../broker.js";
 import { emptyEditorialProfileData } from "../editorial-profile.js";
-import type { Language, PostKind, PostPlatform } from "../enums.js";
+import type { Language, PostKind, PostPlatform, PublicationStatus } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
 import {
   IMAGE_AI_BUDGET_MESSAGE,
@@ -642,9 +642,20 @@ describe("quitar las tarjetas anteriores", () => {
     return { s, upload, cards };
   }
 
+  /** Los estados que bloquean quitar las tarjetas, y el camino para llegar a cada uno. */
+  const KEPT_ROUTES = {
+    approved: [],
+    scheduled: ["scheduled"],
+    publishing: ["publishing"],
+    awaiting_manual_confirm: ["publishing", "awaiting_manual_confirm"],
+    published: ["publishing", "published"],
+    paused: ["publishing", "published", "paused"],
+    outcome_unknown: ["publishing", "outcome_unknown"],
+  } as const satisfies Record<string, readonly PublicationStatus[]>;
+
   /** Una publicación del post que usa estos medios, en el estado dado. */
-  async function publicationIn(s: Scenario, status: "approved" | "scheduled" | "publishing") {
-    const created = await s.publications.create(
+  async function publicationIn(s: Scenario, status: keyof typeof KEPT_ROUTES) {
+    let current = await s.publications.create(
       {
         postId: s.post.id,
         platformAccountId: "cuenta-1",
@@ -655,20 +666,33 @@ describe("quitar las tarjetas anteriores", () => {
       },
       { actor: "operator" },
     );
-    if (status === "approved") return created;
-    return s.publications.transition(
-      created.id,
-      {
-        from: "approved",
-        to: status,
-        changes: {
-          dryRun: true,
-          ...(status === "scheduled" ? { scheduledAt: new Date("2026-10-30T15:00:00Z") } : {}),
+    for (const to of KEPT_ROUTES[status]) {
+      current = await s.publications.transition(
+        current.id,
+        {
+          from: current.status,
+          to,
+          changes: {
+            dryRun: true,
+            ...(to === "scheduled" ? { scheduledAt: new Date("2026-10-30T15:00:00Z") } : {}),
+            ...(to === "published" ? { publishedAt: new Date("2026-10-30T15:00:00Z") } : {}),
+          },
         },
-      },
-      { actor: "operator" },
-    );
+        { actor: "operator" },
+      );
+    }
+    return current;
   }
+
+  /** Cambia el texto del post: los puntos de las tarjetas ya no son los mismos. */
+  const rewriteText = (s: Scenario) => {
+    s.worker.contents = {
+      listCurrent: async () =>
+        [
+          { platform: "instagram", language: "es", body: "- Otro punto uno\n- Otro punto dos" },
+        ] as never,
+    };
+  };
 
   it("quita solo las tarjetas, con sus variantes y sus archivos; lo subido por el usuario queda", async () => {
     const { s, upload, cards } = await withCardsAndUpload();
@@ -694,7 +718,7 @@ describe("quitar las tarjetas anteriores", () => {
     });
     await s.storage.put(variant.media.storagePath, fakeJpeg("thumb"), "image/jpeg");
 
-    expect(await removePostCards(s.api, ADMIN, s.post.id)).toEqual({ removed: 4 });
+    expect(await removePostCards(s.api, ADMIN, s.post.id)).toEqual({ removed: 4, leftover: 0 });
     expect(await ids(s)).toEqual([upload.id]);
     expect(await s.media.get(variant.media.id)).toBeNull();
     for (const path of [...cardPaths, variant.media.storagePath]) {
@@ -718,20 +742,99 @@ describe("quitar las tarjetas anteriores", () => {
     await s.work((await s.request({ source: "ai", prompt: "Una casa", format: "4:5" })).id);
     const before = await ids(s);
     expect(before).toHaveLength(2);
-    expect(await removePostCards(s.api, ADMIN, s.post.id)).toEqual({ removed: 0 });
+    expect(await removePostCards(s.api, ADMIN, s.post.id)).toEqual({ removed: 0, leftover: 0 });
     expect(await ids(s)).toEqual(before);
   });
 
-  it("pedir tarjetas con replaceCards quita las anteriores antes de crear el pedido", async () => {
+  it("replaceCards: el pedido no borra nada; el worker quita las anteriores al terminar y reutiliza las idénticas", async () => {
     const { s, upload, cards } = await withCardsAndUpload();
+    const [cover, firstPoint, secondPoint, closing] = cards;
+    rewriteText(s);
     const run = await s.request({ source: "card", format: "4:5", replaceCards: true });
-    expect(await ids(s)).toEqual([upload.id]);
-    expect(await s.work(run.id)).toMatchObject({ outcome: "succeeded", created: 4 });
+    // Hasta que el worker termina, el post conserva lo que tenía.
+    expect(await ids(s)).toHaveLength(5);
+    const oldPaths = (await originals(s))
+      .filter((item) => [firstPoint, secondPoint].includes(item.id))
+      .map((item) => item.storagePath);
+
+    expect(await s.work(run.id)).toMatchObject({
+      outcome: "succeeded",
+      created: 2,
+      replaced: 2,
+      leftover: [],
+    });
     const after = await ids(s);
     expect(after).toHaveLength(5);
-    expect(after).toContain(upload.id);
-    // Son medios nuevos: los ids anteriores ya no existen.
-    expect(after.some((id) => cards.includes(id))).toBe(false);
+    // La portada y el cierre salen idénticos: son los mismos medios, no se borran ni se duplican.
+    expect(after).toEqual(expect.arrayContaining([upload.id, cover, closing]));
+    expect(after).not.toContain(firstPoint);
+    expect(after).not.toContain(secondPoint);
+    for (const path of oldPaths) expect(await s.storage.head(path)).toBeNull();
+  });
+
+  it("si el pedido de reemplazo falla, el post conserva las tarjetas que tenía", async () => {
+    const { s } = await withCardsAndUpload();
+    const before = await ids(s);
+    s.worker.cards = {
+      ...s.cards,
+      render: async () => {
+        throw new AppError("CARD_RENDER_FAILED", "No se pudo dibujar");
+      },
+    };
+    const run = await s.request({ source: "card", format: "4:5", replaceCards: true });
+    expect(await s.work(run.id)).toEqual({ outcome: "failed", code: "CARD_RENDER_FAILED" });
+    expect(await ids(s)).toEqual(before);
+  });
+
+  it("si una publicación toma las tarjetas después de pedir, el worker falla con POST_CARDS_IN_USE y no borra", async () => {
+    const { s } = await withCardsAndUpload();
+    rewriteText(s);
+    const run = await s.request({ source: "card", format: "4:5", replaceCards: true });
+    await publicationIn(s, "approved");
+    expect(await s.work(run.id)).toEqual({ outcome: "failed", code: "POST_CARDS_IN_USE" });
+    expect(await ids(s)).toHaveLength(5);
+  });
+
+  it("los archivos de R2 que no se pueden borrar se cuentan, no se tragan", async () => {
+    const { s, upload } = await withCardsAndUpload();
+    const broken = {
+      ...s.api,
+      storage: {
+        delete: async () => {
+          throw new Error("R2 caído");
+        },
+      },
+    };
+    expect(await removePostCards(broken, ADMIN, s.post.id)).toEqual({ removed: 4, leftover: 4 });
+    expect(await ids(s)).toEqual([upload.id]);
+  });
+
+  it("una foto tuya con exactamente los mismos bytes que una tarjeta cuenta como esa tarjeta", async () => {
+    // Límite conocido (ADR-0038): el mismo contenido es el mismo medio, y el pedido de tarjetas
+    // que lo reutiliza lo anota como suyo.
+    const s = await setup({ kind: "image" });
+    await s.work((await s.request({ source: "card", format: "4:5" })).id);
+    const [card] = await originals(s);
+    if (card === undefined) throw new Error("falta la tarjeta");
+    await removePostCards(s.api, ADMIN, s.post.id);
+    // El usuario sube justo esos bytes; después piden las tarjetas de nuevo: reutiliza su medio.
+    const mine = await s.media.create({
+      listingId: null,
+      postId: s.post.id,
+      brokerId: s.broker.id,
+      kind: "image",
+      storagePath: card.storagePath,
+      mime: card.mime,
+      bytes: card.bytes,
+      checksum: card.checksum,
+      sortOrder: 0,
+      isCover: false,
+    });
+    expect(await s.work((await s.request({ source: "card", format: "4:5" })).id)).toMatchObject({
+      created: 0,
+    });
+    expect(await removePostCards(s.api, ADMIN, s.post.id)).toMatchObject({ removed: 1 });
+    expect(await ids(s)).not.toContain(mine.id);
   });
 
   it("sin replaceCards, los medios anteriores se quedan", async () => {
@@ -750,8 +853,9 @@ describe("quitar las tarjetas anteriores", () => {
     expect(await ids(s)).toHaveLength(5);
   });
 
-  it("si una publicación aprobada, programada o publicándose las usa, POST_CARDS_IN_USE y no borra nada", async () => {
-    for (const status of ["approved", "scheduled", "publishing"] as const) {
+  it.each(Object.keys(KEPT_ROUTES) as (keyof typeof KEPT_ROUTES)[])(
+    "una publicación %s las usa: POST_CARDS_IN_USE y no borra nada",
+    async (status) => {
       const { s } = await withCardsAndUpload();
       await publicationIn(s, status);
       expect(await codeOf(removePostCards(s.api, ADMIN, s.post.id))).toBe("POST_CARDS_IN_USE");
@@ -759,8 +863,8 @@ describe("quitar las tarjetas anteriores", () => {
         "POST_CARDS_IN_USE",
       );
       expect(await ids(s)).toHaveLength(5);
-    }
-  });
+    },
+  );
 
   it("una publicación cancelada no impide quitarlas", async () => {
     const { s, upload } = await withCardsAndUpload();
@@ -770,7 +874,7 @@ describe("quitar las tarjetas anteriores", () => {
       { from: "approved", to: "cancelled" },
       { actor: "operator" },
     );
-    expect(await removePostCards(s.api, ADMIN, s.post.id)).toEqual({ removed: 4 });
+    expect(await removePostCards(s.api, ADMIN, s.post.id)).toEqual({ removed: 4, leftover: 0 });
     expect(await ids(s)).toEqual([upload.id]);
   });
 

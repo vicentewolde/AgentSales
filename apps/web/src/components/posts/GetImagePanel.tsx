@@ -227,6 +227,7 @@ export function GetImagePanel({
   const remove = useRemovePostCards(post.id);
   // Por defecto se quitan las tarjetas anteriores: lo normal es rehacerlas, no sumarlas.
   const [replace, setReplace] = useState(true);
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const queryClient = useQueryClient();
   const latest = options.data?.runs[0];
   const wasActive = useRef(false);
@@ -336,8 +337,10 @@ export function GetImagePanel({
                     : existing === 1
                       ? "Este post ya tiene 1 tarjeta de un pedido anterior."
                       : `Este post ya tiene ${existing} tarjetas de pedidos anteriores.`}{" "}
-                  Si no las quitas, las nuevas se suman. Solo se quitan las tarjetas: lo que subiste
-                  tú, las fotos de la biblioteca y las imágenes con IA no se tocan.
+                  Si no las quitas, las nuevas se suman; si las quitas, se reemplazan cuando las
+                  nuevas estén listas (si algo falla, se quedan las que tenías). Solo se quitan las
+                  tarjetas: lo que subiste tú, las fotos de la biblioteca y las imágenes con IA no
+                  se tocan (salvo que una foto tuya sea idéntica a una tarjeta).
                 </p>
                 <label className="flex items-center gap-2 text-fg">
                   <input
@@ -363,17 +366,47 @@ export function GetImagePanel({
               >
                 {video ? "Hacer video de las tarjetas" : "Hacer tarjetas"}
               </Button>
-              {existing > 0 && (
-                <Button
-                  variant="secondary"
-                  loading={remove.isPending}
-                  disabled={busy}
-                  onClick={() => remove.mutate()}
-                >
+              {existing > 0 && !confirmRemove && (
+                <Button variant="secondary" disabled={busy} onClick={() => setConfirmRemove(true)}>
                   Solo quitar las tarjetas anteriores
                 </Button>
               )}
             </div>
+            {existing > 0 && confirmRemove && (
+              <div
+                role="alertdialog"
+                aria-label="Confirmar quitar las tarjetas"
+                className="space-y-2 rounded-md bg-danger-50 p-3 text-sm text-danger-800"
+              >
+                <p>
+                  ¿Quitar las tarjetas anteriores del post sin hacer otras? No se puede deshacer.
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="danger"
+                    loading={remove.isPending}
+                    onClick={() =>
+                      remove.mutate(undefined, { onSettled: () => setConfirmRemove(false) })
+                    }
+                  >
+                    Sí, quitarlas
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    disabled={remove.isPending}
+                    onClick={() => setConfirmRemove(false)}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
+            )}
+            {remove.data !== undefined && remove.data.leftover > 0 && (
+              <p role="status" className="text-sm text-warning-800">
+                Se quitaron las tarjetas, pero {remove.data.leftover} archivo(s) no se pudieron
+                borrar del almacenamiento. No afectan al post.
+              </p>
+            )}
             {remove.error !== null && <ErrorAlert error={remove.error} />}
           </div>
         ) : video ? (
