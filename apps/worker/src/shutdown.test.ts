@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { contentJobSetup, silentLogger } from "../test/content-fixture.js";
 import { contentPrepareJob } from "./jobs/content-prepare.js";
-import { stopWorker } from "./shutdown.js";
+import { stopOptionsFor, stopWorker } from "./shutdown.js";
 
 describe("apagado del worker", () => {
   it("dispara el signal, espera a que el handler termine y recién después cierra el navegador", async () => {
@@ -173,5 +173,37 @@ describe("apagado del worker", () => {
       "latido apagado",
       "base cerrada",
     ]);
+  });
+
+  it("apagado solo, sin trabajo (F9.5-T24): no corta los jobs, espera a pg-boss y cierra en orden", async () => {
+    const events: string[] = [];
+    await stopWorker(
+      {
+        abortJobs: () => {
+          events.push("corte");
+        },
+        stopBoss: async () => {
+          events.push("pg-boss esperó a los jobs");
+        },
+        closeRenderer: async () => {
+          events.push("navegador");
+        },
+        stopHeartbeat: async () => {
+          events.push("latido");
+        },
+        closeDatabase: async () => {
+          events.push("base");
+        },
+      },
+      silentLogger,
+      { abortJobs: stopOptionsFor("idle").abortJobs },
+    );
+
+    expect(events).toEqual(["pg-boss esperó a los jobs", "navegador", "latido", "base"]);
+  });
+
+  it("con una señal corta los jobs y espera 30 s; solo, no corta y espera más (F9.5-T24)", () => {
+    expect(stopOptionsFor("signal")).toEqual({ abortJobs: true, gracefulStopMs: 30_000 });
+    expect(stopOptionsFor("idle")).toEqual({ abortJobs: false, gracefulStopMs: 15 * 60_000 });
   });
 });

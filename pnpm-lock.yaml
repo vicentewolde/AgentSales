@@ -320,6 +320,10 @@ importers:
       pg-boss:
         specifier: 12.35.0
         version: 12.35.0
+    devDependencies:
+      '@electric-sql/pglite':
+        specifier: 0.5.8
+        version: 0.5.8
 
   packages/storage:
     dependencies:

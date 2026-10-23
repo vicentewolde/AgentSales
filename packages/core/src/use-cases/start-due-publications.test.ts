@@ -5,7 +5,7 @@ import type { Publication } from "../publication.js";
 import { SCHEDULE_OVERDUE_MS } from "../schedule.js";
 import { createPublicationScenario, type PublicationScenario } from "../testing/index.js";
 import { schedulePublication } from "./schedule-publications.js";
-import { DUE_BATCH_LIMIT, startDuePublications } from "./start-due-publications.js";
+import { DUE_BATCH_LIMIT, dueQuery, startDuePublications } from "./start-due-publications.js";
 
 const NOW = new Date("2026-10-19T12:00:00.000Z");
 const AT = new Date("2026-10-19T13:00:00.000Z");
@@ -18,6 +18,18 @@ const schedule = (t: PublicationScenario, id: string, dryRun: boolean, at = AT) 
 
 const due = (t: PublicationScenario, now: Date) =>
   startDuePublications({ ...t.deps, publications: t.publications, now: () => now });
+
+describe("dueQuery (la regla de lo vencido, también para el worker que se apaga solo)", () => {
+  it("hasta ahora (o el margen), desde hace 12 h, sin Marketplace y con el tope", () => {
+    expect(dueQuery(NOW)).toEqual({
+      now: NOW,
+      since: new Date(NOW.getTime() - SCHEDULE_OVERDUE_MS),
+      excludePlatforms: ["fb_marketplace"],
+      limit: DUE_BATCH_LIMIT,
+    });
+    expect(dueQuery(NOW, 70 * 60_000).now).toEqual(new Date(NOW.getTime() + 70 * 60_000));
+  });
+});
 
 describe("startDuePublications", () => {
   it("empieza las vencidas con su propio modo, actor system, y las encola después del candado", async () => {
