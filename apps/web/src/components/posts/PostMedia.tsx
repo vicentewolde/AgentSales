@@ -1,4 +1,4 @@
-import type { PostMediaItem } from "@agentsales/api/contracts";
+import type { PostJson, PostMediaItem } from "@agentsales/api/contracts";
 import { POST_MEDIA_TYPES, POST_UPLOAD } from "@agentsales/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
@@ -9,6 +9,7 @@ import { ErrorAlert } from "../ErrorAlert.js";
 import { Button } from "../ui/Button.js";
 import { Card } from "../ui/Card.js";
 import { FILE_INPUT } from "../ui/styles.js";
+import { GetImagePanel } from "./GetImagePanel.js";
 import { POST_MEDIA_ANCHOR } from "./media-anchor.js";
 
 /** Lo que acepta el selector: las extensiones de core (la API vuelve a revisar). */
@@ -37,8 +38,11 @@ export function PostMedia({
   media,
   lockReason,
   waiting,
+  kind,
 }: {
   postId: string;
+  /** El tipo del post: «Conseguir imagen» (F9.5-T25) no aparece en uno de solo texto. */
+  kind?: PostJson["kind"];
   media: readonly PostMediaItem[];
   /** Por qué no se pueden subir medios (el post está archivado). */
   lockReason: string | null;
@@ -174,6 +178,7 @@ export function PostMedia({
           {...(failed === null ? {} : { onRetry: () => void upload(failed) })}
         />
       )}
+      {kind !== undefined && <GetImagePanel post={{ id: postId, kind }} lockReason={lockReason} />}
     </Card>
   );
 }

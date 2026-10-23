@@ -34,7 +34,7 @@ import { PublicationStatusBadge } from "../StatusBadge.js";
 import { Button } from "../ui/Button.js";
 import { LiveConfirmButton } from "./LiveConfirm.js";
 import { postContents } from "./labels.js";
-import { POST_MEDIA_ANCHOR } from "./media-anchor.js";
+import { GET_IMAGE_ANCHOR, POST_MEDIA_ANCHOR } from "./media-anchor.js";
 
 /**
  * Las redes con al menos un texto aprobado, en el orden de los textos (el de la API). Con el post,
@@ -239,6 +239,10 @@ export function PostPublishBar({
           {[...new Set(noMedia.values())].join(" ")}{" "}
           <a href={`#${POST_MEDIA_ANCHOR}`} className="font-medium underline underline-offset-2">
             {post.kind === "video" ? "Subir el video" : "Subir imágenes"}
+          </a>{" "}
+          o{" "}
+          <a href={`#${GET_IMAGE_ANCHOR}`} className="font-medium underline underline-offset-2">
+            Conseguir imagen
           </a>
           . El texto aprobado no se pierde: publicar y programar se activan cuando estén.
         </p>

@@ -407,6 +407,7 @@ export function PostDetailPage() {
 
           <PostMedia
             postId={item.id}
+            kind={item.kind}
             media={media}
             lockReason={archived ? "El post está archivado." : null}
             waiting={uploadsInReview}
