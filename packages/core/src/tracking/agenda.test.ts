@@ -155,9 +155,9 @@ describe("agendaItems", () => {
       expired: false,
     });
     expect(items.find((item) => item.kind === "manual_task")?.externalRef).toBe("L2");
-    // Es el orden declarado.
+    // Es el orden declarado (sin el estado del worker no hay `worker_off`).
     expect([...new Set(items.map((item) => item.kind))]).toEqual(
-      AGENDA_KINDS.filter((kind) => kind !== "approved_waiting"),
+      AGENDA_KINDS.filter((kind) => kind !== "approved_waiting" && kind !== "worker_off"),
     );
   });
 
@@ -222,6 +222,97 @@ describe("agendaItems", () => {
       { kind: "backup", action: "backup", code: "BACKUP_FAILED" },
     ]);
     expect(run([])).toEqual([]);
+  });
+});
+
+describe("agendaItems con el worker apagado (F9.5-T24)", () => {
+  // NOW es 2026-10-15 12:00 en Chile: la próxima revisión del horario es a las 12:50.
+  const scheduled = (at: Date, extra: Partial<Publication> = {}) =>
+    publication({ status: "scheduled", scheduledAt: at, ...extra });
+  /** Apagado, con el horario activado (se enciende en la próxima revisión). */
+  const off = { running: false, scheduled: true };
+
+  it("con horario: la vencida y la que vence antes de la próxima revisión esperan esa revisión", () => {
+    const due = scheduled(minutes(-5));
+    const beforeWindow = scheduled(minutes(30));
+    const items = run([due, beforeWindow], { worker: off });
+
+    expect(items.map((item) => [item.kind, item.action, item.publicationId])).toEqual([
+      ["worker_off", "wait_worker", due.id],
+      ["worker_off", "wait_worker", beforeWindow.id],
+    ]);
+    expect(items[0]).toMatchObject({ at: due.scheduledAt, title: "L1", platform: "instagram" });
+    // Va primero: explica por qué lo demás no sale.
+    expect(AGENDA_KINDS[0]).toBe("worker_off");
+  });
+
+  it("también un post, y una de LinkedIn a mano (el worker la deja lista)", () => {
+    const linkedin = postPublication("p1", {
+      status: "scheduled",
+      platform: "linkedin",
+      scheduledAt: minutes(30),
+    });
+    const items = run([linkedin], { posts: [post("p1")], worker: off });
+
+    expect(items.map((item) => [item.kind, item.postId])).toEqual([["worker_off", "p1"]]);
+  });
+
+  it("lo que vence después de la próxima revisión sigue como próxima; una atrasada, atrasada; Marketplace, te toca", () => {
+    const items = run(
+      [
+        scheduled(minutes(60)), // 13:00, después de la revisión de las 12:50: esa lo enciende
+        scheduled(minutes(-13 * 60)), // atrasada: ya no sale sola
+        scheduled(minutes(-30), { platform: "fb_marketplace" }), // recordatorio: lo aprieta el operador
+        scheduled(minutes(60), { platform: "fb_marketplace" }),
+      ],
+      { worker: off },
+    );
+
+    expect(items.map((item) => item.kind)).toEqual([
+      "overdue",
+      "your_turn",
+      "upcoming",
+      "upcoming",
+    ]);
+  });
+
+  it("de noche, lo de la madrugada espera a la primera revisión de la mañana (06:50)", () => {
+    // 2026-10-15 23:30 en Chile; la próxima revisión es la de las 06:50 del 16.
+    const night = new Date("2026-10-16T02:30:00.000Z");
+    const at = (hours: number) => new Date(night.getTime() + hours * 60 * 60_000);
+    const items = run([scheduled(at(2.5)), scheduled(at(8))], {
+      worker: off,
+      now: night,
+    });
+
+    // 02:00 espera al worker; 07:30, después de la revisión de las 06:50, es una próxima.
+    expect(items.map((item) => item.kind)).toEqual(["worker_off", "upcoming"]);
+  });
+
+  it("sin horario: el worker debe estar encendido; avisa lo de las próximas 24 h y pide encenderlo", () => {
+    const items = run([scheduled(minutes(-5)), scheduled(minutes(6 * 60)), scheduled(days(2))], {
+      worker: { running: false, scheduled: false },
+    });
+
+    expect(items.map((item) => [item.kind, item.action])).toEqual([
+      ["worker_off", "start_worker"],
+      ["worker_off", "start_worker"],
+      ["upcoming", "none"],
+    ]);
+    // Sin decir si hay horario, es que no lo hay.
+    expect(run([scheduled(minutes(-5))], { worker: { running: false } })[0]?.action).toBe(
+      "start_worker",
+    );
+  });
+
+  it("con el worker encendido, o sin saber su estado, no hay aviso", () => {
+    const publications = [scheduled(minutes(-5)), scheduled(minutes(30))];
+
+    for (const worker of [{ running: true }, null, undefined]) {
+      expect(
+        run(publications, worker === undefined ? {} : { worker }).map((item) => item.kind),
+      ).toEqual(["upcoming"]);
+    }
   });
 });
 

@@ -84,7 +84,7 @@ export function ScheduleForm({
 
   return (
     <form
-      className="mt-3 space-y-3 rounded-lg border border-line bg-slate-50 p-4 text-sm"
+      className="mt-3 space-y-3 rounded-lg border border-line bg-canvas p-4 text-sm"
       onSubmit={(event) => {
         event.preventDefault();
         void submit(false);

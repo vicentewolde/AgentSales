@@ -126,6 +126,7 @@ describe("GET /health", () => {
                 stoppedAt: null,
               },
             ],
+            workerIdleExit: true,
             now: () => now,
           },
         },
@@ -143,6 +144,8 @@ describe("GET /health", () => {
     // F9.5-T22: las marcas con el modo en vivo encendido (solo el administrador ve el detalle).
     expect(body.liveBrokers).toEqual(["marca"]);
     expect(body.llmKeyMissingBrokers).toEqual(["ajeno"]);
+    // F9.5-T24: el worker se apaga solo y lo enciende el horario.
+    expect(body.workerSchedule).toBe(true);
     expect(healthReportSchema.parse(body)).toEqual(body);
   });
 

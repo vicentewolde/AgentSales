@@ -156,7 +156,7 @@ export function CalendarGrid({
               key={day}
               aria-label={dayLabel(day)}
               className={`rounded-lg border p-1.5 ${view === "semana" ? "md:min-h-40" : "md:min-h-24"} ${
-                day === today ? "border-info-500 bg-info-50" : "border-line bg-slate-50"
+                day === today ? "border-info-500 bg-info-50" : "border-line bg-canvas"
               } ${outside ? "opacity-60" : ""} ${view === "mes" ? hideOnPhone : ""}`}
             >
               <p

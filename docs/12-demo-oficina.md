@@ -45,6 +45,7 @@ Guía paso a paso para la demo de F9.5 (`docs/specs/fase-9.5-lista-para-mostrar.
 
 **Antes de que llegue la oficina**
 1. Enciende el worker (paso 8 de `docs/10-despliegue.md`) y abre el panel en `https://agentsales.agentpey.com`: **Hoy** debe cargar.
+   Si el horario del worker está activado (se apaga solo tras 10 minutos sin trabajo), lee antes el párrafo «Para una demo» del paso 8 de `docs/10-despliegue.md` («El worker con horario»): en las pausas de la demo se apagaría.
 2. Deja preparada (no aprobada) la propiedad de ejemplo y uno o dos posts de AgentPey ya aceptados, por si la IA tarda en vivo.
 
 **En vivo** (dilo en el chat: «pasa a live para la demo»; los comandos los corres tú, `docs/10-despliegue.md`, «En vivo solo durante una demo»):

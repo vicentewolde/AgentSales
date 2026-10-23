@@ -100,6 +100,12 @@ export const healthReportSchema = z.object({
    */
   worker: workerStatusSchema.nullable().optional(),
   /**
+   * Desde F9.5-T24 (ADR-0037): si el worker se apaga solo y lo enciende el horario
+   * (`WORKER_IDLE_EXIT_MINUTES` > 0). Sin horario, el worker apagado no se enciende solo. Opcional,
+   * como `database`.
+   */
+  workerSchedule: z.boolean().optional(),
+  /**
    * Desde F8-T15 (spec §4.8): los administradores activos (correo) sin el doble factor; `doctor`
    * recomienda activarlo. `null` si la base no respondió. Opcional, como `database`.
    */

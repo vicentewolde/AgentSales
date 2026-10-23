@@ -15,7 +15,8 @@ import { StatusBadge } from "../components/StatusBadge.js";
 import { Button } from "../components/ui/Button.js";
 import { EmptyState } from "../components/ui/EmptyState.js";
 import { Field, Select } from "../components/ui/Field.js";
-import { HomeIcon, ImageIcon } from "../components/ui/icons.js";
+import { HomeIcon } from "../components/ui/icons.js";
+import { HomeIllustration } from "../components/ui/illustrations.js";
 import { PageHeader } from "../components/ui/PageHeader.js";
 import { Loading } from "../components/ui/Spinner.js";
 import { useBrokerModeOf } from "../queries/brokers.js";
@@ -81,47 +82,51 @@ function ListingCard({
   return (
     <li className="relative">
       {/* Fuera del enlace: un control dentro de un enlace no se puede usar con el teclado. */}
-      <label className="absolute top-3 left-3 z-10 flex rounded-md bg-surface/95 p-1.5 shadow-xs ring-1 ring-black/5">
+      <label className="absolute top-3 left-3 z-10 flex size-11 cursor-pointer items-center justify-center rounded-full bg-surface/95 shadow-sm">
         <input
           type="checkbox"
           checked={selected}
           aria-label={`Seleccionar ${listing.externalRef} para programar`}
           onChange={(event) => onSelect(event.target.checked)}
+          className="size-4.5"
         />
       </label>
+      {/* F9.5-T26: la foto de portada es la protagonista; el precio va en serif. */}
       <Link
         to={`/propiedades/${listing.id}`}
-        className="group block h-full overflow-hidden rounded-xl border border-line bg-surface shadow-xs transition hover:border-line-strong hover:shadow-md"
+        className="group flex h-full flex-col overflow-hidden rounded-2xl bg-surface shadow-card transition hover:shadow-lift"
       >
-        <div className="aspect-[4/3] overflow-hidden bg-slate-100">
+        <div className="relative aspect-[4/3] overflow-hidden bg-sand">
           {listing.coverUrl ? (
             <img
               src={listing.coverUrl}
               alt={`Portada de ${listing.externalRef}`}
               loading="lazy"
-              className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+              className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
             />
           ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-fg-subtle">
-              <ImageIcon className="size-7 text-slate-300" />
-              Sin foto
+            <div className="flex h-full flex-col items-center justify-center gap-1 text-sm text-fg-muted">
+              <HomeIllustration className="w-28" />
+              <span>Sin foto</span>
             </div>
           )}
-        </div>
-        <div className="p-4">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-medium tabular-nums text-fg-subtle">
-              {listing.externalRef}
-            </span>
+          <span className="absolute top-3.5 right-3.5">
             <StatusBadge status={listing.status} />
-          </div>
-          <p className="mt-2 font-semibold text-fg">{title}</p>
-          <p className="mt-0.5 text-sm text-fg-muted">
-            {listing.operation ? OPERATION_TEXT[listing.operation] : "Sin operación"}
-          </p>
-          <p className="mt-3 text-lg font-semibold tabular-nums tracking-tight text-fg">
+          </span>
+        </div>
+        <div className="flex flex-1 flex-col gap-1 px-5 pt-4 pb-5">
+          <span className="text-xs font-medium tracking-wide tabular-nums text-fg-subtle">
+            {listing.externalRef}
+          </span>
+          <p className="font-display text-[1.625rem] leading-tight text-fg tabular-nums">
             {formatListingPrice(listing)}
           </p>
+          <p className="text-[1.0625rem] font-semibold text-fg">{title}</p>
+          <div className="mt-auto pt-2">
+            <p className="border-t border-line pt-2.5 text-sm text-fg-subtle">
+              {listing.operation ? OPERATION_TEXT[listing.operation] : "Sin operación"}
+            </p>
+          </div>
         </div>
       </Link>
     </li>
@@ -198,7 +203,7 @@ export function ListingsPage() {
 
       <form
         aria-label="Filtros"
-        className="flex flex-wrap items-end gap-3 rounded-xl border border-line bg-surface p-4 shadow-xs"
+        className="flex flex-wrap items-end gap-3 rounded-3xl bg-surface p-4 shadow-md sm:px-5"
         onSubmit={(event) => event.preventDefault()}
       >
         <FilterSelect
@@ -273,7 +278,7 @@ export function ListingsPage() {
                     description: (
                       <>
                         Cárgalas con:{" "}
-                        <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-fg">
+                        <code className="rounded-md bg-sand px-1.5 py-0.5 text-xs text-fg">
                           pnpm -s cli import propiedades.xlsx --media medios
                         </code>
                       </>
@@ -301,7 +306,10 @@ export function ListingsPage() {
       )}
 
       {listings.data && listings.data.length > 0 && (
-        <ul aria-label="Resultados" className="mt-3 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <ul
+          aria-label="Resultados"
+          className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-6"
+        >
           {listings.data.map((listing) => (
             <ListingCard
               key={listing.id}
