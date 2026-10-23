@@ -199,6 +199,14 @@ export interface MediaRepository {
    * se borra aquí): es idempotente.
    */
   deleteDerivative(id: string): Promise<string | null>;
+  /**
+   * Borra originales **de ese post** (F9.5-T25: quitar las tarjetas anteriores) junto con sus
+   * variantes, y devuelve las claves de R2 de todo lo borrado para que quien llama las borre. Solo
+   * toca originales del post dado: un id de otro post, de un aviso, el logo o una variante se
+   * ignora (idempotente). Para posts; un aviso no quita originales. Se usa dentro del candado del
+   * post.
+   */
+  deleteOriginals(subject: Subject, ids: readonly string[]): Promise<string[]>;
 }
 
 /**

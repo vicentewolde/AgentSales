@@ -71,9 +71,20 @@ export function postImageJob(deps: PostImageJobDeps): Job {
           logger.warn({ code: result.code }, "no se consiguió la imagen del post");
         } else {
           logger.info(
-            { media: result.mediaIds.length, created: result.created },
+            {
+              media: result.mediaIds.length,
+              created: result.created,
+              replaced: result.replaced,
+            },
             "imágenes del post conseguidas",
           );
+          // Archivos de tarjetas quitadas que R2 no borró: quedan sueltos (son claves, sin firma).
+          if (result.leftover.length > 0) {
+            logger.warn(
+              { leftover: result.leftover },
+              "no se pudieron borrar de R2 las tarjetas anteriores: quedan sueltas en el bucket",
+            );
+          }
         }
       } finally {
         await dir

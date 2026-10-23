@@ -80,6 +80,129 @@ describe("panel: conseguir imagen", () => {
     expect(run?.request).toEqual({ source: "card", format: "4:5" });
   });
 
+  it("antes de hacer las tarjetas, dice cuántas saldrán y por qué", async () => {
+    await setup({ kind: "carousel" });
+    const panel = await openPanel();
+    expect(await within(panel).findByText("Saldrán 2 tarjetas: portada y cierre.")).toBeTruthy();
+  });
+
+  /** Un post con una foto subida por el usuario y dos tarjetas de un pedido anterior. */
+  async function withPreviousCards() {
+    const s = await setup({ kind: "carousel" });
+    const media = (checksum: string, sortOrder: number) =>
+      s.deps.media.create({
+        listingId: null,
+        postId: s.post.id,
+        brokerId: s.post.brokerId,
+        kind: "image",
+        storagePath: `posts/${s.post.id}/original/${checksum}.jpg`,
+        mime: "image/jpeg",
+        bytes: 10,
+        checksum,
+        sortOrder,
+        isCover: false,
+      });
+    const upload = await media("u".repeat(64), 0);
+    const cards = [await media("c".repeat(64), 1), await media("d".repeat(64), 2)];
+    const run = await s.deps.postImageRuns.create({
+      postId: s.post.id,
+      brokerId: s.post.brokerId,
+      source: "card",
+      request: { source: "card", format: "4:5" },
+      createdBy: null,
+    });
+    await s.deps.postImageRuns.markRunning(run.id);
+    await s.deps.postImageRuns.markSucceeded(
+      run.id,
+      cards.map((card) => card.id),
+    );
+    const remaining = async () =>
+      (await s.deps.media.listOriginals({ kind: "post", id: s.post.id })).map((item) => item.id);
+    return { ...s, upload, remaining };
+  }
+
+  it("si el post ya tiene tarjetas, avisa y por defecto pide reemplazarlas (el worker las quita al terminar)", async () => {
+    const s = await withPreviousCards();
+    const panel = await openPanel();
+    expect(await within(panel).findByText(/Este post ya tiene 2 tarjetas/u)).toBeTruthy();
+    const box = within(panel).getByRole("checkbox", { name: "Quitar las tarjetas anteriores" });
+    expect((box as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(within(panel).getByRole("button", { name: "Hacer tarjetas" }));
+    await waitFor(() => expect(s.requests).toContain(`POST /posts/${s.post.id}/images`));
+    const [run] = await s.deps.postImageRuns.listByPost(s.post.id, 1);
+    expect(run?.request).toEqual({ source: "card", format: "4:5", replaceCards: true });
+    // Hasta que el worker termina, el post conserva lo que tenía.
+    expect(await s.remaining()).toHaveLength(3);
+  });
+
+  it("si desmarca la casilla, las tarjetas nuevas se suman y no se quita nada", async () => {
+    const s = await withPreviousCards();
+    const panel = await openPanel();
+    fireEvent.click(
+      await within(panel).findByRole("checkbox", { name: "Quitar las tarjetas anteriores" }),
+    );
+    fireEvent.click(within(panel).getByRole("button", { name: "Hacer tarjetas" }));
+    await waitFor(() => expect(s.requests).toContain(`POST /posts/${s.post.id}/images`));
+    const [run] = await s.deps.postImageRuns.listByPost(s.post.id, 1);
+    expect(run?.request).toEqual({ source: "card", format: "4:5" });
+    expect(await s.remaining()).toHaveLength(3);
+  });
+
+  it("«Solo quitar las tarjetas anteriores» pide confirmación y después las borra sin pedir otras", async () => {
+    const s = await withPreviousCards();
+    const panel = await openPanel();
+    fireEvent.click(
+      await within(panel).findByRole("button", { name: "Solo quitar las tarjetas anteriores" }),
+    );
+    // Antes de confirmar no se borra nada; "Cancelar" lo deja como estaba.
+    expect(s.requests).not.toContain(`DELETE /posts/${s.post.id}/images/cards`);
+    fireEvent.click(within(panel).getByRole("button", { name: "Cancelar" }));
+    expect(within(panel).queryByRole("alertdialog")).toBeNull();
+    expect(await s.remaining()).toHaveLength(3);
+
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Solo quitar las tarjetas anteriores" }),
+    );
+    fireEvent.click(within(panel).getByRole("button", { name: "Sí, quitarlas" }));
+    await waitFor(async () => expect(await s.remaining()).toEqual([s.upload.id]));
+    expect(s.requests).toContain(`DELETE /posts/${s.post.id}/images/cards`);
+    await waitFor(() => expect(within(panel).queryByText(/Este post ya tiene/u)).toBeNull());
+    expect(s.requests).not.toContain(`POST /posts/${s.post.id}/images`);
+  });
+
+  it("si una publicación ya usa las tarjetas, dice POST_CARDS_IN_USE en simple y no borra nada", async () => {
+    const s = await withPreviousCards();
+    const mediaIds = await s.remaining();
+    await s.deps.postLock.run(s.post.id, ({ publications }) =>
+      publications.create(
+        {
+          postId: s.post.id,
+          platformAccountId: "cuenta-1",
+          platform: "x",
+          format: "post",
+          contentId: "texto-1",
+          mediaIds,
+        },
+        { actor: "operator" },
+      ),
+    );
+    const panel = await openPanel();
+    // Reemplazar: el pedido se niega de inmediato.
+    fireEvent.click(await within(panel).findByRole("button", { name: "Hacer tarjetas" }));
+    expect(await within(panel).findByText(/ya están en una publicación aprobada/u)).toBeTruthy();
+    expect(await s.deps.postImageRuns.listByPost(s.post.id, 5)).toHaveLength(1);
+    // Solo quitar: igual.
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Solo quitar las tarjetas anteriores" }),
+    );
+    fireEvent.click(within(panel).getByRole("button", { name: "Sí, quitarlas" }));
+    await waitFor(() => expect(s.requests).toContain(`DELETE /posts/${s.post.id}/images/cards`));
+    expect(
+      (await within(panel).findAllByText(/ya están en una publicación aprobada/u)).length,
+    ).toBeGreaterThan(0);
+    expect(await s.remaining()).toHaveLength(3);
+  });
+
   it("un post de video hace el video de las tarjetas (9:16) y no ofrece fotos", async () => {
     const s = await setup({ kind: "video" });
     const panel = await openPanel();

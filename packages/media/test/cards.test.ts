@@ -151,7 +151,7 @@ describe("el video de las tarjetas", () => {
     const renderer = createCardRenderer();
     const deck = postCardDeck(
       { id: "p1", topic: "Tres claves para vender", kind: "video" },
-      [{ platform: "instagram", body: "- Fija bien el precio\n- Ordena la casa" }],
+      [{ platform: "instagram", language: "es", body: "- Fija bien el precio\n- Ordena la casa" }],
       { brandName: "AgentPey", instagramHandle: "agentpey", website: null },
     );
     const cards = [];

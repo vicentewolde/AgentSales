@@ -722,11 +722,19 @@ export {
   postUploadSchema,
 } from "./post.js";
 export {
+  type CardImageLimit,
+  type CardPlan,
+  cardImageLimit,
+  cardPlatforms,
   cardPoints,
+  cardSource,
   cardSourceText,
   cardText,
+  describeCardPlan,
   POST_CARDS,
+  platformImageLimit,
   postCardDeck,
+  postCardPlan,
 } from "./post-cards.js";
 export {
   IMAGE_AI_RULES,
@@ -742,6 +750,7 @@ export {
   type PostImageRun,
   type PostImageRunStatus,
   type PostImageSource,
+  postCardsInUse,
   postImageRequestSchema,
   postImageRunActive,
   postImageRunSchema,
@@ -1165,6 +1174,7 @@ export {
   type PostImageDeps,
   type PostImageOptions,
   type PostImageSourcesConfig,
+  removePostCards,
   requestPostImage,
   searchStockPhotos,
 } from "./use-cases/post-images.js";

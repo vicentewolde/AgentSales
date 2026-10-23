@@ -1,6 +1,7 @@
 import {
   type PostImageBody,
   type PostImageOptionsResponse,
+  postImageCardsRemovedResponseSchema,
   postImageOptionsResponseSchema,
   postImageRunResponseSchema,
   postImageStockResponseSchema,
@@ -57,6 +58,26 @@ export function useStockSearch(postId: string) {
           postImageStockResponseSchema,
         )
       ).photos,
+  });
+}
+
+/**
+ * `DELETE /posts/:id/images/cards`: quita las tarjetas de pedidos anteriores del post (nunca una
+ * foto o un video que el usuario subió). El detalle del post trae los medios que quedan.
+ */
+export function useRemovePostCards(postId: string) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      unwrap(
+        client.posts[":id"].images.cards.$delete({ param: { id: postId } }),
+        postImageCardsRemovedResponseSchema,
+      ),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: postImageKeys.options(postId) });
+      void queryClient.invalidateQueries({ queryKey: postKeys.detail(postId), exact: true });
+    },
   });
 }
 

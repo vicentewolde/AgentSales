@@ -674,6 +674,70 @@ export function subjectRepositoriesContract(
           repos.media.upsertDerivative({ ...xVideo, kind: "image" }),
         ).rejects.toMatchObject({ code: "MEDIA_DERIVATIVE_INVALID" });
       });
+
+      it("deleteOriginals (F9.5-T25): borra solo originales de ese post con sus variantes y devuelve sus claves", async () => {
+        const post = await newPost();
+        const other = await newPost();
+        const gone = await repos.media.create(original(post.id, unique("sha-gone")));
+        const kept = await repos.media.create(original(post.id, unique("sha-kept")));
+        const foreign = await repos.media.create(original(other.id, unique("sha-foreign")));
+        const { media: thumb } = await repos.media.upsertDerivative({
+          role: "processed",
+          variant: "thumb",
+          parentMediaId: gone.id,
+          postId: post.id,
+          brokerId: brand,
+          kind: "image",
+          storagePath: `posts/${post.id}/processed/thumb/${gone.id}.jpg`,
+          mime: "image/jpeg",
+          width: 100,
+          height: 100,
+          durationS: null,
+          bytes: 100,
+          checksum: unique("sha-thumb"),
+        });
+        const { media: keptThumb } = await repos.media.upsertDerivative({
+          role: "processed",
+          variant: "thumb",
+          parentMediaId: kept.id,
+          postId: post.id,
+          brokerId: brand,
+          kind: "image",
+          storagePath: `posts/${post.id}/processed/thumb/${kept.id}.jpg`,
+          mime: "image/jpeg",
+          width: 100,
+          height: 100,
+          durationS: null,
+          bytes: 100,
+          checksum: unique("sha-thumb"),
+        });
+
+        // Un original de otro post, una variante y un id que no existe se ignoran.
+        const paths = await repos.media.deleteOriginals(postSubject(post.id), [
+          gone.id,
+          foreign.id,
+          keptThumb.id,
+          repos.missingId,
+        ]);
+        expect([...paths].sort()).toEqual([gone.storagePath, thumb.storagePath].sort());
+        expect((await repos.media.listBySubject(postSubject(post.id))).map((m) => m.id)).toEqual([
+          kept.id,
+          keptThumb.id,
+        ]);
+        expect((await repos.media.listOriginals(postSubject(other.id))).map((m) => m.id)).toEqual([
+          foreign.id,
+        ]);
+        // Es idempotente, y un aviso no pierde originales por aquí.
+        expect(await repos.media.deleteOriginals(postSubject(post.id), [gone.id])).toEqual([]);
+        expect(await repos.media.deleteOriginals(postSubject(post.id), [])).toEqual([]);
+        // El mismo contenido se puede volver a guardar (no queda el único ocupado).
+        await expect(
+          repos.media.create({
+            ...original(post.id, gone.checksum),
+            storagePath: gone.storagePath,
+          }),
+        ).resolves.toMatchObject({ postId: post.id });
+      });
     });
 
     describe("PostUploadRepository", () => {

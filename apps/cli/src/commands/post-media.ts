@@ -27,6 +27,8 @@ export type PostMediaDeps = WaitDeps & { client: ApiClient };
 
 export type PostMediaOptions = {
   card?: boolean;
+  /** Con `--card`: quita antes las tarjetas anteriores del post (nunca lo que subiste). */
+  replace?: boolean;
   stock?: string;
   pick?: string;
   people?: boolean;
@@ -90,6 +92,16 @@ async function printOptions(deps: PostMediaDeps, postId: string): Promise<number
   const { stock, ai } = options.sources;
   deps.print(c.bold("Conseguir imagen"));
   deps.print(`  Tarjetas de la marca (US$ 0): ${media(postId)} --card [--format 4:5|9:16]`);
+  if (options.cards !== null) {
+    deps.print(`    Saldrían ${options.cards.message}`);
+    if (options.cards.existing > 0) {
+      deps.print(
+        c.yellow(
+          `    El post ya tiene ${options.cards.existing} de pedidos anteriores: agrega --replace para quitarlas antes (lo que subiste no se toca).`,
+        ),
+      );
+    }
+  }
   deps.print(
     stock.available
       ? `  Biblioteca (Pixabay): ${media(postId)} --stock "${options.suggestions.query}"`
@@ -173,6 +185,9 @@ export function runPostMedia(deps: PostMediaDeps, id: string, options: PostMedia
     if (chosen.filter(Boolean).length > 1) {
       throw new CliError("POST_MEDIA_OPTIONS", "Elige una sola fuente: --card, --stock o --ai");
     }
+    if (options.replace === true && options.card !== true) {
+      throw new CliError("POST_MEDIA_OPTIONS", "--replace va con --card");
+    }
     if (options.pick !== undefined && options.stock === undefined) {
       throw new CliError("POST_MEDIA_OPTIONS", '--pick va con --stock "<búsqueda>"');
     }
@@ -181,7 +196,11 @@ export function runPostMedia(deps: PostMediaDeps, id: string, options: PostMedia
 
     let request: PostImageRequest;
     if (options.card === true) {
-      request = { source: "card", format };
+      request = {
+        source: "card",
+        format,
+        ...(options.replace === true ? { replaceCards: true } : {}),
+      };
     } else if (options.stock !== undefined) {
       const query = options.stock.trim();
       const { photos } = await unwrap(
@@ -248,6 +267,10 @@ export function registerPostMedia(post: Command, ctx: CliContext): void {
     .option(
       "--card",
       "tarjetas con el texto del post sobre los colores y el logo de la marca (US$ 0)",
+    )
+    .option(
+      "--replace",
+      "con --card: quita antes las tarjetas anteriores del post (lo que subiste no se toca)",
     )
     .option("--stock <búsqueda>", "busca en la biblioteca de Pixabay (lista los resultados)")
     .option("--pick <n o id>", "con --stock: elige el resultado n (desde 1) o la foto con ese id")
