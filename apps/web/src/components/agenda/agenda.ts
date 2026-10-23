@@ -50,7 +50,8 @@ export const AGENDA_KIND_TONE: Readonly<Record<AgendaKind, BadgeTone>> = {
   stuck: "warning",
   failed: "danger",
   manual_task: "warning",
-  needs_review: "info",
+  // «Espera tu revisión» en el tono de atención (F9.5-T26).
+  needs_review: "warning",
   approved_waiting: "brand",
   token_expiring: "warning",
   expiring: "warning",

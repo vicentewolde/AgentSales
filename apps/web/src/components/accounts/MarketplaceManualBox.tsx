@@ -27,7 +27,7 @@ export function MarketplaceManualBox({
   const run = () => activate.mutate(broker.slug, { onSettled: () => setConfirming(false) });
   const cancel = () => setConfirming(false);
   return (
-    <div className="mt-3 rounded-lg border border-line bg-slate-50 p-3 text-sm">
+    <div className="mt-3 rounded-lg border border-line bg-canvas p-3 text-sm">
       <p className="text-fg-muted">
         {!automation
           ? "En el servidor Marketplace se publica a mano: el sistema deja listos el texto, las fotos y el precio, y el corredor lo publica y confirma con el enlace."

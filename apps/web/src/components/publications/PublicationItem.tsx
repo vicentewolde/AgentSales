@@ -204,14 +204,14 @@ function Thumbnails({ publication }: { publication: ListingPublicationView }) {
               preload="metadata"
               muted
               aria-label={`Video ${phrase.del} ${format}`}
-              className="h-16 w-9 rounded bg-black object-cover"
+              className="h-16 w-9 rounded bg-fg object-cover"
             />
           ) : (
             <img
               src={media.url}
               alt={`Imagen ${index + 1} ${phrase.del} ${format}`}
               loading="lazy"
-              className="h-16 w-14 rounded bg-slate-100 object-cover"
+              className="h-16 w-14 rounded bg-sand object-cover"
             />
           )}
         </li>

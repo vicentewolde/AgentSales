@@ -1,81 +1,107 @@
 @import "tailwindcss";
 
 /*
- * Sistema visual del panel (F9.5-T01). Los tokens viven en el tema de Tailwind: cada color genera
- * sus utilidades (`bg-brand-700`, `text-fg-muted`, `border-line`…). Sin fuentes externas (D2): la
- * tipografía es la del sistema. Contraste AA: el texto va en los tonos 700/800 sobre los 50/100, o
- * en blanco sobre los 600/700.
+ * Sistema visual del panel: «un diseño acogedor» (F9.5-T26, reemplaza al de T01). Tonos tierra,
+ * como lo haría una diseñadora de interiores: crema, arena, terracota, salvia y madera. Los tokens
+ * viven en el tema de Tailwind: cada color genera sus utilidades (`bg-brand-600`, `text-fg-muted`,
+ * `border-line`…). Los nombres son los de T01 (por uso, no por color), así cada pantalla toma la
+ * paleta nueva sin cambiar sus clases. Contraste AA: lo comprueba `design-tokens.test.ts` con
+ * estos mismos valores. Guía en docs/05-convenciones.md (Sistema visual del panel).
  */
 @theme {
+  /* Texto limpio (DM Sans) y títulos serif (Fraunces), desde el propio sitio (`fonts.css`). */
   --font-sans:
-    ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue",
-    Arial, sans-serif;
+    "DM Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-display: Fraunces, ui-serif, Georgia, Cambria, "Times New Roman", serif;
 
-  /* Primario: azul tinta, profundo y confiable. */
-  --color-brand-50: #eef3fb;
-  --color-brand-100: #dbe5f6;
-  --color-brand-200: #b9cbec;
-  --color-brand-300: #8ea9dd;
-  --color-brand-400: #5f80c8;
-  --color-brand-500: #3d5fb0;
-  --color-brand-600: #2c4a94;
-  --color-brand-700: #233b78;
-  --color-brand-800: #1c2f5f;
-  --color-brand-900: #15233f;
-  --color-brand-950: #0d1628;
+  /*
+   * Primario: terracota suave. 700 el botón primario (y los enlaces de siempre, `text-brand-700`);
+   * 800 el enlace nuevo y el botón al pasar el cursor; 900 el enlace al pasar el cursor.
+   */
+  --color-brand-50: #fbf1ea;
+  --color-brand-100: #f5e1d4;
+  --color-brand-200: #ebc6ae;
+  --color-brand-300: #dca382;
+  --color-brand-400: #c97c55;
+  --color-brand-500: #b8653e;
+  --color-brand-600: #ae5a35;
+  --color-brand-700: #a8532f;
+  --color-brand-800: #9a4a29;
+  --color-brand-900: #7a3a1f;
+  --color-brand-950: #5e2c17;
 
-  /* Acento: cobre cálido y discreto (la marca del logo, las ideas). */
-  --color-accent-50: #fdf5ec;
-  --color-accent-100: #fae6cf;
-  --color-accent-200: #f3c99c;
-  --color-accent-300: #e9a765;
-  --color-accent-400: #dd8a3d;
-  --color-accent-500: #c96f24;
-  --color-accent-600: #a9581b;
-  --color-accent-700: #86441a;
-  --color-accent-800: #6c381a;
+  /* Acento: madera y ocre (las ideas, el punto del logo). */
+  --color-accent-50: #f8eedf;
+  --color-accent-100: #f1e0c6;
+  --color-accent-200: #e5c89e;
+  --color-accent-300: #d4a973;
+  --color-accent-400: #c08c50;
+  --color-accent-500: #a8743a;
+  --color-accent-600: #8c5e2c;
+  --color-accent-700: #7a5326;
+  --color-accent-800: #5c3d1e;
 
-  /* Estados. */
-  --color-success-50: #ecfdf5;
-  --color-success-100: #d1fae5;
-  --color-success-200: #a7f3d0;
-  --color-success-500: #10b981;
-  --color-success-600: #059669;
-  --color-success-700: #047857;
-  --color-success-800: #065f46;
+  /* Éxito (publicado): verde salvia. */
+  --color-success-50: #e3eadf;
+  --color-success-100: #d5e0cf;
+  --color-success-200: #bccdb3;
+  --color-success-500: #7d9673;
+  --color-success-600: #62795a;
+  --color-success-700: #566d50;
+  --color-success-800: #4d6248;
 
-  --color-warning-50: #fffbeb;
-  --color-warning-100: #fef3c7;
-  --color-warning-200: #fde68a;
-  --color-warning-500: #f59e0b;
-  --color-warning-600: #d97706;
-  --color-warning-700: #b45309;
-  --color-warning-800: #92400e;
+  /* Atención (espera tu revisión): miel. */
+  --color-warning-50: #f6e7cc;
+  --color-warning-100: #f0dab0;
+  --color-warning-200: #e4c48c;
+  --color-warning-500: #c98a2e;
+  --color-warning-600: #a86f1c;
+  --color-warning-700: #8a5a14;
+  --color-warning-800: #7a4e10;
 
-  --color-danger-50: #fef2f2;
-  --color-danger-100: #fee2e2;
-  --color-danger-200: #fecaca;
-  --color-danger-500: #ef4444;
-  --color-danger-600: #dc2626;
-  --color-danger-700: #b91c1c;
-  --color-danger-800: #991b1b;
+  /* Error: rojo ladrillo, más frío que la terracota para no confundirse con el primario. */
+  --color-danger-50: #f8e3e0;
+  --color-danger-100: #f1cfca;
+  --color-danger-200: #e5afa8;
+  --color-danger-500: #c9534b;
+  --color-danger-600: #b03a35;
+  --color-danger-700: #962d2d;
+  --color-danger-800: #7a2424;
 
-  --color-info-50: #f0f9ff;
-  --color-info-100: #e0f2fe;
-  --color-info-200: #bae6fd;
-  --color-info-500: #0ea5e9;
-  --color-info-600: #0284c7;
-  --color-info-700: #0369a1;
-  --color-info-800: #075985;
+  /* Información: azul piedra. */
+  --color-info-50: #e4ebee;
+  --color-info-100: #d3dfe4;
+  --color-info-200: #b7cad2;
+  --color-info-500: #5e8291;
+  --color-info-600: #4a6d7b;
+  --color-info-700: #3f5e6a;
+  --color-info-800: #36505b;
 
-  /* Neutros fríos con nombre de uso. */
-  --color-canvas: #f5f7fa;
-  --color-surface: #ffffff;
-  --color-line: #e2e8f0;
-  --color-line-strong: #cbd5e1;
-  --color-fg: #0f172a;
-  --color-fg-muted: #475569;
-  --color-fg-subtle: #56657b;
+  /* Neutros tibios con nombre de uso. */
+  --color-canvas: #f6f0e6; /* el fondo crema */
+  --color-surface: #fffcf7; /* tarjetas, campos; también el texto sobre terracota */
+  --color-sand: #efe5d6; /* la barra lateral y los rellenos suaves */
+  --color-sand-strong: #e4d6c1; /* la nota de la barra y lo que se marca sobre arena */
+  --color-line: #efe5d6; /* separadores */
+  --color-line-soft: #dccdb8; /* bordes decorativos: insignias, vacíos, banners */
+  /* Bordes de controles (campos, botones secundarios, casillas): 3:1 sobre el fondo y las
+   * tarjetas (WCAG 1.4.11). */
+  --color-line-strong: #988770;
+  --color-fg: #2b231d; /* madera oscura */
+  --color-fg-muted: #4a3d32;
+  --color-fg-subtle: #6b5d50;
+
+  /* Formas: esquinas suaves (tarjetas de 20 a 24 px) y sombras tibias. */
+  --radius-lg: 0.75rem;
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.375rem;
+  --radius-3xl: 1.5rem;
+  --shadow-xs: 0 1px 2px rgb(90 60 30 / 0.06);
+  --shadow-sm: 0 1px 2px rgb(90 60 30 / 0.06), 0 4px 10px -6px rgb(90 60 30 / 0.2);
+  --shadow-md: 0 1px 2px rgb(90 60 30 / 0.06), 0 10px 24px -16px rgb(90 60 30 / 0.3);
+  --shadow-card: 0 1px 2px rgb(90 60 30 / 0.06), 0 16px 32px -20px rgb(90 60 30 / 0.35);
+  --shadow-lift: 0 1px 2px rgb(90 60 30 / 0.08), 0 22px 44px -22px rgb(90 60 30 / 0.45);
 }
 
 @layer base {
@@ -91,6 +117,13 @@
     font-family: var(--font-sans);
   }
 
+  /* Los títulos de página y de sección en serif (400 los grandes, 600 los de sección). */
+  h1,
+  h2 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+  }
+
   h1,
   h2,
   h3 {
@@ -99,7 +132,7 @@
 
   /* Foco visible en todo lo que se usa con el teclado (los campos tienen su propio anillo). */
   :focus-visible {
-    outline: 2px solid var(--color-brand-500);
+    outline: 2px solid var(--color-brand-700);
     outline-offset: 2px;
   }
 
@@ -107,6 +140,26 @@
   input[type="radio"],
   progress {
     accent-color: var(--color-brand-700);
+  }
+
+  /*
+   * En una pantalla táctil, cada casilla se toca en 44 px: la etiqueta que la envuelve (toda ella
+   * es clicable) crece a ese alto y la casilla se agranda (F9.5-T26, WCAG 2.5.5).
+   */
+  @media (pointer: coarse) {
+    label:has(> input[type="checkbox"], > input[type="radio"]) {
+      min-height: 2.75rem;
+    }
+    input[type="checkbox"],
+    input[type="radio"] {
+      width: 1.25rem;
+      height: 1.25rem;
+    }
+  }
+
+  ::selection {
+    background-color: var(--color-brand-100);
+    color: var(--color-fg);
   }
 }
 
@@ -120,13 +173,13 @@
     line-height: var(--text-sm--line-height);
   }
   .ui-table th {
-    background-color: var(--color-slate-50);
+    background-color: var(--color-canvas);
     border-bottom: 1px solid var(--color-line);
     color: var(--color-fg-muted);
     font-size: var(--text-xs);
     font-weight: 600;
     letter-spacing: 0.02em;
-    padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 4);
+    padding: calc(var(--spacing) * 3) calc(var(--spacing) * 4);
     text-align: left;
     white-space: nowrap;
   }
@@ -136,7 +189,7 @@
     color: var(--color-fg);
     font-size: inherit;
     letter-spacing: normal;
-    padding: calc(var(--spacing) * 3) calc(var(--spacing) * 4);
+    padding: calc(var(--spacing) * 3.5) calc(var(--spacing) * 4);
     vertical-align: top;
     white-space: normal;
   }
@@ -145,8 +198,7 @@
     border-bottom: 1px solid var(--color-line);
   }
   .ui-table td {
-    border-bottom: 1px solid var(--color-line);
-    padding: calc(var(--spacing) * 3) calc(var(--spacing) * 4);
+    padding: calc(var(--spacing) * 3.5) calc(var(--spacing) * 4);
     vertical-align: top;
   }
   .ui-table tbody tr:last-child td,
@@ -155,7 +207,7 @@
   }
   .ui-table tbody tr:hover td,
   .ui-table tbody tr:hover th {
-    background-color: var(--color-slate-50);
+    background-color: var(--color-canvas);
   }
   .ui-table .num {
     font-variant-numeric: tabular-nums;

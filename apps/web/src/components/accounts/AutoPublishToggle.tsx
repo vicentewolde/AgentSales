@@ -43,7 +43,7 @@ export function AutoPublishToggle({
       {confirming && (
         <div
           role="alert"
-          className={`mt-2 rounded-md border p-2 ${live ? "border-danger-200 bg-danger-50" : "border-line-strong bg-slate-50"}`}
+          className={`mt-2 rounded-md border p-2 ${live ? "border-danger-200 bg-danger-50" : "border-line-soft bg-canvas"}`}
         >
           <p className={live ? "font-semibold text-danger-800" : "text-fg"}>
             {publishMode === "live"

@@ -22,12 +22,12 @@ export function DiscordPreview({
 }) {
   return (
     <PreviewFrame label={label} network="Discord" draft={draft}>
-      <article className="flex max-w-lg gap-3 rounded-lg border border-line bg-slate-50 p-3">
+      <article className="flex max-w-lg gap-3 rounded-lg border border-line bg-canvas p-3">
         <Avatar name={accountName} className="size-10" />
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-1.5 text-sm">
             <span className="font-semibold text-fg">{accountName}</span>
-            <span className="rounded bg-brand-600 px-1 text-[0.625rem] font-semibold text-white">
+            <span className="rounded bg-brand-700 px-1 text-[0.625rem] font-semibold text-surface">
               APP
             </span>
             <span className="text-xs text-fg-subtle">hoy</span>

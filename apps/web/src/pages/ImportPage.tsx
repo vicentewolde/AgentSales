@@ -214,7 +214,7 @@ function ImportForm() {
       )}
       <div className="flex items-center gap-2">
         <input id={ids.dryRun} name="dryRun" type="checkbox" />
-        <label htmlFor={ids.dryRun} className="text-sm">
+        <label htmlFor={ids.dryRun} className="flex items-center text-sm pointer-coarse:min-h-11">
           Solo simular: valida y muestra el reporte sin guardar nada
         </label>
       </div>

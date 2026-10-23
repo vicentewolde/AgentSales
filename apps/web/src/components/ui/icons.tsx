@@ -203,21 +203,37 @@ export function ErrorIcon(props: IconProps) {
   );
 }
 
-/** La marca de AgentSales: un cuadrado azul tinta con el techo de una casa y el punto cobre. */
+/** Tres líneas: abre el menú en el celular. */
+export function MenuIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 7h16M4 12h16M4 17h16" />
+    </Svg>
+  );
+}
+
+/** Una cruz: cierra el menú en el celular. */
+export function CloseIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M6 6l12 12M18 6 6 18" />
+    </Svg>
+  );
+}
+
+/** La marca de AgentSales: un cuadrado terracota con una casa de trazo crema (F9.5-T26). */
 export function LogoMark({ className = "size-8" }: IconProps) {
   return (
-    <svg viewBox="0 0 32 32" aria-hidden="true" focusable="false" className={className}>
-      <rect width="32" height="32" rx="8" className="fill-brand-700" />
+    <svg viewBox="0 0 36 36" aria-hidden="true" focusable="false" className={className}>
+      <rect width="36" height="36" rx="10" className="fill-brand-700" />
       <path
-        d="M8 17.5 16 10l8 7.5"
+        d="M9 18 18 10l9 8M12 16v10h12V16"
         fill="none"
-        strokeWidth={2.5}
+        strokeWidth={2.2}
         strokeLinecap="round"
         strokeLinejoin="round"
-        className="stroke-white"
+        className="stroke-surface"
       />
-      <path d="M11 16v7h10v-7" fill="none" strokeWidth={2.5} className="stroke-white/70" />
-      <circle cx="23.5" cy="8.5" r="2.5" className="fill-accent-400" />
     </svg>
   );
 }
