@@ -658,15 +658,24 @@ export const MARKETPLACE_URL_MAX_LENGTH = 2048;
 /**
  * `POST /publications/:id/confirm` (spec F5 §4.3): el enlace del aviso publicado en Marketplace,
  * obligatorio en vivo (en simulación se ignora). Nunca vuelve en un error ni va al log.
+ * `withoutUrl: true` (F9.5, LinkedIn al mínimo trabajo) confirma **sin enlace**: solo para las redes
+ * de `confirmsWithoutUrl` (hoy LinkedIn), y no a la vez que `url`. Sin enlace no se puede abrir el
+ * post desde Seguimiento.
  */
-export const publicationConfirmBodySchema = z.object({
-  url: z
-    .string()
-    .trim()
-    .min(1, "falta el enlace")
-    .max(MARKETPLACE_URL_MAX_LENGTH, "el enlace es demasiado largo")
-    .optional(),
-});
+export const publicationConfirmBodySchema = z
+  .object({
+    url: z
+      .string()
+      .trim()
+      .min(1, "falta el enlace")
+      .max(MARKETPLACE_URL_MAX_LENGTH, "el enlace es demasiado largo")
+      .optional(),
+    withoutUrl: z.boolean().optional(),
+  })
+  .refine(({ url, withoutUrl }) => !(withoutUrl === true && url !== undefined), {
+    message: "Elige una: pegar el enlace o confirmar sin enlace",
+    path: ["withoutUrl"],
+  });
 export type PublicationConfirmBody = z.infer<typeof publicationConfirmBodySchema>;
 
 /** `changed: false`: ya estaba publicada con ese enlace (confirmar dos veces no cambia nada). */
@@ -1629,6 +1638,17 @@ export const postMediaItemSchema = mediaItemSchema.extend({
 });
 export type PostMediaItem = z.infer<typeof postMediaItemSchema>;
 
+/**
+ * Una publicación de un post con los medios que lleva, firmados (F9.5, LinkedIn a mano): como
+ * `listingPublicationSchema`, solo en las pendientes (`PENDING_PUBLICATION_STATUSES`), cuyos medios
+ * no cambian; en las demás va vacío. Un servidor anterior no lo manda: se lee vacío. Nunca va a la
+ * CLI ni a los logs.
+ */
+export const postPublicationSchema = publicationViewSchema.extend({
+  media: z.array(contentMediaSchema).default([]),
+});
+export type PostPublicationView = z.infer<typeof postPublicationSchema>;
+
 /** `POST /posts`, `PATCH /posts/:id` y `POST /posts/:id/archive`. */
 export const postResponseSchema = z.object({ post: postJsonSchema });
 export type PostResponse = z.infer<typeof postResponseSchema>;
@@ -1644,7 +1664,7 @@ export const postDetailResponseSchema = z.object({
   media: z.array(postMediaItemSchema),
   contents: z.array(contentViewSchema).default([]),
   latestRun: contentRunViewSchema.nullable().default(null),
-  publications: z.array(publicationViewSchema).default([]),
+  publications: z.array(postPublicationSchema).default([]),
   /**
    * Los archivos grandes sin sha256 que llegaron y el worker todavía revisa (`uploaded`, F9-T17):
    * todavía no son medios. Un servidor anterior no lo manda: se lee 0.

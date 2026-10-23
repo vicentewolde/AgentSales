@@ -466,11 +466,12 @@ export function publicationRoutes(deps: PublicationRoutesDeps) {
       validated("param", idParamSchema),
       validated("json", publicationConfirmBodySchema),
       async (c) => {
-        const { url } = c.req.valid("json");
+        const { url, withoutUrl } = c.req.valid("json");
         const { publication, changed } = await confirmManualPublication(deps, {
           publicationId: c.req.valid("param").id,
           actor: actorOf(c),
           ...(url === undefined ? {} : { url }),
+          ...(withoutUrl === undefined ? {} : { withoutUrl }),
         });
         const body: PublicationConfirmResponse = {
           publication: publicationView(publication),

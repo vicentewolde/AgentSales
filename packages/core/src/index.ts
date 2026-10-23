@@ -1028,8 +1028,10 @@ export {
   closePublication,
 } from "./use-cases/close-publication.js";
 export {
+  CONFIRM_WITHOUT_URL_PLATFORMS,
   type ConfirmManualPublicationResult,
   confirmManualPublication,
+  confirmsWithoutUrl,
   type ManualPublicationDeps,
   markNotPublished,
 } from "./use-cases/confirm-manual-publication.js";

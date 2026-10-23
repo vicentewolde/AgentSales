@@ -19,6 +19,7 @@ import {
   listPosts,
   type MediaRepository,
   type MediaStorage,
+  PENDING_PUBLICATION_STATUSES,
   type PostImageRun,
   type PostImageRunRepository,
   type PostImageSourcesConfig,
@@ -27,6 +28,7 @@ import {
   type PostUploadRepository,
   PROCESSED_MEDIA_VARIANTS,
   type ProcessedMediaVariant,
+  type Publication,
   type PublicationRepository,
   type PublishListingDeps,
   type PublishMode,
@@ -80,7 +82,7 @@ import {
 } from "../contracts/index.js";
 import { brokerMode, isDryRun } from "../publish-modes.js";
 import { validated } from "../validation.js";
-import { contentRunView, contentView } from "./content.js";
+import { contentMedia, contentRunView, contentView } from "./content.js";
 import { actorOf, publicationView, skippedView } from "./publication-views.js";
 
 export type PostRoutesDeps = EditContentDeps &
@@ -142,6 +144,8 @@ const imageRunView = (run: PostImageRun): PostImageRunView => ({
 /** Un filtro de fecha de la consulta (texto ISO ya validado) como `Date`. */
 const dateOf = (value: string | undefined): Date | undefined =>
   value === undefined ? undefined : new Date(value);
+
+const pendingStatuses = new Set<string>(PENDING_PUBLICATION_STATUSES);
 
 /**
  * `/posts` (spec F9 §4.10, F9-T10): crear, listar, ver, editar y archivar posts, y subir sus medios
@@ -205,6 +209,28 @@ export function postRoutes(deps: PostRoutesDeps) {
     );
   };
 
+  /**
+   * Las publicaciones del post con sus medios firmados, solo en las pendientes (como
+   * `GET /listings/:id/publications`): lo que cada una lleva a la red, desde sus `mediaIds`
+   * fijados. Cada medio se firma una vez.
+   */
+  const publicationsWithMedia = async (postId: string, publications: readonly Publication[]) => {
+    const signed = contentMedia(deps.storage);
+    const derived = new Map(
+      (await deps.media.listBySubject(postSubject(postId)))
+        .filter((item) => item.variant !== null)
+        .map((item) => [item.id, signed(item)]),
+    );
+    return Promise.all(
+      publications.map(async (publication) => ({
+        ...publicationView(publication),
+        media: pendingStatuses.has(publication.status)
+          ? await Promise.all(publication.mediaIds.flatMap((id) => derived.get(id) ?? []))
+          : [],
+      })),
+    );
+  };
+
   // F9.5-T25: conseguir imágenes (las fuentes, la biblioteca y los pedidos).
   const imageDeps = {
     posts: deps.posts,
@@ -250,7 +276,7 @@ export function postRoutes(deps: PostRoutesDeps) {
           media: await mediaOf(id),
           contents: contents.map(contentView),
           latestRun: latestRun === null ? null : contentRunView(latestRun),
-          publications: publications.map(publicationView),
+          publications: await publicationsWithMedia(id, publications),
           uploadsInReview: (await deps.postUploads.listByPost(id)).filter(
             (upload) => upload.status === "uploaded",
           ).length,

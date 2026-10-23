@@ -30,6 +30,7 @@ import {
   runPostSchedule,
   runPostShow,
   runPostUpload,
+  withoutSignedUrls,
 } from "./post.js";
 import { adviceText } from "./publication-view.js";
 import {
@@ -279,6 +280,7 @@ describe("post de punta a punta", () => {
     for (const item of parsed.media) {
       expect(item).not.toHaveProperty("url");
       expect(item).not.toHaveProperty("thumbUrl");
+      expect(item).not.toHaveProperty("downloadUrl");
       expect(item).toHaveProperty("variants");
     }
 
@@ -488,6 +490,25 @@ describe("publications resolve, retry, confirm y not-published con posts", () =>
     expect(s.publicationsOf(post.id)[0]?.status).toBe("published");
   });
 
+  it("confirm --no-url: con --url-stdin a la vez no vale, y en una red que no es LinkedIn tampoco (F9.5)", async () => {
+    const s = await setup();
+    const { post, publication } = await approvedPost(s);
+    await s.move(post.id, publication.id, ["publishing", "awaiting_manual_confirm"]);
+    s.setStdin("https://www.linkedin.com/feed/update/urn:li:share:1/");
+    expect(
+      await runConfirmPublication(s.deps(), publication.id, { urlStdin: true, url: false }),
+    ).toBe(1);
+    expect(s.h.errors()).toContain("CONFIRM_OPTIONS_CONFLICT");
+    expect(s.h.errors()).not.toContain("urn:li:share");
+    expect(s.publicationsOf(post.id)[0]?.status).toBe("awaiting_manual_confirm");
+
+    // Discord no se confirma sin enlace (solo LinkedIn): la API lo rechaza y no cambia nada.
+    s.setStdin(null);
+    expect(await runConfirmPublication(s.deps(), publication.id, { url: false })).toBe(1);
+    expect(s.h.errors()).toContain("PUBLISHED_URL_REQUIRED");
+    expect(s.publicationsOf(post.id)[0]?.status).toBe("awaiting_manual_confirm");
+  });
+
   it("la agenda sugiere retry para una fallida de un post", async () => {
     const s = await setup();
     const { post, publication } = await approvedPost(s);
@@ -496,6 +517,27 @@ describe("publications resolve, retry, confirm y not-published con posts", () =>
     expect(await runAgenda(s.deps())).toBe(0);
     expect(s.h.text()).toContain(`→ agentsales post show ${post.id}`);
     expect(s.h.text()).toContain(`→ agentsales publications retry ${publication.id}`);
+  });
+});
+
+describe("post show --json sin URLs firmadas (F9.5)", () => {
+  it("quita las URLs de los medios del post y de los que lleva cada publicación", () => {
+    const detail = {
+      media: [
+        { id: "m1", url: "https://r2.test/o.jpg?firma", thumbUrl: "https://r2.test/t.jpg?firma" },
+      ],
+      publications: [
+        {
+          id: "pub-1",
+          media: [
+            { id: "p1", variant: "ig_4x5", mime: "image/jpeg", url: "https://r2.test/p.jpg?firma" },
+          ],
+        },
+      ],
+    } as unknown as Parameters<typeof withoutSignedUrls>[0];
+    const text = JSON.stringify(withoutSignedUrls(detail));
+    expect(text).not.toContain("r2.test");
+    expect(text).toContain('"p1"');
   });
 });
 

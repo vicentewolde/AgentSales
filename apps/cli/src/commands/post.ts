@@ -515,6 +515,11 @@ export function withoutSignedUrls(detail: PostDetailResponse) {
   return {
     ...detail,
     media: detail.media.map(({ url: _url, thumbUrl: _thumbUrl, ...item }) => item),
+    // Los medios firmados de las publicaciones pendientes (F9.5): solo se quedan sus datos.
+    publications: detail.publications.map(({ media, ...publication }) => ({
+      ...publication,
+      media: media.map(({ url: _url, ...item }) => item),
+    })),
   };
 }
 

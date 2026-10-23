@@ -69,9 +69,18 @@ describe("agenda con posts", () => {
     ]);
   });
 
-  it("un LinkedIn a mano listo: tarea a mano con ver el texto, confirmar con el enlace o decir que no salió", () => {
+  it("un LinkedIn a mano listo: tarea a mano con ver el texto, confirmar con o sin enlace, o decir que no salió", () => {
     const manual = item({ kind: "manual_task", action: "confirm" });
     expect(agendaCommands(manual)).toEqual([
+      "agentsales post show post-1",
+      "pbpaste | agentsales publications confirm pub-1 --url-stdin",
+      "agentsales publications confirm pub-1 --no-url",
+      "agentsales publications not-published pub-1",
+    ]);
+    // Otra red a mano no se confirma sin enlace.
+    expect(
+      agendaCommands(item({ kind: "manual_task", action: "confirm", platform: "tiktok" })),
+    ).toEqual([
       "agentsales post show post-1",
       "pbpaste | agentsales publications confirm pub-1 --url-stdin",
       "agentsales publications not-published pub-1",

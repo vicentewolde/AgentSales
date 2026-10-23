@@ -2,6 +2,7 @@ import type {
   ContentView,
   PlatformAccountView,
   PostJson,
+  PostPublicationView,
   PostScheduleResponse,
   PublicationView,
 } from "@agentsales/api/contracts";
@@ -35,6 +36,11 @@ import { Button } from "../ui/Button.js";
 import { LinkedInAssist } from "./LinkedInAssist.js";
 import { LiveConfirmButton } from "./LiveConfirm.js";
 import { postContents } from "./labels.js";
+import {
+  CONFIRMED_WITHOUT_LINK_TEXT,
+  confirmedWithoutLink,
+  linkedinDownloads,
+} from "./linkedin.js";
 import { GET_IMAGE_ANCHOR, POST_MEDIA_ANCHOR } from "./media-anchor.js";
 
 /**
@@ -319,7 +325,7 @@ function PublicationRow({
   content,
 }: {
   postId: string;
-  publication: PublicationView;
+  publication: PostPublicationView;
   publishMode: PublishMode | undefined;
   /** Su texto (el que fijó la publicación), para copiarlo en LinkedIn a mano (F9.5-T27). */
   content: ContentView | undefined;
@@ -363,6 +369,9 @@ function PublicationRow({
             Ver en {PLATFORM_TEXT[publication.platform]}
           </a>
         )}
+        {confirmedWithoutLink(publication) && (
+          <span className="text-fg-muted">· {CONFIRMED_WITHOUT_LINK_TEXT}</span>
+        )}
       </div>
       {publication.lastError !== null && status === "failed" && (
         <p className="mt-2 text-danger-700">
@@ -379,7 +388,7 @@ function PublicationRow({
         </p>
       )}
       {publication.platform === "linkedin" && status === "awaiting_manual_confirm" && (
-        <LinkedInAssist content={content} />
+        <LinkedInAssist content={content} downloads={linkedinDownloads(publication.media)} />
       )}
       {(status === "outcome_unknown" || status === "awaiting_manual_confirm") && (
         <OutcomeBox
@@ -431,7 +440,7 @@ export function PostPublications({
   contents = [],
 }: {
   postId: string;
-  publications: readonly PublicationView[];
+  publications: readonly PostPublicationView[];
   publishMode: PublishMode | undefined;
   /** Los textos del post: el de cada publicación, para LinkedIn a mano (F9.5-T27). */
   contents?: readonly ContentView[];

@@ -22,7 +22,7 @@ const codeOf = async (promise: Promise<unknown>) => {
 };
 
 async function setup(
-  options: { mode?: "api" | "manual"; dryRun?: boolean; externalId?: string } = {},
+  options: { mode?: "api" | "manual"; dryRun?: boolean; externalId?: string | null } = {},
 ) {
   const t = await createPostPublicationScenario({
     texts: [{ platform: "linkedin", language: "es" }],
@@ -43,8 +43,11 @@ async function setup(
       from: "publishing",
       to: "published",
       changes: {
-        externalId: options.externalId ?? POST_URN,
-        externalUrl: "https://www.linkedin.com/feed/update/urn:li:share:7380000000000000001/",
+        externalId: options.externalId === undefined ? POST_URN : options.externalId,
+        externalUrl:
+          options.externalId === null
+            ? null
+            : "https://www.linkedin.com/feed/update/urn:li:share:7380000000000000001/",
         publishedAt: new Date("2026-10-20T12:00:00Z"),
       },
     },
@@ -121,6 +124,21 @@ describe("retirar borrando por la API (F9-T19)", () => {
     expect(t.current(publication.id)?.status).toBe("published");
     // Sin `deleteRemote`, en vivo sigue pidiendo la confirmación de que se borró a mano.
     expect(await codeOf(retire({}))).toBe("REMOVAL_NOT_CONFIRMED");
+    await expect(retire({ removedByHand: true })).resolves.toMatchObject({
+      publication: { status: "unpublished" },
+    });
+  });
+
+  it("confirmada a mano sin enlace (sin id en la red): no se borra por la API, se retira a mano", async () => {
+    const { t, publication, calls, retire } = await setup({ externalId: null });
+
+    const error = await caught(retire());
+    expect(error).toMatchObject({
+      code: "RETIRE_DELETE_UNSUPPORTED",
+      message: expect.stringContaining("La publicación no tiene su id en la red"),
+    });
+    expect(calls).toEqual([]);
+    expect(t.current(publication.id)?.status).toBe("published");
     await expect(retire({ removedByHand: true })).resolves.toMatchObject({
       publication: { status: "unpublished" },
     });

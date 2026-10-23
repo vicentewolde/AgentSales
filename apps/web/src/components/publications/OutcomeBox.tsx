@@ -1,5 +1,5 @@
 import type { PublicationView } from "@agentsales/api/contracts";
-import { PLATFORM_TEXT } from "@agentsales/core";
+import { confirmsWithoutUrl, PLATFORM_TEXT } from "@agentsales/core";
 import { useId, useState } from "react";
 import { ErrorAlert } from "../ErrorAlert.js";
 import { Button } from "../ui/Button.js";
@@ -11,7 +11,7 @@ import { Input } from "../ui/Field.js";
  */
 export type OutcomeAction =
   | { kind: "resolve"; id: string; outcome: "published" | "not_published"; url?: string }
-  | { kind: "confirm"; id: string; url?: string }
+  | { kind: "confirm"; id: string; url?: string; withoutUrl?: true }
   | { kind: "not-published"; id: string };
 
 /**
@@ -25,6 +25,9 @@ export type OutcomeAction =
  * en Portal pide confirmar antes (`confirmNotPublished`): si en Mercado Libre quedaron avisos (uno
  * o varios, el caso «many»), se cierran a mano primero, porque volver a publicar gasta otro cupo.
  * `error` (los avisos) se muestra en el mismo bloque, con el mensaje de la API.
+ *
+ * LinkedIn a mano (F9.5): el enlace es **opcional** y el botón dice «Ya lo publiqué». Sin enlace se
+ * confirma igual (`withoutUrl`), con la nota de que sin él no se abre el post desde Seguimiento.
  */
 export function OutcomeBox({
   publication,
@@ -53,6 +56,7 @@ export function OutcomeBox({
   const network = PLATFORM_TEXT[publication.platform];
   const portal = publication.platform === "portal_inmobiliario";
   const linkRequired = unknown && portal && !publication.dryRun;
+  const linkOptional = !unknown && confirmsWithoutUrl(publication.platform);
   const notPublished = (): OutcomeAction =>
     unknown
       ? { kind: "resolve", id: publication.id, outcome: "not_published" }
@@ -65,14 +69,16 @@ export function OutcomeBox({
       <p className="text-warning-800">
         {unknown
           ? `No se sabe si salió: se cortó justo al enviar. Revisa ${portal ? "tus publicaciones en Mercado Libre" : network} y di si está publicada (no se reintenta sola, para no publicarla dos veces).`
-          : `Publícala a mano en ${network} con el texto aprobado y los medios del post, y después confírmala aquí con su enlace.`}
+          : linkOptional
+            ? `Cuando la publiques en ${network}, confírmalo aquí. El enlace es opcional.`
+            : `Publícala a mano en ${network} con el texto aprobado y los medios del post, y después confírmala aquí con su enlace.`}
       </p>
       {detail !== undefined && detail !== null && detail !== "" && (
         <p className="mt-1 text-fg-muted">{detail}</p>
       )}
       <label htmlFor={id} className="mt-3 mb-1.5 block font-medium text-fg">
         {portal ? "Enlace del aviso o su número (MLC…)" : "Enlace de la publicación"}
-        {publication.dryRun ? " (en simulación no hace falta)" : ""}
+        {linkOptional ? " (opcional)" : publication.dryRun ? " (en simulación no hace falta)" : ""}
       </label>
       <Input
         id={id}
@@ -81,8 +87,15 @@ export function OutcomeBox({
         onChange={(event) => setUrl(event.target.value)}
         placeholder={portal ? "https://… o MLC…" : "https://"}
         autoComplete="off"
-        {...(linkRequired ? { "aria-describedby": helpId, required: true } : {})}
+        {...(linkRequired || linkOptional ? { "aria-describedby": helpId } : {})}
+        {...(linkRequired ? { required: true } : {})}
       />
+      {linkOptional && (
+        <p id={helpId} className="mt-1 text-fg-muted">
+          Sin el enlace no podrás abrir el post desde Seguimiento. Para tenerlo, copia el enlace de
+          la barra de direcciones (haz clic en la fecha de la publicación en LinkedIn).
+        </p>
+      )}
       {linkRequired && (
         <p id={helpId} className="mt-1 text-fg-muted">
           Con el sistema en vivo es obligatorio: cópialo de la barra del navegador con el aviso
@@ -129,12 +142,16 @@ export function OutcomeBox({
                   : {
                       kind: "confirm",
                       id: publication.id,
-                      ...(link === undefined ? {} : { url: link }),
+                      ...(link !== undefined
+                        ? { url: link }
+                        : linkOptional
+                          ? { withoutUrl: true as const }
+                          : {}),
                     },
               )
             }
           >
-            {unknown ? "Sí, salió" : "Lo publiqué"}
+            {unknown ? "Sí, salió" : linkOptional ? "Ya lo publiqué" : "Lo publiqué"}
           </Button>
           <Button
             variant="secondary"

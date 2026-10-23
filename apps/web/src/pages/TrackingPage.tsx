@@ -16,9 +16,12 @@ import {
   AGENDA_ACTION_TEXT,
   type AgendaItem,
   agendaItemWhen,
+  isLinkedInHandTask,
 } from "../components/agenda/agenda.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { errorLineText } from "../components/error-messages.js";
+import { LinkedInHandTask } from "../components/posts/LinkedInHandTask.js";
+import { CONFIRMED_WITHOUT_LINK_TEXT, confirmedWithoutLink } from "../components/posts/linkedin.js";
 import { PublicationMode } from "../components/publications/PublicationMode.js";
 import { safeExternalUrl } from "../components/publications/publications.js";
 import { PublicationStatusBadge, StatusBadge } from "../components/StatusBadge.js";
@@ -98,6 +101,18 @@ function AgendaEntry({
       {item.action !== "none" && (
         <span className="block text-xs text-fg-muted">{AGENDA_ACTION_TEXT[item.action]}</span>
       )}
+      {/* LinkedIn a mano (F9.5): «LinkedIn: publica a mano» con el botón de un clic. */}
+      {isLinkedInHandTask(item) && (
+        <div className="mt-1">
+          <span className="font-semibold text-fg">LinkedIn: publica a mano</span>
+          <LinkedInHandTask
+            postId={item.postId}
+            publicationId={item.publicationId}
+            mode={{ dryRun: item.dryRun, modeFixed: item.modeFixed }}
+            publishMode={publishMode}
+          />
+        </div>
+      )}
     </li>
   );
 }
@@ -153,6 +168,7 @@ function CellPublication({
       ? formatChileTime(publication.scheduledAt)
       : null,
     publication.manualTask ? "tarea a mano" : null,
+    confirmedWithoutLink({ platform, ...publication }) ? CONFIRMED_WITHOUT_LINK_TEXT : null,
     publication.expiry?.soon ? `vence en ${publication.expiry.daysLeft} d` : null,
     publication.expiry?.expired ? "venció" : null,
     // En simple, con el código chico al final (F9.5-T20).
