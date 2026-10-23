@@ -1,7 +1,7 @@
 import { type AccessScope, scopedBrokerId } from "./access.js";
 import type { Broker } from "./broker.js";
 import { chileMonthOf, chileMonthRange } from "./chile-time.js";
-import { AppError } from "./errors.js";
+import { AppError, isAppError } from "./errors.js";
 import { formatUsd, roundUsd } from "./llm-usage.js";
 import type { BrokerRepository } from "./ports/broker-repository.js";
 import type { PostImageRunRepository } from "./ports/post-image-run-repository.js";
@@ -45,14 +45,30 @@ export async function assertImageAiBudget(
   now: Date,
 ): Promise<void> {
   const spent = await imageAiSpentThisMonth(deps.runs, broker.id, now);
-  if (wouldPassImageAiCap(spent, pricing)) {
-    throw new AppError(
-      "IMAGE_AI_BUDGET_EXCEEDED",
-      `${IMAGE_AI_BUDGET_MESSAGE} (${formatUsd(spent)} de ${formatUsd(pricing.monthlyCapUsd)}): vuelve a intentarlo el próximo mes o usa una tarjeta o la biblioteca`,
-      { details: { spentUsd: spent, capUsd: pricing.monthlyCapUsd, brokerId: broker.id } },
-    );
-  }
+  if (wouldPassImageAiCap(spent, pricing)) throw imageAiBudgetExceeded(broker.id, spent, pricing);
 }
+
+/** `IMAGE_AI_BUDGET_EXCEEDED` (409) con el mensaje simple y lo gastado. */
+export const imageAiBudgetExceeded = (
+  brokerId: string,
+  spentUsd: number | null,
+  pricing: ImageAiPricing,
+) =>
+  new AppError(
+    "IMAGE_AI_BUDGET_EXCEEDED",
+    `${IMAGE_AI_BUDGET_MESSAGE}${spentUsd === null ? "" : ` (${formatUsd(spentUsd)} de ${formatUsd(pricing.monthlyCapUsd)})`}: vuelve a intentarlo el próximo mes o usa una tarjeta o la biblioteca`,
+    { details: { spentUsd, capUsd: pricing.monthlyCapUsd, brokerId } },
+  );
+
+/**
+ * La marca de un error de la IA que el proveedor dio **sin cobrar** (rechazó el pedido antes de
+ * generar: un 429, la clave o un bloqueo de la indicación). Va en `details` del `AppError`.
+ */
+export const IMAGE_AI_NOT_CHARGED = { charged: false } as const;
+
+/** Si el proveedor dijo que no cobró: la reserva se devuelve. Lo demás se da por cobrado. */
+export const imageAiNotCharged = (error: unknown): boolean =>
+  isAppError(error) && error.details?.charged === false;
 
 /** El gasto de un corredor en imágenes con IA en un mes. */
 export type BrokerMonthlyImageSpend = {

@@ -27,6 +27,27 @@ const TABS: readonly { key: Tab; label: string }[] = [
   { key: "ai", label: "Crear con IA" },
 ];
 
+/** La pestaña a la que lleva una tecla (flechas, Inicio y Fin; WAI-ARIA), o `null`. */
+function nextTab(current: Tab, key: string): Tab | null {
+  const index = TABS.findIndex((item) => item.key === current);
+  const last = TABS.length - 1;
+  const target =
+    key === "ArrowRight"
+      ? index === last
+        ? 0
+        : index + 1
+      : key === "ArrowLeft"
+        ? index === 0
+          ? last
+          : index - 1
+        : key === "Home"
+          ? 0
+          : key === "End"
+            ? last
+            : null;
+  return target === null ? null : (TABS[target]?.key ?? null);
+}
+
 const FORMAT_TEXT: Readonly<Record<PostImageFormat, string>> = {
   "4:5": "Vertical 4:5 (1080 × 1350, Instagram)",
   "9:16": "Vertical 9:16 (1080 × 1920, reel e historia)",
@@ -139,9 +160,13 @@ function StockTab({
         </Button>
       </form>
       {search.error !== null && <ErrorAlert error={search.error} />}
-      {search.data !== undefined && search.data.length === 0 && (
-        <p className="text-sm text-fg-muted">
-          No hay fotos para esa búsqueda: prueba otras palabras.
+      {search.data !== undefined && (
+        <p role="status" className="text-sm text-fg-muted">
+          {search.data.length === 0
+            ? "No hay fotos para esa búsqueda: prueba otras palabras."
+            : search.data.length === 1
+              ? "1 foto: tócala para usarla."
+              : `${search.data.length} fotos: toca la que quieras usar.`}
         </p>
       )}
       {search.data !== undefined && search.data.length > 0 && (
@@ -155,7 +180,7 @@ function StockTab({
                 type="button"
                 disabled={busy}
                 onClick={() => onPick(photo, query.trim())}
-                className="block w-full overflow-hidden rounded-lg border border-line hover:ring-2 hover:ring-brand-500 disabled:opacity-50"
+                className="block w-full overflow-hidden rounded-lg border border-line hover:ring-2 hover:ring-brand-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-50"
                 aria-label={`Usar la foto ${photo.tags.slice(0, 3).join(", ")} de ${photo.author}`}
               >
                 <img
@@ -191,6 +216,7 @@ export function GetImagePanel({
   lockReason: string | null;
 }) {
   const ids = useId();
+  const tabRefs = useRef(new Map<Tab, HTMLButtonElement>());
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("card");
   const [format, setFormat] = useState<PostImageFormat>("4:5");
@@ -236,18 +262,30 @@ export function GetImagePanel({
       <div
         role="tablist"
         aria-label="De dónde sale la imagen"
-        className="flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1"
+        className="flex flex-wrap gap-1 rounded-lg bg-sand p-1"
+        onKeyDown={(event) => {
+          const next = nextTab(tab, event.key);
+          if (next === null) return;
+          event.preventDefault();
+          setTab(next);
+          tabRefs.current.get(next)?.focus();
+        }}
       >
         {TABS.map((item) => (
           <button
             key={item.key}
+            ref={(element) => {
+              if (element === null) tabRefs.current.delete(item.key);
+              else tabRefs.current.set(item.key, element);
+            }}
             type="button"
             role="tab"
             id={`${ids}-${item.key}`}
             aria-selected={tab === item.key}
             aria-controls={`${ids}-panel`}
+            tabIndex={tab === item.key ? 0 : -1}
             onClick={() => setTab(item.key)}
-            className={`rounded-md px-3 py-1.5 text-sm ${
+            className={`rounded-md px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
               tab === item.key
                 ? "bg-surface font-semibold text-fg shadow-xs ring-1 ring-line"
                 : "font-medium text-fg-muted hover:text-fg"
@@ -261,7 +299,9 @@ export function GetImagePanel({
         role="tabpanel"
         id={`${ids}-panel`}
         aria-labelledby={`${ids}-${tab}`}
-        className="space-y-3"
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: WAI-ARIA pide que el panel de una pestaña se pueda enfocar (patrón Tabs).
+        tabIndex={0}
+        className="space-y-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
       >
         {data === undefined ? (
           options.error !== null ? (
@@ -278,6 +318,12 @@ export function GetImagePanel({
                   ? "Una portada con el tema, una tarjeta por punto del texto y un cierre con tu marca, sobre tus colores y tu logo. Sin costo."
                   : "Una tarjeta con el tema del post sobre tus colores y tu logo. Sin costo."}
             </p>
+            {data.runs.some((run) => run.source === "card" && run.status === "succeeded") && (
+              <p className="text-sm text-warning-800">
+                Este post ya tiene tarjetas de un pedido anterior: las nuevas se suman a las que
+                están en Fotos y videos (si cambiaste el texto, las viejas siguen ahí).
+              </p>
+            )}
             {!video && <FormatSelect value={format} onChange={setFormat} />}
             <Button
               loading={busy}
@@ -321,6 +367,10 @@ export function GetImagePanel({
               {data.sources.ai.capReached
                 ? "Llegaste al tope de imágenes con IA de este mes."
                 : `${formatUsd(data.sources.ai.priceUsd ?? 0)} por imagen · llevas ${formatUsd(data.sources.ai.spentUsd)} de ${formatUsd(data.sources.ai.capUsd ?? 0)} este mes.`}
+            </p>
+            <p className="text-xs text-fg-subtle">
+              El modelo y el precio por imagen son los de la configuración y están sin verificar
+              hasta la prueba del operador: el gasto es una estimación.
             </p>
             <Button
               loading={busy}

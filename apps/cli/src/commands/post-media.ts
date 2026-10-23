@@ -104,6 +104,11 @@ async function printOptions(deps: PostMediaDeps, postId: string): Promise<number
         ? `  Crear con IA: ${c.red(`llegaste al tope de este mes (${spent})`)}`
         : `  Crear con IA (${formatUsd(ai.priceUsd ?? 0)} por imagen; ${spent}): ${media(postId)} --ai "${options.suggestions.prompt}"`,
     );
+    deps.print(
+      c.dim(
+        "    El modelo y el precio son los de la configuración, sin verificar hasta la prueba del operador: el gasto es una estimación.",
+      ),
+    );
   }
   if (options.runs.length > 0) {
     deps.print("");
@@ -195,19 +200,23 @@ export function runPostMedia(deps: PostMediaDeps, id: string, options: PostMedia
         photos.forEach((photo, index) => {
           const tags = photo.tags.slice(0, 5).join(", ");
           deps.print(
-            `  ${String(index + 1).padStart(2)}. ${photo.width}×${photo.height} · ${tags} · de ${photo.author}`,
+            `  ${String(index + 1).padStart(2)}. id ${photo.id} · ${photo.width}×${photo.height} · ${tags} · de ${photo.author}`,
           );
           deps.print(`      ${c.dim(photo.pageUrl)}`);
         });
-        deps.print(c.dim(`→ Elige una con: ${media(postId)} --stock "${query}" --pick <n>`));
+        deps.print(c.dim(`→ Elige una con: ${media(postId)} --stock "${query}" --pick <n o id>`));
         return 0;
       }
-      const index = Number(options.pick);
-      const photo = Number.isInteger(index) ? photos[index - 1] : undefined;
+      // El id de la foto (no depende del orden) o su número en la lista.
+      const pick = options.pick.trim();
+      const index = Number(pick);
+      const photo =
+        photos.find((item) => item.id === pick) ??
+        (Number.isInteger(index) && index >= 1 ? photos[index - 1] : undefined);
       if (photo === undefined) {
         throw new CliError(
           "POST_MEDIA_PICK_INVALID",
-          `--pick debe ser un número del 1 al ${photos.length}: "${options.pick}"`,
+          `--pick debe ser un número del 1 al ${photos.length} o el id de una foto de la lista: "${options.pick}"`,
         );
       }
       request = { source: "stock", photoId: photo.id, query, format };
@@ -241,7 +250,7 @@ export function registerPostMedia(post: Command, ctx: CliContext): void {
       "tarjetas con el texto del post sobre los colores y el logo de la marca (US$ 0)",
     )
     .option("--stock <búsqueda>", "busca en la biblioteca de Pixabay (lista los resultados)")
-    .option("--pick <n>", "con --stock: elige el resultado n (desde 1)")
+    .option("--pick <n o id>", "con --stock: elige el resultado n (desde 1) o la foto con ese id")
     .option("--people", "con --stock: incluye fotos con personas")
     .option("--ai <indicación>", "crea una imagen con IA (sin texto dentro; tiene costo y tope)")
     .option("--format <proporción>", `${POST_IMAGE_FORMATS.join(" o ")} (por defecto 4:5)`)

@@ -1,4 +1,4 @@
-import { isAppError } from "@agentsales/core";
+import { imageAiNotCharged, isAppError } from "@agentsales/core";
 import { delay, HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 import { errorText, usePlatformServer } from "../../test/msw-server.js";
@@ -152,6 +152,85 @@ describe("createPixabayStock", () => {
     server.use(http.get(PIXABAY_API_URL, () => HttpResponse.json({ totalHits: 0, hits: [] })));
     expect(await codeOf(stock.download("99"))).toBe("STOCK_PHOTO_NOT_FOUND");
   });
+
+  it("descarta las fotos con miniatura, página o archivo fuera de Pixabay (otro host, http, puerto o credenciales)", async () => {
+    server.use(
+      http.get(PIXABAY_API_URL, () =>
+        HttpResponse.json({
+          totalHits: 5,
+          hits: [
+            hit(1, "casa"),
+            { ...hit(2, "casa"), webformatURL: "https://malo.example/2.jpg" },
+            { ...hit(3, "casa"), pageURL: "http://pixabay.com/photos/3/" },
+            { ...hit(4, "casa"), webformatURL: "https://pixabay.com:8443/get/4.jpg" },
+            { ...hit(5, "casa"), largeImageURL: "https://usuario:clave@cdn.pixabay.com/5.jpg" },
+          ],
+        }),
+      ),
+    );
+    const photos = await createPixabayStock({ apiKey: KEY }).search({ text: "casa", perPage: 12 });
+    expect(photos.map((photo) => photo.id)).toEqual(["1"]);
+  });
+
+  it("una redirección no se sigue: ni en la búsqueda ni en la descarga", async () => {
+    const stock = createPixabayStock({ apiKey: KEY });
+    server.use(
+      http.get(PIXABAY_API_URL, () => HttpResponse.json({ totalHits: 1, hits: [hit(8, "casa")] })),
+      http.get(
+        CDN,
+        () =>
+          new HttpResponse(null, {
+            status: 302,
+            headers: { location: "https://malo.example/x.jpg" },
+          }),
+      ),
+      http.get("https://malo.example/x.jpg", () =>
+        HttpResponse.arrayBuffer(JPEG.buffer, { headers: { "content-type": "image/jpeg" } }),
+      ),
+    );
+    expect(await codeOf(stock.download("8"))).toBe("STOCK_UNAVAILABLE");
+    server.use(
+      http.get(
+        PIXABAY_API_URL,
+        () =>
+          new HttpResponse(null, {
+            status: 301,
+            headers: { location: "https://malo.example/api" },
+          }),
+      ),
+    );
+    expect(await codeOf(stock.search({ text: "otra", perPage: 12 }))).toBe("STOCK_UNAVAILABLE");
+    expect((await recorded()).some((request) => request.url.host === "malo.example")).toBe(false);
+  });
+
+  it("sin Content-Length, corta la descarga apenas pasa el tope", async () => {
+    let sent = 0;
+    server.use(
+      http.get(PIXABAY_API_URL, () => HttpResponse.json({ totalHits: 1, hits: [hit(9, "casa")] })),
+      http.get(CDN, () => {
+        const body = new ReadableStream<Uint8Array>({
+          pull(controller) {
+            sent += 1;
+            if (sent > 100) controller.close();
+            else controller.enqueue(new Uint8Array(1024).fill(0xff));
+          },
+        });
+        return new HttpResponse(body, { headers: { "content-type": "image/jpeg" } });
+      }),
+    );
+    const stock = createPixabayStock({ apiKey: KEY, maxDownloadBytes: 4096 });
+    expect(await codeOf(stock.download("9"))).toBe("STOCK_DOWNLOAD_INVALID");
+    expect(sent).toBeLessThan(100);
+  });
+
+  it("si fetch falla, la clave no queda en el mensaje ni en los detalles", async () => {
+    server.use(http.get(PIXABAY_API_URL, () => HttpResponse.error()));
+    const failing = createPixabayStock({ apiKey: KEY }).search({ text: "casa", perPage: 12 });
+    const error = await failing.catch((caught: unknown) => caught);
+    expect(isAppError(error) && error.code).toBe("STOCK_UNAVAILABLE");
+    expect(errorText(error)).not.toContain(KEY);
+    expect(JSON.stringify(isAppError(error) ? (error.details ?? {}) : {})).not.toContain(KEY);
+  });
 });
 
 describe("createGeminiImages", () => {
@@ -246,5 +325,28 @@ describe("createGeminiImages", () => {
     const slow = run();
     expect(await codeOf(slow)).toBe("IMAGE_AI_UNAVAILABLE");
     await slow.catch((error) => expect(isAppError(error) && error.retriable).toBe(true));
+  });
+
+  it("una redirección no se sigue y cuenta como caída (cobrada); un 429 sale marcado sin cobrar", async () => {
+    const ai = createGeminiImages({ apiKey: GEMINI_KEY, model: "nano-test" });
+    server.use(
+      http.post(
+        ENDPOINT,
+        () =>
+          new HttpResponse(null, { status: 307, headers: { location: "https://malo.example/x" } }),
+      ),
+    );
+    const redirected = await ai.generate({ prompt: "x", format: "4:5" }).catch((e: unknown) => e);
+    expect(isAppError(redirected) && redirected.code).toBe("IMAGE_AI_UNAVAILABLE");
+    expect(imageAiNotCharged(redirected)).toBe(false);
+    server.use(http.post(ENDPOINT, () => new HttpResponse(null, { status: 429 })));
+    const limited = await ai.generate({ prompt: "x", format: "4:5" }).catch((e: unknown) => e);
+    expect(imageAiNotCharged(limited)).toBe(true);
+    server.use(http.post(ENDPOINT, () => HttpResponse.error()));
+    const offline = await ai.generate({ prompt: "x", format: "4:5" }).catch((e: unknown) => e);
+    expect(errorText(offline)).not.toContain(GEMINI_KEY);
+    expect(JSON.stringify(isAppError(offline) ? (offline.details ?? {}) : {})).not.toContain(
+      GEMINI_KEY,
+    );
   });
 });

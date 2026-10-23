@@ -104,6 +104,9 @@ describe("panel: conseguir imagen", () => {
     const results = await within(panel).findByRole("list", { name: "Resultados de la biblioteca" });
     const choices = within(results).getAllByRole("button");
     expect(choices).toHaveLength(1);
+    expect(within(panel).getByText("1 foto: tócala para usarla.").getAttribute("role")).toBe(
+      "status",
+    );
     fireEvent.click(choices[0] as HTMLElement);
     await waitFor(() => expect(s.requests).toContain(`POST /posts/${s.post.id}/images`));
     const [run] = await s.deps.postImageRuns.listByPost(s.post.id, 1);
@@ -123,6 +126,28 @@ describe("panel: conseguir imagen", () => {
       "disabled",
       true,
     );
+  });
+
+  it("las pestañas se recorren con el teclado (flechas, Inicio y Fin) y solo la activa es tabulable", async () => {
+    await setup();
+    const panel = await openPanel();
+    const tabs = within(panel).getAllByRole("tab");
+    expect(tabs.map((tab) => tab.getAttribute("tabindex"))).toEqual(["0", "-1", "-1"]);
+    expect(within(panel).getByRole("tabpanel").getAttribute("tabindex")).toBe("0");
+    const [cards, library, ai] = tabs as [HTMLElement, HTMLElement, HTMLElement];
+    cards.focus();
+    fireEvent.keyDown(cards, { key: "ArrowRight" });
+    expect(document.activeElement).toBe(library);
+    expect(library.getAttribute("aria-selected")).toBe("true");
+    expect(library.getAttribute("tabindex")).toBe("0");
+    fireEvent.keyDown(library, { key: "End" });
+    expect(document.activeElement).toBe(ai);
+    fireEvent.keyDown(ai, { key: "ArrowRight" });
+    expect(document.activeElement).toBe(cards);
+    fireEvent.keyDown(cards, { key: "ArrowLeft" });
+    expect(document.activeElement).toBe(ai);
+    fireEvent.keyDown(ai, { key: "Home" });
+    expect(document.activeElement).toBe(cards);
   });
 
   it("un post de solo texto no ofrece conseguir imagen", async () => {

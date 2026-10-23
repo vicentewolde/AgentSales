@@ -1,3 +1,4 @@
+import { IMAGE_AI_DEFAULTS } from "@agentsales/config";
 import {
   type HealthReport,
   hasLlmPrice,
@@ -155,6 +156,23 @@ export function checkAnthropicModel(result: EnvResult): CheckItem | null {
     level: "warn",
     detail: `ANTHROPIC_MODEL=${result.env.ANTHROPIC_MODEL} no está en la tabla de precios: el gasto se estima con el modelo más caro`,
     hint: "revisa el nombre del modelo, o agrega su precio en packages/core/src/llm-usage.ts",
+  };
+}
+
+/**
+ * La IA de imágenes (F9.5-T25): con la clave puesta, un modelo distinto del de por defecto con el
+ * precio de por defecto anota un gasto que probablemente no es el real (y el tope frena a
+ * destiempo). `null` sin clave o si el precio también se cambió.
+ */
+export function checkImageAiPrice(result: EnvResult): CheckItem | null {
+  if (!result.ok || (result.env.GEMINI_API_KEY ?? "") === "") return null;
+  const { IMAGE_AI_MODEL: model, IMAGE_AI_PRICE_USD: price } = result.env;
+  if (model === IMAGE_AI_DEFAULTS.model || price !== IMAGE_AI_DEFAULTS.priceUsd) return null;
+  return {
+    name: "image_ai_price",
+    level: "warn",
+    detail: `IMAGE_AI_MODEL=${model} con el precio por defecto (${IMAGE_AI_DEFAULTS.priceUsd}): el gasto de las imágenes con IA puede no ser el real`,
+    hint: "pon en IMAGE_AI_PRICE_USD el precio por imagen de ese modelo (ai.google.dev/gemini-api/docs/pricing)",
   };
 }
 

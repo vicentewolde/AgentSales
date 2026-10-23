@@ -19,6 +19,7 @@ import {
   checkEnv,
   checkEnvironment,
   checkFfmpegTool,
+  checkImageAiPrice,
   checkInstagram,
   checkLlmKey,
   checkMercadoLibre,
@@ -124,6 +125,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
   const autoPublish = checkAutoPublish(services.report);
   const llmKey = checkLlmKey(services.report);
   const anthropicModel = checkAnthropicModel(deps.env);
+  const imageAiPrice = checkImageAiPrice(deps.env);
   const pgBinDir = deps.env.ok ? deps.env.env.PG_BIN_DIR : undefined;
   const findPgDump =
     deps.findPgDump ??
@@ -143,6 +145,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
     ...(ufSource ? [ufSource] : []),
     ...(llmKey ? [llmKey] : []),
     ...(anthropicModel ? [anthropicModel] : []),
+    ...(imageAiPrice ? [imageAiPrice] : []),
     ...services.items,
     ...(localWorker ? [localWorker] : []),
     ...(adminTotp ? [adminTotp] : []),

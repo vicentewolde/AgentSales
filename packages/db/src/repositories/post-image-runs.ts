@@ -5,7 +5,7 @@ import {
   postImageRunActive,
   postImageRunSchema,
 } from "@agentsales/core";
-import { and, desc, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { isUniqueViolation, sqlStateOf, withDbErrors } from "../errors.js";
 import { postImageRuns } from "../schema.js";
@@ -126,17 +126,78 @@ export function createPostImageRunRepository(db: SchemaDatabase): PostImageRunRe
       });
     },
 
-    recordCost(id, cost) {
+    reserveImageCost(id, { costUsd, model, capUsd, from, to }) {
+      return withDbErrors(() =>
+        db.transaction(async (tx) => {
+          const [run] = await tx
+            .select({ brokerId: postImageRuns.brokerId })
+            .from(postImageRuns)
+            .where(eq(postImageRuns.id, id));
+          if (run === undefined) return false;
+          // Un candado por marca hasta el fin de la transacción: dos reservas de la misma marca
+          // (dos posts a la vez) se ordenan y la segunda ve el gasto de la primera.
+          await tx.execute(
+            sql`select pg_advisory_xact_lock(hashtextextended(${`post_image_cost:${run.brokerId}`}, 0))`,
+          );
+          const [spent] = await tx
+            .select({ costUsd: sql<string>`coalesce(sum(${postImageRuns.costUsd}), 0)` })
+            .from(postImageRuns)
+            .where(
+              and(
+                eq(postImageRuns.brokerId, run.brokerId),
+                isNotNull(postImageRuns.costUsd),
+                gte(postImageRuns.createdAt, from),
+                lt(postImageRuns.createdAt, to),
+              ),
+            );
+          const total = Math.round((Number(spent?.costUsd ?? 0) + costUsd) * 1_000_000);
+          if (total > Math.round(capUsd * 1_000_000)) return false;
+          await tx
+            .update(postImageRuns)
+            .set({
+              costUsd: sql`coalesce(${postImageRuns.costUsd}, 0) + ${costUsd}`,
+              model,
+              updatedAt: sql`now()`,
+            })
+            .where(eq(postImageRuns.id, id));
+          return true;
+        }),
+      );
+    },
+
+    releaseImageCost(id, costUsd) {
       return withDbErrors(async () => {
-        // Un reintento que vuelve a llamar a la IA suma su costo (se cobró dos veces).
         await db
           .update(postImageRuns)
           .set({
-            costUsd: sql`coalesce(${postImageRuns.costUsd}, 0) + ${cost.costUsd}`,
-            model: cost.model,
+            costUsd: sql`case when coalesce(${postImageRuns.costUsd}, 0) - ${costUsd} > 0 then ${postImageRuns.costUsd} - ${costUsd} else null end`,
             updatedAt: sql`now()`,
           })
           .where(eq(postImageRuns.id, id));
+      });
+    },
+
+    listQueued() {
+      return withDbErrors(async () => {
+        const rows = await db
+          .select()
+          .from(postImageRuns)
+          .where(eq(postImageRuns.status, "queued"))
+          .orderBy(asc(postImageRuns.createdAt), asc(postImageRuns.id));
+        return rows.map(toRun);
+      });
+    },
+
+    failAbandoned(startedBefore, error) {
+      return withDbErrors(async () => {
+        const closed = await db
+          .update(postImageRuns)
+          .set({ status: "failed", error, finishedAt: sql`now()`, updatedAt: sql`now()` })
+          .where(
+            and(eq(postImageRuns.status, "running"), lt(postImageRuns.startedAt, startedBefore)),
+          )
+          .returning({ id: postImageRuns.id });
+        return closed.map((row) => row.id);
       });
     },
 

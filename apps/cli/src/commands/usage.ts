@@ -69,7 +69,7 @@ export function runUsage(deps: UsageDeps, options: UsageOptions = {}) {
     }
     deps.print(
       renderTable(
-        ["Corredor", "Gastado", "Tope", "Imágenes"],
+        ["Corredor", "Gastado", "Tope", "Pedidos"],
         withImages.map((row) => [
           row.slug,
           row.capReached ? c.red(usd(row.spentUsd)) : usd(row.spentUsd),

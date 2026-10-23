@@ -1,8 +1,14 @@
 import type { AbortSignalLike } from "../abort.js";
 import type { Broker } from "../broker.js";
+import { chileMonthOf, chileMonthRange } from "../chile-time.js";
 import { postOriginalPath } from "../content/media-keys.js";
 import { AppError, isAppError } from "../errors.js";
-import { assertImageAiBudget, type ImageAiPricing } from "../image-ai-budget.js";
+import {
+  assertImageAiBudget,
+  type ImageAiPricing,
+  imageAiBudgetExceeded,
+  imageAiNotCharged,
+} from "../image-ai-budget.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { CardBrand, CardRenderer } from "../ports/card-renderer.js";
 import type { ContentRepository } from "../ports/content-repository.js";
@@ -47,8 +53,8 @@ export type RunPostImageDeps = {
   processor: Pick<MediaProcessor, "processPhotoReel">;
   /** La biblioteca (sin `PIXABAY_API_KEY`, `null`). */
   stock: StockPhotoProvider | null;
-  /** La IA con su precio y tope (sin `GEMINI_API_KEY`, `null`). */
-  ai: { generator: ImageGenerator; pricing: ImageAiPricing } | null;
+  /** La IA con su modelo, su precio y su tope (sin `GEMINI_API_KEY`, `null`). */
+  ai: { generator: ImageGenerator; model: string; pricing: ImageAiPricing } | null;
   sha256: (bytes: Uint8Array) => string;
   now?: () => Date;
 };
@@ -110,9 +116,13 @@ async function cardBrand(
   };
 }
 
+/** Lo que el intento sabe de la IA: si un intento anterior reservó y si este ya llamó. */
+type AiAttempt = { previousCostUsd: number | null; aiCalled: boolean };
+
 async function produce(
   deps: RunPostImageDeps,
   runId: string,
+  attempt: AiAttempt,
   post: Post,
   broker: Broker,
   request: PostImageRequest,
@@ -153,18 +163,41 @@ async function produce(
     return [checkedImage(file, deps.sha256, () => invalidDownload("La foto de la biblioteca"))];
   }
   if (deps.ai === null) throw postImageSourceNotConfigured("ai");
-  await assertImageAiBudget(
-    { runs: deps.runs },
-    broker,
-    deps.ai.pricing,
-    (deps.now ?? (() => new Date()))(),
-  );
-  const generated = await deps.ai.generator.generate(
-    { prompt: imageAiPrompt(request.prompt), format: request.format },
-    signal,
-  );
-  // Se cobra apenas la entrega, aunque después algo falle (ADR-0038 §3).
-  await deps.runs.recordCost(runId, { costUsd: deps.ai.pricing.priceUsd, model: generated.model });
+  const { pricing, model, generator } = deps.ai;
+  // Un intento anterior ya reservó (y quizá llamó a la IA): no se vuelve a llamar ni a cobrar.
+  if (attempt.previousCostUsd !== null) {
+    throw new AppError(
+      "IMAGE_AI_INTERRUPTED",
+      "La imagen con IA anterior se cortó a medias: pide otra (la anterior quedó anotada en el gasto)",
+    );
+  }
+  const now = (deps.now ?? (() => new Date()))();
+  await assertImageAiBudget({ runs: deps.runs }, broker, pricing, now);
+  // La reserva atómica antes de llamar (ADR-0038 §3): si dos pedidos de la marca llegan a la vez,
+  // el segundo ve el gasto del primero y el tope no se pasa.
+  const { from, to } = chileMonthRange(chileMonthOf(now));
+  const reserved = await deps.runs.reserveImageCost(runId, {
+    costUsd: pricing.priceUsd,
+    model,
+    capUsd: pricing.monthlyCapUsd,
+    from,
+    to,
+  });
+  if (!reserved) throw imageAiBudgetExceeded(broker.id, null, pricing);
+  // Desde aquí, ningún error se reintenta solo: otra llamada podría cobrar de nuevo.
+  attempt.aiCalled = true;
+  let generated: Awaited<ReturnType<ImageGenerator["generate"]>>;
+  try {
+    generated = await generator.generate(
+      { prompt: imageAiPrompt(request.prompt), format: request.format },
+      signal,
+    );
+  } catch (error) {
+    // Rechazada antes de generar (un 429, un bloqueo de la indicación): no cobró, se devuelve.
+    // Un corte o una respuesta sin imagen quedan cobrados: se sobreestima, nunca se anota 0.
+    if (imageAiNotCharged(error)) await deps.runs.releaseImageCost(runId, pricing.priceUsd);
+    throw error;
+  }
   return [
     checkedImage(
       generated,
@@ -187,8 +220,8 @@ const tooMany = (postId: string) =>
 
 /**
  * Atiende un pedido de imágenes de un post (job `post.image`). Un pedido que ya terminó se salta.
- * Un error reintentable sube (el job reintenta) salvo en el último intento; los demás dejan el
- * pedido `failed` con su código y un mensaje limpio.
+ * Un error reintentable sube (el job reintenta) salvo en el último intento o si ya se llamó a la IA
+ * (no se cobra dos veces); los demás dejan el pedido `failed` con su código y un mensaje limpio.
  */
 export async function runPostImage(
   deps: RunPostImageDeps,
@@ -198,6 +231,7 @@ export async function runPostImage(
   if (run === null || !(await deps.runs.markRunning(run.id))) {
     return { outcome: "skipped", reason: "not_active" };
   }
+  const attempt: AiAttempt = { previousCostUsd: run.costUsd, aiCalled: false };
   try {
     const post = await deps.posts.get(run.postId);
     if (post === null || post.status === "archived") {
@@ -208,7 +242,7 @@ export async function runPostImage(
     const before = await deps.media.listOriginals(postSubject(post.id));
     if (before.length >= POST_UPLOAD.maxMediaPerPost) throw tooMany(post.id);
 
-    const produced = await produce(deps, run.id, post, broker, run.request, params.signal);
+    const produced = await produce(deps, run.id, attempt, post, broker, run.request, params.signal);
     const files = produced.map((item) =>
       item.kind === "image"
         ? {
@@ -275,7 +309,10 @@ export async function runPostImage(
     await deps.runs.markSucceeded(run.id, mediaIds);
     return { outcome: "succeeded", mediaIds, created };
   } catch (error) {
-    if (isAppError(error) && error.retriable && !params.isLastAttempt) throw error;
+    // Después de llamar a la IA nada se reintenta solo (cobraría otra vez): el pedido falla.
+    if (isAppError(error) && error.retriable && !params.isLastAttempt && !attempt.aiCalled) {
+      throw error;
+    }
     const code = isAppError(error) ? error.code : "INTERNAL_ERROR";
     const message = isAppError(error)
       ? scrubMessage(error.message)

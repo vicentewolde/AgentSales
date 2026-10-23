@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { BrokerData } from "../broker.js";
 import type { PostKind } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
-import { IMAGE_AI_BUDGET_MESSAGE, monthlyImageSpend } from "../image-ai-budget.js";
+import {
+  IMAGE_AI_BUDGET_MESSAGE,
+  IMAGE_AI_NOT_CHARGED,
+  monthlyImageSpend,
+} from "../image-ai-budget.js";
 import type { PostImageRequest } from "../post-image.js";
 import {
   createFakeCardRenderer,
@@ -22,7 +26,12 @@ import {
   createInMemoryPublicationRepository,
   fakeJpeg,
 } from "../testing/index.js";
-import { getPostImageOptions, requestPostImage, searchStockPhotos } from "./post-images.js";
+import {
+  getPostImageOptions,
+  getPostImageRun,
+  requestPostImage,
+  searchStockPhotos,
+} from "./post-images.js";
 import { runPostImage } from "./run-post-image.js";
 
 // F9.5-T25 (ADR-0038): conseguir imágenes para un post. Pedirlas (API), conseguirlas (worker) con
@@ -108,7 +117,7 @@ async function setup(
     cards,
     processor,
     stock,
-    ai: options.ai === false ? null : { generator, pricing: PRICING },
+    ai: options.ai === false ? null : { generator, model: "nano-test", pricing: PRICING },
     sha256,
     now,
   };
@@ -214,6 +223,18 @@ describe("requestPostImage", () => {
     } as never;
     expect(await codeOf(s.request({ source: "card", format: "4:5" }))).toBe("QUEUE_UNAVAILABLE");
     expect(s.runs.all()[0]?.status).toBe("failed");
+  });
+});
+
+describe("getPostImageRun", () => {
+  it("devuelve el pedido solo si es de ese post", async () => {
+    const s = await setup();
+    const run = await s.request({ source: "card", format: "4:5" });
+    expect((await getPostImageRun(s.api, ADMIN, s.post.id, run.id)).id).toBe(run.id);
+    const other = await s.posts.create({ brokerId: s.broker.id, topic: "Otro", kind: "image" });
+    expect(await codeOf(getPostImageRun(s.api, ADMIN, other.id, run.id))).toBe(
+      "POST_IMAGE_RUN_NOT_FOUND",
+    );
   });
 });
 
@@ -345,18 +366,70 @@ describe("runPostImage", () => {
     expect(await s.runs.get(run.id)).toMatchObject({ costUsd: 0.04, model: "nano-test" });
   });
 
-  it("IA: un error reintentable sube antes del último intento; en el último, falla", async () => {
+  it("IA: una caída o un corte después de llamar no se reintenta y queda cobrado", async () => {
+    const s = await setup();
+    const generator = createFakeImageGenerator({
+      error: new AppError("IMAGE_AI_UNAVAILABLE", "tardó demasiado", { retriable: true }),
+    });
+    s.worker.ai = { generator, model: "nano-test", pricing: PRICING };
+    const run = await s.request({ source: "ai", prompt: "Un living", format: "4:5" });
+    // Aunque no sea el último intento, el pedido falla: otra llamada cobraría de nuevo.
+    expect(await s.work(run.id, false)).toEqual({
+      outcome: "failed",
+      code: "IMAGE_AI_UNAVAILABLE",
+    });
+    expect(generator.prompts).toHaveLength(1);
+    expect(await s.runs.get(run.id)).toMatchObject({ status: "failed", costUsd: 0.04 });
+  });
+
+  it("IA: un 429 o un bloqueo de la indicación (sin cobrar) devuelve la reserva", async () => {
     const s = await setup();
     s.worker.ai = {
       generator: createFakeImageGenerator({
-        error: new AppError("IMAGE_AI_UNAVAILABLE", "caída", { retriable: true }),
+        error: new AppError("IMAGE_AI_RATE_LIMITED", "espera", {
+          retriable: true,
+          details: IMAGE_AI_NOT_CHARGED,
+        }),
       }),
+      model: "nano-test",
       pricing: PRICING,
     };
     const run = await s.request({ source: "ai", prompt: "Un living", format: "4:5" });
-    expect(await codeOf(s.work(run.id, false))).toBe("IMAGE_AI_UNAVAILABLE");
-    expect((await s.runs.get(run.id))?.status).toBe("running");
-    expect(await s.work(run.id, true)).toEqual({ outcome: "failed", code: "IMAGE_AI_UNAVAILABLE" });
+    expect(await s.work(run.id, false)).toEqual({
+      outcome: "failed",
+      code: "IMAGE_AI_RATE_LIMITED",
+    });
+    expect(await s.runs.get(run.id)).toMatchObject({ status: "failed", costUsd: null });
+  });
+
+  it("IA: si R2 falla después de cobrar, una sola llamada y un solo costo", async () => {
+    const s = await setup();
+    s.worker.storage = {
+      ...s.storage,
+      put: async () => {
+        throw new AppError("STORAGE_UNAVAILABLE", "R2 no respondió", { retriable: true });
+      },
+    } as never;
+    const run = await s.request({ source: "ai", prompt: "Un living", format: "4:5" });
+    expect(await s.work(run.id, false)).toEqual({
+      outcome: "failed",
+      code: "STORAGE_UNAVAILABLE",
+    });
+    // El job no la reintenta, y si igual volviera a correr, no llama otra vez.
+    expect(await s.work(run.id, false)).toEqual({ outcome: "skipped", reason: "not_active" });
+    expect(s.generator.prompts).toHaveLength(1);
+    expect(await s.runs.get(run.id)).toMatchObject({ costUsd: 0.04 });
+  });
+
+  it("IA: un intento cortado a medias (con la reserva hecha) no vuelve a llamar", async () => {
+    const s = await setup();
+    const run = await s.request({ source: "ai", prompt: "Un living", format: "4:5" });
+    await s.runs.markRunning(run.id);
+    const range = { from: new Date("2000-01-01"), to: new Date("2100-01-01") };
+    await s.runs.reserveImageCost(run.id, { costUsd: 0.04, model: "nano", capUsd: 2, ...range });
+    expect(await s.work(run.id)).toEqual({ outcome: "failed", code: "IMAGE_AI_INTERRUPTED" });
+    expect(s.generator.prompts).toEqual([]);
+    expect((await s.runs.get(run.id))?.costUsd).toBe(0.04);
   });
 });
 
@@ -402,12 +475,28 @@ describe("el gasto de la IA", () => {
     );
   });
 
-  it("el worker se niega si el tope se alcanzó después de pedir", async () => {
+  it("el worker se niega si otro post de la marca llenó el tope después de pedir", async () => {
     const s = await setup();
     const run = await s.request({ source: "ai", prompt: "Una casa", format: "4:5" });
-    await s.runs.recordCost(run.id, { costUsd: 0.09, model: "otro" });
+    // Otro post de la misma marca reserva entre medio: la reserva de este ya no cabe.
+    const other = await s.posts.create({ brokerId: s.broker.id, topic: "Otro", kind: "image" });
+    const otherRun = await requestPostImage(s.api, ADMIN, other.id, {
+      source: "ai",
+      prompt: "Otra casa",
+      format: "4:5",
+    });
+    const range = { from: new Date("2000-01-01"), to: new Date("2100-01-01") };
+    expect(
+      await s.runs.reserveImageCost(otherRun.id, {
+        costUsd: 0.09,
+        model: "n",
+        capUsd: 0.1,
+        ...range,
+      }),
+    ).toBe(true);
     expect(await s.work(run.id)).toEqual({ outcome: "failed", code: "IMAGE_AI_BUDGET_EXCEEDED" });
     expect(s.generator.prompts).toEqual([]);
+    expect((await s.runs.get(run.id))?.costUsd).toBeNull();
     expect(fakeJpeg("x")[0]).toBe(0xff);
   });
 });

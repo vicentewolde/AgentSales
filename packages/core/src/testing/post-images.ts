@@ -1,4 +1,5 @@
 import { AppError } from "../errors.js";
+import { roundUsd } from "../llm-usage.js";
 import type { CardRenderer, CardSpec } from "../ports/card-renderer.js";
 import type { PostImageRunRepository } from "../ports/post-image-run-repository.js";
 import type {
@@ -104,14 +105,45 @@ export function createInMemoryPostImageRunRepository(
         finishedAt: new Date(),
       });
     },
-    async recordCost(id, cost) {
+    async reserveImageCost(id, { costUsd, model, capUsd, from, to }) {
+      const current = runs.get(id);
+      if (current === undefined) return false;
+      // Como la transacción de Postgres: lo gastado por la marca en el rango, más esta imagen.
+      const spent = [...runs.values()]
+        .filter(
+          (run) =>
+            run.brokerId === current.brokerId &&
+            run.costUsd !== null &&
+            run.createdAt >= from &&
+            run.createdAt < to,
+        )
+        .reduce((sum, run) => sum + (run.costUsd ?? 0), 0);
+      if (roundUsd(spent + costUsd) > roundUsd(capUsd)) return false;
+      runs.set(id, { ...current, costUsd: roundUsd((current.costUsd ?? 0) + costUsd), model });
+      return true;
+    },
+    async releaseImageCost(id, costUsd) {
       const current = runs.get(id);
       if (current === undefined) return;
-      runs.set(id, {
-        ...current,
-        costUsd: (current.costUsd ?? 0) + cost.costUsd,
-        model: cost.model,
-      });
+      const left = roundUsd((current.costUsd ?? 0) - costUsd);
+      runs.set(id, { ...current, costUsd: left > 0 ? left : null });
+    },
+    async listQueued() {
+      return [...runs.values()].filter((run) => run.status === "queued").map(structuredCopy);
+    },
+    async failAbandoned(startedBefore, error) {
+      const closed: string[] = [];
+      for (const run of runs.values()) {
+        if (run.status !== "running" || run.startedAt === null || run.startedAt >= startedBefore)
+          continue;
+        change(run.id, ["running"], {
+          status: "failed",
+          error: { ...error },
+          finishedAt: new Date(),
+        });
+        closed.push(run.id);
+      }
+      return closed;
     },
     async sumImageCost({ from, to, brokerId }) {
       const totals = new Map<string, { costUsd: number; images: number }>();
@@ -120,7 +152,7 @@ export function createInMemoryPostImageRunRepository(
         if (brokerId !== undefined && run.brokerId !== brokerId) continue;
         const total = totals.get(run.brokerId) ?? { costUsd: 0, images: 0 };
         totals.set(run.brokerId, {
-          costUsd: total.costUsd + run.costUsd,
+          costUsd: roundUsd(total.costUsd + run.costUsd),
           images: total.images + 1,
         });
       }

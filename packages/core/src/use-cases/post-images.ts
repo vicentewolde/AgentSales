@@ -201,3 +201,23 @@ export async function requestPostImage(
   }
   return run;
 }
+
+/**
+ * Un pedido de imágenes de un post (`GET /posts/:id/images/:runId`): con el acceso al post, y solo si
+ * el pedido es de ese post (si no, `POST_IMAGE_RUN_NOT_FOUND`, 404).
+ */
+export async function getPostImageRun(
+  deps: Pick<PostImageDeps, "posts" | "runs">,
+  actor: Actor,
+  postId: string,
+  runId: string,
+): Promise<PostImageRun> {
+  assertPostAccess(actor, await deps.posts.get(postId), postId);
+  const run = await deps.runs.get(runId);
+  if (run === null || run.postId !== postId) {
+    throw new AppError("POST_IMAGE_RUN_NOT_FOUND", "No existe ese pedido de imágenes", {
+      details: { postId, runId },
+    });
+  }
+  return run;
+}

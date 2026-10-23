@@ -2,7 +2,9 @@ import {
   type AbortSignalLike,
   AppError,
   isAppError,
+  type JobQueue,
   type MediaProcessor,
+  type PostImageRunRepository,
   type RunPostImageDeps,
   runPostImage,
 } from "@agentsales/core";
@@ -85,4 +87,51 @@ export function postImageJob(deps: PostImageJobDeps): Job {
       }
     },
   });
+}
+
+/**
+ * Un pedido en `running` que empezó hace más de esto quedó abandonado (el worker se apagó a medias):
+ * tres intentos de 15 min con su espera caben de sobra.
+ */
+export const POST_IMAGE_RUN_ABANDONED_AFTER_MS = 2 * 60 * 60 * 1000;
+
+export const POST_IMAGE_RUN_ABANDONED = {
+  code: "POST_IMAGE_RUN_ABANDONED",
+  message: "El pedido de imágenes se cortó (el worker se detuvo): vuelve a pedirlo",
+};
+
+/**
+ * Al arrancar, antes de registrar los jobs: cierra como `failed` los pedidos en `running` de más de
+ * 2 h (`POST_IMAGE_RUN_ABANDONED`), como `failAbandonedContentRuns`. Devuelve sus ids.
+ */
+export function failAbandonedPostImageRuns(
+  runs: Pick<PostImageRunRepository, "failAbandoned">,
+  now = Date.now(),
+): Promise<string[]> {
+  return runs.failAbandoned(
+    new Date(now - POST_IMAGE_RUN_ABANDONED_AFTER_MS),
+    POST_IMAGE_RUN_ABANDONED,
+  );
+}
+
+/**
+ * Al arrancar, con las colas ya creadas: reencola los pedidos en `queued` como `post.image` (con el
+ * worker apagado, un pedido espera y sigue valiendo; `singletonKey` no lo duplica). Uno que falla no
+ * corta los demás.
+ */
+export async function requeueQueuedPostImageRuns(
+  runs: Pick<PostImageRunRepository, "listQueued">,
+  queue: JobQueue,
+): Promise<{ requeued: number; failed: string[] }> {
+  const failed: string[] = [];
+  let requeued = 0;
+  for (const run of await runs.listQueued()) {
+    try {
+      await queue.enqueue("post.image", { postImageRunId: run.id }, { singletonKey: run.id });
+      requeued += 1;
+    } catch {
+      failed.push(run.id);
+    }
+  }
+  return { requeued, failed };
 }

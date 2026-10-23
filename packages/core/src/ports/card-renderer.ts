@@ -39,7 +39,7 @@ export type RenderedCard = {
 
 /**
  * Dibuja las tarjetas de la marca (F9.5-T25, ADR-0038 §1.1) con sharp
- * (`@agentsales/media/cards`). Un logo que no se puede leer se omite (se muestra el nombre).
+ * (`createCardRenderer` de `@agentsales/media`). Un logo que no se puede leer se omite (se muestra el nombre).
  */
 export interface CardRenderer {
   /** Versión del dibujo: cambiarla cambia los bytes (y el sha256) de las tarjetas. */

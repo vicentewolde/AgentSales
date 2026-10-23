@@ -6,6 +6,7 @@ import {
   marketplaceAutomationEnabled,
   panelUrlOf,
   withoutBackupCredentials,
+  withoutImageAiKey,
 } from "./env.js";
 
 const DIRECT_URL =
@@ -184,11 +185,24 @@ describe("loadEnv", () => {
       custom.IMAGE_AI_PRICE_USD,
       custom.IMAGE_AI_MONTHLY_CAP_USD,
     ]).toEqual(["otro-modelo", 0.05, 0]);
-    for (const value of ["-1", "abc", "0,05", "9"]) {
+    for (const value of ["-1", "abc", "0,05", "9", "0", "0.0000"]) {
       expect(envErrorOf({ ...validSource, IMAGE_AI_PRICE_USD: value }).message).toContain(
         "IMAGE_AI_PRICE_USD",
       );
     }
+  });
+
+  it("la API quita GEMINI_API_KEY de su configuración y su entorno, y sabe si estaba (F9.5-T25)", () => {
+    const processEnv: Record<string, string | undefined> = {
+      ...validSource,
+      GEMINI_API_KEY: "clave-gemini-de-prueba",
+    };
+    const { env, imageAiConfigured } = withoutImageAiKey(loadEnv(processEnv), processEnv);
+    expect(imageAiConfigured).toBe(true);
+    expect(env.GEMINI_API_KEY).toBeUndefined();
+    expect(processEnv.GEMINI_API_KEY).toBeUndefined();
+    expect(JSON.stringify(env)).not.toContain("clave-gemini");
+    expect(withoutImageAiKey(loadEnv(validSource), {}).imageAiConfigured).toBe(false);
   });
 
   it("rechaza un LLM_PROVIDER desconocido listando las tres opciones", () => {

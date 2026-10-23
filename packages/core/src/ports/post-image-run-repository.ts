@@ -28,8 +28,22 @@ export interface PostImageRunRepository {
   markSucceeded(id: string, mediaIds: readonly string[]): Promise<boolean>;
   /** `queued` o `running` → `failed`. */
   markFailed(id: string, error: { code: string; message: string }): Promise<boolean>;
-  /** Anota el costo de una imagen con IA (apenas el proveedor la entrega, aunque después falle). */
-  recordCost(id: string, cost: { costUsd: number; model: string }): Promise<void>;
+  /**
+   * Reserva el costo de una imagen con IA **antes** de llamar al proveedor, de forma atómica por
+   * marca: suma `costUsd` al pedido solo si lo gastado por su marca en `[from, to)` más `costUsd` no
+   * pasa `capUsd` (con dos pedidos a la vez de la misma marca, uno espera al otro). Anota el modelo.
+   * `false` si no cabe (no anota nada).
+   */
+  reserveImageCost(
+    id: string,
+    reservation: { costUsd: number; model: string; capUsd: number; from: Date; to: Date },
+  ): Promise<boolean>;
+  /** Devuelve una reserva cuando la llamada falló sin cobrar (un 429 o un bloqueo antes de generar). */
+  releaseImageCost(id: string, costUsd: number): Promise<void>;
+  /** Los pedidos en `queued` (el worker los reencola al arrancar), del más viejo al más nuevo. */
+  listQueued(): Promise<PostImageRun[]>;
+  /** Cierra como `failed` los `running` que empezaron antes de `startedBefore`; devuelve sus ids. */
+  failAbandoned(startedBefore: Date, error: { code: string; message: string }): Promise<string[]>;
   /** Lo gastado en IA por corredor (uno si viene `brokerId`), por la fecha de creación del pedido. */
   sumImageCost(filter: { from: Date; to: Date; brokerId?: string }): Promise<BrokerImageSpend[]>;
 }

@@ -172,7 +172,13 @@ describe("/posts/:id/images", () => {
         })
       ).json(),
     );
-    await s.postImageRuns.recordCost(first.run.id, { costUsd: 0.04, model: "nano" });
+    await s.postImageRuns.reserveImageCost(first.run.id, {
+      costUsd: 0.04,
+      model: "nano",
+      capUsd: 1,
+      from: new Date("2000-01-01"),
+      to: new Date("2100-01-01"),
+    });
     await s.postImageRuns.markFailed(first.run.id, { code: "X", message: "x" });
     const refused = await s.admin(`/posts/${s.post.id}/images`, {
       method: "POST",

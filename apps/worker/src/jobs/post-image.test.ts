@@ -19,7 +19,14 @@ import {
 } from "@agentsales/core/testing";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { captureLogger } from "../../test/content-fixture.js";
-import { POST_IMAGE_QUEUE, postImageJob } from "./post-image.js";
+import { IDLE_IGNORED_JOBS } from "../idle-exit.js";
+import {
+  failAbandonedPostImageRuns,
+  POST_IMAGE_QUEUE,
+  POST_IMAGE_RUN_ABANDONED_AFTER_MS,
+  postImageJob,
+  requeueQueuedPostImageRuns,
+} from "./post-image.js";
 
 // F9.5-T25: el job `post.image` con los dobles: consigue lo pedido con un temporal propio del
 // intento, lo borra al terminar y no deja la indicación en el log.
@@ -75,6 +82,7 @@ async function setup() {
       stock: null,
       ai: {
         generator: createFakeImageGenerator(),
+        model: "nano-test",
         pricing: { priceUsd: 0.034, monthlyCapUsd: 2 },
       },
       sha256: () => "a".repeat(64),
@@ -148,5 +156,48 @@ describe("job post.image", () => {
       true,
     );
     expect(JSON.stringify(lines)).not.toContain("búsqueda privada");
+  });
+
+  it("al arrancar: cierra los abandonados de más de 2 h y reencola los que esperan", async () => {
+    const t = await setup();
+    const card = { source: "card" as const, format: "4:5" as const };
+    const queued = await t.runs.create({
+      postId: t.post.id,
+      brokerId: t.broker.id,
+      source: "card",
+      request: card,
+      createdBy: null,
+    });
+    // Recién empezado: no es abandonado; con el reloj 2 h después, sí.
+    const other = { id: "22222222-2222-4222-8222-222222222222" };
+    const running = await t.runs.create({
+      postId: other.id,
+      brokerId: t.broker.id,
+      source: "card",
+      request: card,
+      createdBy: null,
+    });
+    await t.runs.markRunning(running.id);
+    expect(await failAbandonedPostImageRuns(t.runs)).toEqual([]);
+    const later = Date.now() + POST_IMAGE_RUN_ABANDONED_AFTER_MS + 1000;
+    expect(await failAbandonedPostImageRuns(t.runs, later)).toEqual([running.id]);
+    expect(await t.runs.get(running.id)).toMatchObject({
+      status: "failed",
+      error: { code: "POST_IMAGE_RUN_ABANDONED" },
+    });
+
+    const queue = createInMemoryJobQueue();
+    expect(await requeueQueuedPostImageRuns(t.runs, queue)).toEqual({ requeued: 1, failed: [] });
+    expect(queue.jobs).toEqual([
+      {
+        name: "post.image",
+        data: { postImageRunId: queued.id },
+        options: { singletonKey: queued.id },
+      },
+    ]);
+  });
+
+  it("un post.image pendiente cuenta como trabajo: el worker no se apaga solo (T24)", () => {
+    expect(IDLE_IGNORED_JOBS).not.toContain("post.image");
   });
 });

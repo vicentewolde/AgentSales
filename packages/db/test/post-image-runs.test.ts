@@ -90,7 +90,7 @@ function postImageRunContract(name: string, make: () => Promise<Setup>) {
       ]);
     });
 
-    it("suma el gasto de la IA por marca en el rango de fechas", async () => {
+    it("reserva el costo solo si cabe en el tope de la marca, lo devuelve y lo suma por rango", async () => {
       const a = await s.newPost();
       const b = await s.newPost();
       const ai = (postId: string, brokerId: string) =>
@@ -101,19 +101,28 @@ function postImageRunContract(name: string, make: () => Promise<Setup>) {
           request: { source: "ai", prompt: "una casa", format: "4:5" },
           createdBy: null,
         });
+      const range = { from: new Date("2000-01-01"), to: new Date("2100-01-01") };
+      const reserve = (id: string, costUsd: number, model = "nano") =>
+        s.repository.reserveImageCost(id, { costUsd, model, capUsd: 0.1, ...range });
       const first = await ai(a.postId, a.brokerId);
-      await s.repository.recordCost(first.id, { costUsd: 0.034, model: "nano" });
-      await s.repository.recordCost(first.id, { costUsd: 0.034, model: "nano" });
+      expect(await reserve(first.id, 0.034)).toBe(true);
+      expect(await reserve(first.id, 0.034)).toBe(true);
       await s.repository.markFailed(first.id, { code: "X", message: "x" });
       const second = await ai(a.postId, a.brokerId);
-      await s.repository.recordCost(second.id, { costUsd: 0.05, model: "nano-2" });
-      await ai(b.postId, b.brokerId);
+      // 0,068 + 0,05 pasa el tope de 0,10: no anota nada.
+      expect(await reserve(second.id, 0.05, "nano-2")).toBe(false);
+      expect(await s.repository.get(second.id)).toMatchObject({ costUsd: null, model: null });
+      expect(await reserve(second.id, 0.032, "nano-2")).toBe(true);
+      expect(await s.repository.get(second.id)).toMatchObject({ costUsd: 0.032, model: "nano-2" });
+      // Otra marca tiene su propio tope.
+      const other = await ai(b.postId, b.brokerId);
+      expect(await reserve(other.id, 0.05)).toBe(true);
+      await s.repository.releaseImageCost(other.id, 0.05);
+      expect((await s.repository.get(other.id))?.costUsd).toBeNull();
 
-      expect(await s.repository.get(second.id)).toMatchObject({ costUsd: 0.05, model: "nano-2" });
-      const range = { from: new Date("2000-01-01"), to: new Date("2100-01-01") };
       const [spend] = await s.repository.sumImageCost({ ...range, brokerId: a.brokerId });
       expect(spend?.images).toBe(2);
-      expect(spend?.costUsd).toBeCloseTo(0.118, 6);
+      expect(spend?.costUsd).toBeCloseTo(0.1, 6);
       expect(await s.repository.sumImageCost({ ...range, brokerId: b.brokerId })).toEqual([]);
       expect(
         await s.repository.sumImageCost({
@@ -122,6 +131,33 @@ function postImageRunContract(name: string, make: () => Promise<Setup>) {
           brokerId: a.brokerId,
         }),
       ).toEqual([]);
+    });
+
+    it("lista los que esperan en cola y cierra los abandonados en running", async () => {
+      const { postId, brokerId } = await s.newPost();
+      const run = await s.repository.create({
+        postId,
+        brokerId,
+        source: "card",
+        request: { source: "card", format: "4:5" },
+        createdBy: null,
+      });
+      expect((await s.repository.listQueued()).map((item) => item.id)).toContain(run.id);
+      await s.repository.markRunning(run.id);
+      expect((await s.repository.listQueued()).map((item) => item.id)).not.toContain(run.id);
+      // Empezó hace un momento: con un corte en el pasado no es abandonado.
+      expect(
+        await s.repository.failAbandoned(new Date("2000-01-01"), { code: "A", message: "a" }),
+      ).not.toContain(run.id);
+      const closed = await s.repository.failAbandoned(new Date("2100-01-01"), {
+        code: "POST_IMAGE_RUN_ABANDONED",
+        message: "m",
+      });
+      expect(closed).toContain(run.id);
+      expect(await s.repository.get(run.id)).toMatchObject({
+        status: "failed",
+        error: { code: "POST_IMAGE_RUN_ABANDONED", message: "m" },
+      });
     });
   });
 }

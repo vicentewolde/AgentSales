@@ -19,6 +19,7 @@ import {
   panelUrlOf,
   resolveBackupDir,
   withoutBackupCredentials,
+  withoutImageAiKey,
 } from "@agentsales/config";
 import { ALL_SCOPE, brokersNeedingApiKey, WORKER_HEARTBEAT_LOOKBACK } from "@agentsales/core";
 import {
@@ -94,7 +95,8 @@ const SHUTDOWN_TIMEOUT_MS = 30_000;
 loadAppEnvFile();
 // El token del bucket de respaldos es solo del worker (spec F8 §4.9, D13): la API lo quita de su
 // configuración y de su entorno al arrancar (en Fly los secretos llegan a los dos procesos).
-const env = withoutBackupCredentials(loadEnv());
+// La clave de la IA de imágenes también es solo del worker (F9.5-T25): la API sabe si está.
+const { env, imageAiConfigured } = withoutImageAiKey(withoutBackupCredentials(loadEnv()));
 // En internet (spec F8 §4.2): el host, el panel y los orígenes salen de `PUBLIC_URL`; sin ella, el Mac.
 const publicUrl = env.PUBLIC_URL;
 const https = publicUrl?.startsWith("https://") ?? false;
@@ -212,7 +214,7 @@ const app = createApp({
   postImageRuns: createPostImageRunRepository(database.db),
   imageSources: {
     stock: env.PIXABAY_API_KEY ? createPixabayStock({ apiKey: env.PIXABAY_API_KEY }) : null,
-    ai: env.GEMINI_API_KEY ? imageAiPricing : null,
+    ai: imageAiConfigured ? imageAiPricing : null,
   },
   imageAiPricing,
   publications: createPublicationRepository(database.db),

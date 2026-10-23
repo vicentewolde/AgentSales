@@ -1,4 +1,9 @@
-import { AppError, type ImageGenerator, POST_IMAGE_LIMITS } from "@agentsales/core";
+import {
+  AppError,
+  IMAGE_AI_NOT_CHARGED,
+  type ImageGenerator,
+  POST_IMAGE_LIMITS,
+} from "@agentsales/core";
 import { z } from "zod";
 import { combinedSignal, IMAGE_MIMES } from "./download.js";
 
@@ -58,27 +63,32 @@ const unavailable = (detail: string) =>
   new AppError("IMAGE_AI_UNAVAILABLE", `La IA de imágenes no respondió (${detail})`, {
     retriable: true,
   });
+// `details.charged: false` (`IMAGE_AI_NOT_CHARGED`): Google rechazó el pedido antes de generar, así
+// que no cobró y core devuelve la reserva. Lo demás (sin red, tope de tiempo, 5xx, una respuesta sin
+// imagen o un bloqueo de la imagen ya hecha) se da por cobrado: se sobreestima, nunca se anota 0.
 const rateLimited = () =>
   new AppError(
     "IMAGE_AI_RATE_LIMITED",
     "La IA de imágenes recibió demasiados pedidos o llegó a su cuota: espera un rato y vuelve a intentarlo",
-    { retriable: true },
+    { retriable: true, details: IMAGE_AI_NOT_CHARGED },
   );
 const authInvalid = () =>
   new AppError(
     "IMAGE_AI_AUTH_INVALID",
     "Google rechazó GEMINI_API_KEY: revisa que esté bien copiada en el servidor y que la API de Gemini tenga facturación",
+    { details: IMAGE_AI_NOT_CHARGED },
   );
-const blocked = () =>
+const blocked = (charged: boolean) =>
   new AppError(
     "IMAGE_AI_BLOCKED",
     "La IA no hizo la imagen por sus reglas de contenido: cambia la indicación y vuelve a intentarlo",
+    charged ? {} : { details: IMAGE_AI_NOT_CHARGED },
   );
 const rejected = (status: string | undefined) =>
   new AppError(
     "IMAGE_AI_REQUEST_REJECTED",
     "La IA de imágenes rechazó el pedido: revisa IMAGE_AI_MODEL o cambia la indicación",
-    { details: { status: status ?? null } },
+    { details: { status: status ?? null, ...IMAGE_AI_NOT_CHARGED } },
   );
 const unexpected = () =>
   new AppError("IMAGE_AI_UNEXPECTED_RESPONSE", "La IA de imágenes respondió sin una imagen");
@@ -145,7 +155,7 @@ export function createGeminiImages(options: GeminiImagesOptions): ImageGenerator
       }
       const parsed = responseSchema.safeParse(body);
       if (!parsed.success) throw unexpected();
-      if (parsed.data.promptFeedback?.blockReason !== undefined) throw blocked();
+      if (parsed.data.promptFeedback?.blockReason !== undefined) throw blocked(false);
       const [candidate] = parsed.data.candidates;
       const image = candidate?.content?.parts.find(
         (part) =>
@@ -153,7 +163,7 @@ export function createGeminiImages(options: GeminiImagesOptions): ImageGenerator
           (IMAGE_MIMES as readonly string[]).includes(part.inlineData.mimeType),
       )?.inlineData;
       if (image === undefined) {
-        if (BLOCKED_REASONS.has(candidate?.finishReason ?? "")) throw blocked();
+        if (BLOCKED_REASONS.has(candidate?.finishReason ?? "")) throw blocked(true);
         throw unexpected();
       }
       // base64 de hasta 20 MB (unos 27 MB de texto): más que eso no es una imagen de 1K.

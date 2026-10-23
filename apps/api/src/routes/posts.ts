@@ -1,5 +1,4 @@
 import {
-  AppError,
   acceptIdea,
   approveContent,
   archivePost,
@@ -15,6 +14,7 @@ import {
   editContent,
   getPostContent,
   getPostImageOptions,
+  getPostImageRun,
   type JobQueue,
   listPosts,
   type MediaRepository,
@@ -343,13 +343,7 @@ export function postRoutes(deps: PostRoutesDeps) {
       )
       .get("/:id/images/:runId", validated("param", postImageRunParamSchema), async (c) => {
         const { id, runId } = c.req.valid("param");
-        await ownPost(c, id);
-        const run = await deps.postImageRuns.get(runId);
-        if (run === null || run.postId !== id) {
-          throw new AppError("POST_IMAGE_RUN_NOT_FOUND", "No existe ese pedido de imágenes", {
-            details: { runId },
-          });
-        }
+        const run = await getPostImageRun(imageDeps, requireAuth(c).user, id, runId);
         const body: PostImageRunResponse = { run: imageRunView(run) };
         return c.json(body, 200);
       })

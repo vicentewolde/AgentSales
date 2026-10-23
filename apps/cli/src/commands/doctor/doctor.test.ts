@@ -127,6 +127,27 @@ describe("runDoctor", () => {
     }
   });
 
+  it("avisa si IMAGE_AI_MODEL cambió y el precio sigue siendo el de por defecto (F9.5-T25)", async () => {
+    const withKey = {
+      ...env,
+      GEMINI_API_KEY: "clave-gemini-secreta",
+      IMAGE_AI_MODEL: "otro-modelo",
+    };
+    const report = await runDoctor(deps({ env: { ok: true, env: withKey } }));
+    const item = report.items.find((entry) => entry.name === "image_ai_price");
+    expect(item).toMatchObject({ level: "warn" });
+    expect(item?.detail).toContain("otro-modelo");
+    expect(JSON.stringify(report)).not.toContain("clave-gemini-secreta");
+    for (const variant of [
+      { ...withKey, IMAGE_AI_PRICE_USD: 0.05 },
+      { ...withKey, IMAGE_AI_MODEL: "gemini-nano-banana-2.1" },
+      { ...env, IMAGE_AI_MODEL: "otro-modelo" },
+    ]) {
+      const ok = await runDoctor(deps({ env: { ok: true, env: variant } }));
+      expect(ok.items.some((entry) => entry.name === "image_ai_price")).toBe(false);
+    }
+  });
+
   it("avisa (sin cortar) si falta el token del Banco Central, y nunca lo muestra", async () => {
     const { BCCH_API_TOKEN: _token, ...withoutToken } = env;
     const without = await runDoctor(deps({ env: { ok: true, env: withoutToken } }));

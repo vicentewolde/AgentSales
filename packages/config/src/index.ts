@@ -24,10 +24,12 @@ export {
   type Env,
   EnvError,
   type EnvIssue,
+  IMAGE_AI_DEFAULTS,
   loadEnv,
   marketplaceAutomationEnabled,
   panelUrlOf,
   withoutBackupCredentials,
+  withoutImageAiKey,
 } from "./env.js";
 export { EnvFileError, findWorkspaceRoot, loadAppEnvFile, loadEnvFile } from "./env-file.js";
 export { createErrorThrottle, type ErrorThrottleOptions } from "./error-throttle.js";

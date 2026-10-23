@@ -45,6 +45,13 @@ const usdAmount = (max: number, options: { positive?: boolean } = {}) => {
     .pipe(options.positive ? amount.positive(message) : amount.min(0, message));
 };
 
+/**
+ * El modelo y el precio por defecto de la IA de imágenes (F9.5-T25): los de la nota
+ * `imagenes-y-videos-generados.md` (2026-10-22), sin verificar hasta la prueba del operador (§7).
+ * `doctor` avisa si se cambió el modelo y no el precio.
+ */
+export const IMAGE_AI_DEFAULTS = { model: "gemini-nano-banana-2.1", priceUsd: 0.034 } as const;
+
 const port = intInRange(1, 65535, "debe ser un puerto entre 1 y 65535");
 
 /** Máximo de una URL prefirmada de R2 (ADR-0007). */
@@ -372,9 +379,9 @@ const envSchema = z
     // seguido (nota `imagenes-y-videos-generados.md` §7). El tope es por marca y por mes de Chile.
     PIXABAY_API_KEY: z.string().optional(),
     GEMINI_API_KEY: z.string().optional(),
-    IMAGE_AI_MODEL: z.string().trim().min(1).default("gemini-nano-banana-2.1"),
+    IMAGE_AI_MODEL: z.string().trim().min(1).default(IMAGE_AI_DEFAULTS.model),
     // Mayor que 0: un precio 0 dejaría crear sin anotar gasto (para apagar la IA, el tope en 0).
-    IMAGE_AI_PRICE_USD: usdAmount(5, { positive: true }).default(0.034),
+    IMAGE_AI_PRICE_USD: usdAmount(5, { positive: true }).default(IMAGE_AI_DEFAULTS.priceUsd),
     IMAGE_AI_MONTHLY_CAP_USD: usdAmount(1000).default(2),
 
     // Respaldo local (F6, spec §4.11): la carpeta de los volcados (fuera del proyecto) y, opcional,
@@ -693,4 +700,18 @@ export function withoutBackupCredentials(
     BACKUP_R2_ACCESS_KEY_ID: undefined,
     BACKUP_R2_SECRET_ACCESS_KEY: undefined,
   });
+}
+
+/**
+ * La clave de la IA de imágenes es solo del worker (F9.5-T25): la API solo necesita saber si existe
+ * (para ofrecer «Crear con IA» y revisar el tope). La quita de su configuración y de su entorno al
+ * arrancar, como `withoutBackupCredentials`, y devuelve si estaba.
+ */
+export function withoutImageAiKey(
+  env: Env,
+  processEnv: Record<string, string | undefined> = process.env,
+): { env: Env; imageAiConfigured: boolean } {
+  const imageAiConfigured = Boolean(env.GEMINI_API_KEY);
+  delete processEnv.GEMINI_API_KEY;
+  return { env: Object.freeze({ ...env, GEMINI_API_KEY: undefined }), imageAiConfigured };
 }

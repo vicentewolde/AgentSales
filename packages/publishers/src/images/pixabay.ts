@@ -78,8 +78,24 @@ const invalidDownload = () =>
 /** Un archivo de Pixabay: https y de sus hosts (no se sigue una URL a otro lado). */
 function allowedUrl(value: string): URL | null {
   const url = URL.parse(value);
-  return url !== null && url.protocol === "https:" && DOWNLOAD_HOSTS.has(url.hostname) ? url : null;
+  return url !== null &&
+    url.protocol === "https:" &&
+    DOWNLOAD_HOSTS.has(url.hostname) &&
+    url.port === "" &&
+    url.username === "" &&
+    url.password === ""
+    ? url
+    : null;
 }
+
+/**
+ * Una foto que se puede mostrar y descargar: su miniatura, su página y su archivo grande son de
+ * Pixabay (https, sin puerto ni credenciales). La miniatura llega al panel y la página a la CLI.
+ */
+const usableHit = (hit: Hit) =>
+  allowedUrl(hit.largeImageURL) !== null &&
+  allowedUrl(hit.webformatURL ?? hit.previewURL) !== null &&
+  allowedUrl(hit.pageURL) !== null;
 
 const toPhoto = (hit: Hit): StockPhoto => ({
   id: String(hit.id),
@@ -108,6 +124,13 @@ export function createPixabayStock(options: PixabayOptions): StockPhotoProvider 
   const now = options.now ?? Date.now;
   const searches = new Map<string, { at: number; photos: StockPhoto[] }>();
   const files = new Map<string, { at: number; url: string }>();
+
+  /** Lo guardado vive 24 h: lo vencido se borra en cada consulta (la memoria no crece sin fin). */
+  function prune() {
+    const limit = now() - CACHE_MS;
+    for (const [key, entry] of searches) if (entry.at <= limit) searches.delete(key);
+    for (const [key, entry] of files) if (entry.at <= limit) files.delete(key);
+  }
 
   async function query(params: Record<string, string>, signal?: AbortSignalLike) {
     const url = new URL(PIXABAY_API_URL);
@@ -138,6 +161,7 @@ export function createPixabayStock(options: PixabayOptions): StockPhotoProvider 
     }
     const parsed = responseSchema.safeParse(body);
     if (!parsed.success) throw unexpected();
+    prune();
     for (const hit of parsed.data.hits) {
       files.set(String(hit.id), { at: now(), url: hit.largeImageURL });
     }
@@ -164,7 +188,7 @@ export function createPixabayStock(options: PixabayOptions): StockPhotoProvider 
         },
         signal,
       );
-      const photos = hits.filter((hit) => allowedUrl(hit.largeImageURL) !== null).map(toPhoto);
+      const photos = hits.filter(usableHit).map(toPhoto);
       searches.set(cacheKey, { at: now(), photos });
       return photos;
     },

@@ -50,7 +50,13 @@ async function setup(options: { keys?: boolean; worker?: "ok" | "fail" } = {}) {
         continue;
       }
       if (run.source === "ai")
-        await postImageRuns.recordCost(run.id, { costUsd: 0.04, model: "nano" });
+        await postImageRuns.reserveImageCost(run.id, {
+          costUsd: 0.04,
+          model: "nano",
+          capUsd: 2,
+          from: new Date("2000-01-01"),
+          to: new Date("2100-01-01"),
+        });
       await postImageRuns.markSucceeded(run.id, ["11111111-1111-4111-8111-111111111111"]);
     }
   });
@@ -81,7 +87,7 @@ describe("agentsales post media", () => {
     const s = await setup({ keys: true });
     await expect(runPostMedia(s.deps, s.post.id, { stock: "living" })).resolves.toBe(0);
     const listed = s.h.text();
-    expect(listed).toMatch(/1\. 1280×1600 · casa, living · de autora/u);
+    expect(listed).toMatch(/1\. id 101 · 1280×1600 · casa, living · de autora/u);
     expect(listed).not.toContain("102");
     expect(listed).not.toContain("firma=secreta");
     await expect(runPostMedia(s.deps, s.post.id, { stock: "living", pick: "2" })).resolves.toBe(0);
@@ -92,8 +98,14 @@ describe("agentsales post media", () => {
       query: "living",
       format: "4:5",
     });
+    // También por su id, sin depender del orden.
+    await expect(runPostMedia(s.deps, s.post.id, { stock: "living", pick: "101" })).resolves.toBe(
+      0,
+    );
+    const [byId] = await s.postImageRuns.listByPost(s.post.id, 1);
+    expect(byId?.request).toMatchObject({ source: "stock", photoId: "101" });
     await expect(runPostMedia(s.deps, s.post.id, { stock: "living", pick: "9" })).resolves.toBe(1);
-    expect(s.h.errors()).toContain("--pick debe ser un número del 1 al 2");
+    expect(s.h.errors()).toContain("--pick debe ser un número del 1 al 2 o el id");
   });
 
   it("--ai anota el costo; un pedido que falla sale con 1 y el motivo en simple", async () => {

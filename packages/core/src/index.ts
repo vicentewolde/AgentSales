@@ -101,7 +101,10 @@ export {
   assertImageAiBudget,
   type BrokerMonthlyImageSpend,
   IMAGE_AI_BUDGET_MESSAGE,
+  IMAGE_AI_NOT_CHARGED,
   type ImageAiPricing,
+  imageAiBudgetExceeded,
+  imageAiNotCharged,
   imageAiSpentThisMonth,
   monthlyImageSpend,
   wouldPassImageAiCap,
@@ -1124,6 +1127,7 @@ export {
 export { expireAccountIfRejected, isAccessRejected } from "./use-cases/platform-auth.js";
 export {
   getPostImageOptions,
+  getPostImageRun,
   hasPeople,
   type PostImageDeps,
   type PostImageOptions,
