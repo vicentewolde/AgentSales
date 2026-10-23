@@ -2,15 +2,21 @@
 
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
-**Actualizado:** 2026-10-22
-**Fase actual:** F9.5 · Lista para mostrar: lote 1 cerrado (`v1.4.0`) y **lote 2 cerrado** el 2026-10-22 (`v1.5.0`, la etiqueta con tu permiso), con lo que viste en tu primera prueba. Demo con la oficina el **viernes 2026-10-30** (`docs/12-demo-oficina.md`). Siguiente: F10
-**Última tarea:** **lote 2 de F9.5** (T14 a T19, #232 a #239): borrar un corredor de verdad (ADR-0035), crear un corredor fácil, invitación y sesión claras con «Enviar por correo», perfil editorial que se entiende, reel desde las fotos y música libre de derechos. Además, la CI con más margen (#237)
-**Siguiente paso:** tú: desplegar `v1.5.0`; después, borrar los 4 corredores de prueba viendo antes el resumen (`brokers delete <slug>`); subir las pistas de música. Luego, el ensayo del jueves 29
+**Actualizado:** 2026-10-23
+**Fase actual:** F9.5 · Lista para mostrar: lotes 1 y 2 cerrados (`v1.4.0`, `v1.5.0`) y **lote 3 cerrado** el 2026-10-23 (`v1.6.0`): publicar a diario desde tus marcas, con el panel acogedor. Demo con la oficina el **viernes 2026-10-30** (`docs/12-demo-oficina.md`). Siguiente: F10
+**Última tarea:** **lote 3 de F9.5** (T20 a T27, #241 a #251): corredor sin trabas, post sin imágenes, en vivo por marca (ADR-0036), ideas del plan con tu pedido, worker por horario (ADR-0037), Conseguir imagen (ADR-0038), diseño acogedor y publicar a diario (Aprobar la semana, LinkedIn asistido, Lista para publicar a diario). Además, el secreto de Meta fuera del ejemplo de configuración (#250)
+**Siguiente paso:** tú: cambiar la clave secreta de Meta; desplegar `v1.6.0`; después, Claude prueba el recorrido en Chrome contra el servidor. Luego, el ensayo del jueves 29
 
 ## Pendiente tuyo para la demo del 30 (F9.5)
-- [ ] **Desplegar `v1.5.0`** y, con el resumen a la vista, borrar los corredores de prueba `corredor-demo`, `agentsales-pruebas`, `demo-meta` y `demo` (`pnpm -s cli brokers delete <slug>`, después `--confirm <slug>`). Se quedan tu corredor `18862631`, vinny y AgentPey. Al borrar `agentsales-pruebas` se desconecta tu Mercado Libre (`VICENTEWOLDE`), y al borrar `demo-meta` se van el usuario `revisor-meta` y su DEMO-1 del App Review de Meta: hay que rehacerlos antes de enviarlo
+- [ ] **Cambiar la clave secreta de la app de Meta** (Meta for Developers → la app → Configuración → Básica → Restablecer) y ponerla en `.env`, `.env.production` y los secretos de Fly: el valor viejo estuvo en el ejemplo público desde el 2026-10-18 (#156; quitado en #250, sigue en el historial)
+- [ ] **Desplegar `v1.6.0`** (migraciones `0020` y `0021`, aditivas). Antes de volver a una versión anterior, `PUBLISH_MODE=dry-run` (`docs/10-despliegue.md`)
+- [ ] **Publicar a diario desde AgentPey** (`docs/08-guia-operador.md`, «Publicar a diario desde AgentPey»): encender la marca con `brokers live agentpey on --confirm agentpey` y el servidor en `live` solo con tu instrucción en el chat; la lista **Lista para publicar a diario** de Cuentas dice qué falta por red
+- [ ] **Worker con horario** (opcional): el Environment `worker-schedule` en GitHub con su token de Fly y `WORKER_IDLE_EXIT_MINUTES = "10"` en `fly.toml` (`docs/10-despliegue.md`, paso 8). Hasta entonces el worker no se apaga solo
+- [ ] **Imágenes para posts** (opcional): claves de Pixabay y de Google AI Studio con un tope en Google Cloud (`docs/07-checklist-cuentas.md`); sin ellas, solo tarjetas
 - [ ] **Música:** bajar las 5 pistas CC0, escucharlas, confirmar la licencia de «Champ de tournesol», subirlas (`pnpm music:upload <carpeta>` y `ENV_FILE=.env.production pnpm music:upload <carpeta>`) y probar una con tu Instagram antes de publicar de verdad (`docs/integraciones/musica-reels.md`)
-- [ ] **El worker del servidor quedó encendido desde el 2026-10-22 15:35** (la prueba): apágalo si no estás probando (`docs/10-despliegue.md`, paso 8)
+- [ ] **El perfil editorial de `vinny`** sigue vacío: el asistente de 4 preguntas en Plan o Mi marca lo llena para revisarlo
+- [ ] **El worker del servidor quedó encendido desde el despliegue de `v1.5.0`** (2026-10-22 18:10): apágalo si no estás probando (`docs/10-despliegue.md`, paso 8)
+- Hecho el 2026-10-22: los corredores de prueba `corredor-demo`, `agentsales-pruebas`, `demo-meta` y `demo` se borraron en producción. Con eso se desconectó tu Mercado Libre y se fueron el usuario `revisor-meta` y su DEMO-1 del App Review (hay que rehacerlos antes de enviarlo). Quedan tu corredor `18862631`, `oficina-demo` (usuario Mampa, `@vicentewoldec`), vinny y AgentPey
 La guía paso a paso está en `docs/12-demo-oficina.md`.
 - [ ] **Jueves 29:** desplegar `v1.4.0`; la CLI contra el servidor (`login --api`); crear tu corredor para propiedades y conectarle `@vicentewoldec`; la propiedad de ejemplo con sus fotos; recomendado, el ensayo corto (una publicación programada en simulación con el worker encendido y el cambio a vivo y de vuelta, que nunca se probó con `fly machine update`)
 - [ ] **Viernes 30:** encender el worker, pasar a vivo durante la demo (tu instrucción en el chat), volver a simulación, apagar el worker y borrar la propiedad de ejemplo de Instagram
@@ -226,7 +232,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
   - La vista previa elige para Discord el video `x_video` o `ig_reel` sin saber cuál pesa menos (el panel no conoce los tamaños).
   - `CAROUSEL_MIN_ITEMS` está duplicado en el panel (`preview/preview.ts`) porque core no lo reexporta.
   - La CI se cortó dos veces por los 15 minutos del job `check` con la máquina de GitHub lenta (instalar Chromium); si vuelve a pasar, subir el `timeout-minutes` o poner un límite propio al paso de Chromium.
-- **F9, de T15, T16 y T26:** faltan en `.env.example` `LINKEDIN_CLIENT_ID/SECRET/REDIRECT_URI`, `X_CLIENT_ID/SECRET/REDIRECT_URI` y `TIKTOK_CLIENT_KEY/SECRET/REDIRECT_URI` (los agentes no tocan `.env*`; los agregas tú). Ninguna de las tres redes publica de verdad hasta S2, S3, S4 y S6.
+- **F9, de T15, T16 y T26:** faltan en `.env.example` `LINKEDIN_CLIENT_ID/SECRET/REDIRECT_URI`, `X_CLIENT_ID/SECRET/REDIRECT_URI` y `TIKTOK_CLIENT_KEY/SECRET/REDIRECT_URI` (los agentes no tocan `.env*`; los agregas tú). S4 (X) y S6 (TikTok) pasaron el 2026-10-21; LinkedIn sigue a mano hasta S2 y S3.
 - **F9, de T14:** un video de más de 20 MiB no se publica en Discord (sale solo el texto): no hay enlace seguro porque R2 no tiene un dominio público (spec D8 cambiada). Se resuelve con un dominio de medios (`media.agentpey.com`), el mismo que pedirá TikTok para fotos. `social:smoke --platform discord` no existe: S5 se hace a mano.
 - **F9, de T23 (revisión de docs contra el código):**
   - `IG_PUBLISH_OUTCOME_UNKNOWN` de Instagram (y `ML_PUBLISH_OUTCOME_UNKNOWN` de Portal) siguen en `failed`, no en `outcome_unknown` (criterio 5 de F9, parcial): el panel resuelve un resultado dudoso solo en los posts, no en la sección Contenido de una propiedad. Cuando la tenga, sumarlo a `OUTCOME_UNKNOWN_CODES`.

@@ -14,7 +14,7 @@ Cada fase entrega algo **usable y demostrable**. Una fase empieza con su spec en
 | F7 | Varios corredores | Login, cada corredor ve solo lo suyo, alta de corredores, IA por API con gasto por corredor (en el Mac del operador) | v0.7.0 |
 | F8 | En internet | Despliegue con HTTPS (en modo demo), subidas a R2, respaldos fuera del Mac, OAuth de Instagram y términos (el App Review de Meta queda como trámite pendiente del operador) | v1.0.0 |
 | F9 | Contenido de marca | **Cerrada (2026-10-20), desplegada (2026-10-21).** Posts de las marcas del operador en Instagram, X, LinkedIn, Discord y TikTok, con perfil editorial, textos por red e idioma, calendario y un plan de ideas de la IA, en tres entregas | v1.1.0, v1.2.0 y v1.3.0 |
-| F9.5 | Lista para mostrar | **Cerrada (2026-10-22).** El panel con un sistema visual, portada, lenguaje claro y vista previa; «salió / no salió» en Instagram y Portal; textos e ideas de la IA más humanos; y la deuda interna de F9, antes de la demo con la oficina del 2026-10-30 | v1.4.0 y v1.5.0 |
+| F9.5 | Lista para mostrar | **Cerrada (2026-10-22).** El panel con un sistema visual, portada, lenguaje claro y vista previa; «salió / no salió» en Instagram y Portal; textos e ideas de la IA más humanos; y la deuda interna de F9, antes de la demo con la oficina del 2026-10-30 | v1.4.0, v1.5.0 y v1.6.0 |
 | F10 | Piloto con una oficina | Anuncios de Meta, leads y ManyChat para una oficina de una corredora grande (hoja de ruta) | — |
 | F11 | Organizaciones | Organización → oficina → agente, roles y aprobación por niveles (hoja de ruta) | — |
 

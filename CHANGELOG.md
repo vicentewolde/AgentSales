@@ -4,6 +4,32 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 
 ## [Sin publicar]
 
+## [1.6.0] - 2026-10-23 · F9.5 Lista para mostrar, lote 3
+**Publicar a diario desde tus marcas, con un panel acogedor.** Arregla lo que viste al probar como corredor nuevo; los posts salen sin fotos propias, las ideas del plan siguen lo que pides y cada marca tiene su propio interruptor de «en vivo». Además, el worker puede encenderse y apagarse solo.
+
+Probado contra simulaciones (CI en verde en cada PR, #241 a #251). **Nada se publicó de verdad y ninguna marca quedó encendida.**
+
+### Añadido
+- **En vivo por marca** (T22, ADR-0036): una publicación sale de verdad solo con el servidor en `live` **y** la marca encendida y propia. Todas nacen apagadas; `brokers live <slug> on --confirm <slug>` o el interruptor de la ficha (solo el administrador). El banner y cada publicación dicen el modo de su marca.
+- **El worker se enciende y se apaga solo** (T24, ADR-0037): un workflow de GitHub lo enciende cada hora a los :50, de 06:50 a 23:15; el worker se apaga tras `WORKER_IDLE_EXIT_MINUTES` sin nada que hacer en los próximos 70 minutos. Apagado por defecto: lo activas tú (`docs/10-despliegue.md`, paso 8).
+- **Conseguir imagen** (T25, ADR-0038): un post sin fotos consigue **tarjetas de la marca** (gratis; también carrusel y video con música), una foto de **Pixabay** o una **imagen con IA** (Nano Banana, tope de US$2 al mes por marca, el costo se reserva antes de pedirla). `post media` en la CLI; `usage` muestra el gasto de imágenes.
+- **Ideas del plan que obedecen** (T23): «¿Qué quieres que trate este plan?» (`plan --guidance`), que guía temas y tono pero nunca es fuente de hechos; aviso y asistente de 4 preguntas si el perfil está vacío; sin «nosotros» inventado en ideas ni textos.
+- **Publicar a diario** (T27): **Aprobar la semana** en Plan (`post approve-week`), el asistente **Copiar texto y abrir LinkedIn**, y la lista **Lista para publicar a diario** por marca en Cuentas (`brand ready`). Guía en `docs/08-guia-operador.md`.
+
+### Cambiado
+- **Diseño acogedor** (T26): tonos crema, arena, terracota y salvia, títulos en Fraunces y texto en DM Sans (empaquetadas, sin pedir nada afuera), fotos grandes en «Hoy», la lista y la ficha, ilustraciones de hogar y menú para el teléfono. Contraste AA probado.
+- **Un corredor sin trabas** (T20): Publicar y Programar quedan en gris sin cuenta conectada, los errores se dicen en simple en todo el panel, una pantalla explica antes de conectar Instagram, Cuentas muestra solo las redes de cada tipo de corredor y el enlace de invitación sobrevive a una recarga.
+- **Un post sin imágenes** (T21): el texto se redacta y aprueba sin los medios; falta la imagen es un pendiente, no un error rojo, y la «!» dice cuál es el error real.
+
+### Seguridad
+- El ejemplo de configuración traía un valor en `FACEBOOK_APP_SECRET` desde el 2026-10-18 (#250): quedó vacío. **La clave hay que cambiarla en Meta**, porque sigue en el historial público.
+
+### Pendiente fuera del código
+- **Cambiar la clave secreta de la app de Meta** y ponerla en `.env`, `.env.production` y Fly.
+- **Desplegar `v1.6.0`** (migraciones `0020` y `0021`).
+- Para usar Pixabay y la IA: sus claves (`docs/07-checklist-cuentas.md`, «F9.5 · Imágenes para posts sin fotos») y las pruebas sin riesgo de `docs/integraciones/imagenes-y-videos-generados.md` §7.
+- Para el worker con horario: el Environment `worker-schedule`, su token y `WORKER_IDLE_EXIT_MINUTES` en `fly.toml` (`docs/10-despliegue.md`, paso 8).
+
 ## [1.5.0] - 2026-10-22 · F9.5 Lista para mostrar, lote 2
 **Lo que viste en tu primera prueba, arreglado.** Probaste la demo en el servidor y anotaste lo que confundía o faltaba; este lote lo resuelve.
 
