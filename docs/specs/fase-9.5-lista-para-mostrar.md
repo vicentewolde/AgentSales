@@ -449,6 +449,7 @@ Antes (jueves 29, el operador): desplegar; crear su corredor para propiedades y 
 | 2026-10-22 | **Aprobado por el operador** (el alcance, el nombre y el trabajo en paralelo) |
 | 2026-10-22 | **Lote 3** (T20 a T27): lo que vio el operador como corredor nuevo y publicar a diario desde AgentPey; ADR-0036 (en vivo por marca) y ADR-0037 (worker programado, propuesto) |
 | 2026-10-22 | **Cierre del lote 2** (`v1.5.0`): T14 a T19 integradas en #233 a #239 |
+| 2026-10-23 | **Cierre del lote 3** (`v1.6.0`): T20 a T27 integradas en #241 a #251 |
 | 2026-10-22 | T25 (PR #249, revisión del `revisor` y del `arquitecto`): la indicación para la IA de imágenes sale del tema y la primera oración del brief, sin la IA de texto (editable); el costo de una imagen con IA se reserva de forma atómica antes de llamar, y después de llamar nada se reintenta solo |
 | 2026-10-22 | **Lote 2** (T14 a T19) con las observaciones del operador en su primera prueba en el servidor; ADR-0035 (borrar un corredor) |
 | 2026-10-22 | T19 (PR #239, revisión del `revisor`): las decisiones del operador sobre la música (solo CC0 sin crédito, mezcla con la música detrás a −18 dB, todas las redes, sin música por defecto; en un aviso se aplica al rehacer las imágenes, en un post solo); el criterio de atribución pasa a «solo pistas CC0 (test del catálogo)» |
