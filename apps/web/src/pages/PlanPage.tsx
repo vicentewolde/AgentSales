@@ -7,6 +7,8 @@ import {
   isAppError,
   isTerminalContentRun,
   PLAN_DEFAULT_DAYS,
+  PLAN_GUIDANCE_IGNORED_WARNING,
+  PLAN_GUIDANCE_MAX,
   PLAN_MAX_DAYS,
   PLAN_MAX_IDEAS,
   PLAN_RUN_STATUS_TEXT,
@@ -20,7 +22,10 @@ import { type FormEvent, useId, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { useBrandPlatforms } from "../components/posts/brand-platforms.js";
+import { Examples } from "../components/posts/EditorialProfileForm.js";
+import { addLine, lines } from "../components/posts/editorial-profile-draft.js";
 import { POST_KIND_LABEL, PostStatusBadge } from "../components/posts/labels.js";
+import { EmptyProfileNotice } from "../components/posts/ProfileWizard.js";
 import { Button } from "../components/ui/Button.js";
 import { Input, Select, Textarea } from "../components/ui/Field.js";
 import { PageHeader } from "../components/ui/PageHeader.js";
@@ -93,18 +98,29 @@ const checkedNetworks = (form: FormData, name: string): PostPlatform[] =>
     .map(String)
     .flatMap((value) => POST_PLATFORMS.filter((platform) => platform === value));
 
-/** Pedir un plan: días, redes y cuántas ideas. */
+/** Ejemplos del pedido del operador (F9.5-T23), que se insertan con un clic. */
+const PLAN_GUIDANCE_EXAMPLES = [
+  "Lanzamiento del 3 de noviembre",
+  "Solo ideas para principiantes",
+  "Evita hablar de precios",
+] as const;
+
+/**
+ * Pedir un plan: días, redes, cuántas ideas y, desde F9.5-T23, qué quieres que trate (una guía de
+ * temas y tono, nunca una fuente de hechos: ADR-0030). Con el perfil vacío, antes avisa.
+ */
 function RequestPlan({
   brandId,
   onRequested,
 }: {
   brandId: string;
-  onRequested: (planId: string, reused: boolean) => void;
+  onRequested: (planId: string, reused: "no" | "same" | "guidance-ignored") => void;
 }) {
   const ids = useId();
   const role = useRole();
   const request = useRequestPlan();
   const options = useBrandPlatforms(brandId);
+  const [guidance, setGuidance] = useState("");
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -116,8 +132,12 @@ function RequestPlan({
         days: Number(text("days") || PLAN_DEFAULT_DAYS),
         ...(platforms.length === 0 ? {} : { platforms }),
         ...(text("count") === "" ? {} : { count: Number(text("count")) }),
+        ...(guidance.trim() === "" ? {} : { guidance: guidance.trim() }),
       },
-      { onSuccess: ({ plan, reused }) => onRequested(plan.id, reused) },
+      {
+        onSuccess: ({ plan, reused, guidanceIgnored }) =>
+          onRequested(plan.id, guidanceIgnored ? "guidance-ignored" : reused ? "same" : "no"),
+      },
     );
   };
   return (
@@ -130,7 +150,41 @@ function RequestPlan({
         La IA propone ideas con fecha desde mañana, con el perfil editorial de la marca. Cada plan
         gasta IA de la marca, aunque descartes todo.
       </p>
+      <EmptyProfileNotice brandId={brandId} />
       <form onSubmit={submit} className="mt-3 grid gap-3 md:grid-cols-2">
+        <div className="md:col-span-2">
+          <label htmlFor={`${ids}-guidance`} className="block text-sm font-medium text-fg">
+            ¿Qué quieres que trate este plan? (opcional)
+          </label>
+          <p id={`${ids}-guidance-help`} className="mt-0.5 text-xs text-fg-subtle">
+            Guía los temas y el tono de las ideas. No es fuente de datos: si traes una fecha, una
+            cifra o un cliente, agrégalo a los hechos de tu perfil para que la IA pueda afirmarlo.
+          </p>
+          <Textarea
+            id={`${ids}-guidance`}
+            name="guidance"
+            aria-describedby={`${ids}-guidance-help ${ids}-guidance-count`}
+            rows={2}
+            maxLength={PLAN_GUIDANCE_MAX}
+            value={guidance}
+            onChange={(event) => setGuidance(event.target.value)}
+            className="mt-1.5"
+          />
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <Examples
+              label="Ejemplos de pedido"
+              items={PLAN_GUIDANCE_EXAMPLES.map((example) => ({
+                text: example,
+                used: lines(guidance).includes(example),
+                onPick: () => setGuidance((current) => addLine(current, example)),
+              }))}
+            />
+            {/* En la descripción del campo y sin región viva: no se anuncia cada tecla. */}
+            <span id={`${ids}-guidance-count`} className="mt-1.5 text-xs text-fg-subtle">
+              {guidance.length}/{PLAN_GUIDANCE_MAX}
+            </span>
+          </div>
+        </div>
         <label htmlFor={`${ids}-days`} className="block text-sm font-medium text-fg">
           Días
           <Input
@@ -467,6 +521,12 @@ function PlanView({ detail, brandId }: { detail: PlanDetailResponse; brandId: st
         Del {plan.firstDay} al {plan.lastDay} · {networksText(plan.platforms)} ·{" "}
         {PLAN_RUN_STATUS_TEXT[plan.status]}
       </p>
+      {plan.guidance !== null && (
+        <p className="mt-1 whitespace-pre-wrap text-sm text-fg-muted">
+          <span className="font-medium">Tu pedido: </span>
+          {plan.guidance}
+        </p>
+      )}
       <PlanStatus plan={plan} />
       {plan.status === "succeeded" && (
         <>
@@ -534,7 +594,7 @@ export function PlanPage() {
   const role = useRole();
   const brandId = usePlanBrandId();
   const [params, setParams] = useSearchParams();
-  const [reusedNote, setReusedNote] = useState(false);
+  const [reusedNote, setReusedNote] = useState<"no" | "same" | "guidance-ignored">("no");
   const plans = usePlans(
     role === "admin" ? brandId : undefined,
     role !== null && brandId !== undefined,
@@ -577,9 +637,11 @@ export function PlanPage() {
               select(id);
             }}
           />
-          {reusedNote && (
+          {reusedNote !== "no" && (
             <p role="status" className="mt-2 text-sm text-warning-800">
-              La marca ya tenía un plan en curso: te muestro ese.
+              {reusedNote === "guidance-ignored"
+                ? `${PLAN_GUIDANCE_IGNORED_WARNING}: te muestro ese.`
+                : "La marca ya tenía un plan en curso: te muestro ese."}
             </p>
           )}
           {plans.error && <ErrorAlert error={plans.error} onRetry={() => void plans.refetch()} />}

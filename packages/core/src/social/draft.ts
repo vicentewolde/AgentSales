@@ -103,7 +103,8 @@ export function validateSocialDraft(
 
 /**
  * Borrador de ejemplo con todas las redes en los dos idiomas: frases sin cifras, nombres propios,
- * enlaces ni menciones (pasa `checkPostContent` con cualquier perfil). Lo devuelve el proveedor
+ * enlaces, menciones ni primera persona del plural (pasa `checkPostContent` con cualquier perfil y
+ * respeta la voz de una marca que no es un equipo, F9.5-T23). Lo devuelve el proveedor
  * `fake` del worker en `post.draft` (`LLM_PROVIDER=fake`); `validateSocialDraft` se queda con lo
  * pedido.
  */
@@ -112,13 +113,13 @@ export const SAMPLE_SOCIAL_DRAFT: SocialDraft = {
     {
       platform,
       language: "es" as const,
-      body: "Hoy compartimos una reflexión sobre cómo trabajamos y qué aprendimos en el camino.\nCuéntanos qué te parece.",
+      body: "Una reflexión sobre cómo se trabaja y lo que se aprende en el camino.\nCuéntame qué te parece.",
       hashtags: platform === "discord" ? [] : ["#contenido"],
     },
     {
       platform,
       language: "en" as const,
-      body: "Today we share a thought about how we work and what we learned along the way.\nTell us what you think.",
+      body: "A thought about how the work gets done and what it teaches along the way.\nTell me what you think.",
       hashtags: platform === "discord" ? [] : ["#content"],
     },
   ]),
