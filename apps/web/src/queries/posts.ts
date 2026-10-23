@@ -31,6 +31,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
 import { unwrap } from "../api/client.js";
 import { useApiClient } from "../api/context.js";
+import type { OutcomeAction } from "../components/publications/OutcomeBox.js";
 import { trackingKeys } from "./tracking.js";
 
 // Contenido de marca en el panel (spec F9 §4.10, F9-T17): los posts, sus textos por red e idioma,
@@ -275,15 +276,13 @@ export function useSchedulePost(id: string) {
  * Lo que se hace con una publicación de un post: reintentar una fallida, descartarla o
  * desprogramarla; decir si salió una con resultado dudoso (`resolve`, ADR-0029 punto 8) y
  * confirmar (con su enlace; LinkedIn también `withoutUrl`) o no una que se publica a mano
- * (LinkedIn, TikTok).
+ * (LinkedIn, TikTok): estas últimas son las de `OutcomeBox`.
  */
 export type PostPublicationAction =
   | { kind: "publish"; id: string }
   | { kind: "cancel"; id: string }
   | { kind: "unschedule"; id: string }
-  | { kind: "resolve"; id: string; outcome: "published" | "not_published"; url?: string }
-  | { kind: "confirm"; id: string; url?: string; withoutUrl?: true }
-  | { kind: "not-published"; id: string };
+  | OutcomeAction;
 
 export function usePostPublicationAction(postId: string) {
   const client = useApiClient();

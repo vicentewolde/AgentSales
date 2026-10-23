@@ -105,7 +105,12 @@ function AgendaEntry({
       {isLinkedInHandTask(item) && (
         <div className="mt-1">
           <span className="font-semibold text-fg">LinkedIn: publica a mano</span>
-          <LinkedInHandTask postId={item.postId} publicationId={item.publicationId} />
+          <LinkedInHandTask
+            postId={item.postId}
+            publicationId={item.publicationId}
+            mode={{ dryRun: item.dryRun, modeFixed: item.modeFixed }}
+            publishMode={publishMode}
+          />
         </div>
       )}
     </li>

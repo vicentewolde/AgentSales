@@ -339,49 +339,6 @@ describe("/posts/:id/uploads (ADR-0025)", () => {
     expect(detail.media).toHaveLength(2);
   });
 
-  it("downloadUrl: la foto procesada ig_4x5 y el reel ig_reel, para bajarlos a mano (F9.5); null sin procesar", async () => {
-    const s = await setup();
-    const post = await s.deps.posts.create({ brokerId: s.mine.id, topic: "Foto", kind: "image" });
-    const request = postUploadResponseSchema.parse(
-      await (
-        await s.broker(`/posts/${post.id}/uploads`, {
-          method: "POST",
-          json: { files: [{ name: "foto.jpg", size: PHOTO.length, sha256: sha256(PHOTO) }] },
-        })
-      ).json(),
-    );
-    const [photo] = request.uploads;
-    if (photo?.status !== "upload") throw new Error("sin URL");
-    await s.storage.receiveUpload(photo.url, photo.headers, PHOTO);
-    const complete = postUploadCompleteResponseSchema.parse(
-      await (await s.broker(`/posts/${post.id}/uploads/complete`, { method: "POST" })).json(),
-    );
-    const original = complete.media[0];
-    expect(original?.downloadUrl).toBeNull();
-
-    await s.deps.media.upsertDerivative({
-      role: "processed",
-      variant: "ig_4x5",
-      parentMediaId: original?.id ?? "",
-      postId: post.id,
-      brokerId: s.mine.id,
-      kind: "image",
-      storagePath: `posts/${post.id}/processed/ig_4x5/foto.jpg`,
-      mime: "image/jpeg",
-      bytes: 10,
-      checksum: sha256(PHOTO),
-      width: 1080,
-      height: 1350,
-      durationS: null,
-    });
-    const detail = postDetailResponseSchema.parse(
-      await (await s.broker(`/posts/${post.id}`)).json(),
-    );
-    expect(detail.media[0]?.downloadUrl).toBe(
-      `https://r2.test/posts/${post.id}/processed/ig_4x5/foto.jpg?firma`,
-    );
-  });
-
   it("un tipo no admitido es 400 y un video sobre el tope, 413", async () => {
     const s = await setup();
     const post = await s.deps.posts.create({ brokerId: s.mine.id, topic: "X", kind: "image" });

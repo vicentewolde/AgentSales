@@ -1024,7 +1024,6 @@ export {
   confirmManualPublication,
   confirmsWithoutUrl,
   type ManualPublicationDeps,
-  manualExternalId,
   markNotPublished,
 } from "./use-cases/confirm-manual-publication.js";
 export {

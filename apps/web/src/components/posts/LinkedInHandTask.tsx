@@ -1,6 +1,8 @@
+import type { PublishMode } from "@agentsales/core";
 import { Link } from "react-router";
 import { usePost, usePostPublicationAction } from "../../queries/posts.js";
 import { ErrorAlert } from "../ErrorAlert.js";
+import { PublicationMode } from "../publications/PublicationMode.js";
 import { Button } from "../ui/Button.js";
 import { LinkedInOpenControl } from "./LinkedInAssist.js";
 import { linkedinDownloads } from "./linkedin.js";
@@ -8,15 +10,22 @@ import { linkedinDownloads } from "./linkedin.js";
 /**
  * «LinkedIn: publica a mano» en «Hoy» y en la agenda de Seguimiento (F9.5): el mismo botón de un
  * clic del post, sin entrar a él. 1) «Copiar texto y abrir LinkedIn», 2) «Publicar» en LinkedIn,
- * 3) «Ya lo publiqué» (sin enlace; el enlace es opcional y se puede poner desde el post). Lee el
- * post de la tarea para traer el texto aprobado y los medios; si no lo encuentra, manda al post.
+ * 3) «Ya lo publiqué» (sin enlace). El enlace es opcional, pero solo se puede poner **antes** de
+ * confirmar: desde el post. Lee el post de la tarea para traer el texto aprobado y los medios de la
+ * publicación; si no lo encuentra, manda al post. Dice el modo (simulación o en vivo).
  */
 export function LinkedInHandTask({
   postId,
   publicationId,
+  mode,
+  publishMode,
 }: {
   postId: string;
   publicationId: string;
+  /** El modo de la publicación en la agenda (`dryRun` y si ya está fijado). */
+  mode: { dryRun: boolean | null; modeFixed: boolean };
+  /** El modo de la marca, mientras el de la publicación no está fijado. */
+  publishMode?: PublishMode | undefined;
 }) {
   const post = usePost(postId);
   const action = usePostPublicationAction(postId);
@@ -53,10 +62,15 @@ export function LinkedInHandTask({
   }
   return (
     <section aria-label="LinkedIn: publica a mano" className="mt-2 min-w-0">
-      <LinkedInOpenControl
-        content={content}
-        downloads={linkedinDownloads(detail.media, detail.post.kind)}
-      />
+      {mode.dryRun !== null && (
+        <p className="mb-1.5 text-xs">
+          <PublicationMode
+            publication={{ dryRun: mode.dryRun, modeFixed: mode.modeFixed }}
+            publishMode={publishMode}
+          />
+        </p>
+      )}
+      <LinkedInOpenControl content={content} downloads={linkedinDownloads(publication.media)} />
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Button
           variant="secondary"
@@ -70,11 +84,12 @@ export function LinkedInHandTask({
           to={postPath}
           className="text-xs font-medium text-brand-800 underline underline-offset-2"
         >
-          Poner el enlace o no la publiqué
+          Poner el enlace (antes de confirmar) o no la publiqué
         </Link>
       </div>
       <p className="mt-1 text-xs text-fg-subtle">
-        Sin el enlace no podrás abrir el post desde Seguimiento.
+        Sin el enlace no podrás abrir el post desde Seguimiento, y después de confirmar ya no se
+        puede agregar.
       </p>
       {action.error && <ErrorAlert error={action.error} />}
     </section>

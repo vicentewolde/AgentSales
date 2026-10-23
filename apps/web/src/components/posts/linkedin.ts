@@ -1,5 +1,5 @@
-import type { PostMediaItem, PublicationView } from "@agentsales/api/contracts";
-import { joinedPostText, type PostKind } from "@agentsales/core";
+import type { ContentMedia, PublicationView } from "@agentsales/api/contracts";
+import { confirmsWithoutUrl, joinedPostText } from "@agentsales/core";
 
 // LinkedIn a mano al mínimo trabajo (F9.5): lo puro del asistente — el enlace que abre el editor con
 // el texto puesto, los medios que se bajan y cuándo una publicación quedó confirmada sin enlace.
@@ -42,41 +42,32 @@ export const linkedinText = (content: { body: string; hashtags: readonly string[
 /** Un medio para bajar y poner a mano en el editor de LinkedIn. */
 export type LinkedInDownload = {
   id: string;
-  kind: PostMediaItem["kind"];
-  /** La miniatura (se puede arrastrar); `null` si todavía no hay. */
-  thumbUrl: string | null;
-  /** La URL temporal del medio ya procesado: una foto `ig_4x5` o un reel. */
+  kind: "image" | "video";
+  /** La URL temporal del medio ya procesado que lleva la publicación (`ig_4x5` o `ig_reel`). */
   url: string;
 };
 
 /**
- * Los medios ya procesados que lleva el post a LinkedIn, en su orden: todas las fotos de un post de
- * imagen o carrusel, o el primer video de uno de video. Un texto solo no lleva ninguno. Lo que
- * todavía no se procesa (`downloadUrl: null`) no entra.
+ * Los medios que lleva una publicación pendiente, tal como los fijó la API desde sus `mediaIds`
+ * (`PostPublicationView.media`): no se repite aquí la regla de qué medios lleva cada red.
  */
-export function linkedinDownloads(
-  media: readonly PostMediaItem[],
-  postKind: PostKind,
-): LinkedInDownload[] {
-  if (postKind === "text") return [];
-  const kind = postKind === "video" ? "video" : "image";
-  const ready = media.flatMap((item) =>
-    item.kind === kind && item.downloadUrl !== null
-      ? [{ id: item.id, kind: item.kind, thumbUrl: item.thumbUrl, url: item.downloadUrl }]
-      : [],
-  );
-  return kind === "video" ? ready.slice(0, 1) : ready;
+export function linkedinDownloads(media: readonly ContentMedia[]): LinkedInDownload[] {
+  return media.map((item) => ({
+    id: item.id,
+    kind: item.mime.startsWith("video/") ? "video" : "image",
+    url: item.url,
+  }));
 }
 
 /**
- * Una publicación de LinkedIn confirmada a mano **sin enlace**: publicada en vivo y sin enlace
- * guardado (confirmar sin enlace guarda un id propio y ningún enlace). Sin enlace no se puede abrir
- * el post desde Seguimiento.
+ * Una publicación a mano confirmada **sin enlace** (hoy, LinkedIn): publicada en vivo y sin enlace
+ * guardado (confirmar sin enlace no guarda ni id ni enlace). Sin enlace no se puede abrir el post
+ * desde Seguimiento.
  */
 export const confirmedWithoutLink = (
   publication: Pick<PublicationView, "platform" | "status" | "dryRun" | "externalUrl">,
 ): boolean =>
-  publication.platform === "linkedin" &&
+  confirmsWithoutUrl(publication.platform) &&
   publication.status === "published" &&
   !publication.dryRun &&
   publication.externalUrl === null;

@@ -19,6 +19,7 @@ import {
   listPosts,
   type MediaRepository,
   type MediaStorage,
+  PENDING_PUBLICATION_STATUSES,
   type PostImageRun,
   type PostImageRunRepository,
   type PostImageSourcesConfig,
@@ -27,6 +28,7 @@ import {
   type PostUploadRepository,
   PROCESSED_MEDIA_VARIANTS,
   type ProcessedMediaVariant,
+  type Publication,
   type PublicationRepository,
   type PublishListingDeps,
   type PublishMode,
@@ -78,7 +80,7 @@ import {
 } from "../contracts/index.js";
 import { brokerMode, isDryRun } from "../publish-modes.js";
 import { validated } from "../validation.js";
-import { contentRunView, contentView } from "./content.js";
+import { contentMedia, contentRunView, contentView } from "./content.js";
 import { actorOf, publicationView, skippedView } from "./publication-views.js";
 
 export type PostRoutesDeps = EditContentDeps &
@@ -141,6 +143,8 @@ const imageRunView = (run: PostImageRun): PostImageRunView => ({
 const dateOf = (value: string | undefined): Date | undefined =>
   value === undefined ? undefined : new Date(value);
 
+const pendingStatuses = new Set<string>(PENDING_PUBLICATION_STATUSES);
+
 /**
  * `/posts` (spec F9 §4.10, F9-T10): crear, listar, ver, editar y archivar posts, y subir sus medios
  * directo a R2 (ADR-0025). Todo con `posts.manage` (revisado en core); lo de otro corredor es 404
@@ -169,8 +173,6 @@ export function postRoutes(deps: PostRoutesDeps) {
     const all = await deps.media.listBySubject(postSubject(postId));
     const variants = new Map<string, ProcessedMediaVariant[]>();
     const thumbs = new Map<string, string>();
-    // Lo que reciben las redes: la foto `ig_4x5` y el video `ig_reel` (para bajarlos a mano).
-    const downloads = new Map<string, string>();
     for (const item of all) {
       // Solo las variantes de un original (un render no tiene padre ni es de un post).
       const variant = PROCESSED_MEDIA_VARIANTS.find((known) => known === item.variant);
@@ -180,9 +182,6 @@ export function postRoutes(deps: PostRoutesDeps) {
       list.push(variant);
       variants.set(item.parentMediaId, list);
       if (item.variant === "thumb") thumbs.set(item.parentMediaId, item.storagePath);
-      if (item.variant === "ig_4x5" || item.variant === "ig_reel") {
-        downloads.set(item.parentMediaId, item.storagePath);
-      }
     }
     return Promise.all(
       all
@@ -190,7 +189,6 @@ export function postRoutes(deps: PostRoutesDeps) {
         .sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id))
         .map(async (item) => {
           const thumb = thumbs.get(item.id);
-          const download = downloads.get(item.id);
           return {
             id: item.id,
             kind: item.kind,
@@ -200,13 +198,34 @@ export function postRoutes(deps: PostRoutesDeps) {
             isCover: item.isCover,
             url: await deps.storage.signedReadUrl(item.storagePath),
             thumbUrl: thumb === undefined ? null : await deps.storage.signedReadUrl(thumb),
-            downloadUrl: download === undefined ? null : await deps.storage.signedReadUrl(download),
             width: item.width,
             height: item.height,
             durationS: item.durationS,
             variants: (variants.get(item.id) ?? []).sort(),
           };
         }),
+    );
+  };
+
+  /**
+   * Las publicaciones del post con sus medios firmados, solo en las pendientes (como
+   * `GET /listings/:id/publications`): lo que cada una lleva a la red, desde sus `mediaIds`
+   * fijados. Cada medio se firma una vez.
+   */
+  const publicationsWithMedia = async (postId: string, publications: readonly Publication[]) => {
+    const signed = contentMedia(deps.storage);
+    const derived = new Map(
+      (await deps.media.listBySubject(postSubject(postId)))
+        .filter((item) => item.variant !== null)
+        .map((item) => [item.id, signed(item)]),
+    );
+    return Promise.all(
+      publications.map(async (publication) => ({
+        ...publicationView(publication),
+        media: pendingStatuses.has(publication.status)
+          ? await Promise.all(publication.mediaIds.flatMap((id) => derived.get(id) ?? []))
+          : [],
+      })),
     );
   };
 
@@ -250,7 +269,7 @@ export function postRoutes(deps: PostRoutesDeps) {
           media: await mediaOf(id),
           contents: contents.map(contentView),
           latestRun: latestRun === null ? null : contentRunView(latestRun),
-          publications: publications.map(publicationView),
+          publications: await publicationsWithMedia(id, publications),
           uploadsInReview: (await deps.postUploads.listByPost(id)).filter(
             (upload) => upload.status === "uploaded",
           ).length,

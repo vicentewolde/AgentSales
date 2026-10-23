@@ -67,49 +67,52 @@ export function LinkedInOpenControl({
   );
 }
 
-/** Los medios del post para bajar (o arrastrar) y ponerlos a mano en el editor de LinkedIn. */
+/**
+ * Los medios de la publicación para bajarlos y ponerlos a mano en el editor de LinkedIn. Las fotos
+ * se pueden arrastrar (la imagen es la misma que se enviaría); el video, solo abrir y guardar.
+ * Los enlaces abren en otra pestaña (R2 es otro origen: `download` no descarga): ahí, clic derecho
+ * y «Guardar imagen como…».
+ */
 function LinkedInDownloads({ downloads }: { downloads: readonly LinkedInDownload[] }) {
+  const video = downloads[0]?.kind === "video";
   const single = downloads.length === 1;
   return (
     <fieldset aria-label="Descargar imágenes" className="mt-3 min-w-0">
       <p className="text-xs font-medium text-fg">
-        {downloads[0]?.kind === "video" ? "Descargar el video" : "Descargar imágenes"}
+        {video ? "Descargar el video" : "Descargar imágenes"}
         <span className="font-normal text-fg-muted">
           {" "}
-          · LinkedIn no {downloads[0]?.kind === "video" ? "lo trae solo" : "las trae solas"}:{" "}
-          {downloads[0]?.kind === "video" ? "súbelo" : "súbelas"} o arrastra la miniatura al editor
+          · LinkedIn no {video ? "lo trae solo" : "las trae solas"}:{" "}
+          {video
+            ? "ábrelo, guárdalo y súbelo al editor"
+            : "arrastra la foto al editor, o ábrela y guárdala con clic derecho → «Guardar imagen como…»"}
         </span>
       </p>
       <ul className="mt-1.5 flex flex-wrap gap-3">
-        {downloads.map((item, index) => {
-          const name =
-            item.kind === "video"
-              ? "Descargar video"
-              : single
-                ? "Descargar imagen"
-                : `Descargar imagen ${index + 1}`;
-          return (
-            <li key={item.id} className="flex w-24 flex-col items-center gap-1.5 text-center">
-              {item.thumbUrl !== null && (
-                <img
-                  src={item.thumbUrl}
-                  alt={item.kind === "video" ? "Video del post" : `Imagen ${index + 1} del post`}
-                  draggable
-                  className="size-24 rounded-xl object-cover"
-                />
-              )}
-              <a
-                href={item.url}
-                download
-                target="_blank"
-                rel="noreferrer noopener"
-                className="text-xs font-semibold text-brand-800 underline underline-offset-2"
-              >
-                {name}
-              </a>
-            </li>
-          );
-        })}
+        {downloads.map((item, index) => (
+          <li key={item.id} className="flex w-24 flex-col items-center gap-1.5 text-center">
+            {item.kind === "image" && (
+              <img
+                src={item.url}
+                alt={`Imagen ${index + 1} del post`}
+                draggable
+                className="size-24 rounded-xl object-cover"
+              />
+            )}
+            <a
+              href={item.url}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="text-xs font-semibold text-brand-800 underline underline-offset-2"
+            >
+              {item.kind === "video"
+                ? "Descargar video"
+                : single
+                  ? "Descargar imagen"
+                  : `Descargar imagen ${index + 1}`}
+            </a>
+          </li>
+        ))}
       </ul>
     </fieldset>
   );

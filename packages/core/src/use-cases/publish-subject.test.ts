@@ -13,7 +13,6 @@ import { cancelPublication } from "./cancel-publication.js";
 import {
   confirmManualPublication,
   confirmsWithoutUrl,
-  manualExternalId,
   markNotPublished,
 } from "./confirm-manual-publication.js";
 import { publishListing } from "./publish-listing.js";
@@ -554,7 +553,7 @@ describe("traspaso a mano por cuenta (ADR-0029 punto 9)", () => {
     ).resolves.toMatchObject({ changed: false });
   });
 
-  it("LinkedIn se confirma sin enlace: publicada a mano, con id propio, sin enlace y con la nota en la bitácora", async () => {
+  it("LinkedIn se confirma sin enlace: publicada a mano, sin id ni enlace (como resolver a mano) y con la nota en la bitácora", async () => {
     const t = await manualLinkedIn();
     const publication = await t.toPublishing(t.publicationOf("linkedin"));
     await publishPublication(t.publishDeps({}), {
@@ -571,11 +570,16 @@ describe("traspaso a mano por cuenta (ADR-0029 punto 9)", () => {
       publication: {
         status: "published",
         externalUrl: null,
-        externalId: manualExternalId(publication.id),
+        externalId: null,
         publishedAt: NOW,
       },
     });
     expect(t.postLock.busy()).toEqual([]);
+    const events = await t.publications.listEvents(publication.id);
+    expect(events.find((event) => event.toStatus === "published")?.payload).toMatchObject({
+      confirmedBy: "operator",
+      withoutUrl: true,
+    });
     // Dos veces lo mismo no cambia nada; con un enlace después, es otra confirmación (409).
     await expect(
       confirmManualPublication(t.subjectDeps, {
@@ -648,6 +652,38 @@ describe("traspaso a mano por cuenta (ADR-0029 punto 9)", () => {
       expect(confirmsWithoutUrl(platform)).toBe(false);
     }
   });
+
+  it.each([
+    ["dry-run", true],
+    ["en vivo", false],
+  ])(
+    "withoutUrl en TikTok (%s) es PUBLISHED_URL_REQUIRED y no cambia nada",
+    async (_mode, dryRun) => {
+      const t = await createPostPublicationScenario({
+        kind: "video",
+        video: true,
+        texts: [{ platform: "tiktok", language: "es" }],
+        accounts: [{ platform: "tiktok", meta: { mode: "manual" } }],
+      });
+      const publication = await t.toPublishing(t.publicationOf("tiktok"), { dryRun });
+      await publishPublication(t.publishDeps({}), {
+        publicationId: publication.id,
+        isLastAttempt: false,
+      });
+      expect(t.current(publication.id)?.status).toBe("awaiting_manual_confirm");
+      expect(
+        await codeOf(
+          confirmManualPublication(t.subjectDeps, {
+            publicationId: publication.id,
+            withoutUrl: true,
+            actor: "operator",
+          }),
+        ),
+      ).toBe("PUBLISHED_URL_REQUIRED");
+      expect(t.current(publication.id)?.status).toBe("awaiting_manual_confirm");
+      expect(t.postLock.busy()).toEqual([]);
+    },
+  );
 
   it("sin el candado del post, confirmar un post es SUBJECT_NOT_LISTING sin cambiar nada", async () => {
     const t = await manualLinkedIn();

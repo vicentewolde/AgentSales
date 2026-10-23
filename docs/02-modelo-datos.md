@@ -204,7 +204,7 @@ Nace en `approved` desde el texto aprobado de su canal, con `content_id` y `medi
 | status | enum `publication_status` | `approved`, `scheduled`, `publishing`, `awaiting_manual_confirm`, `published`, `failed`, `paused`, `unpublished`, `cancelled` (sin `draft` ni `pending_approval` desde la migración `0006`) y, desde F9 (migración `0014`, ADR-0029 punto 8), `outcome_unknown`: el intento se cortó después de enviar y no se sabe si la red publicó; es pendiente (`PENDING_PUBLICATION_STATUSES`) y activa, y solo sale a `published` o `failed` cuando el operador la resuelve. Transiciones en `01-arquitectura.md` |
 | scheduled_at | timestamptz null | La hora programada (F6, ADR-0018), al minuto: solo tiene valor en `scheduled` (el repositorio la exige al pasar a ese estado y la borra al salir). Índice parcial `publications_scheduled_due` `(scheduled_at) WHERE status = 'scheduled'` (migración `0008`) para el disparo de cada minuto |
 | published_at | timestamptz null | |
-| external_id, external_url | text null | |
+| external_id, external_url | text null | Los de la red. `null` en una publicada a mano **sin enlace** (`resolvePublication` sin enlace; `confirmManualPublication` con `withoutUrl`, solo LinkedIn, F9.5): el evento de la bitácora lo anota con `withoutUrl: true` |
 | attempts | int default 0 | Veces que se pidió publicarla (cada paso a `publishing`, F3-T10); los reintentos automáticos de la cola no lo suben |
 | last_error | jsonb null | `{ code, message, retriable }` |
 | dry_run | boolean | Modo del último intento: nace en `true` (el valor seguro) y la API lo fija al pasar a `publishing` (obligatorio) y, desde F6, también al programar (`scheduled`); el worker lo respeta (spec F3 D11), y el disparo de una programada usa el de la publicación |

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { PostMediaItem } from "@agentsales/api/contracts";
+import type { ContentMedia } from "@agentsales/api/contracts";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LinkedInAssist } from "./LinkedInAssist.js";
@@ -20,20 +20,14 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const media = (extra: Partial<PostMediaItem>): PostMediaItem => ({
+const media = (extra: Partial<ContentMedia>): ContentMedia => ({
   id: "m1",
-  kind: "image",
+  variant: "ig_4x5",
   mime: "image/jpeg",
-  bytes: 10,
-  sortOrder: 0,
-  isCover: false,
-  url: "https://r2.test/original.jpg?firma",
-  thumbUrl: "https://r2.test/thumb.jpg?firma",
   width: 1080,
   height: 1350,
   durationS: null,
-  variants: ["thumb", "ig_4x5"],
-  downloadUrl: "https://r2.test/ig_4x5.jpg?firma",
+  url: "https://r2.test/ig_4x5.jpg?firma",
   ...extra,
 });
 
@@ -61,25 +55,21 @@ describe("linkedinOpenTarget", () => {
 });
 
 describe("linkedinDownloads", () => {
-  it("un post de imagen o carrusel: todas las fotos procesadas, en orden; las sin procesar no entran", () => {
-    const items = [
-      media({ id: "a", sortOrder: 0 }),
-      media({ id: "v", kind: "video", downloadUrl: "https://r2.test/reel.mp4?firma" }),
-      media({ id: "b", sortOrder: 1, downloadUrl: null }),
-      media({ id: "c", sortOrder: 2 }),
-    ];
-    expect(linkedinDownloads(items, "carousel").map((item) => item.id)).toEqual(["a", "c"]);
-    expect(linkedinDownloads(items, "image").map((item) => item.id)).toEqual(["a", "c"]);
-  });
-
-  it("un post de video: solo el primer video procesado; un texto solo, ninguno", () => {
-    const items = [
-      media({ id: "a" }),
-      media({ id: "v1", kind: "video", downloadUrl: "https://r2.test/1.mp4?firma" }),
-      media({ id: "v2", kind: "video", downloadUrl: "https://r2.test/2.mp4?firma" }),
-    ];
-    expect(linkedinDownloads(items, "video").map((item) => item.id)).toEqual(["v1"]);
-    expect(linkedinDownloads(items, "text")).toEqual([]);
+  it("toma los medios de la publicación tal cual, en su orden, y distingue foto de video", () => {
+    const downloads = linkedinDownloads([
+      media({ id: "a", url: "https://r2.test/a.jpg?firma" }),
+      media({
+        id: "v",
+        variant: "ig_reel",
+        mime: "video/mp4",
+        url: "https://r2.test/reel.mp4?firma",
+      }),
+    ]);
+    expect(downloads).toEqual([
+      { id: "a", kind: "image", url: "https://r2.test/a.jpg?firma" },
+      { id: "v", kind: "video", url: "https://r2.test/reel.mp4?firma" },
+    ]);
+    expect(linkedinDownloads([])).toEqual([]);
   });
 });
 
@@ -151,21 +141,35 @@ describe("LinkedInAssist", () => {
     expect(await screen.findByText(/No se pudo copiar/)).toBeTruthy();
   });
 
-  it("con imágenes: «Descargar imágenes» con su miniatura y un enlace de descarga por imagen", () => {
-    const downloads = linkedinDownloads(
-      [
-        media({ id: "a", downloadUrl: "https://r2.test/a.jpg?firma" }),
-        media({ id: "b", downloadUrl: "https://r2.test/b.jpg?firma" }),
-      ],
-      "carousel",
-    );
+  it("con imágenes: «Descargar imágenes», la foto procesada arrastrable y un enlace que abre en otra pestaña", () => {
+    const downloads = linkedinDownloads([
+      media({ id: "a", url: "https://r2.test/a.jpg?firma" }),
+      media({ id: "b", url: "https://r2.test/b.jpg?firma" }),
+    ]);
     render(<LinkedInAssist content={{ body: "Hola", hashtags: [] }} downloads={downloads} />);
     const group = screen.getByRole("group", { name: "Descargar imágenes" });
-    expect(within(group).getAllByRole("img")).toHaveLength(2);
+    const images = within(group).getAllByRole("img");
+    expect(images).toHaveLength(2);
+    // Se arrastra la foto procesada (la misma que se enviaría), no una miniatura.
+    expect(images[0]?.getAttribute("src")).toBe("https://r2.test/a.jpg?firma");
+    expect(images[0]?.getAttribute("draggable")).toBe("true");
     const first = within(group).getByRole("link", { name: "Descargar imagen 1" });
     expect(first.getAttribute("href")).toBe("https://r2.test/a.jpg?firma");
-    expect(first.hasAttribute("download")).toBe(true);
+    expect(first.getAttribute("target")).toBe("_blank");
+    expect(first.hasAttribute("download")).toBe(false);
+    expect(group.textContent).toContain("Guardar imagen como");
     expect(within(group).getByRole("link", { name: "Descargar imagen 2" })).toBeTruthy();
+  });
+
+  it("un video: enlace para abrirlo y guardarlo, sin arrastre ni miniatura", () => {
+    const downloads = linkedinDownloads([
+      media({ id: "v", variant: "ig_reel", mime: "video/mp4", url: "https://r2.test/r.mp4?firma" }),
+    ]);
+    render(<LinkedInAssist content={{ body: "Hola", hashtags: [] }} downloads={downloads} />);
+    const group = screen.getByRole("group", { name: "Descargar imágenes" });
+    expect(within(group).queryByRole("img")).toBeNull();
+    expect(group.textContent).not.toContain("arrastra");
+    expect(within(group).getByRole("link", { name: "Descargar video" })).toBeTruthy();
   });
 
   it("sin medios no hay descargas; una sola imagen dice «Descargar imagen»", () => {
@@ -174,7 +178,7 @@ describe("LinkedInAssist", () => {
     rerender(
       <LinkedInAssist
         content={{ body: "Hola", hashtags: [] }}
-        downloads={linkedinDownloads([media({})], "image")}
+        downloads={linkedinDownloads([media({})])}
       />,
     );
     expect(screen.getByRole("link", { name: "Descargar imagen" })).toBeTruthy();

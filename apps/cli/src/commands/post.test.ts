@@ -30,6 +30,7 @@ import {
   runPostSchedule,
   runPostShow,
   runPostUpload,
+  withoutSignedUrls,
 } from "./post.js";
 import { adviceText } from "./publication-view.js";
 import {
@@ -514,6 +515,27 @@ describe("publications resolve, retry, confirm y not-published con posts", () =>
     expect(await runAgenda(s.deps())).toBe(0);
     expect(s.h.text()).toContain(`→ agentsales post show ${post.id}`);
     expect(s.h.text()).toContain(`→ agentsales publications retry ${publication.id}`);
+  });
+});
+
+describe("post show --json sin URLs firmadas (F9.5)", () => {
+  it("quita las URLs de los medios del post y de los que lleva cada publicación", () => {
+    const detail = {
+      media: [
+        { id: "m1", url: "https://r2.test/o.jpg?firma", thumbUrl: "https://r2.test/t.jpg?firma" },
+      ],
+      publications: [
+        {
+          id: "pub-1",
+          media: [
+            { id: "p1", variant: "ig_4x5", mime: "image/jpeg", url: "https://r2.test/p.jpg?firma" },
+          ],
+        },
+      ],
+    } as unknown as Parameters<typeof withoutSignedUrls>[0];
+    const text = JSON.stringify(withoutSignedUrls(detail));
+    expect(text).not.toContain("r2.test");
+    expect(text).toContain('"p1"');
   });
 });
 

@@ -120,7 +120,15 @@ const itemChannel = (item: AgendaItem): string | null =>
     ? null
     : platformWithFormat(item.platform, item.format, item.mediaCount, PLATFORM_TEXT[item.platform]);
 
-function TodoEntry({ item, covers }: { item: AgendaItem; covers: Covers }) {
+function TodoEntry({
+  item,
+  covers,
+  publishMode,
+}: {
+  item: AgendaItem;
+  covers: Covers;
+  publishMode: PublishMode | undefined;
+}) {
   const when =
     item.kind === "backup"
       ? item.at === null
@@ -155,7 +163,14 @@ function TodoEntry({ item, covers }: { item: AgendaItem; covers: Covers }) {
             </span>
           )}
         </div>
-        {linkedin && <LinkedInHandTask postId={item.postId} publicationId={item.publicationId} />}
+        {linkedin && (
+          <LinkedInHandTask
+            postId={item.postId}
+            publicationId={item.publicationId}
+            mode={{ dryRun: item.dryRun, modeFixed: item.modeFixed }}
+            publishMode={publishMode}
+          />
+        )}
       </div>
     </li>
   );
@@ -399,6 +414,7 @@ export function HomePage() {
                 key={`${item.kind}-${item.publicationId ?? item.listingId ?? item.accountId ?? "x"}-${item.platform ?? ""}`}
                 item={item}
                 covers={covers}
+                publishMode={publishMode}
               />
             ))
           }

@@ -27,13 +27,6 @@ export const CONFIRM_WITHOUT_URL_PLATFORMS: readonly Platform[] = ["linkedin"];
 export const confirmsWithoutUrl = (platform: Platform): boolean =>
   CONFIRM_WITHOUT_URL_PLATFORMS.includes(platform);
 
-/**
- * El `external_id` de lo confirmado a mano sin enlace: no hay id en la red, así que se guarda uno
- * propio (`manual:<id de la publicación>`), distinto del URN real y del simulado (`dry-run:`).
- * Con él `external_url` queda en `null`.
- */
-export const manualExternalId = (publicationId: string) => `manual:${publicationId}`;
-
 const urlRequired = (publicationId: string, platform: Platform) =>
   platform === "fb_marketplace"
     ? new AppError(
@@ -74,10 +67,10 @@ const notWaiting = (publication: Publication, to: "published" | "failed") => {
  *   `PUBLISHED_URL_REQUIRED` en las demás) y se normaliza (`parsePublishedUrl`): en Marketplace,
  *   `external_id` = el número del aviso; en las demás, el enlace limpio. Un aviso pasa de `ready` a
  *   `active`; un post nunca (ADR-0029 punto 4).
- * - En LinkedIn, `withoutUrl: true` confirma **sin enlace** (F9.5): `external_id = manual:<id>`,
- *   `external_url = null`, y la bitácora lo anota (`withoutUrl`). Es opcional y explícito: sin enlace
+ * - En LinkedIn, `withoutUrl: true` confirma **sin enlace** (F9.5): `external_id = null` y
+ *   `external_url = null`, como `resolvePublication`, y la bitácora lo anota (`withoutUrl`). Es opcional y explícito: sin enlace
  *   y sin `withoutUrl`, en vivo sigue siendo `PUBLISHED_URL_REQUIRED`; en las demás redes no existe
- *   (`PUBLISHED_URL_REQUIRED`); con enlace y `withoutUrl` a la vez, `PUBLISHED_URL_INVALID`.
+ *   (`PUBLISHED_URL_REQUIRED`, también en `dry-run`, antes del candado); con enlace y `withoutUrl` a la vez, `PUBLISHED_URL_INVALID`.
  * - En `dry-run`, un enlace se ignora: `external_id = dry-run:<id>`, sin enlace.
  * - Ya publicada: con el mismo enlace (o en `dry-run`), no cambia nada (`changed: false`); con otro,
  *   `PUBLICATION_ALREADY_CONFIRMED` (409); `withoutUrl` sobre una ya confirmada sin enlace tampoco
@@ -102,8 +95,11 @@ export async function confirmManualPublication(
       { details: { publicationId } },
     );
   }
-  // Sin enlace solo donde la red lo permite; en las demás, es como no haberlo pegado.
-  const skipUrl = withoutUrl && confirmsWithoutUrl(found.platform);
+  // Sin enlace solo donde la red lo permite, en cualquier modo y antes del candado.
+  if (withoutUrl && !confirmsWithoutUrl(found.platform)) {
+    throw urlRequired(publicationId, found.platform);
+  }
+  const skipUrl = withoutUrl;
   const now = deps.now ?? (() => new Date());
   // El enlace se revisa antes del candado: un enlace malo no toca nada.
   const item = found.dryRun || url === undefined ? null : parsePublishedUrl(found.platform, url);
@@ -116,7 +112,7 @@ export async function confirmManualPublication(
       if (!live || (item !== null && item.externalId === publication.externalId)) {
         return { publication, changed: false };
       }
-      if (skipUrl && publication.externalId === manualExternalId(publicationId)) {
+      if (skipUrl && publication.externalId === null && publication.externalUrl === null) {
         return { publication, changed: false };
       }
       if (item === null && !skipUrl) throw urlRequired(publicationId, publication.platform);
@@ -129,7 +125,7 @@ export async function confirmManualPublication(
     if (publication.status !== "awaiting_manual_confirm")
       throw notWaiting(publication, "published");
     if (live && item === null && !skipUrl) throw urlRequired(publicationId, publication.platform);
-    // Confirmada a mano sin enlace (solo en vivo): un id propio y ningún enlace.
+    // Confirmada a mano sin enlace (solo en vivo): sin id ni enlace, como al resolver a mano.
     const withoutLink = live && item === null && skipUrl;
     const published = await locked.repos.publications.transition(
       publicationId,
@@ -137,9 +133,7 @@ export async function confirmManualPublication(
         from: "awaiting_manual_confirm",
         to: "published",
         changes: {
-          externalId: withoutLink
-            ? manualExternalId(publicationId)
-            : (item?.externalId ?? dryRunExternalId(publicationId)),
+          externalId: withoutLink ? null : (item?.externalId ?? dryRunExternalId(publicationId)),
           externalUrl: item?.url ?? null,
           publishedAt: now(),
           lastError: null,

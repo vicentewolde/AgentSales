@@ -1635,14 +1635,19 @@ export type UpdatePostBody = z.infer<typeof updatePostBodySchema>;
  */
 export const postMediaItemSchema = mediaItemSchema.extend({
   variants: z.array(z.enum(PROCESSED_MEDIA_VARIANTS)),
-  /**
-   * La URL de lectura temporal del medio ya procesado que las redes reciben (una foto, su `ig_4x5`;
-   * un video, su `ig_reel`): lo que el operador baja para ponerlo a mano en LinkedIn (F9.5). `null`
-   * hasta que se procesa y en un servidor anterior. Nunca va a la CLI ni a los logs.
-   */
-  downloadUrl: z.string().nullable().default(null),
 });
 export type PostMediaItem = z.infer<typeof postMediaItemSchema>;
+
+/**
+ * Una publicación de un post con los medios que lleva, firmados (F9.5, LinkedIn a mano): como
+ * `listingPublicationSchema`, solo en las pendientes (`PENDING_PUBLICATION_STATUSES`), cuyos medios
+ * no cambian; en las demás va vacío. Un servidor anterior no lo manda: se lee vacío. Nunca va a la
+ * CLI ni a los logs.
+ */
+export const postPublicationSchema = publicationViewSchema.extend({
+  media: z.array(contentMediaSchema).default([]),
+});
+export type PostPublicationView = z.infer<typeof postPublicationSchema>;
 
 /** `POST /posts`, `PATCH /posts/:id` y `POST /posts/:id/archive`. */
 export const postResponseSchema = z.object({ post: postJsonSchema });
@@ -1659,7 +1664,7 @@ export const postDetailResponseSchema = z.object({
   media: z.array(postMediaItemSchema),
   contents: z.array(contentViewSchema).default([]),
   latestRun: contentRunViewSchema.nullable().default(null),
-  publications: z.array(publicationViewSchema).default([]),
+  publications: z.array(postPublicationSchema).default([]),
   /**
    * Los archivos grandes sin sha256 que llegaron y el worker todavía revisa (`uploaded`, F9-T17):
    * todavía no son medios. Un servidor anterior no lo manda: se lee 0.
