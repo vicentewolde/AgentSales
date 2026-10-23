@@ -117,6 +117,7 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "GET /posts/:id/images/stock": "session",
   "GET /posts/:id/images/:runId": "session",
   "POST /posts/:id/images": "session",
+  "DELETE /posts/:id/images/cards": "session",
   // F9-T12: pedir los textos, editarlos, aprobarlos o quitarles la aprobación por red e idioma,
   // publicar una red y programar; con `posts.manage` revisado en core y lo ajeno 404.
   "POST /posts/:id/draft": "session",

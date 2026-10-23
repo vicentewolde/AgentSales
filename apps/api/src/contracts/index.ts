@@ -1741,10 +1741,28 @@ export const postImageOptionsResponseSchema = z.object({
       capReached: z.boolean(),
     }),
   }),
+  /**
+   * Las tarjetas antes de pedirlas: cuántas saldrían (`count`; `null` si aún no se pueden armar),
+   * por qué (`message`, en simple) y cuántas tarjetas de pedidos anteriores tiene ya el post.
+   * `null` en un post de solo texto.
+   */
+  cards: z
+    .object({
+      count: z.number().int().nullable(),
+      message: z.string(),
+      existing: z.number().int().nonnegative(),
+    })
+    .nullable(),
   suggestions: z.object({ query: z.string(), prompt: z.string() }),
   runs: z.array(postImageRunViewSchema),
 });
 export type PostImageOptionsResponse = z.infer<typeof postImageOptionsResponseSchema>;
+
+/** `DELETE /posts/:id/images/cards`: cuántas tarjetas anteriores se quitaron. */
+export const postImageCardsRemovedResponseSchema = z.object({
+  removed: z.number().int().nonnegative(),
+});
+export type PostImageCardsRemovedResponse = z.infer<typeof postImageCardsRemovedResponseSchema>;
 
 /** `POST /posts/:id/images`: tarjetas, una foto de la biblioteca (por su id) o una imagen con IA. */
 export const postImageBodySchema = postImageRequestSchema;

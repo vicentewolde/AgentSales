@@ -2,6 +2,7 @@ import type { AbortSignalLike } from "../abort.js";
 import type { Broker } from "../broker.js";
 import { chileMonthOf, chileMonthRange } from "../chile-time.js";
 import { postOriginalPath } from "../content/media-keys.js";
+import { editorialProfileView } from "../editorial-profile.js";
 import { AppError, isAppError } from "../errors.js";
 import {
   assertImageAiBudget,
@@ -12,6 +13,7 @@ import {
 import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { CardBrand, CardRenderer } from "../ports/card-renderer.js";
 import type { ContentRepository } from "../ports/content-repository.js";
+import type { EditorialProfileRepository } from "../ports/editorial-profile-repository.js";
 import type { JobQueue } from "../ports/job-queue.js";
 import type { MediaProcessor, VideoOutput } from "../ports/media-processor.js";
 import type { MediaRepository } from "../ports/media-repository.js";
@@ -44,6 +46,8 @@ export type RunPostImageDeps = {
   posts: Pick<PostRepository, "get">;
   brokers: Pick<BrokerRepository, "findById">;
   contents: Pick<ContentRepository, "listCurrent">;
+  /** El idioma principal de la marca: el primero de su perfil editorial. */
+  editorialProfiles: Pick<EditorialProfileRepository, "get">;
   media: Pick<MediaRepository, "get" | "listOriginals">;
   storage: Pick<MediaStorage, "get" | "put" | "putStream">;
   postLock: PostLock;
@@ -131,7 +135,18 @@ async function produce(
   if (post.kind === "text") throw postImageNotNeeded(post.id);
   if (request.source === "card") {
     const contents = await deps.contents.listCurrent(postSubject(post.id));
-    const deck = postCardDeck({ ...post, kind: post.kind }, contents, broker);
+    // Un solo texto, en el idioma principal de la marca, y no más tarjetas de las que admite la
+    // red más estricta del post.
+    const [language] = editorialProfileView(
+      broker.id,
+      await deps.editorialProfiles.get(broker.id),
+    ).languages;
+    const deck = postCardDeck(
+      { ...post, kind: post.kind },
+      contents,
+      broker,
+      language === undefined ? {} : { language },
+    );
     const brand = await cardBrand(deps, broker);
     const format = post.kind === "video" ? "9:16" : request.format;
     const rendered = [];

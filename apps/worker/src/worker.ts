@@ -495,6 +495,7 @@ const jobs = buildJobs({
       posts,
       brokers: repositories.brokers,
       contents: createContentRepository(database.db),
+      editorialProfiles: createEditorialProfileRepository(database.db),
       media: repositories.media,
       storage,
       postLock,
