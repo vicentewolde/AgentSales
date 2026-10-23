@@ -19,7 +19,12 @@ import type { StockPhoto, StockPhotoProvider } from "../ports/post-image-sources
 import type { PostLock } from "../ports/post-lock.js";
 import type { PostRepository } from "../ports/post-repository.js";
 import { canDraftPost, type Post, postNotReady } from "../post.js";
-import { describeCardPlan, postCardPlan } from "../post-cards.js";
+import {
+  assertTextInLanguage,
+  describeCardPlan,
+  postCardContents,
+  postCardPlan,
+} from "../post-cards.js";
 import {
   isActivePostImageRun,
   POST_IMAGE_LIMITS,
@@ -164,12 +169,13 @@ async function cardsInfo(deps: PostImageDeps, post: Post): Promise<PostImageOpti
         existing,
       });
     } catch (error) {
-      // Un video sin texto redactado en ese idioma: se dice en simple, no es un error de la pantalla.
+      // Sin texto en ese idioma (un video sin texto redactado, o un post con texto solo en el otro
+      // idioma): se dice en simple, no es un error de la pantalla.
       if (!isAppError(error) || error.code !== "POST_IMAGE_NEEDS_TEXT") throw error;
       entries.push({
         language,
         count: null,
-        message: `Para el video de las tarjetas hace falta el texto en ${LANGUAGE_TEXT[language]}: pídelo primero.`,
+        message: `Para las tarjetas${post.kind === "video" ? " del video" : ""} en ${LANGUAGE_TEXT[language]} hace falta el texto en ${LANGUAGE_TEXT[language]}: pídelo primero.`,
         existing,
       });
     }
@@ -351,12 +357,6 @@ export async function requestPostImage(
     request.source === "card"
       ? (request.language ?? (await primaryLanguage(deps, post.brokerId)))
       : undefined;
-  if (request.source === "card" && request.replaceCards === true) {
-    // Aquí no se borra nada: las tarjetas anteriores las quita el worker cuando las nuevas ya están
-    // hechas (si el pedido falla, el post conserva las que tenía). Solo se avisa si no se podrá.
-    await assertNoActiveRun(deps, post.id);
-    await assertReplaceable(deps, post.id, language);
-  }
   const normalized: PostImageRequest =
     request.source !== "card"
       ? request
@@ -372,6 +372,24 @@ export async function requestPostImage(
                 ),
               }),
         };
+  if (normalized.source === "card") {
+    // Todos los idiomas pedidos (el de este pedido y los que siguen) tienen que poder hacerse antes de
+    // empezar, para no dejar «cada idioma» a medias por algo que ya se sabía.
+    const chosen = [normalized.language, ...(normalized.thenLanguages ?? [])].filter(
+      (item): item is Language => item !== undefined,
+    );
+    const texts = postCardContents(post, await deps.contents.listCurrent(postSubject(post.id)));
+    for (const item of chosen) assertTextInLanguage(post.id, texts, item);
+    if (normalized.replaceCards === true) {
+      // Aquí no se borra nada: las tarjetas anteriores las quita el worker cuando las nuevas ya están
+      // hechas (si el pedido falla, el post conserva las que tenía). Solo se avisa si no se podrá;
+      // `assertCardsRemovable` mira todas las publicaciones del post, no las de un idioma.
+      await assertNoActiveRun(deps, post.id);
+      for (const item of chosen.length === 0 ? [undefined] : chosen) {
+        await assertReplaceable(deps, post.id, item);
+      }
+    }
+  }
   const run = await deps.runs.create({
     postId: post.id,
     brokerId: post.brokerId,

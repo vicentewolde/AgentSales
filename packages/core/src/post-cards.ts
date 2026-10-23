@@ -143,6 +143,42 @@ const needsText = (postId: string) =>
   );
 
 /**
+ * Los textos de los que pueden salir las tarjetas de un post: los de las redes que el post publica
+ * (las que fijó o todas) y que sirven a su tipo.
+ */
+export function postCardContents<T extends Pick<Content, "platform">>(
+  post: Pick<Post, "kind"> & { platforms?: Post["platforms"] },
+  contents: readonly T[],
+): T[] {
+  return contents.filter(
+    (item) =>
+      isPostPlatform(item.platform) &&
+      ((post.platforms ?? null) === null || post.platforms?.includes(item.platform) === true) &&
+      kindProblem(item.platform, post.kind) === null,
+  );
+}
+
+/**
+ * `POST_IMAGE_NEEDS_TEXT` (409) si el post tiene texto en otro idioma pero ninguno en `language`: sus
+ * tarjetas saldrían con el tema (que puede estar en otro idioma) y sin puntos. Un post sin ningún
+ * texto todavía sí puede hacer sus tarjetas (portada con el tema y cierre).
+ */
+export function assertTextInLanguage(
+  postId: string,
+  contents: readonly Pick<Content, "language" | "body">[],
+  language: Language,
+): void {
+  const filled = contents.filter((item) => item.body.trim() !== "");
+  if (filled.length > 0 && !filled.some((item) => item.language === language)) {
+    throw new AppError(
+      "POST_IMAGE_NEEDS_TEXT",
+      `El post no tiene texto en ${LANGUAGE_TEXT[language]}: pídelo antes de hacer sus tarjetas en ese idioma`,
+      { details: { postId, language } },
+    );
+  }
+}
+
+/**
  * Cuántas imágenes admite una red en un post de ese tipo, o `null` si no pone tope. Los números
  * salen de las reglas de cada red (`social/networks.ts` y `content/compose.ts`), las mismas de la
  * revisión (`MEDIA_NOT_SUPPORTED`): aquí no se repiten. Solo cuenta en un carrusel: una imagen
@@ -284,12 +320,10 @@ export function postCardPlan(
   options: CardPlanOptions = {},
 ): CardPlan {
   const topicCover = clip(cardText(post.topic), POST_CARDS.coverMaxChars);
-  const usable = contents.filter(
-    (item) =>
-      isPostPlatform(item.platform) &&
-      ((post.platforms ?? null) === null || post.platforms?.includes(item.platform) === true) &&
-      kindProblem(item.platform, post.kind) === null,
-  );
+  const usable = postCardContents(post, contents);
+  // Pedir un idioma en que el post no tiene texto, habiéndolo en otro, daría una tarjeta con el tema
+  // (quizá del otro idioma): mejor un error claro.
+  if (options.language !== undefined) assertTextInLanguage(post.id, usable, options.language);
   const limit = cardImageLimit(post.kind, cardPlatforms(post, usable));
   const source = cardSource(usable, options.language, options.language !== undefined);
   const sourceInfo =

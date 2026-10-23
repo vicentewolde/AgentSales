@@ -80,6 +80,13 @@ export function postImageJob(deps: PostImageJobDeps): Job {
             },
             "imágenes del post conseguidas",
           );
+          // «Cada idioma» pidió otro y no se pudo: lo que ya quedó se queda, y se avisa.
+          if (result.chainError !== null) {
+            logger.warn(
+              { code: result.chainError },
+              "no se pudo pedir las tarjetas del idioma que seguía: pídelas a mano",
+            );
+          }
           // Archivos de tarjetas quitadas que R2 no borró: quedan sueltos (son claves, sin firma).
           if (result.leftover.length > 0) {
             logger.warn(

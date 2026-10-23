@@ -8,7 +8,7 @@ import {
   IMAGE_AI_NOT_CHARGED,
   monthlyImageSpend,
 } from "../image-ai-budget.js";
-import { cardLanguagesOf } from "../post-card-languages.js";
+import { cardLanguagesOf, mediaForLanguage } from "../post-card-languages.js";
 import type { PostImageRequest } from "../post-image.js";
 import {
   createFakeCardRenderer,
@@ -990,6 +990,117 @@ describe("tarjetas por idioma", () => {
     expect(await originals(s)).toHaveLength(7);
   });
 
+  it("pedir un idioma sin texto, habiéndolo en el otro, se rechaza con POST_IMAGE_NEEDS_TEXT", async () => {
+    const s = await caseOf({ texts: [bilingual[0] as Text] });
+    expect(await codeOf(s.request({ source: "card", format: "4:5", language: "en" }))).toBe(
+      "POST_IMAGE_NEEDS_TEXT",
+    );
+    // «Cada idioma» tampoco empieza si uno de los siguientes no se puede hacer.
+    expect(
+      await codeOf(
+        s.request({ source: "card", format: "4:5", language: "es", thenLanguages: ["en"] }),
+      ),
+    ).toBe("POST_IMAGE_NEEDS_TEXT");
+    expect(s.runs.all()).toHaveLength(0);
+    // Las opciones no ofrecen ese idioma (cuenta nula y el motivo).
+    const options = await getPostImageOptions(s.api, ADMIN, s.post.id);
+    expect(options.cards?.languages.find((item) => item.language === "en")).toMatchObject({
+      count: null,
+      message: expect.stringContaining("hace falta el texto en inglés"),
+    });
+    // Un post sin ningún texto todavía sí puede hacer sus tarjetas (portada con el tema).
+    const none = await caseOf({ texts: [], body: "" });
+    expect(await codeOf(none.request({ source: "card", format: "4:5", language: "en" }))).toBe(
+      "OK",
+    );
+  });
+
+  it("«cada idioma» con reemplazo mira que se puedan quitar las de todos los idiomas antes de empezar", async () => {
+    const { s } = await (async () => {
+      const made = await caseOf();
+      await made.work((await made.request({ source: "card", format: "4:5", language: "en" })).id);
+      return { s: made };
+    })();
+    // Una publicación aprobada que usa los medios del post bloquea el reemplazo.
+    await s.publications.create(
+      {
+        postId: s.post.id,
+        platformAccountId: "cuenta-1",
+        platform: "x",
+        format: "post",
+        contentId: "texto-1",
+        mediaIds: (await s.media.listOriginals({ kind: "post", id: s.post.id })).map(
+          (item) => item.id,
+        ),
+      },
+      { actor: "operator" },
+    );
+    // El español no tiene tarjetas que quitar, pero el inglés sí: se niega todo desde el principio.
+    expect(
+      await codeOf(
+        s.request({
+          source: "card",
+          format: "4:5",
+          language: "es",
+          thenLanguages: ["en"],
+          replaceCards: true,
+        }),
+      ),
+    ).toBe("POST_CARDS_IN_USE");
+    expect(s.runs.all()).toHaveLength(1);
+  });
+
+  it("si no se puede pedir el siguiente idioma, el primero queda hecho y se dice por qué", async () => {
+    const asked = async (tamper: (s: Case) => void) => {
+      const s = await caseOf();
+      const first = await s.request({
+        source: "card",
+        format: "4:5",
+        language: "es",
+        thenLanguages: ["en"],
+      });
+      tamper(s);
+      return { s, first, result: await s.work(first.id) };
+    };
+    // Ya hay un pedido activo del post: no se puede crear el siguiente.
+    const busy = await asked((s) => {
+      s.worker.runs = {
+        ...s.runs,
+        create: async () => {
+          throw new AppError("POST_IMAGE_RUN_ACTIVE", "ya hay uno");
+        },
+        get: s.runs.get,
+        markRunning: s.runs.markRunning,
+        markSucceeded: s.runs.markSucceeded,
+        markFailed: s.runs.markFailed,
+        listByPost: s.runs.listByPost,
+        reserveImageCost: s.runs.reserveImageCost,
+        releaseImageCost: s.runs.releaseImageCost,
+      } as never;
+    });
+    expect(busy.result).toMatchObject({
+      outcome: "succeeded",
+      chained: null,
+      chainError: "POST_IMAGE_RUN_ACTIVE",
+    });
+    expect((await busy.s.runs.get(busy.first.id))?.status).toBe("succeeded");
+    // La cola no responde: el pedido creado se cierra como failed, no queda en cola.
+    const noQueue = await asked((s) => {
+      s.worker.queue = {
+        enqueue: async (name: string) => {
+          if (name === "post.image") throw new Error("sin cola");
+        },
+      } as never;
+    });
+    expect(noQueue.result).toMatchObject({
+      outcome: "succeeded",
+      chained: null,
+      chainError: "QUEUE_UNAVAILABLE",
+    });
+    const second = noQueue.s.runs.all().find((item) => item.id !== noQueue.first.id);
+    expect(second).toMatchObject({ status: "failed", error: { code: "QUEUE_UNAVAILABLE" } });
+  });
+
   it("si el primer idioma falla, no se pide el siguiente", async () => {
     const s = await caseOf();
     const first = await s.request({
@@ -1128,11 +1239,35 @@ describe("tarjetas por idioma", () => {
       expect(await codesOf()).toEqual([["MEDIA_NOT_SUPPORTED"], ["MEDIA_NOT_SUPPORTED"]]);
     });
 
-    it("las opciones cuentan 7 tarjetas en total y 4 por idioma", async () => {
+    it("las opciones cuentan 7 tarjetas en total y 3 exclusivas por idioma (el cierre compartido aparte)", async () => {
       const { s } = await bothLanguages();
       const options = await getPostImageOptions(s.api, ADMIN, s.post.id);
       expect(options.cards?.existing).toBe(7);
-      expect(options.cards?.languages.map((item) => item.existing)).toEqual([4, 4]);
+      expect(options.cards?.languages.map((item) => item.existing)).toEqual([3, 3]);
+    });
+
+    it("quitar un idioma no deja a nadie con solo el cierre: el otro texto sigue con todas las suyas y el quitado usa las que hay", async () => {
+      const { s, idsOf } = await bothLanguages();
+      await removePostCards(s.api, ADMIN, s.post.id, "es");
+      const media = await s.media.listBySubject({ kind: "post", id: s.post.id });
+      const cards = cardLanguagesOf(s.runs.all());
+      const seen = (language: Language) =>
+        mediaForLanguage(media, cards, language)
+          .filter((item) => item.role === "original")
+          .map((item) => item.id)
+          .sort();
+      // Inglés: sus 3 tarjetas y el cierre.
+      expect(seen("en")).toEqual(idsOf("en").sort());
+      // Español ya no tiene tarjetas propias (solo el cierre compartido): publica con las únicas que
+      // hay, las del inglés con el cierre, no con una sola imagen.
+      expect(seen("es")).toEqual(idsOf("en").sort());
+      expect(seen("es").length).toBe(4);
+      // Y ya no ofrece quitar nada de español: solo quedaría el cierre compartido.
+      const options = await getPostImageOptions(s.api, ADMIN, s.post.id);
+      expect(options.cards?.languages.map((item) => [item.language, item.existing])).toEqual([
+        ["en", 3],
+        ["es", 0],
+      ]);
     });
   });
 });

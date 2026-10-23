@@ -66,8 +66,9 @@ export async function cardMediaIds(
 }
 
 /**
- * Cuántas tarjetas tiene un post por idioma (`existing`), las que no tienen idioma conocido
- * (`unknown`) y el total sin repetir (`total`): un medio de dos idiomas cuenta en los dos.
+ * Cuántas tarjetas tiene un post: las **exclusivas** de cada idioma (`byLanguage`, lo que quitar ese
+ * idioma borraría), las que no tienen idioma conocido (`unknown`) y el total sin repetir (`total`,
+ * con las que comparten dos idiomas).
  */
 export async function countCards(
   deps: {
@@ -85,7 +86,10 @@ export async function countCards(
   for (const item of present) {
     const languages = cards.get(item.id) ?? [];
     if (languages.length === 0) unknown++;
-    for (const language of languages) byLanguage[language] = (byLanguage[language] ?? 0) + 1;
+    // Solo cuentan las exclusivas de un idioma: el cierre que comparten dos no se quita al quitar uno.
+    const [only] = languages;
+    if (languages.length === 1 && only !== undefined)
+      byLanguage[only] = (byLanguage[only] ?? 0) + 1;
   }
   return { total: present.length, unknown, byLanguage };
 }

@@ -11,8 +11,14 @@ describe("cardLanguageNotice", () => {
     expect(cardLanguageNotice([], "es")).toBeNull();
     expect(cardLanguageNotice(media(null, null), "en")).toBeNull();
     expect(cardLanguageNotice(media(["es"], ["en"]), "en")).toBeNull();
-    // El cierre compartido cuenta para los dos idiomas.
-    expect(cardLanguageNotice(media(["es", "en"]), "en")).toBeNull();
+    // Con una tarjeta propia, el cierre compartido no estorba.
+    expect(cardLanguageNotice(media(["es", "en"], ["en"]), "en")).toBeNull();
+  });
+
+  it("el cierre que comparten dos idiomas no cuenta como tarjeta propia", () => {
+    expect(cardLanguageNotice(media(["es", "en"], ["es"]), "en")).toBe(
+      "Este texto está en inglés, pero las tarjetas del post están en español: en «Conseguir imagen» haz las tarjetas en inglés.",
+    );
   });
 
   it("con tarjetas solo de otro idioma, lo dice y qué hacer", () => {

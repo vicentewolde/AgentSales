@@ -307,10 +307,21 @@ describe("tarjetas de un idioma: la portada y los puntos salen del texto de ese 
     expect(describeCardPlan(plan, "carousel")).toContain("del texto en inglés");
   });
 
-  it("si el idioma pedido no tiene texto, no usa el de otro: portada con el tema y sin puntos", () => {
-    const plan = postCardPlan(carousel, [bilingual[0] as (typeof bilingual)[number]], BRAND, {
-      language: "en",
-    });
+  it("si el post tiene texto solo en otro idioma, pedir este idioma es POST_IMAGE_NEEDS_TEXT", () => {
+    let error: unknown;
+    try {
+      postCardPlan(carousel, [bilingual[0] as (typeof bilingual)[number]], BRAND, {
+        language: "en",
+      });
+    } catch (caught) {
+      error = caught;
+    }
+    expect(isAppError(error) && error.code).toBe("POST_IMAGE_NEEDS_TEXT");
+    expect(isAppError(error) && error.message).toContain("no tiene texto en inglés");
+  });
+
+  it("si el post no tiene ningún texto todavía, hace portada con el tema y cierre, sin puntos", () => {
+    const plan = postCardPlan(carousel, [], BRAND, { language: "en" });
     expect(plan.cards.map((card) => [card.role, card.text])).toEqual([
       ["cover", "Cómo fijar el precio"],
       ["closing", "AgentPey"],

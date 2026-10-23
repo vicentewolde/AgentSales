@@ -725,10 +725,12 @@ export {
   type CardLanguages,
   cardLanguagesOf,
   hiddenCardIds,
+  isExclusiveCard,
   loadCardLanguages,
   mediaForLanguage,
 } from "./post-card-languages.js";
 export {
+  assertTextInLanguage,
   type CardImageLimit,
   type CardPlan,
   cardImageLimit,
@@ -741,6 +743,7 @@ export {
   describeCardPlan,
   POST_CARDS,
   platformImageLimit,
+  postCardContents,
   postCardDeck,
   postCardPlan,
 } from "./post-cards.js";

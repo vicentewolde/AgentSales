@@ -353,6 +353,52 @@ describe("panel: conseguir imagen", () => {
       await waitFor(async () => expect(await s.remaining()).toEqual([s.upload.id]));
     });
 
+    it("un idioma sin texto no se ofrece: el panel dice que falta el texto y solo deja hacer el otro", async () => {
+      const s = await setup({ kind: "carousel", languages: ["en", "es"] });
+      const drafted = await s.contentRuns.create({ postId: s.post.id, texts: true });
+      await s.contentRuns.markRunning(drafted.id);
+      await s.contentRuns.markSucceeded(drafted.id, {
+        report: { warnings: [] },
+        contents: [
+          {
+            platform: "x",
+            language: "es",
+            title: null,
+            body: "Hola a todos.",
+            hashtags: [],
+            llmProvider: "fake",
+            llmModel: "fake",
+            promptVersion: "v",
+            rawOutput: null,
+          },
+        ],
+      });
+      const panel = await openPanel();
+      expect(
+        await within(panel).findByRole("button", { name: "Hacer tarjetas en español" }),
+      ).toHaveProperty("disabled", false);
+      // Inglés no se puede elegir (no hay selector con un solo idioma listo) ni pedir «de cada idioma».
+      expect(within(panel).queryByRole("combobox", { name: "Idioma de las tarjetas" })).toBeNull();
+      expect(
+        within(panel).queryByRole("button", { name: "Hacer las tarjetas de cada idioma" }),
+      ).toBeNull();
+      expect(
+        within(panel).getByText(/hace falta el texto en inglés: pídelo primero/u),
+      ).toBeTruthy();
+    });
+
+    it("el cuadro de confirmación recibe el foco al abrirse", async () => {
+      await withSpanishCards();
+      const panel = await openPanel();
+      fireEvent.click(
+        await within(panel).findByRole("button", { name: "Quitar todas las tarjetas" }),
+      );
+      const dialog = within(panel).getByRole("alertdialog", {
+        name: "Confirmar quitar las tarjetas",
+      });
+      expect(document.activeElement).toBe(dialog);
+    });
+
     it("«Quitar todas las tarjetas» pide confirmación y quita las de todos los idiomas", async () => {
       const s = await withSpanishCards();
       const panel = await openPanel();
@@ -368,16 +414,43 @@ describe("panel: conseguir imagen", () => {
   });
 
   it("un post de video hace el video de las tarjetas (9:16) y no ofrece fotos", async () => {
-    const s = await setup({ kind: "video" });
+    await setup({ kind: "video" });
     const panel = await openPanel();
+    // Sin el texto redactado no se puede: el botón espera y el panel dice qué falta.
+    const button = await within(panel).findByRole("button", {
+      name: "Hacer video de las tarjetas",
+    });
+    expect(button).toHaveProperty("disabled", true);
+    expect(within(panel).getByText(/hace falta el texto en español: pídelo primero/u)).toBeTruthy();
+    cleanup();
+    const t = await setup({ kind: "video" });
+    const drafted = await t.contentRuns.create({ postId: t.post.id, texts: true });
+    await t.contentRuns.markRunning(drafted.id);
+    await t.contentRuns.markSucceeded(drafted.id, {
+      report: { warnings: [] },
+      contents: [
+        {
+          platform: "x",
+          language: "es",
+          title: null,
+          body: "Un video. Claves:\n- Mira el mercado\n- Revisa los gastos",
+          hashtags: [],
+          llmProvider: "fake",
+          llmModel: "fake",
+          promptVersion: "v",
+          rawOutput: null,
+        },
+      ],
+    });
+    const ready = await openPanel();
     fireEvent.click(
-      await within(panel).findByRole("button", { name: "Hacer video de las tarjetas" }),
+      await within(ready).findByRole("button", { name: "Hacer video de las tarjetas" }),
     );
-    await waitFor(() => expect(s.requests).toContain(`POST /posts/${s.post.id}/images`));
-    const [run] = await s.deps.postImageRuns.listByPost(s.post.id, 1);
-    expect(run?.request).toEqual({ source: "card", format: "9:16", language: "es" });
-    fireEvent.click(within(panel).getByRole("tab", { name: "Biblioteca (Pixabay)" }));
-    expect(within(panel).getByText(/Un post de video usa el video de las tarjetas/u)).toBeTruthy();
+    await waitFor(() => expect(t.requests).toContain(`POST /posts/${t.post.id}/images`));
+    const [made] = await t.deps.postImageRuns.listByPost(t.post.id, 1);
+    expect(made?.request).toEqual({ source: "card", format: "9:16", language: "es" });
+    fireEvent.click(within(ready).getByRole("tab", { name: "Biblioteca (Pixabay)" }));
+    expect(within(ready).getByText(/Un post de video usa el video de las tarjetas/u)).toBeTruthy();
   });
 
   it("con la biblioteca: busca sin personas y elegir una foto la pide por su id", async () => {

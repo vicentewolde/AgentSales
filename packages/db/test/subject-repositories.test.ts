@@ -495,9 +495,11 @@ describe("PostLock · Postgres (PGlite)", () => {
     });
     await runs.markRunning(run.id);
     await runs.markSucceeded(run.id, [MISSING_UUID]);
-    const seen = await lock.run(ids.postId, async (locked) =>
-      loadCardLanguages(locked.postImageRuns, ids.postId),
-    );
+    const seen = await lock.run(ids.postId, async (locked) => {
+      // El candado de Postgres siempre entrega los pedidos: sin ellos, las tarjetas no se separan.
+      expect(locked.postImageRuns).toBeDefined();
+      return loadCardLanguages(locked.postImageRuns, ids.postId);
+    });
     expect([...seen]).toEqual([[MISSING_UUID, ["en"]]]);
   });
 

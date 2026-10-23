@@ -262,9 +262,14 @@ function CardsTab({
   const video = kind === "video";
   const languages = cards?.languages ?? [];
   const [picked, setPicked] = useState<Language | null>(null);
-  const selected = languages.find((item) => item.language === picked) ?? languages[0];
+  // Solo se ofrecen los idiomas que se pueden hacer; uno sin texto en ese idioma pide el texto antes.
+  const ready = languages.filter((item) => item.count !== null);
+  const offered = ready.length > 0 ? ready : languages;
+  const selected = offered.find((item) => item.language === picked) ?? offered[0];
   const language = selected?.language;
   const several = languages.length > 1;
+  const choose = ready.length > 1;
+  const dialog = useRef<HTMLDivElement>(null);
   // Por defecto se quitan las tarjetas anteriores: lo normal es rehacerlas, no sumarlas.
   const [replace, setReplace] = useState(true);
   const [confirmRemove, setConfirmRemove] = useState<"language" | "all" | null>(null);
@@ -276,6 +281,10 @@ function CardsTab({
   const existingAny = languages.some((item) => existingOf(item) > 0);
   const total = cards?.existing ?? 0;
   const name = language === undefined ? "" : LANGUAGE_TEXT[language];
+  // El cuadro de confirmación recibe el foco al abrirse.
+  useEffect(() => {
+    if (confirmRemove !== null) dialog.current?.focus();
+  }, [confirmRemove]);
   const send = (chosen: readonly Language[], anyExisting: boolean) => {
     const [first, ...rest] = chosen;
     request.mutate({
@@ -296,18 +305,18 @@ function CardsTab({
             : "Una tarjeta con el título del texto sobre tus colores y tu logo. Sin costo."}{" "}
         {several && "Cada texto se publica con las tarjetas de su idioma: haz las de cada idioma."}
       </p>
-      {several && (
+      {choose && (
         <Field label="Idioma de las tarjetas">
           <Select
             width="auto"
             value={language}
             onChange={(event) =>
               setPicked(
-                languages.find((item) => item.language === event.target.value)?.language ?? null,
+                ready.find((item) => item.language === event.target.value)?.language ?? null,
               )
             }
           >
-            {languages.map((item) => (
+            {ready.map((item) => (
               <option key={item.language} value={item.language}>
                 {LANGUAGE_TEXT[item.language]}
               </option>
@@ -356,6 +365,7 @@ function CardsTab({
       <div className="flex flex-wrap gap-2">
         <Button
           loading={busy}
+          disabled={selected === undefined || selected.count === null}
           onClick={() => send(language === undefined ? [] : [language], existing > 0)}
         >
           {video
@@ -366,13 +376,13 @@ function CardsTab({
               ? `Hacer tarjetas en ${name}`
               : "Hacer tarjetas"}
         </Button>
-        {several && (
+        {choose && (
           <Button
             variant="secondary"
             disabled={busy}
             onClick={() =>
               send(
-                languages.map((item) => item.language),
+                ready.map((item) => item.language),
                 existingAny,
               )
             }
@@ -395,9 +405,11 @@ function CardsTab({
       </div>
       {confirmRemove !== null && (
         <div
+          ref={dialog}
+          tabIndex={-1}
           role="alertdialog"
           aria-label="Confirmar quitar las tarjetas"
-          className="space-y-2 rounded-md bg-danger-50 p-3 text-sm text-danger-800"
+          className="space-y-2 rounded-md bg-danger-50 p-3 text-sm text-danger-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
         >
           <p>
             {confirmRemove === "all" || !several

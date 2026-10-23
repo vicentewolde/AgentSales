@@ -98,6 +98,23 @@ describe("hiddenCardIds", () => {
     expect([...hiddenCardIds(["old", "cover-en"], mixed, "en")]).toEqual(["old"]);
   });
 
+  it("el cierre que comparten dos idiomas no cuenta como tarjeta propia: sin otra, usa las únicas que haya", () => {
+    // Se quitaron las tarjetas en español: solo queda el cierre [es, en] y las del inglés.
+    const left: CardLanguages = new Map<string, readonly Language[]>([
+      ["cover-en", ["en"]],
+      ["closing", ["es", "en"]],
+    ]);
+    expect(hiddenCardIds(ids, left, "es").size).toBe(0);
+    expect([...hiddenCardIds(ids, left, "en")]).toEqual([]);
+    // Con una sola imagen compartida y las de otro idioma, el español no queda con solo el cierre.
+    const both: CardLanguages = new Map<string, readonly Language[]>([
+      ["cover-es", ["es"]],
+      ["cover-en", ["en"]],
+      ["closing", ["es", "en"]],
+    ]);
+    expect([...hiddenCardIds(ids, both, "es")]).toEqual(["cover-en"]);
+  });
+
   it("sin tarjetas en el post, no esconde nada", () => {
     expect(hiddenCardIds(ids, new Map(), "es").size).toBe(0);
   });

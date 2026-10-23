@@ -53,12 +53,18 @@ export async function loadCardLanguages(
   return cardLanguagesOf(await runs.listByPost(postId, ALL_CARD_RUNS));
 }
 
+/** Si una tarjeta es solo de ese idioma (no la comparten dos: el cierre con la marca lo es). */
+export const isExclusiveCard = (languages: readonly Language[], language: Language): boolean =>
+  languages.length === 1 && languages[0] === language;
+
 /**
  * Las tarjetas que **no** van en una publicación de `language`, entre los originales del post
  * (sus ids). Lo que sube el usuario, la biblioteca y la IA nunca se esconde. Para las tarjetas:
- * - si hay de ese idioma, solo esas (las de otro idioma y las de idioma desconocido no van);
- * - si no, las únicas que haya, sin mezclar: primero las de idioma desconocido y, si no hay, las de
- *   los otros idiomas.
+ * - si ese idioma tiene al menos una tarjeta **exclusiva** (no cuenta el cierre que comparte con
+ *   otro idioma: si quedara solo él, el texto saldría con una sola imagen), las de ese idioma, las
+ *   exclusivas y las compartidas; las de otro idioma y las de idioma desconocido no van;
+ * - si no, las únicas que haya, sin mezclar: primero las de idioma desconocido y, si no hay, todas
+ *   las demás.
  */
 export function hiddenCardIds(
   originalIds: readonly string[],
@@ -67,9 +73,13 @@ export function hiddenCardIds(
 ): Set<string> {
   const present = originalIds.filter((id) => cards.has(id));
   const languagesOf = (id: string) => cards.get(id) ?? [];
-  const own = present.filter((id) => languagesOf(id).includes(language));
+  const hasOwn = present.some((id) => isExclusiveCard(languagesOf(id), language));
   const unknown = present.filter((id) => languagesOf(id).length === 0);
-  const chosen = own.length > 0 ? own : unknown.length > 0 ? unknown : present;
+  const chosen = hasOwn
+    ? present.filter((id) => languagesOf(id).includes(language))
+    : unknown.length > 0
+      ? unknown
+      : present;
   return new Set(present.filter((id) => !chosen.includes(id)));
 }
 

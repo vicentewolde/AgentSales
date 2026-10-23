@@ -76,6 +76,8 @@ export type RunPostImageResult =
       leftover: string[];
       /** El pedido del idioma que seguía (`thenLanguages`), si se pidió y se pudo crear. */
       chained: string | null;
+      /** El código de por qué no se pudo pedir el idioma que seguía; `null` si no hacía falta o salió bien. */
+      chainError: string | null;
     }
   | { outcome: "failed"; code: string };
 
@@ -241,17 +243,20 @@ async function produce(
 
 /**
  * «Hacer las tarjetas de cada idioma»: al terminar bien el pedido de un idioma, el worker pide el
- * siguiente (un post tiene un solo pedido activo a la vez). Si no se puede crear, el idioma que ya
- * quedó no se pierde: el usuario pide el otro a mano.
+ * siguiente (un post tiene un solo pedido activo a la vez). Si no se puede crear (ya hay un pedido
+ * activo, o la cola no responde), el idioma que ya quedó no se pierde y el pedido no falla: se
+ * devuelve el código del motivo (`chainError`) para que el job lo avise y el usuario pida el otro a
+ * mano. Un pedido creado que no se pudo encolar se cierra como `failed`, no queda en cola.
  */
 async function chainNextLanguage(
   deps: Pick<RunPostImageDeps, "runs" | "queue">,
   run: PostImageRun,
-): Promise<string | null> {
+): Promise<{ chained: string | null; chainError: string | null }> {
   const request = run.request;
-  if (request.source !== "card") return null;
+  const none = { chained: null, chainError: null };
+  if (request.source !== "card") return none;
   const [next, ...rest] = request.thenLanguages ?? [];
-  if (next === undefined) return null;
+  if (next === undefined) return none;
   try {
     const created = await deps.runs.create({
       postId: run.postId,
@@ -260,14 +265,22 @@ async function chainNextLanguage(
       request: { ...request, language: next, thenLanguages: rest },
       createdBy: run.createdBy,
     });
-    await deps.queue.enqueue(
-      "post.image",
-      { postImageRunId: created.id },
-      { singletonKey: created.id },
-    );
-    return created.id;
-  } catch {
-    return null;
+    try {
+      await deps.queue.enqueue(
+        "post.image",
+        { postImageRunId: created.id },
+        { singletonKey: created.id },
+      );
+    } catch (cause) {
+      await deps.runs.markFailed(created.id, {
+        code: "QUEUE_UNAVAILABLE",
+        message: "No se pudo encolar el pedido: vuelve a intentarlo",
+      });
+      throw new AppError("QUEUE_UNAVAILABLE", "No se pudo encolar el pedido", { cause });
+    }
+    return { chained: created.id, chainError: null };
+  } catch (error) {
+    return { chained: null, chainError: isAppError(error) ? error.code : "INTERNAL_ERROR" };
   }
 }
 
@@ -406,7 +419,7 @@ export async function runPostImage(
       created,
       replaced,
       leftover,
-      chained: await chainNextLanguage(deps, run),
+      ...(await chainNextLanguage(deps, run)),
     };
   } catch (error) {
     // Después de llamar a la IA nada se reintenta solo (cobraría otra vez): el pedido falla.

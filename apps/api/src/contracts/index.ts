@@ -1776,16 +1776,19 @@ export const postImageOptionsResponseSchema = z.object({
    */
   cards: z
     .object({
-      languages: z.array(
-        z.object({
-          language: z.enum(LANGUAGES),
-          count: z.number().int().nullable(),
-          message: z.string(),
-          existing: z.number().int().nonnegative(),
-        }),
-      ),
-      existing: z.number().int().nonnegative(),
-      unknown: z.number().int().nonnegative(),
+      // Un servidor anterior no manda los idiomas ni los totales: se leen vacíos.
+      languages: z
+        .array(
+          z.object({
+            language: z.enum(LANGUAGES),
+            count: z.number().int().nullable(),
+            message: z.string(),
+            existing: z.number().int().nonnegative(),
+          }),
+        )
+        .default([]),
+      existing: z.number().int().nonnegative().default(0),
+      unknown: z.number().int().nonnegative().default(0),
     })
     .nullable(),
   suggestions: z.object({ query: z.string(), prompt: z.string() }),

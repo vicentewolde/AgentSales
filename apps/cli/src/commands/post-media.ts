@@ -164,7 +164,10 @@ async function cardLanguagesOf(
       deps.client.posts[":id"].images.$get({ param: { id: postId } }),
       postImageOptionsResponseSchema,
     );
-    return (options.cards?.languages ?? []).map((item) => item.language);
+    // Solo los idiomas que se pueden hacer: uno sin texto en ese idioma no se pide.
+    return (options.cards?.languages ?? [])
+      .filter((item) => item.count !== null)
+      .map((item) => item.language);
   }
   const found = LANGUAGES.find((language) => language === wanted);
   if (found === undefined) {
@@ -214,11 +217,32 @@ async function waitForImage(
     deps.print(`Costo: ${formatUsd(done.costUsd)}${done.model === null ? "" : ` (${done.model})`}`);
   }
   if (done.request.source === "card" && (done.request.thenLanguages?.length ?? 0) > 0) {
-    deps.print(
-      c.dim(
-        `→ Después se hacen las tarjetas en ${done.request.thenLanguages?.map((l) => LANGUAGE_TEXT[l]).join(" y ")}: sigue con ${media(postId)}`,
-      ),
+    // El worker pide el siguiente idioma al terminar: solo se dice si ese pedido existe.
+    const [next] = done.request.thenLanguages ?? [];
+    const { runs } = await unwrap(
+      deps.client.posts[":id"].images.$get({ param: { id: postId } }),
+      postImageOptionsResponseSchema,
     );
+    const later = runs.find(
+      (item) =>
+        item.id !== done.id &&
+        item.createdAt >= done.createdAt &&
+        item.request.source === "card" &&
+        item.request.language === next,
+    );
+    if (later !== undefined && next !== undefined) {
+      deps.print(
+        c.dim(
+          `→ Después se hacen las tarjetas en ${LANGUAGE_TEXT[next]} (pedido ${later.id}): sigue con ${media(postId)}`,
+        ),
+      );
+    } else if (next !== undefined) {
+      deps.printError(
+        c.yellow(
+          `El pedido de las tarjetas en ${LANGUAGE_TEXT[next]} no se hizo: pídelo con ${media(postId)} --card --language ${next}`,
+        ),
+      );
+    }
   }
   deps.print(c.dim(`→ Se arman sus variantes en un momento. Revísalos con ${show(postId)}`));
   return 0;
