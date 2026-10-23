@@ -65,6 +65,7 @@ import {
 } from "../upload.js";
 import { brandOf } from "./brand.js";
 import { paintContentRunStatus, renderChecks } from "./content-view.js";
+import { registerPostMedia } from "./post-media.js";
 import { paintPublicationStatus } from "./publication-view.js";
 import { atOption, collect, confirmLive } from "./schedule.js";
 import {
@@ -1440,6 +1441,8 @@ export function register(program: Command, ctx: CliContext): void {
     .argument("<id>", "id del post")
     .argument("<archivos...>", "los archivos")
     .action((id: string, files: string[]) => exitWith(() => runPostUpload(deps(), id, files)));
+  // F9.5-T25: conseguir imágenes (tarjetas, biblioteca o IA).
+  registerPostMedia(post, ctx);
   post
     .command("draft")
     .description("Pide a la IA un texto por red e idioma y espera")
