@@ -371,6 +371,40 @@ En **Plan** (el menú de la izquierda; el administrador elige la marca en "Ver c
 - **Las ideas por semana**, cada una con su fecha y hora (Chile), su línea, sus redes, su tipo y el porqué. Por idea: **Aceptar**, **Editar** (brief, fecha y redes) y **Descartar** (pide confirmación). Una aceptada lleva al post, donde revisas, apruebas y programas.
 - **Redactar lo aceptado:** si una idea quedó aceptada sin textos (por ejemplo, el worker no estaba al aceptarla), el botón pide sus textos.
 - **Si el plan falla**, el motivo aparece en rojo con qué hacer.
+- **Aprobar la semana** (F9.5-T27): cada semana con ideas aceptadas tiene el botón **Aprobar la semana…**; abajo, en «Publicar a diario desde AgentPey».
+
+## Publicar a diario desde AgentPey (F9.5-T27)
+
+La rutina para que una marca (AgentPey o vinny) publique todos los días en sus redes con unos 15 minutos a la semana y 2 al día. **Nada sale de verdad sin tus llaves:** el servidor en vivo, la marca encendida (`brokers live`, ADR-0036) y la prueba de entrada de cada red. Claude las toca solo con tu instrucción en el chat.
+
+### Antes de empezar, una vez: la lista «Lista para publicar a diario»
+
+En **Cuentas**, debajo del nombre de cada marca, la lista dice qué falta para publicar a diario y cómo resolverlo; en la terminal, `pnpm -s cli brand ready --broker agentpey` (`--json` para leerla de un script). Cada ítem es **✓ listo**, **✗ falta** (con su paso: un comando para copiar o un botón), **? lo marca el operador** (el sistema no lo sabe o lo haces tú a mano) o **· para saber**:
+
+- **La marca:** el **modo** (simulación o en vivo, y por qué: el servidor en `dry-run`, la marca apagada o una marca que no es tuya), el **worker** (solo lo ve el administrador: con el horario de ADR-0037 activo, el worker se apaga solo y la lista te pide revisar que el workflow «Encender el worker» tenga su secreto, `docs/10-despliegue.md`, paso 8; sin horario, mira su latido: encendido sirve mientras siga así, apagado falta), el **tope de IA del mes** (lo que gastan el plan y los textos) y el **tope de imágenes con IA** de «Conseguir imagen» (F9.5-T25; sin la clave de la IA, solo tarjetas y biblioteca).
+- **Por red:** la **cuenta conectada** (o vencida, con su comando para conectar) y la **prueba de entrada**: dice «hecha» solo con lo anotado en la nota de la red (`docs/integraciones/`; hoy S1, S4, S5 y S6 del 2026-10-21) y, si falta, «la marca el operador» con el paso. LinkedIn **a mano** no la necesita (S2 y S3 son para publicar por la API). Además, en **X** el tope de gasto del mes (con `accounts spend-limit <id> <dólares>` para cambiarlo; los créditos los cargas en console.x.com), que **una imagen o un video en X todavía no se publicaron de verdad** (un aviso: S4 publicó un texto sin enlace; mira en X la primera publicación en vivo con medios; de S4 quedan además el hilo y si un 4xx cobra) y que un post con enlace necesita «Permitir un enlace en X»; en **LinkedIn**, que va a mano; en **TikTok**, que el video llega como borrador; en **Discord**, el tope de 20 MiB del video.
+
+### Cada semana (unos 15 minutos)
+
+1. **Pide el plan con guía** en **Plan** («¿Qué quieres que trate este plan?») o `pnpm -s cli plan --broker agentpey --days 7 --guidance "…"`. Las fechas las pone la cadencia (ADR-0034).
+2. **Acepta** las ideas que te gusten (la IA redacta sus textos) y **descarta** las otras.
+3. **Consigue las imágenes y videos** de los posts que los piden: súbelos en el post (`pnpm -s cli post upload <id> <archivos…>`) o con «Conseguir imagen» cuando esté (F9.5-T25). El texto se aprueba sin ellos, pero no se programa.
+4. **Revisa los textos** y su vista previa en cada post; corrige lo que no te guste.
+5. **Aprueba la semana:** en **Plan**, en la semana, **Aprobar la semana…** muestra cada post con sus textos por red (aprobado, por aprobar, con errores o sin la imagen) y **Aprobar y programar la semana** aprueba los textos sin errores y programa cada post **a su fecha**. En la terminal:
+
+   ```bash
+   pnpm -s cli post approve-week --broker agentpey                    # la semana de mañana
+   pnpm -s cli post approve-week --broker agentpey --start 2026-11-02 # otra semana (cualquier día de ella)
+   ```
+
+   **Nunca publica en el momento:** solo programa, y lo que ya pasó (o es en menos de 2 minutos) queda sin programar con «La fecha no sirve». Con la marca en vivo pregunta antes, como programar (`--yes` en la CLI). Lo que no pudo sale post por post con su motivo y qué hacer: errores del texto, falta la imagen o el video, sin cuenta conectada, o sin textos todavía. **Repetirlo nunca pisa lo que hiciste:** una red ya programada (aunque la hayas movido a otra hora) sale como «ya programado para el …» y no se cambia; una fallida o una que desprogramaste tampoco se toca, y sale con su estado y el comando para reintentarla (`publications retry <id>`) o programarla (`schedule --publication <id> --at …`). Las ideas sin decidir de la semana no entran.
+
+### Cada día (unos 2 minutos)
+
+- **Revisa Hoy** (la portada): lo que salió con su enlace, lo que falló con qué hacer, y lo que espera tu mano.
+- **LinkedIn a mano:** a la hora, la publicación queda «esperando confirmación». En el post, **Copiar texto y abrir LinkedIn** copia el texto aprobado y abre linkedin.com en otra pestaña (un enlace normal: AgentSales no toca LinkedIn). Crea la publicación, pega el texto (con las imágenes del post), publica, copia el enlace y confírmalo con **Lo publiqué** (o `pbpaste | pnpm -s cli publications confirm <id> --url-stdin`).
+- **TikTok:** el video llega como **borrador** a la app del teléfono; lo publicas desde ahí, con el texto de AgentSales, y lo confirmas con su enlace. **Publicar directo espera la auditoría de TikTok** (la revisión de Production con el video demo, que no se pidió todavía).
+- **Discord, X e Instagram** salen solos a su hora con el worker encendido (o por horario).
 
 ## Conectar las redes de los posts (F9)
 

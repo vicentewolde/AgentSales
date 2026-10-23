@@ -145,12 +145,12 @@ Todas las redes de F9 están construidas y probadas **solo con simulaciones**. C
 
 ### Instagram para posts (S1)
 - [ ] Conectar la cuenta profesional de cada marca a la app `AgentSales-IG` como hasta hoy (en el servidor, el botón **Conectar Instagram**; en el Mac, `--token-stdin` con *Generate token*). La cuenta debe ser tester de la app mientras esté en modo desarrollo
-- [ ] **S1:** una publicación real y neutra en tu cuenta (con tu instrucción en el chat) y verla desde una cuenta **sin rol** en la app. Si no se ve, Instagram espera el App Review; las demás redes siguen. Resultado en `docs/integraciones/instagram-contenido-propio.md` §13
+- [x] **S1** (pasó el 2026-10-21, `docs/integraciones/instagram-contenido-propio.md` §13): una publicación real y neutra en tu cuenta (con tu instrucción en el chat) y verla desde una cuenta **sin rol** en la app. Si no se ve, Instagram espera el App Review; las demás redes siguen. Resultado en `docs/integraciones/instagram-contenido-propio.md` §13
 
 ### Discord (S5)
 - [ ] Un **servidor privado de pruebas** con un canal; en Ajustes del servidor → Integraciones → Webhooks → **Nuevo webhook** → **Copiar URL del webhook**. No necesita app ni variables: la URL es el secreto (nunca al chat)
 - [ ] Conectarlo: `pbpaste | pnpm -s cli accounts connect discord --broker <slug> --webhook-stdin`
-- [ ] **S5:** con tu instrucción, un mensaje con texto, una imagen y un video en ese canal. Resultado en `docs/integraciones/discord.md` §0
+- [x] **S5** (pasó el 2026-10-21, `docs/integraciones/discord.md`, «Resultado de S5»): con tu instrucción, un mensaje con texto, una imagen y un video en ese canal. Resultado en `docs/integraciones/discord.md` §0
 
 ### LinkedIn (S2 y S3)
 
@@ -171,7 +171,7 @@ La cuenta nace **a mano** (D5). Nada de esto lo hace Claude.
 - [ ] Subir `X_CLIENT_ID` y `X_CLIENT_SECRET` a `.env.production` y a los secretos de Fly cuando vayas a usar X en el servidor (`docs/10-despliegue.md`, paso 2).
 - [ ] **Créditos y tope duro** en la consola de X (Billing): pago por uso, unos US$0,015 por post y US$0,20 con un enlace. Carga créditos y pon un *spending limit* bajo en la consola; el de AgentSales (US$10 al mes por cuenta, `accounts spend-limit`) es una segunda barrera. Es un pago: lo haces tú.
 - [ ] **Probar la conexión:** `pnpm dev`, el panel en `http://127.0.0.1:5173` (no `localhost`) y Cuentas → **Conectar X**. O `pnpm -s cli accounts connect x --broker <slug>`.
-- [ ] **S4:** con tu instrucción, crear un post, ver el saldo descontado, un reply a ti mismo, el rechazo de un texto repetido y si un 4xx cobra. Resultado en `docs/integraciones/x.md` §0.
+- [x] **S4** (pasó el 2026-10-21, `docs/integraciones/x.md` §8; quedan el hilo y si un 4xx cobra): con tu instrucción, crear un post, ver el saldo descontado, un reply a ti mismo, el rechazo de un texto repetido y si un 4xx cobra. Resultado en `docs/integraciones/x.md` §0.
 
 ### TikTok (S6)
 - [x] **App de TikTok** "AgentSales" en developers.tiktok.com (2026-10-20/21): propietario Individual, tipo Other. El borrador de **Production** no se guarda sin un video demo y el texto de la revisión, así que todo se configuró en un **Sandbox** ("agentsales-pruebas"): **Login Kit** y **Content Posting API** con `user.info.basic` y `video.upload`, **Direct Post apagado** (solo borradores). Dirección de retorno `https://agentsales.agentpey.com/api/oauth/tiktok/callback`, web `https://agentsales.agentpey.com`, y los términos y la privacidad de `/legal/`.
@@ -180,7 +180,7 @@ La cuenta nace **a mano** (D5). Nada de esto lo hace Claude.
 - [ ] En el Sandbox, **Sandbox settings → Target Users → Add account**: inicia sesión con tu cuenta de TikTok. En un Sandbox solo esas cuentas pueden autorizar.
 - [ ] Subir `TIKTOK_CLIENT_KEY` y `TIKTOK_CLIENT_SECRET` (los del Sandbox) a `.env.production` y a los secretos de Fly (`docs/10-despliegue.md`, paso 2). TikTok exige `https`: **solo se conecta desde el servidor**, no desde el Mac, así que S6 necesita el par allá.
 - [ ] Conectar en el servidor: el botón **Conectar TikTok**, o `pnpm -s cli accounts connect tiktok --broker <slug>`, dejando marcado el permiso de subir videos.
-- [ ] **S6:** autorizar tu cuenta, subir un video de R2 y ver el borrador en la bandeja de la app; anotar si el refresh token rota. Si una cuenta personal no puede autorizar, probar una Creator o Business; si el borrador no llega sin auditoría, TikTok pasa al piloto. Resultado en `docs/integraciones/tiktok.md` §0.
+- [x] **S6** (pasó el 2026-10-21, `docs/integraciones/tiktok.md` §10): autorizar tu cuenta, subir un video de R2 y ver el borrador en la bandeja de la app; anotar si el refresh token rota. Si una cuenta personal no puede autorizar, probar una Creator o Business; si el borrador no llega sin auditoría, TikTok pasa al piloto. Resultado en `docs/integraciones/tiktok.md` §0.
 - [ ] (Después) **La revisión de Production** con el video demo y el texto de la revisión. Al aprobarse, el par del `.env` y de Fly pasa a ser el de Production.
 
 ## F9.5 · Imágenes para posts sin fotos (ADR-0038)

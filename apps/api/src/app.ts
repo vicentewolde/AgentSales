@@ -46,6 +46,7 @@ import { type RequestContext, withEventUser, withPostEventUser } from "./request
 import { requestLogger } from "./request-logger.js";
 import { type AccountRoutesDeps, accountRoutes } from "./routes/accounts.js";
 import { authRoutes } from "./routes/auth.js";
+import { brandWeekRoutes } from "./routes/brand-week.js";
 import { brokerRoutes } from "./routes/brokers.js";
 import { contentRoutes, contentRunRoutes, listingContentRoutes } from "./routes/content.js";
 import { editorialProfileRoutes } from "./routes/editorial-profile.js";
@@ -163,11 +164,12 @@ export type AppDeps = {
   planRuns: PlanRunRepository;
   /**
    * Publicaciones (F3-T15): leer las de un aviso y su bitácora, y saber de qué aviso es una antes
-   * del candado. Los cambios de estado van dentro del candado, con sus repositorios.
+   * del candado. Los cambios de estado van dentro del candado, con sus repositorios. El gasto de X
+   * del mes de una cuenta, para la lista para publicar a diario (F9.5-T27).
    */
   publications: Pick<
     PublicationRepository,
-    "get" | "listBySubject" | "listEvents" | "listByStatus" | "listForTracking"
+    "get" | "listBySubject" | "listEvents" | "listByStatus" | "listForTracking" | "sumCostUsdSince"
   >;
   // Cuentas (F3-T13): conectar con el token del panel de Meta o por OAuth, y desconectar.
   platformAccounts: PlatformAccountRepository;
@@ -353,6 +355,14 @@ export function createApp(input: AppDeps) {
     // El corredor es su propio dueño: un corredor solo llega al suyo (F7-T13).
     broker: ownedBy(async (id) => id, notFound("BROKER_NOT_FOUND", "No existe el corredor")),
   };
+  // Lo del worker (ADR-0037) para la agenda y la lista para publicar a diario (F9.5-T27): si se
+  // apaga solo (sin el dato, no) y sus latidos. Solo lo ve el administrador.
+  const workerDetails = {
+    workerScheduled: deps.healthDetails?.workerIdleExit ?? false,
+    ...(deps.healthDetails?.workerHeartbeats === undefined
+      ? {}
+      : { workerHeartbeats: deps.healthDetails.workerHeartbeats }),
+  };
   const app = new Hono<AppEnv>()
     .use(versionHeader(deps.version))
     .use(requestLogger(deps.logger))
@@ -409,6 +419,8 @@ export function createApp(input: AppDeps) {
     .route("/contents", contentRoutes(contentDeps))
     .route("/brokers", brokerRoutes(deps))
     .route("/brokers", editorialProfileRoutes(deps))
+    // F9.5-T27: aprobar la semana y la lista para publicar a diario de una marca.
+    .route("/brokers", brandWeekRoutes({ ...deps, ...workerDetails }))
     .route("/posts", postRoutes(deps))
     .route("/plans", planRoutes(deps))
     .route("/music", musicRoutes(deps))
@@ -420,10 +432,7 @@ export function createApp(input: AppDeps) {
         ...(deps.healthDetails?.backupStatus === undefined
           ? {}
           : { backupStatus: deps.healthDetails.backupStatus }),
-        ...(deps.healthDetails?.workerHeartbeats === undefined
-          ? {}
-          : { workerHeartbeats: deps.healthDetails.workerHeartbeats }),
-        workerScheduled: deps.healthDetails?.workerIdleExit ?? false,
+        ...workerDetails,
       }),
     )
     .route("/usage", usageRoutes(deps))

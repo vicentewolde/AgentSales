@@ -11,6 +11,7 @@ import { AccountCard } from "../components/accounts/AccountCard.js";
 import { AutoPublishToggle } from "../components/accounts/AutoPublishToggle.js";
 import { expiryState, visibleAccounts } from "../components/accounts/accounts.js";
 import { ConnectBox } from "../components/accounts/ConnectBox.js";
+import { DailyReadiness } from "../components/accounts/DailyReadiness.js";
 import { MarketplaceConnectBox } from "../components/accounts/MarketplaceConnectBox.js";
 import { MarketplaceManualBox } from "../components/accounts/MarketplaceManualBox.js";
 import { MercadoLibreConnectBox } from "../components/accounts/MercadoLibreConnectBox.js";
@@ -140,6 +141,8 @@ function BrokerAccounts({
         {broker.brandName} <span className="text-sm text-fg-subtle">({broker.slug})</span>
       </h2>
       {settings && listings && <AutoPublishToggle broker={broker} publishMode={publishMode} />}
+      {/* F9.5-T27: qué le falta a la marca para publicar a diario en sus redes. */}
+      {brand && <DailyReadiness brokerId={broker.id} />}
       <Channel
         title="Instagram"
         empty="Sin cuenta de Instagram."
