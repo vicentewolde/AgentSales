@@ -150,6 +150,10 @@ const backupStatus = backupStatusReader(
 
 const access =
   publicUrl === undefined ? localAccess(env.API_PORT, env.WEB_PORT) : internetAccess(publicUrl);
+// El modo del servidor (`PUBLISH_MODE`, ADR-0036): la API lo combina con la marca de cada pedido
+// (`effectivePublishMode`); aquí solo se entrega y se dice en el log del arranque.
+const serverMode = env.PUBLISH_MODE;
+
 const app = createApp({
   // Usuarios y sesiones (F7, ADR-0021): `scrypt` y los tokens de config; la cookie `Secure` llega
   // con HTTPS en F8.
@@ -299,7 +303,7 @@ const app = createApp({
   newId: randomUUID,
   maxUploadBytes: env.MAX_IMPORT_UPLOAD_MB * 1024 * 1024,
   maxVideoBytes: env.MAX_VIDEO_MB * 1024 * 1024,
-  publishMode: env.PUBLISH_MODE,
+  publishMode: serverMode,
   environment: env.NODE_ENV === "production" ? "production" : "development",
   // Marketplace (spec F5 §4.6 y §4.7): el límite diario y si se puede convertir la UF.
   marketplace: {
@@ -360,7 +364,7 @@ const server = serve(
   { fetch: serverApp.fetch, port: env.API_PORT, hostname: env.API_HOST },
   (info) => {
     logger.info({ url: `http://${env.API_HOST}:${info.port}${API_PREFIX}` }, "API escuchando");
-    if (env.PUBLISH_MODE === "live") {
+    if (serverMode === "live") {
       logger.warn(
         "PUBLISH_MODE=live: el servidor permite publicar de verdad, pero solo las marcas con el modo en vivo encendido (ADR-0036) lo hacen",
       );

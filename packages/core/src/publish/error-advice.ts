@@ -86,7 +86,7 @@ const ADVICE: Readonly<Record<string, string>> = {
   PUBLISH_INPUT_INVALID: "Corrige lo que dice el mensaje (el texto o los medios) y reintenta.",
   // El modo.
   PUBLISH_MODE_MISMATCH:
-    "La publicación y AgentSales (la API o el worker) están en modos distintos, simulación o en vivo: repítelo con AgentSales en el modo de la publicación.",
+    "La publicación está en vivo y AgentSales (la API, el worker o la marca) está en simulación: si la marca está apagada, enciéndela (agentsales brokers live <slug> on --confirm <slug>) o hazlo a mano en la red (en Portal, ciérralo en Mercado Libre y corre publications sync <id>); si es el servidor, repítelo con PUBLISH_MODE=live.",
   PUBLISH_MODE_LOCKED: "Ya empezó en vivo: reintenta en vivo o descártala.",
   // Marketplace.
   MARKETPLACE_SESSION_EXPIRED: "Inicia sesión de nuevo en Facebook desde Cuentas y reintenta.",

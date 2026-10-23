@@ -59,6 +59,11 @@ type Text = { platform: Platform; language: Language; body?: string };
 async function setup(options: { live?: boolean } = {}) {
   const h = harness(options.live ? { deps: { publishMode: "live" } } : {});
   const brand = await h.brokers.create(brokerData("agentpey"), { kind: "brand" });
+  // En vivo, la marca está encendida y es propia (las dos llaves, ADR-0036).
+  if (options.live) {
+    await h.brokers.setSettings(brand.id, { operatorOwned: true });
+    await h.brokers.setLiveEnabled(brand.id, true);
+  }
   const other = await h.brokers.create(brokerData("ajena"), { kind: "brand" });
   await h.platformAccounts.upsertConnected({
     brokerId: brand.id,
@@ -782,9 +787,18 @@ describe("errores con su consejo y permisos", () => {
     expect(await runRetryPublication(s.deps({}, false), publication.id)).toBe(1);
     expect(s.asked).toHaveLength(3);
     expect(s.asked[0]).toContain("EN VIVO");
-    expect(s.asked[1]).toContain("¿publicar el post en Discord?");
+    expect(s.asked[1]).toContain("¿publicar el post de verdad en Discord?");
     expect(s.h.errors()).toContain("No se publicó nada");
     expect(s.publicationsOf(post.id)[0]?.status).toBe("approved");
+  });
+
+  it("con el servidor en vivo pero la marca apagada (ADR-0036), no pregunta: sale en simulación", async () => {
+    const s = await setup({ live: true });
+    const { post } = await approvedPost(s);
+    await s.h.brokers.setLiveEnabled((await s.h.brokers.findBySlug("agentpey"))?.id ?? "", false);
+    expect(await runPostSchedule(s.deps({}, false), post.id, { at: inHours(3) })).toBe(0);
+    expect(s.asked).toEqual([]);
+    expect(s.publicationsOf(post.id)[0]).toMatchObject({ status: "scheduled", dryRun: true });
   });
 });
 

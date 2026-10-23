@@ -74,7 +74,7 @@ import {
   retryAtAfter,
   waitMinutesOf,
 } from "../publish/wait.js";
-import { brokerPublishMode } from "../publish-mode.js";
+import { accountPublishMode, liveModeMismatch } from "../publish-mode.js";
 import { scrubMessage } from "../redact.js";
 import { listingIdOf } from "../subject.js";
 import { xSpendLimitOf } from "../x/account.js";
@@ -681,18 +681,6 @@ async function requireAutomationAllowed(
   assertMarketplaceAutomationAllowed(broker, deps.marketplaceAutomation);
 }
 
-/**
- * Si, hoy, la marca de la cuenta publicaría en simulación (servidor, marca o propiedad apagados).
- * Sin cuenta no hay nada que decidir aquí: el intento falla enseguida con `ACCOUNT_NOT_CONNECTED`.
- */
-async function runsInSimulation(
-  deps: PublishPublicationDeps,
-  account: PlatformAccount | null,
-): Promise<boolean> {
-  if (account === null) return false;
-  return (await brokerPublishMode(deps, deps.workerMode, account.brokerId)) === "dry-run";
-}
-
 /** Todo lo que se revisa y arma antes de llamar a la plataforma. */
 async function prepareAttempt(
   deps: PublishPublicationDeps,
@@ -703,11 +691,18 @@ async function prepareAttempt(
   const account = await deps.platformAccounts.get(publication.platformAccountId);
   // Las dos llaves (ADR-0036): una publicación fijada en `live` solo sale si el servidor sigue en
   // `live` y su marca sigue encendida (apagarla entre medio la detiene sin llamar a la plataforma).
-  if (!publication.dryRun && (await runsInSimulation(deps, account))) {
-    throw new AppError(
-      "PUBLISH_MODE_MISMATCH",
-      "Se pidió publicar en vivo, pero el worker o la marca están en simulación: no se publicó nada",
-    );
+  // Sin cuenta no hay nada que decidir aquí: el intento falla enseguida con `ACCOUNT_NOT_CONNECTED`.
+  if (
+    !publication.dryRun &&
+    account !== null &&
+    (await accountPublishMode(deps, deps.workerMode, account)) === "dry-run"
+  ) {
+    throw liveModeMismatch({
+      what: "Se pidió publicar en vivo",
+      nothing: "no se publicó nada",
+      serverMode: deps.workerMode,
+      byHand: "descártala",
+    });
   }
   if (account === null || account.status !== "connected") {
     throw new AppError(

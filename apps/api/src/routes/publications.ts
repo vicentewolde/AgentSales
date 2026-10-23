@@ -221,7 +221,8 @@ export function listingPublicationRoutes(deps: PublicationRoutesDeps) {
 
 /**
  * Las dependencias de pausar, reactivar y cerrar, con los avisos al log. El modo (`apiMode`) no va
- * aquí: depende de la marca de cada publicación (F9.5-T22, ADR-0036) y lo pone cada ruta.
+ * aquí: depende de la marca de cada publicación (F9.5-T22, ADR-0036) y lo pone cada ruta. El del
+ * servidor (`serverMode`) solo explica un `PUBLISH_MODE_MISMATCH` (la marca apagada).
  */
 export const operationDeps = (
   deps: Pick<
@@ -233,6 +234,7 @@ export const operationDeps = (
     | "mercadoLibreRefresh"
     | "operationsFor"
     | "logger"
+    | "publishMode"
   >,
 ) => ({
   lock: deps.lock,
@@ -241,6 +243,7 @@ export const operationDeps = (
   platformAccounts: deps.platformAccounts,
   mercadoLibre: deps.mercadoLibreRefresh,
   operationsFor: deps.operationsFor,
+  serverMode: deps.publishMode,
   // Solo el paso y el código: nunca el token ni datos del aviso.
   onWarning: ({
     publicationId,
@@ -369,6 +372,7 @@ export function publicationRoutes(deps: PublicationRoutesDeps) {
           publicationId: c.req.valid("param").id,
           dryRun: isDryRun(await publicationMode(deps, c.req.valid("param").id)),
           actor: actorOf(c),
+          serverMode: deps.publishMode,
           ...(confirmed === undefined ? {} : { confirmed }),
         });
         const body: PublicationResponse = { publication: publicationView(publication) };
@@ -397,6 +401,7 @@ export function publicationRoutes(deps: PublicationRoutesDeps) {
             ...deps,
             removal: {
               apiMode: await publicationMode(deps, c.req.valid("param").id),
+              serverMode: deps.publishMode,
               platformAccounts: deps.platformAccounts,
               operationsFor: deps.operationsFor,
               refreshers: deps.tokenRefreshers ?? {},

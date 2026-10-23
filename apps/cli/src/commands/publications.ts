@@ -36,7 +36,14 @@ import {
   renderRemoteState,
   theName,
 } from "./publication-view.js";
-import { fetchBrokers, manualConfirmHint, resolveListingId, withConfirmation } from "./shared.js";
+import {
+  brokersGoLive,
+  fetchBrokers,
+  manualConfirmHint,
+  publicationBrokerId,
+  resolveListingId,
+  withConfirmation,
+} from "./shared.js";
 
 export type PublicationsDeps = Io & Pick<Terminal, "confirm"> & { client: ApiClient };
 
@@ -528,9 +535,13 @@ export function runRetryPublication(
       publicationResponseSchema,
     );
     const { publishMode } = await unwrap(deps.client.health.$get(), healthReportSchema);
-    if (publishMode === "live" && !options.yes) {
+    // Solo si la marca de la publicación está en vivo (F9.5-T22, ADR-0036); si no se sabe, pregunta.
+    const live =
+      publishMode === "live" &&
+      (await brokersGoLive(deps.client, [await publicationBrokerId(deps.client, current)]));
+    if (live && !options.yes) {
       const confirmed = await deps.confirm(
-        `La API está en vivo (PUBLISH_MODE=live) y, si la marca está encendida, esto sale de verdad: ¿publicar ${theName(current)}?`,
+        `La API está en vivo (PUBLISH_MODE=live) y la marca también: ¿publicar de verdad ${theName(current)}?`,
       );
       if (!confirmed) {
         deps.printError(c.yellow("No se publicó nada: confirma en la terminal o usa --yes"));
@@ -656,8 +667,8 @@ function explainedOperation(
     PUBLICATION_IN_PROGRESS: `Espera a que termine (${look}) y vuelve a intentarlo`,
     OPERATION_NOT_SUPPORTED:
       "Una de Instagram se marca como retirada: agentsales publications retire <id>",
-    PUBLISH_MODE_MISMATCH:
-      "Está publicada en vivo: reinicia la API en vivo (PUBLISH_MODE=live pnpm dev) si lo decides tú",
+    // F9.5-T22 (ADR-0036): con el servidor en vivo, la causa es la marca apagada.
+    PUBLISH_MODE_MISMATCH: `Está publicada en vivo. Si la marca está apagada: enciéndela (agentsales brokers live <slug> on --confirm <slug>, si lo decides tú), o ciérrala a mano en Mercado Libre y corre ${sync}. Si el servidor está en simulación: arráncalo en vivo (PUBLISH_MODE=live) si lo decides tú`,
     CLOSE_NOT_CONFIRMED: "Confirma en la terminal o usa --yes",
     ML_ABORTED: `En un momento, mira el estado con ${look}`,
     ML_CONFLICT: `En un momento, mira el estado con ${look}`,

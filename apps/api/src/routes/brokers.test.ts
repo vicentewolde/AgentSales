@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { Writable } from "node:stream";
+import { createLogger } from "@agentsales/config";
 import { type BrokerData, emptyEditorialProfileData } from "@agentsales/core";
 import type { FakeBrokerPurgeRepository, InMemoryMediaStorage } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
@@ -257,9 +259,20 @@ describe("GET y PATCH /brokers/:id", () => {
 describe("el modo en vivo de la marca (F9.5-T22, ADR-0036)", () => {
   async function liveSetup(publishMode: "dry-run" | "live" = "dry-run") {
     const auth = testAuth();
+    const lines: string[] = [];
+    const logger = createLogger(
+      { level: "info" },
+      new Writable({
+        write(chunk, _encoding, callback) {
+          lines.push(chunk.toString());
+          callback();
+        },
+      }),
+    );
     const deps = testDeps({
       access: { allowedHosts: ["localhost"], allowedOrigins: [ORIGIN] },
       publishMode,
+      logger,
     });
     deps.auth = { ...auth, brokers: deps.brokers };
     const app = createApp(deps);
@@ -288,8 +301,42 @@ describe("el modo en vivo de la marca (F9.5-T22, ADR-0036)", () => {
           },
           ...(init.json === undefined ? {} : { body: JSON.stringify(init.json) }),
         });
-    return { deps, mine, theirs, broker: as(MINE), admin: as(TEST_ADMIN_TOKEN) };
+    const logged = () =>
+      lines
+        .map((line) => JSON.parse(line) as Record<string, unknown>)
+        .filter((entry) => typeof entry.msg === "string" && entry.msg.startsWith("modo en vivo"));
+    return { deps, mine, theirs, broker: as(MINE), admin: as(TEST_ADMIN_TOKEN), logged };
   }
+
+  it("cada cambio de la llave queda en el registro con quién, la marca y el valor", async () => {
+    const s = await liveSetup("live");
+    await s.admin(`/brokers/${s.mine.id}`, { method: "PATCH", json: { operatorOwned: true } });
+    expect(s.logged()).toEqual([]);
+    await s.admin(`/brokers/${s.mine.id}`, {
+      method: "PATCH",
+      json: { liveEnabled: true, liveConfirm: "mio" },
+    });
+    await s.admin(`/brokers/${s.mine.id}`, { method: "PATCH", json: { operatorOwned: false } });
+    expect(
+      s
+        .logged()
+        .map(({ slug, liveEnabled, actorRole, msg }) => ({ slug, liveEnabled, actorRole, msg })),
+    ).toEqual([
+      {
+        slug: "mio",
+        liveEnabled: true,
+        actorRole: "admin",
+        msg: "modo en vivo de la marca encendido",
+      },
+      {
+        slug: "mio",
+        liveEnabled: false,
+        actorRole: "admin",
+        msg: "modo en vivo de la marca apagado",
+      },
+    ]);
+    expect(s.logged().every((entry) => typeof entry.actorUserId === "string")).toBe(true);
+  });
 
   it("una marca nueva nace apagada: la lista y el detalle lo dicen, con su modo efectivo", async () => {
     const s = await liveSetup("live");

@@ -112,6 +112,23 @@ describe("runPublish", () => {
     expect(setup.t.publications.all().every((p) => p.status === "approved")).toBe(true);
   });
 
+  it("con la API en vivo pero la marca apagada (ADR-0036), no pregunta y publica en simulación", async () => {
+    const setup = await publicationHarness({ publishMode: "live" });
+    const listing = await setup.t.listings.get(setup.t.listingId);
+    await setup.t.brokers.setLiveEnabled(listing?.brokerId ?? "", false);
+    const questions: string[] = [];
+    const clock = fakeClock(() => finish(setup.t));
+
+    const code = await run(setup, clock, {}, async (question) => {
+      questions.push(question);
+      return false;
+    });
+
+    expect(code).toBe(0);
+    expect(questions).toEqual([]);
+    expect(setup.t.publications.all().every((p) => p.dryRun)).toBe(true);
+  });
+
   it("con la API en vivo, confirmar o --yes publica en vivo", async () => {
     for (const [options, answer] of [
       [{}, true],

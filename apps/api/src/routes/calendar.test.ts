@@ -591,6 +591,57 @@ describe("Portal en vivo: confirmaciones y el tope de tiempo de la propiedad", (
     expect([response.status, await codeOf(response)]).toEqual([409, "RELIST_NOT_CONFIRMED"]);
   });
 
+  it("con la marca apagada (ADR-0036), actualizar, republicar y cerrar la propiedad en vivo son 409 PUBLISH_MODE_MISMATCH con las dos salidas", async () => {
+    const { t, post, id } = await live();
+    const listing = await t.listings.get(t.listingId);
+    await t.brokers.setLiveEnabled(listing?.brokerId ?? "", false);
+    const errorOf = async (response: Response) =>
+      errorBodySchema.parse(await response.json()).error;
+
+    await t.listings.update(t.listingId, {
+      ...listing,
+      priceAmount: (listing?.priceAmount ?? 0) + 100,
+      sourceHash: "h-nueva",
+    } as unknown as ListingImportData);
+    const update = await post(`/publications/${id}/update`, { confirmed: true });
+    expect(update.status).toBe(409);
+    const updateError = await errorOf(update);
+    expect(updateError.code).toBe("PUBLISH_MODE_MISMATCH");
+    expect(updateError.message).toContain("la marca está apagada");
+    expect(updateError.message).toContain(`agentsales publications sync ${id}`);
+
+    const close = await post(`/listings/${t.listingId}/status`, {
+      action: "close",
+      reason: "sold",
+      confirmed: true,
+    });
+    expect(close.status).toBe(409);
+    expect((await errorOf(close)).message).toContain("ciérralo a mano en Mercado Libre");
+
+    await t.publications.transition(
+      id,
+      {
+        from: "published",
+        to: "unpublished",
+        changes: {
+          remoteState: {
+            status: "closed",
+            subStatus: ["expired"],
+            stopTime: new Date(Date.now() - 86_400_000).toISOString(),
+            expirationTime: null,
+            checkedAt: new Date().toISOString(),
+          },
+        },
+      },
+      { actor: "system" },
+    );
+    const relist = await post(`/publications/${id}/relist`, { confirmed: true });
+    expect(relist.status).toBe(409);
+    const relistError = await errorOf(relist);
+    expect(relistError.code).toBe("PUBLISH_MODE_MISMATCH");
+    expect(relistError.message).toContain("brokers live <slug> on --confirm <slug>");
+  });
+
   it("pausar la propiedad con Portal colgado se corta al tope (503 ML_ABORTED) y la propiedad no cambia", async () => {
     const hang = (_ref: unknown, ctx: PlatformContext) =>
       new Promise<never>((_resolve, reject) => {

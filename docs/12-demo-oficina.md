@@ -74,6 +74,6 @@ Comprueba que el panel muestra la franja roja «En vivo».
 |---|---|
 | La IA tarda o falla al preparar | Usa lo que dejaste preparado antes |
 | Instagram no confirma | Queda «no se sabe si salió»: mira tu Instagram y usa «Sí, salió» (con el enlace) o «No salió» |
-| `PUBLISH_MODE_MISMATCH` | La API y el worker no están en el mismo modo: repite el `fly machine update` en la que falta |
+| `PUBLISH_MODE_MISMATCH` | La API y el worker no están en el mismo modo (repite el `fly machine update` en la que falta), o la marca está apagada o ya no es propia (F9.5-T22): el mensaje lo dice; enciéndela con `pnpm -s cli brokers live <slug> on --confirm <slug>`, o haz el cambio a mano en la red (en Portal, ciérralo en Mercado Libre y corre `pnpm -s cli publications sync <id>`) |
 | Lo programado no sale | El worker está apagado: enciéndelo (paso 8); lo atrasado sale al encender |
 | X da error de token | No conectaste la misma cuenta de X en el Mac: en el panel del servidor, **Cuentas**, conecta X de nuevo |

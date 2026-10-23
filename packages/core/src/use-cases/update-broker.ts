@@ -47,7 +47,8 @@ const BRAND_KEYS = [
  * Activar `autoPublish` en una marca es `BROKER_IS_BRAND` (409), sin cambiar nada (F9).
  * Encender el modo en vivo (`liveEnabled`, F9.5-T22, ADR-0036) también es del administrador
  * (`broker.settings`), solo en un corredor propio (`LIVE_NOT_ALLOWED` 409) y repitiendo su `slug`
- * (`LIVE_NOT_CONFIRMED` 409); apagarlo no pide confirmación. Si se deja de ser propio, se apaga.
+ * (`LIVE_NOT_CONFIRMED` 409); apagarlo no pide confirmación. Si cambia «propio» (se deja de serlo o
+ * se vuelve a serlo), la llave se apaga primero, antes de las demás escrituras.
  */
 export async function updateBroker(
   deps: {
@@ -104,6 +105,15 @@ export async function updateBroker(
     assertLiveConfirmed(broker, input.liveConfirm);
   }
   if (clearSecondary) brand.secondaryColor = brand.primaryColor ?? broker.primaryColor;
+  // La llave en vivo se apaga ANTES de cualquier otra escritura cuando cambia «propio»: si una
+  // escritura posterior falla, nunca queda un corredor ajeno con la llave encendida. Al volverse
+  // propio también se apaga (una llave vieja no se activa sola); si el mismo pedido la enciende, se
+  // enciende al final, ya propio.
+  const ownershipChanges =
+    input.operatorOwned !== undefined && input.operatorOwned !== broker.operatorOwned;
+  if ((input.operatorOwned === false || ownershipChanges) && broker.liveEnabled) {
+    broker = await deps.brokers.setLiveEnabled(id, false);
+  }
   if (hasBrand) {
     const {
       id: _id,
@@ -126,11 +136,8 @@ export async function updateBroker(
   if (input.autoPublish !== undefined) {
     broker = await deps.brokers.setAutoPublish(id, input.autoPublish);
   }
-  // Un corredor que deja de ser propio ya no puede estar en vivo: se apaga aunque no se pida.
-  const liveEnabled =
-    input.operatorOwned === false && broker.liveEnabled ? false : input.liveEnabled;
-  if (liveEnabled !== undefined && liveEnabled !== broker.liveEnabled) {
-    broker = await deps.brokers.setLiveEnabled(id, liveEnabled);
+  if (input.liveEnabled !== undefined && input.liveEnabled !== broker.liveEnabled) {
+    broker = await deps.brokers.setLiveEnabled(id, input.liveEnabled);
   }
   return broker;
 }

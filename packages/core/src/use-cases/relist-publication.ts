@@ -4,6 +4,7 @@ import type { JobQueue } from "../ports/job-queue.js";
 import type { ListingLock } from "../ports/listing-lock.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
 import type { Publication, PublicationActor } from "../publication.js";
+import { liveModeMismatch } from "../publish-mode.js";
 import { listingIdOf } from "../subject.js";
 import { createPublications } from "./open-publications.js";
 import {
@@ -84,14 +85,22 @@ export async function relistPublication(
     dryRun,
     actor,
     confirmed = false,
-  }: { publicationId: string; dryRun: boolean; actor: PublicationActor; confirmed?: boolean },
+    serverMode,
+  }: {
+    publicationId: string;
+    dryRun: boolean;
+    actor: PublicationActor;
+    confirmed?: boolean;
+    /** El `PUBLISH_MODE` del servidor, solo para explicar un `PUBLISH_MODE_MISMATCH`. */
+    serverMode?: PublishMode;
+  },
 ): Promise<Publication> {
   const previous = await deps.publications.get(publicationId);
   if (previous === null) throw publicationNotFound(publicationId);
   if (previous.platform !== "portal_inmobiliario" || previous.status !== "unpublished") {
     throw notAllowed(publicationId, "Solo se republica un aviso de Portal cerrado o vencido");
   }
-  requireRelistMode(previous, dryRun, confirmed);
+  requireRelistMode(previous, dryRun, confirmed, serverMode);
   const definitions = await portalDefinitionsBeforeLock(
     deps,
     listingIdOf(previous.subject),
@@ -138,7 +147,12 @@ export async function relistPublication(
 }
 
 /** Los modos de republicar (ADR-0020): nunca se cruzan, y en vivo hace falta el cierre y la confirmación. */
-function requireRelistMode(previous: Publication, dryRun: boolean, confirmed: boolean): void {
+function requireRelistMode(
+  previous: Publication,
+  dryRun: boolean,
+  confirmed: boolean,
+  serverMode: PublishMode | undefined,
+): void {
   const mode: PublishMode = dryRun ? "dry-run" : "live";
   if (previous.dryRun && mode === "live") {
     throw notAllowed(
@@ -147,11 +161,13 @@ function requireRelistMode(previous: Publication, dryRun: boolean, confirmed: bo
     );
   }
   if (!previous.dryRun && mode === "dry-run") {
-    throw new AppError(
-      "PUBLISH_MODE_MISMATCH",
-      "Ese aviso estuvo en vivo, pero AgentSales está en simulación: no se republica",
-      { details: { publicationId: previous.id } },
-    );
+    throw liveModeMismatch({
+      what: "Ese aviso estuvo en vivo",
+      nothing: "no se republica",
+      serverMode,
+      byHand: null,
+      publicationId: previous.id,
+    });
   }
   if (mode === "live") {
     if (previous.externalId === null || previous.remoteState?.status !== "closed") {

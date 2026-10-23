@@ -2,16 +2,19 @@ import {
   type BrokerRepository,
   brokerPublishMode,
   type ListingRepository,
+  listingPublishMode,
   type PlatformAccountRepository,
   type PostRepository,
   type PublicationRepository,
   type PublishMode,
+  postPublishMode,
+  publicationPublishMode,
 } from "@agentsales/core";
 
-// El modo de cada pedido de la API (F9.5-T22, ADR-0036). El de una publicación sale del servidor
-// (`PUBLISH_MODE`) **y** de su marca (`effectivePublishMode`, vía `brokerPublishMode`): nunca se
-// compara `publishMode` con `"live"` en una ruta. Lo que no existe es simulación; el caso de uso
-// responde después su propio «no existe».
+// El modo de cada pedido de la API (F9.5-T22, ADR-0036): adaptadores delgados sobre las funciones
+// de core (`listingPublishMode`, `postPublishMode`, `publicationPublishMode`), que combinan el modo
+// del servidor (`PUBLISH_MODE`, aquí `deps.publishMode`) con la marca del sujeto. Nunca se compara
+// `publishMode` con `"live"` en una ruta.
 
 /** Lo que hace falta para saber el modo de un pedido. `publishMode` es el del servidor. */
 export type PublishModeDeps = {
@@ -24,36 +27,25 @@ export const brokerMode = (deps: PublishModeDeps, brokerId: string): Promise<Pub
   brokerPublishMode(deps, deps.publishMode, brokerId);
 
 /** El modo del corredor de un aviso. */
-export async function listingMode(
+export const listingMode = (
   deps: PublishModeDeps & { listings: Pick<ListingRepository, "get"> },
   listingId: string,
-): Promise<PublishMode> {
-  const listing = await deps.listings.get(listingId);
-  return listing === null ? "dry-run" : brokerMode(deps, listing.brokerId);
-}
+): Promise<PublishMode> => listingPublishMode(deps, deps.publishMode, listingId);
 
 /** El modo de la marca de un post. */
-export async function postMode(
+export const postMode = (
   deps: PublishModeDeps & { posts: Pick<PostRepository, "get"> },
   postId: string,
-): Promise<PublishMode> {
-  const post = await deps.posts.get(postId);
-  return post === null ? "dry-run" : brokerMode(deps, post.brokerId);
-}
+): Promise<PublishMode> => postPublishMode(deps, deps.publishMode, postId);
 
-/** El modo de la marca dueña de la cuenta de una publicación (el corredor de su aviso o post). */
-export async function publicationMode(
+/** El modo de la marca dueña de la cuenta de una publicación (la del sujeto). */
+export const publicationMode = (
   deps: PublishModeDeps & {
     publications: Pick<PublicationRepository, "get">;
     platformAccounts: Pick<PlatformAccountRepository, "get">;
   },
   publicationId: string,
-): Promise<PublishMode> {
-  const publication = await deps.publications.get(publicationId);
-  if (publication === null) return "dry-run";
-  const account = await deps.platformAccounts.get(publication.platformAccountId);
-  return account === null ? "dry-run" : brokerMode(deps, account.brokerId);
-}
+): Promise<PublishMode> => publicationPublishMode(deps, deps.publishMode, publicationId);
 
-/** `dryRun` de un modo. */
+/** `dryRun` de un modo ya efectivo (nunca el del servidor: el test guardián lo revisa). */
 export const isDryRun = (mode: PublishMode): boolean => mode !== "live";

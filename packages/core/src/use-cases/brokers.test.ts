@@ -276,6 +276,45 @@ describe("updateBroker · modo en vivo (F9.5-T22, ADR-0036)", () => {
     expect((await brokers.findById(broker.id))?.liveEnabled).toBe(false);
   });
 
+  it("al dejar de ser propio apaga la llave ANTES de guardar los ajustes: si esa escritura falla, no queda ajeno y encendido", async () => {
+    const { brokers, broker } = await ownedSetup();
+    await updateBroker({ brokers }, ADMIN, broker.id, {
+      liveEnabled: true,
+      liveConfirm: broker.slug,
+    });
+    const failing = {
+      ...brokers,
+      findById: brokers.findById,
+      setLiveEnabled: brokers.setLiveEnabled,
+      setSettings: async () => {
+        throw new AppError("DB_UNAVAILABLE", "se cortó la base", { retriable: true });
+      },
+    };
+    await expect(
+      updateBroker({ brokers: failing }, ADMIN, broker.id, { operatorOwned: false }),
+    ).rejects.toMatchObject({ code: "DB_UNAVAILABLE" });
+    expect(await brokers.findById(broker.id)).toMatchObject({
+      operatorOwned: true,
+      liveEnabled: false,
+    });
+  });
+
+  it("al volverse propio la llave queda apagada (una vieja no se activa sola), salvo que el mismo pedido la encienda", async () => {
+    const { brokers, broker } = await setup();
+    // Una llave vieja, puesta a mano en la base mientras era ajeno.
+    await brokers.setLiveEnabled(broker.id, true);
+    const owned = await updateBroker({ brokers }, ADMIN, broker.id, { operatorOwned: true });
+    expect(owned).toMatchObject({ operatorOwned: true, liveEnabled: false });
+
+    const other = await setup();
+    const both = await updateBroker({ brokers: other.brokers }, ADMIN, other.broker.id, {
+      operatorOwned: true,
+      liveEnabled: true,
+      liveConfirm: other.broker.slug,
+    });
+    expect(both).toMatchObject({ operatorOwned: true, liveEnabled: true });
+  });
+
   it("si el corredor deja de ser propio, el modo en vivo se apaga solo", async () => {
     const { brokers, broker } = await ownedSetup();
     await updateBroker({ brokers }, ADMIN, broker.id, {

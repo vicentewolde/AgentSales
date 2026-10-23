@@ -25,7 +25,9 @@ import {
   renderPublicationResult,
 } from "./publication-view.js";
 import {
+  brokersGoLive,
   fetchBrokers,
+  listingBrokerId,
   manualConfirmHint,
   platformOption,
   platformShortName,
@@ -160,7 +162,11 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
     const listingId = await resolveListingId(deps.client, trimmed, brokers, options.broker);
     // El modo lo decide la API (D11): solo se pregunta para confirmar una publicación en vivo.
     const { publishMode } = await unwrap(deps.client.health.$get(), healthReportSchema);
-    if (publishMode === "live" && !options.yes) {
+    // Solo si la marca de la propiedad está en vivo (F9.5-T22, ADR-0036); si no se sabe, pregunta.
+    const live =
+      publishMode === "live" &&
+      (await brokersGoLive(deps.client, [await listingBrokerId(deps.client, listingId)]));
+    if (live && !options.yes) {
       const extra =
         platform === "portal_inmobiliario"
           ? " Usa un cupo de tu paquete de Mercado Libre."
@@ -168,7 +174,7 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
             ? " Se abre una ventana de Chromium con el formulario lleno; tú haces Siguiente y Publicar."
             : "";
       const confirmed = await deps.confirm(
-        `La API está en vivo (PUBLISH_MODE=live) y, si la marca está encendida, esto sale de verdad: ¿publicar ${trimmed} en ${PLATFORM_TEXT[platform] ?? platform}?${extra}`,
+        `La API está en vivo (PUBLISH_MODE=live) y la marca también: ¿publicar ${trimmed} de verdad en ${PLATFORM_TEXT[platform] ?? platform}?${extra}`,
       );
       if (!confirmed) {
         deps.printError(c.yellow("No se publicó nada: confirma en la terminal o usa --yes"));

@@ -157,12 +157,27 @@ export function brokerRoutes(deps: BrokerRoutesDeps) {
         validated("param", idParamSchema),
         validated("json", brokerPatchBodySchema),
         async (c) => {
-          const broker = await updateBroker(
-            deps,
-            requireAuth(c).user,
-            c.req.valid("param").id,
-            c.req.valid("json"),
-          );
+          const { user } = requireAuth(c);
+          const id = c.req.valid("param").id;
+          const input = c.req.valid("json");
+          // El modo en vivo (F9.5-T22, ADR-0036) se registra cada vez que cambia: quién, qué marca
+          // y a qué valor (también cuando se apaga solo al dejar de ser propio).
+          const touchesLive = input.liveEnabled !== undefined || input.operatorOwned !== undefined;
+          const before = touchesLive ? await deps.brokers.findById(id) : null;
+          const broker = await updateBroker(deps, user, id, input);
+          if (before !== null && before.liveEnabled !== broker.liveEnabled) {
+            deps.logger.info(
+              {
+                actorUserId: user.id,
+                actorRole: user.role,
+                slug: broker.slug,
+                liveEnabled: broker.liveEnabled,
+              },
+              broker.liveEnabled
+                ? "modo en vivo de la marca encendido"
+                : "modo en vivo de la marca apagado",
+            );
+          }
           return c.json(await detail(broker), 200);
         },
       )
