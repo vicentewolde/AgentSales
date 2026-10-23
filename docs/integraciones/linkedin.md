@@ -8,6 +8,8 @@ Aviso de método: las páginas de `learn.microsoft.com/linkedin` se leyeron con 
 
 ## 0. Qué hace hoy AgentSales (F9-T15, 2026-10-20)
 
+<!-- entry-test: S2 pending -->
+<!-- entry-test: S3 pending -->
 > **S2 y S3 siguen pendientes y son obligatorias antes de publicar de verdad en LinkedIn** (decisión del operador del 2026-10-20, spec F9 §4.8). El código se construyó y se probó **solo contra simulaciones (`msw`)**: ninguna llamada real a LinkedIn. Además, toda cuenta nace en modo **`manual`** (D5): AgentSales no llama a LinkedIn al publicar hasta que el administrador la pase a `api`, y eso se hace solo con S2 y S3 resueltas y anotadas aquí.
 
 - **Consola, ya configurada (2026-10-20 y 21, el operador):**

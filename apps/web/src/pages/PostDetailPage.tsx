@@ -445,6 +445,7 @@ export function PostDetailPage() {
                 postId={item.id}
                 publications={publications}
                 publishMode={publishMode}
+                contents={contents}
               />
             </Card>
           </div>

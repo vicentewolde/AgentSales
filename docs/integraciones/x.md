@@ -8,7 +8,8 @@ Aviso de método: las páginas se leyeron con una herramienta que extrae y resum
 
 ## 0. Qué hace hoy AgentSales (F9-T16, 2026-10-20)
 
-> **S4 pendiente y obligatoria antes de publicar de verdad.** X se construyó contra simulaciones (msw), por decisión del operador (2026-10-20). Antes de cualquier publicación real en X, el operador hace la prueba **S4** (spec F9 §4.8) con su cuenta y un *spending limit* bajo en la consola: crear un post, ver el saldo descontado, un reply a uno mismo, el rechazo por texto repetido (403, su cuerpo y su ventana) y si un 4xx cobra. Si algo no calza, se ajusta el código antes de publicar. Hasta entonces, X queda en `dry-run` como todo lo demás.
+<!-- entry-test: S4 passed 2026-10-21 -->
+> **S4 pasó el 2026-10-21** (resultado en §8, «Resultado de S4»: un post de texto sin enlace publicado de verdad, el 402 sin créditos y el 403 por texto repetido como dudoso). Quedan pendientes el hilo (AgentSales no hace hilos: se prueba a mano en la consola) y si un 4xx cobra (mirar la página de uso). Una imagen o un video en X todavía no se publicaron de verdad: la primera publicación en vivo con medios la revisa el operador. Antes de S4, X se construyó contra simulaciones (msw), por decisión del operador (2026-10-20); publicar de verdad sigue siendo solo con su instrucción en el chat.
 
 **Consola, ya configurada (2026-10-20 y 21, el operador).**
 - Cuenta de desarrollador en console.x.com con la app de AgentPey: autenticación **OAuth 2.0 de lectura y escritura**, tipo **Web App** (cliente confidencial).

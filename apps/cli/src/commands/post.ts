@@ -64,6 +64,7 @@ import {
   uploadAll,
 } from "../upload.js";
 import { brandOf } from "./brand.js";
+import { brandWeekCommands } from "./brand-week.js";
 import { paintContentRunStatus, renderChecks } from "./content-view.js";
 import { registerPostMedia } from "./post-media.js";
 import { paintPublicationStatus } from "./publication-view.js";
@@ -1519,6 +1520,16 @@ export function register(program: Command, ctx: CliContext): void {
     .action((id: string, options: PostScheduleOptions) =>
       exitWith(() => runPostSchedule(deps(), id, options)),
     );
+  post
+    .command("approve-week")
+    .description(
+      "Aprueba y programa de una vez las ideas aceptadas de una semana, cada una a su fecha (en vivo pide confirmación)",
+    )
+    .option("--broker <slug>", "la marca (si ves más de una)")
+    .option("--start <día>", "un día de la semana, AAAA-MM-DD (hora de Chile; por defecto, mañana)")
+    .option("--yes", "no pide confirmación en vivo")
+    .option("--json", "salida en JSON")
+    .action(brandWeekCommands.approveWeek(ctx));
   post
     .command("accept")
     .description("Acepta una idea del plan: pasa a borrador y la IA redacta sus textos")

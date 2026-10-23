@@ -15,6 +15,8 @@ export function LiveConfirmButton({
   pending,
   disabled = false,
   title,
+  liveMessage = "El sistema está en vivo: esto publica de verdad en la red.",
+  confirmLabel = "Sí, publicar en vivo",
   onConfirm,
 }: {
   label: string;
@@ -22,6 +24,9 @@ export function LiveConfirmButton({
   pending: boolean;
   disabled?: boolean;
   title?: string;
+  /** Lo que dice la confirmación en vivo (programar dice «a su hora», F9.5-T27). */
+  liveMessage?: string;
+  confirmLabel?: string;
   onConfirm: () => void;
 }) {
   const freshMode = useFreshPublishMode();
@@ -41,7 +46,7 @@ export function LiveConfirmButton({
       <div role="alert" className="rounded-lg border border-danger-200 bg-danger-50 p-3 text-sm">
         <p className="font-semibold text-danger-800">
           {asking === "live"
-            ? "El sistema está en vivo: esto publica de verdad en la red."
+            ? liveMessage
             : "No se pudo saber si el sistema está en vivo: si lo está, esto publica de verdad."}
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
@@ -54,7 +59,7 @@ export function LiveConfirmButton({
               onConfirm();
             }}
           >
-            Sí, publicar en vivo
+            {confirmLabel}
           </Button>
           <Button variant="ghost" size="sm" autoFocus onClick={() => setAsking(null)}>
             Cancelar

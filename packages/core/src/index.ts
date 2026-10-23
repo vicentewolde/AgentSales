@@ -941,6 +941,23 @@ export {
   approveContent,
 } from "./use-cases/approve-content.js";
 export {
+  type ApprovePostWeekDeps,
+  type ApprovePostWeekResult,
+  approvePostWeek,
+  defaultWeekDay,
+  getPostWeek,
+  type PostWeek,
+  type PostWeekDeps,
+  type PostWeekRange,
+  postWeekRange,
+  WEEK_PROBLEM_KINDS,
+  WEEK_PROBLEM_TEXT,
+  type WeekPostResult,
+  type WeekProblem,
+  type WeekProblemKind,
+  weekProblemKind,
+} from "./use-cases/approve-week.js";
+export {
   LOGIN_CHALLENGE_TTL_MS,
   LOGIN_LOCK_MS,
   LOGIN_MAX_FAILURES,
@@ -1041,6 +1058,7 @@ export {
   type CreateBrokerInput,
   createBroker,
 } from "./use-cases/create-broker.js";
+export { type DailyReadinessDeps, getDailyReadiness } from "./use-cases/daily-readiness.js";
 export {
   type DisconnectAccountDeps,
   disconnectAccount,
