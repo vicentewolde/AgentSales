@@ -2,20 +2,21 @@
 
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
-**Actualizado:** 2026-10-23
+**Actualizado:** 2026-10-27
 **Fase actual:** F9.5 · Lista para mostrar: lotes 1 y 2 cerrados (`v1.4.0`, `v1.5.0`) y **lote 3 cerrado** el 2026-10-23 (`v1.6.0`): publicar a diario desde tus marcas, con el panel acogedor. Demo con la oficina el **viernes 2026-10-30** (`docs/12-demo-oficina.md`). Siguiente: F10
 **Última tarea:** **lote 3 de F9.5** (T20 a T27, #241 a #251): corredor sin trabas, post sin imágenes, en vivo por marca (ADR-0036), ideas del plan con tu pedido, worker por horario (ADR-0037), Conseguir imagen (ADR-0038), diseño acogedor y publicar a diario (Aprobar la semana, LinkedIn asistido, Lista para publicar a diario). Además, el secreto de Meta fuera del ejemplo de configuración (#250)
-**Siguiente paso:** tú: cambiar la clave secreta de Meta; desplegar `v1.6.0`; después, Claude prueba el recorrido en Chrome contra el servidor. Luego, el ensayo del jueves 29
+**Primera publicación real desde AgentPey (2026-10-24):** `v1.6.0` desplegada; X conectada como `@agentpeyai`; el post en español de «Quién pone el límite de gasto» salió en vivo a las 09:00 (US$0,01) y el de LinkedIn se publicó a mano en la Página «AgentSales». Después, el servidor volvió a `dry-run`, la marca se apagó y el worker se apagó (2026-10-27). Detalle y lo aprendido en `docs/integraciones/x.md` (§8), `docs/integraciones/linkedin.md` (§0) y `docs/10-despliegue.md` (paso 8: un secreto `PUBLISH_MODE` anulaba `--env`)
+**Siguiente paso:** tú: cambiar la clave secreta de Meta; reprogramar en X los envíos que quedaron atados a la cuenta vieja (los dos del carrusel de recibos del 2026-10-26, `ACCOUNT_NOT_CONNECTED`); decidir el de LinkedIn en inglés del 2026-10-25 (publicar, descartar o reprogramar). Luego, el ensayo del jueves 29
 
 ## Pendiente tuyo para la demo del 30 (F9.5)
 - [ ] **Cambiar la clave secreta de la app de Meta** (Meta for Developers → la app → Configuración → Básica → Restablecer) y ponerla en `.env`, `.env.production` y los secretos de Fly: el valor viejo estuvo en el ejemplo público desde el 2026-10-18 (#156; quitado en #250, sigue en el historial)
-- [ ] **Desplegar `v1.6.0`** (migraciones `0020` y `0021`, aditivas). Antes de volver a una versión anterior, `PUBLISH_MODE=dry-run` (`docs/10-despliegue.md`)
+- [x] **Desplegar `v1.6.0`** (migraciones `0020` y `0021`, aditivas) (2026-10-23). Antes de volver a una versión anterior, `PUBLISH_MODE=dry-run` (`docs/10-despliegue.md`)
 - [ ] **Publicar a diario desde AgentPey** (`docs/08-guia-operador.md`, «Publicar a diario desde AgentPey»): encender la marca con `brokers live agentpey on --confirm agentpey` y el servidor en `live` solo con tu instrucción en el chat; la lista **Lista para publicar a diario** de Cuentas dice qué falta por red
 - [ ] **Worker con horario** (opcional): el Environment `worker-schedule` en GitHub con su token de Fly y `WORKER_IDLE_EXIT_MINUTES = "10"` en `fly.toml` (`docs/10-despliegue.md`, paso 8). Hasta entonces el worker no se apaga solo
 - [ ] **Imágenes para posts** (opcional): claves de Pixabay y de Google AI Studio con un tope en Google Cloud (`docs/07-checklist-cuentas.md`); sin ellas, solo tarjetas
 - [ ] **Música:** bajar las 5 pistas CC0, escucharlas, confirmar la licencia de «Champ de tournesol», subirlas (`pnpm music:upload <carpeta>` y `ENV_FILE=.env.production pnpm music:upload <carpeta>`) y probar una con tu Instagram antes de publicar de verdad (`docs/integraciones/musica-reels.md`)
 - [ ] **El perfil editorial de `vinny`** sigue vacío: el asistente de 4 preguntas en Plan o Mi marca lo llena para revisarlo
-- [ ] **El worker del servidor quedó encendido desde el despliegue de `v1.5.0`** (2026-10-22 18:10): apágalo si no estás probando (`docs/10-despliegue.md`, paso 8)
+- [x] **El worker del servidor quedó encendido desde el despliegue de `v1.5.0`:** apagado el 2026-10-27 00:19 (`fly machine stop`). Encenderlo para publicar o para una demo (`docs/10-despliegue.md`, paso 8); sin él nada programado sale a su hora
 - Hecho el 2026-10-22: los corredores de prueba `corredor-demo`, `agentsales-pruebas`, `demo-meta` y `demo` se borraron en producción. Con eso se desconectó tu Mercado Libre y se fueron el usuario `revisor-meta` y su DEMO-1 del App Review (hay que rehacerlos antes de enviarlo). Quedan tu corredor `18862631`, `oficina-demo` (usuario Mampa, `@vicentewoldec`), vinny y AgentPey
 La guía paso a paso está en `docs/12-demo-oficina.md`.
 - [ ] **Jueves 29:** desplegar `v1.4.0`; la CLI contra el servidor (`login --api`); crear tu corredor para propiedades y conectarle `@vicentewoldec`; la propiedad de ejemplo con sus fotos; recomendado, el ensayo corto (una publicación programada en simulación con el worker encendido y el cambio a vivo y de vuelta, que nunca se probó con `fly machine update`)
