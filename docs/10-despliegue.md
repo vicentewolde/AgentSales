@@ -254,6 +254,8 @@ pnpm -s cli brokers live <slug> on --confirm <slug>
 
 NO VERIFICADO: que `fly machine update --env` conserve el resto del entorno y los secretos de la máquina (así lo describe Fly). Compruébalo con `pnpm -s cli status` y `pnpm -s cli doctor` después del primer cambio, en el ensayo del jueves.
 
+**Un secreto llamado `PUBLISH_MODE` anula este cambio (visto el 2026-10-24).** Los dos `fly machine update --env PUBLISH_MODE=live` dijeron «updated successfully» y `fly machine status --display-config` mostró `"PUBLISH_MODE": "live"`, pero `/api/health` seguía en `dry-run`: había un **secreto** `PUBLISH_MODE` (visto con `fly secrets list -a agentsales`) y los secretos pisan el valor de la máquina. Se quitó con `fly secrets unset PUBLISH_MODE -a agentsales` (reinicia las dos máquinas) y entonces `status` y `/api/health` dijeron `live`. **Si `status` no cambia después de `--env`, mira primero `fly secrets list`**: el modo no debe ser un secreto (vive en `fly.toml`). Un `--env` con un secreto del mismo nombre no avisa de nada.
+
 ## Paso 9 · Volver a una versión anterior
 
 Cada despliegue queda con la etiqueta de su commit (`sha-…`).
