@@ -64,6 +64,10 @@ const PlanPage = lazy(() =>
 const CalendarPage = lazy(() =>
   import("./pages/CalendarPage.js").then((module) => ({ default: module.CalendarPage })),
 );
+// F10-T06: los leads de un corredor.
+const LeadsPage = lazy(() =>
+  import("./pages/LeadsPage.js").then((module) => ({ default: module.LeadsPage })),
+);
 const ListingDetailPage = lazy(() =>
   import("./pages/ListingDetailPage.js").then((module) => ({ default: module.ListingDetailPage })),
 );
@@ -143,6 +147,8 @@ export const routes: RouteObject[] = [
           { path: "plan", element: <PlanPage /> },
           // F9-T18: el calendario (`?vista=semana|mes&dia=AAAA-MM-DD`).
           { path: "calendario", element: <CalendarPage /> },
+          // F10-T06: Leads (`?estado=`).
+          { path: "leads", element: <LeadsPage /> },
           // F7-T18: Corredores (el administrador) y Mi marca (el corredor).
           { path: "corredores", element: <BrokersPage /> },
           { path: "corredores/:id", element: <BrokerPage /> },

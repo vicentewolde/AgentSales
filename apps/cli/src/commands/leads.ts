@@ -6,7 +6,7 @@ import {
   leadResponseSchema,
   leadWebhookSecretResponseSchema,
 } from "@agentsales/api/contracts";
-import { LEAD_STATUSES, type LeadStatus } from "@agentsales/core";
+import { LEAD_STATUS_TEXT, LEAD_STATUSES, type LeadStatus } from "@agentsales/core";
 import type { Command } from "commander";
 import { z } from "zod";
 import { type ApiClient, unwrap } from "../api-client.js";
@@ -22,16 +22,8 @@ import { type BrandDeps, brandOf } from "./brand.js";
 export type LeadsDeps = Omit<BrandDeps, "cwd"> & Pick<Terminal, "confirm"> & { cwd: string };
 type Quiet = Io & { client: ApiClient };
 
-const STATUS_TEXT: Readonly<Record<LeadStatus, string>> = {
-  new: "nuevo",
-  contacted: "contactado",
-  visit_scheduled: "visita agendada",
-  won: "ganado",
-  lost: "perdido",
-};
-
 const paintStatus = (status: LeadStatus, c: Colors): string => {
-  const text = STATUS_TEXT[status];
+  const text = LEAD_STATUS_TEXT[status];
   if (status === "new") return c.yellow(text);
   if (status === "won") return c.green(text);
   if (status === "lost") return c.dim(text);
@@ -181,7 +173,7 @@ export function runLeadsStatus(
       leadResponseSchema,
     );
     deps.print(
-      `${deps.colors.green("✓")} Lead ${lead.id.slice(0, 8)}: ${STATUS_TEXT[lead.status]}`,
+      `${deps.colors.green("✓")} Lead ${lead.id.slice(0, 8)}: ${LEAD_STATUS_TEXT[lead.status]}`,
     );
     return 0;
   });

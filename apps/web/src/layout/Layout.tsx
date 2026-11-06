@@ -9,6 +9,7 @@ import {
   ChartIcon,
   CloseIcon,
   HomeIcon,
+  InboxIcon,
   LightbulbIcon,
   LinkIcon,
   LogoMark,
@@ -59,6 +60,8 @@ export const MENU: readonly MenuItem[] = [
   { label: "Plan", to: "/plan", icon: LightbulbIcon },
   // F9-T18: lo programado y lo publicado, de posts y avisos, por semana o por mes.
   { label: "Calendario", to: "/calendario", icon: CalendarIcon },
+  // F10-T06: las personas que escribieron por un anuncio o por ManyChat.
+  { label: "Leads", to: "/leads", icon: InboxIcon },
   { label: "Seguimiento", to: "/seguimiento", icon: ChartIcon },
   { label: "Cuentas", to: "/cuentas", icon: LinkIcon },
   { label: "Corredores", to: "/corredores", needs: "brokers.create", icon: UsersIcon },
