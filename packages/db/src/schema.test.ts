@@ -11,6 +11,8 @@ import {
   FIELD_TYPES,
   IMPORT_RUN_STATUSES,
   INVITATION_PURPOSES,
+  LEAD_SOURCES,
+  LEAD_STATUSES,
   LISTING_SOURCES,
   LISTING_STATUSES,
   MEDIA_KINDS,
@@ -69,6 +71,9 @@ const EXPECTED_ENUMS: Record<string, readonly string[]> = {
   post_image_run_status: POST_IMAGE_RUN_STATUSES,
   // F12-T07 (0022): el registro verificable.
   registry_status: REGISTRY_STATUSES,
+  // F10-T01 (0023): leads.
+  lead_source: LEAD_SOURCES,
+  lead_status: LEAD_STATUSES,
 };
 
 const EXPECTED_TABLES = [
@@ -80,6 +85,9 @@ const EXPECTED_TABLES = [
   "field_definitions",
   "import_runs",
   "invitations",
+  // F10-T01 (0023): los leads con atribución y sus eventos.
+  "lead_events",
+  "leads",
   "listings",
   // F8-T15 (0012): el segundo paso de entrar.
   "login_challenges",

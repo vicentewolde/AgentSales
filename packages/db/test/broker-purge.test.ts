@@ -11,6 +11,8 @@ import {
   fieldDefinitions,
   importRuns,
   invitations,
+  leadEvents,
+  leads,
   listings,
   loginChallenges,
   media,
@@ -176,6 +178,19 @@ async function seedBroker(
     })
     .returning();
   const l = listing?.id ?? "";
+  // F10: un lead de la propiedad.
+  const [lead] = await db
+    .insert(leads)
+    .values({
+      brokerId: b,
+      source: "manual",
+      externalId: "m-1",
+      listingId: l,
+      phoneEncrypted: "cifrado",
+      consent: { given: true, text: null, at: new Date().toISOString() },
+    })
+    .returning();
+  await db.insert(leadEvents).values({ leadId: lead?.id ?? "", kind: "received" });
   // F12: el registro verificable de la propiedad.
   await db
     .insert(registryRecords)
@@ -402,6 +417,8 @@ describe("BrokerPurgeRepository (PGlite)", () => {
       "post_uploads",
       "post_image_runs",
       "registry_records",
+      "lead_events",
+      "leads",
       "editorial_profiles",
       "import_runs",
     ]) {
@@ -450,6 +467,8 @@ describe("BrokerPurgeRepository (PGlite)", () => {
       post_uploads: 1,
       post_image_runs: 1,
       registry_records: 1,
+      lead_events: 1,
+      leads: 1,
       posts: 1,
       plan_runs: 1,
       editorial_profiles: 1,

@@ -12,6 +12,8 @@ import {
   FIELD_TYPES,
   IMPORT_RUN_STATUSES,
   INVITATION_PURPOSES,
+  LEAD_SOURCES,
+  LEAD_STATUSES,
   LISTING_SOURCES,
   LISTING_STATUSES,
   MEDIA_KINDS,
@@ -57,6 +59,8 @@ import {
 
 export const platformEnum = pgEnum("platform", PLATFORMS);
 /** F12 (0022): el estado del registro verificable de una propiedad. */
+export const leadSourceEnum = pgEnum("lead_source", LEAD_SOURCES);
+export const leadStatusEnum = pgEnum("lead_status", LEAD_STATUSES);
 export const registryStatusEnum = pgEnum("registry_status", REGISTRY_STATUSES);
 export const platformAccountStatusEnum = pgEnum(
   "platform_account_status",
@@ -624,6 +628,55 @@ export const media = pgTable(
  */
 const activeContentRun = sql.raw(
   `"status" IN (${ACTIVE_CONTENT_RUN_STATUSES.map((status) => `'${status}'`).join(", ")})`,
+);
+
+/**
+ * Leads con atribución (F10, ADR-0033). Nombre, teléfono y correo van cifrados (`SecretBox`, con el
+ * id del lead como dato asociado) y quedan nulos al borrar el lead (`erased_at`).
+ */
+export const leads = pgTable(
+  "leads",
+  {
+    id: id(),
+    brokerId: uuid("broker_id")
+      .notNull()
+      .references(() => brokers.id),
+    source: leadSourceEnum("source").notNull(),
+    /** Id del lead en el origen: con el corredor y el origen, hace idempotente la entrada. */
+    externalId: text("external_id").notNull(),
+    listingId: uuid("listing_id").references(() => listings.id),
+    adId: text("ad_id"),
+    campaign: text("campaign"),
+    nameEncrypted: text("name_encrypted"),
+    phoneEncrypted: text("phone_encrypted"),
+    emailEncrypted: text("email_encrypted"),
+    /** `leadConsentSchema` (core): lo que aceptó y cuándo. */
+    consent: jsonb("consent").notNull(),
+    status: leadStatusEnum("status").notNull().default("new"),
+    assignedTo: uuid("assigned_to").references(() => users.id, { onDelete: "set null" }),
+    erasedAt: timestamp("erased_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    unique("leads_broker_source_external_unique").on(t.brokerId, t.source, t.externalId),
+    index("leads_broker_created_idx").on(t.brokerId, t.createdAt),
+    index("leads_listing_idx").on(t.listingId),
+  ],
+);
+
+/** Lo que pasó con un lead (cambio de estado, asignación, borrado); sin datos personales. */
+export const leadEvents = pgTable(
+  "lead_events",
+  {
+    id: id(),
+    leadId: uuid("lead_id")
+      .notNull()
+      .references(() => leads.id),
+    kind: text("kind").notNull(),
+    data: jsonb("data"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("lead_events_lead_created_idx").on(t.leadId, t.createdAt)],
 );
 
 /**

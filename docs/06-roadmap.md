@@ -201,7 +201,7 @@ Spec detallado: `docs/specs/fase-7-varios-corredores.md` (2026-10-16: el operado
 
 **Spec:** `docs/specs/fase-9.5-lista-para-mostrar.md`.
 
-## F10 · Piloto con una oficina (hoja de ruta)
+## F10 · Piloto con una oficina (hoja de ruta; spec `docs/specs/fase-10-piloto-oficina.md`, lote 1 de leads en curso)
 - Una oficina (3 a 10 agentes) de una corredora grande, con servicio operado por el operador.
 - Anuncios de Meta sobre publicaciones de Instagram: impulsar un post y campañas por aviso, siempre pausados al crear, dos aprobaciones (texto y gasto) y tres topes; la corredora paga a Meta directo. Una segunda app de Meta (Facebook Login for Business). ADR-0031 y ADR-0032 (propuestos).
 - Leads con atribución a anuncio, aviso y oficina; ManyChat conviviendo con una interfaz propia; reporte de gasto. ADR-0033 (propuesto).

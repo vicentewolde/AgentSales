@@ -193,6 +193,24 @@ export {
   userStateText,
 } from "./labels.js";
 export {
+  changeLeadStatus,
+  csvCell,
+  eraseLead,
+  LEAD_SOURCES,
+  LEAD_STATUSES,
+  type Lead,
+  type LeadConsent,
+  type LeadDeps,
+  type LeadSource,
+  type LeadStatus,
+  leadConsentSchema,
+  leadsToCsv,
+  type NewLead,
+  type NewLeadInput,
+  newLeadSchema,
+  receiveLead,
+} from "./leads.js";
+export {
   isLinkedInPostUrn,
   LINKEDIN_ACCOUNT_MODES,
   LINKEDIN_DEFAULT_MODE,
@@ -545,6 +563,7 @@ export type {
   InstagramToken,
 } from "./ports/instagram-auth.js";
 export type { EnqueueOptions, JobQueue } from "./ports/job-queue.js";
+export type { LeadFilters, LeadRepository } from "./ports/lead-repository.js";
 export type { LinkedInAuth, LinkedInMember, LinkedInToken } from "./ports/linkedin-auth.js";
 export type { ListingLock, LockedRepositories } from "./ports/listing-lock.js";
 export type {

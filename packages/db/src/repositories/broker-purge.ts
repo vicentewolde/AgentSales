@@ -17,6 +17,8 @@ import {
   fieldDefinitions,
   importRuns,
   invitations,
+  leadEvents,
+  leads,
   listings,
   loginChallenges,
   media,
@@ -286,6 +288,23 @@ export function createBrokerPurgeRepository(db: SchemaDatabase): BrokerPurgeRepo
               .delete(editorialProfiles)
               .where(eq(editorialProfiles.brokerId, brokerId))
               .returning({ brokerId: editorialProfiles.brokerId }),
+          );
+          // 5b. Los leads con sus eventos (F10): datos personales de terceros, antes de las propiedades.
+          note(
+            "lead_events",
+            await tx
+              .delete(leadEvents)
+              .where(
+                inArray(
+                  leadEvents.leadId,
+                  db.select({ id: leads.id }).from(leads).where(eq(leads.brokerId, brokerId)),
+                ),
+              )
+              .returning({ id: leadEvents.id }),
+          );
+          note(
+            "leads",
+            await tx.delete(leads).where(eq(leads.brokerId, brokerId)).returning({ id: leads.id }),
           );
           // 5a. El registro verificable de sus propiedades (F12), antes de las propiedades.
           note(
