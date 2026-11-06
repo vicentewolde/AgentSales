@@ -1,7 +1,7 @@
 import type { Listing, RegistryRecord, RegistryRepository } from "@agentsales/core";
 import { describe, expect, it } from "vitest";
-import { buildPayload, payloadHash } from "../src/build/from-listing.js";
-import { approveRegistry, buildRegistry } from "../src/build/use-cases.js";
+import { buildPayload, payloadHash } from "../src/record/from-listing.js";
+import { approveRegistry, buildRegistry } from "../src/record/use-cases.js";
 
 const listing = (over: Partial<Listing> = {}): Listing => ({
   id: "L1",

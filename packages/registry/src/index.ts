@@ -1,5 +1,5 @@
-export * from "./build/from-listing.js";
-export * from "./build/use-cases.js";
+export * from "./record/from-listing.js";
+export * from "./record/use-cases.js";
 export * from "./claims/sam.js";
 export * from "./claims/schema.js";
 export * from "./claims/verify.js";
