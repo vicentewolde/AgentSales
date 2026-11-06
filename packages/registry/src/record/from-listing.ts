@@ -1,4 +1,4 @@
-import { type Claim, type Declared, DEFAULT_POLICY, type Policy } from "../claims/schema.js";
+import { type Claim, DEFAULT_POLICY, type Declared, type Policy } from "../claims/schema.js";
 import { declaredClaims } from "../claims/verify.js";
 import { canonicalJson, sha256 } from "../passport/merkle.js";
 
@@ -22,8 +22,7 @@ export type ListingSource = {
 
 export type RegistryPayload = { declared: Declared; policy: Policy; claims: Claim[] };
 
-const num = (v: unknown): number | null =>
-  typeof v === "number" && Number.isFinite(v) ? v : null;
+const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const int = (v: unknown): number | null => {
   const n = num(v);
   return n === null ? null : Math.trunc(n);

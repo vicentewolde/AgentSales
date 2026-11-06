@@ -1,4 +1,9 @@
-import { AppError, type ListingRepository, type RegistryRecord, type RegistryRepository } from "@agentsales/core";
+import {
+  AppError,
+  type ListingRepository,
+  type RegistryRecord,
+  type RegistryRepository,
+} from "@agentsales/core";
 import { z } from "zod";
 import { ClaimSchema, DeclaredSchema, PolicySchema } from "../claims/schema.js";
 import { buildPayload, type ListingSource, payloadHash } from "./from-listing.js";
@@ -18,7 +23,10 @@ export type RegistryDeps = {
  * Arma (o rearma) el borrador del registro de una propiedad con lo que el corredor declaró.
  * Si nada cambió desde la última vez, el registro queda como estaba (aprobado sigue aprobado).
  */
-export async function buildRegistry(deps: RegistryDeps, listingId: string): Promise<RegistryRecord> {
+export async function buildRegistry(
+  deps: RegistryDeps,
+  listingId: string,
+): Promise<RegistryRecord> {
   const listing = await deps.listings.get(listingId);
   if (listing === null) {
     throw new AppError("LISTING_NOT_FOUND", `No existe la propiedad ${listingId}`, {
@@ -50,15 +58,23 @@ export async function approveRegistry(
   // El hash guardado debe corresponder al contenido guardado: si no, alguien lo alteró.
   const parsed = RegistryPayloadSchema.safeParse(current.payload);
   if (!parsed.success || payloadHash(parsed.data) !== current.contentHash) {
-    throw new AppError("REGISTRY_ROW_INVALID", "El contenido del registro no coincide con su hash", {
-      details: { listingId },
-    });
+    throw new AppError(
+      "REGISTRY_ROW_INVALID",
+      "El contenido del registro no coincide con su hash",
+      {
+        details: { listingId },
+      },
+    );
   }
   const approved = await deps.registry.approve(listingId, userId, current.contentHash);
   if (approved === null) {
-    throw new AppError("REGISTRY_NOT_APPROVABLE", `El registro está ${current.status}, no se aprueba`, {
-      details: { listingId, status: current.status },
-    });
+    throw new AppError(
+      "REGISTRY_NOT_APPROVABLE",
+      `El registro está ${current.status}, no se aprueba`,
+      {
+        details: { listingId, status: current.status },
+      },
+    );
   }
   return approved;
 }

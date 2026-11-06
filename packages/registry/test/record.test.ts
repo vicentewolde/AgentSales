@@ -63,7 +63,7 @@ function memoryRegistry(): RegistryRepository & { rows: Map<string, RegistryReco
     },
     async approve(id, userId, hash) {
       const r = rows.get(id);
-      if (!r || r.status !== "draft" || r.contentHash !== hash) return null;
+      if (r?.status !== "draft" || r.contentHash !== hash) return null;
       const next = {
         ...r,
         status: "approved" as const,
