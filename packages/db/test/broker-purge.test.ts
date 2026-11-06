@@ -13,6 +13,7 @@ import {
   invitations,
   leadEvents,
   leads,
+  leadWebhookKeys,
   listings,
   loginChallenges,
   media,
@@ -191,6 +192,7 @@ async function seedBroker(
     })
     .returning();
   await db.insert(leadEvents).values({ leadId: lead?.id ?? "", kind: "received" });
+  await db.insert(leadWebhookKeys).values({ brokerId: b, secretHash: "h".repeat(64) });
   // F12: el registro verificable de la propiedad.
   await db
     .insert(registryRecords)
@@ -418,6 +420,7 @@ describe("BrokerPurgeRepository (PGlite)", () => {
       "post_image_runs",
       "registry_records",
       "lead_events",
+      "lead_webhook_keys",
       "leads",
       "editorial_profiles",
       "import_runs",
@@ -468,6 +471,7 @@ describe("BrokerPurgeRepository (PGlite)", () => {
       post_image_runs: 1,
       registry_records: 1,
       lead_events: 1,
+      lead_webhook_keys: 1,
       leads: 1,
       posts: 1,
       plan_runs: 1,

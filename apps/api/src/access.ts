@@ -135,6 +135,17 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "POST /posts/:id/discard": "session",
   // F9.5-T19: la biblioteca de música de los reels (el mismo catálogo para todos).
   "GET /music/tracks": "session",
+  // F10 (ADR-0033): los leads de un corredor y de uno solo; todo pide `leads.manage` (revisado en la
+  // ruta) y lo de otro corredor es 404 (`ownedBy`).
+  "GET /brokers/:id/leads": "session",
+  "GET /brokers/:id/leads.csv": "session",
+  "POST /brokers/:id/leads/webhook-secret": "session",
+  "GET /leads/:id": "session",
+  "POST /leads/:id/status": "session",
+  "POST /leads/:id/assign": "session",
+  "POST /leads/:id/erase": "session",
+  // El «External Request» de ManyChat: de servidor a servidor, lo protege el secreto del corredor.
+  "POST /webhooks/manychat/:brokerId": "public",
   // F8 (spec §4.4, ADR-0025): pedir la carga con sus URLs de subida y empezarla.
   "POST /imports/uploads": "session",
   "POST /imports/:id/start": "session",

@@ -11,6 +11,9 @@ import {
   type ImageAiPricing,
   type ImportRunRepository,
   type JobQueue,
+  type LeadRepository,
+  type LeadWebhookKeyRepository,
+  type LeadWebhookSecretDeps,
   type ListingLock,
   type ListingRepository,
   type LogoNormalizer,
@@ -51,6 +54,7 @@ import { brokerRoutes } from "./routes/brokers.js";
 import { contentRoutes, contentRunRoutes, listingContentRoutes } from "./routes/content.js";
 import { editorialProfileRoutes } from "./routes/editorial-profile.js";
 import { importRoutes } from "./routes/imports.js";
+import { brokerLeadRoutes, leadRoutes, leadWebhookRoutes } from "./routes/leads.js";
 import { listingRoutes } from "./routes/listings.js";
 import { type MetaSignatureVerifier, metaRoutes } from "./routes/meta.js";
 import { musicRoutes } from "./routes/music.js";
@@ -136,6 +140,12 @@ export type AppDeps = {
    * rutas (`/posts`, F9-T10).
    */
   posts: PostRepository;
+  // Leads (F10, ADR-0033): los guarda la API (el webhook de ManyChat y el panel) y los lee la CLI.
+  leads: LeadRepository;
+  /** El hash del secreto del webhook de cada corredor. */
+  leadWebhookKeys: LeadWebhookKeyRepository;
+  /** El azar, el hash y la comparación del secreto (`node:crypto`, lo compone `server.ts`). */
+  leadSecrets: Pick<LeadWebhookSecretDeps, "randomSecret" | "hash" | "safeEqual">;
   /**
    * Candado por post (ADR-0029, punto 3): las rutas de posts escriben dentro de él, con los eventos
    * firmados por el usuario del pedido. `server.ts` compone `createPostLock` sobre la misma base.
@@ -343,6 +353,10 @@ export function createApp(input: AppDeps) {
       async (id) => (await deps.importRuns.get(id))?.brokerId ?? null,
       notFound("IMPORT_RUN_NOT_FOUND", "No existe la carga"),
     ),
+    lead: ownedBy(
+      async (id) => (await deps.leads.get(id))?.brokerId ?? null,
+      notFound("LEAD_NOT_FOUND", "No existe el lead"),
+    ),
     account: ownedBy(
       async (id) => (await deps.platformAccounts.get(id))?.brokerId ?? null,
       notFound("ACCOUNT_NOT_FOUND", "No existe la cuenta"),
@@ -384,6 +398,7 @@ export function createApp(input: AppDeps) {
     .use("/imports/:id/*", (c, next) =>
       c.req.param("id") === "uploads" ? next() : ownership.importRun(c, next),
     )
+    .use("/leads/:id/*", ownership.lead)
     .use("/accounts/:id/*", ownership.account)
     .use("/brokers/:id/*", ownership.broker)
     // El chequeo del proveedor (F8-T11): solo que el proceso responde, sin base ni R2. Así una base
@@ -421,6 +436,10 @@ export function createApp(input: AppDeps) {
     .route("/brokers", editorialProfileRoutes(deps))
     // F9.5-T27: aprobar la semana y la lista para publicar a diario de una marca.
     .route("/brokers", brandWeekRoutes({ ...deps, ...workerDetails }))
+    // F10: los leads de un corredor, un lead por id y el webhook público de ManyChat.
+    .route("/brokers", brokerLeadRoutes(deps))
+    .route("/leads", leadRoutes(deps))
+    .route("/webhooks", leadWebhookRoutes(deps))
     .route("/posts", postRoutes(deps))
     .route("/plans", planRoutes(deps))
     .route("/music", musicRoutes(deps))

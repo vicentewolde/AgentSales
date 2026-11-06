@@ -680,6 +680,19 @@ export const leadEvents = pgTable(
 );
 
 /**
+ * El secreto del webhook de leads de cada corredor (F10-T04, ADR-0033): solo su hash sha256; el
+ * secreto en claro se muestra una vez al generarlo.
+ */
+export const leadWebhookKeys = pgTable("lead_webhook_keys", {
+  brokerId: uuid("broker_id")
+    .primaryKey()
+    .references(() => brokers.id),
+  secretHash: text("secret_hash").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
  * El registro verificable de una propiedad (F12, ADR-0039): uno por propiedad. `payload` guarda lo
  * declarado, la política y las afirmaciones con su procedencia; `@agentsales/registry` lo valida.
  */

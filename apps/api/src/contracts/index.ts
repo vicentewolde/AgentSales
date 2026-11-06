@@ -22,6 +22,8 @@ import {
   IMPORT_UPLOAD,
   importRunSchema,
   LANGUAGES,
+  LEAD_SOURCES,
+  LEAD_STATUSES,
   LISTING_ACTIONS,
   LISTING_PLATFORMS,
   LISTING_STATUSES,
@@ -2248,3 +2250,51 @@ export const dailyReadinessResponseSchema = z.object({
   }),
 });
 export type DailyReadinessResponse = z.infer<typeof dailyReadinessResponseSchema>;
+
+// ── Leads (F10-T05, ADR-0033) ─────────────────────────────────────────────
+
+/** Un lead con sus datos personales: solo lo ven quienes pueden `leads.manage` sobre su corredor. */
+export const leadViewSchema = z.object({
+  id: z.string(),
+  brokerId: z.string(),
+  source: z.enum(LEAD_SOURCES),
+  externalId: z.string(),
+  listingId: z.string().nullable(),
+  adId: z.string().nullable(),
+  campaign: z.string().nullable(),
+  name: z.string().nullable(),
+  phone: z.string().nullable(),
+  email: z.string().nullable(),
+  consent: z.object({ given: z.literal(true), text: z.string().nullable(), at: z.coerce.date() }),
+  status: z.enum(LEAD_STATUSES),
+  assignedTo: z.string().nullable(),
+  erasedAt: z.coerce.date().nullable(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+});
+export type LeadView = z.infer<typeof leadViewSchema>;
+
+export const leadListQuerySchema = z.object({
+  status: z.enum(LEAD_STATUSES).optional(),
+  listing: z.uuid().optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(100),
+});
+export const leadListResponseSchema = z.object({ leads: z.array(leadViewSchema) });
+export type LeadListResponse = z.infer<typeof leadListResponseSchema>;
+
+export const leadResponseSchema = z.object({ lead: leadViewSchema });
+export type LeadResponse = z.infer<typeof leadResponseSchema>;
+
+export const leadStatusBodySchema = z.object({ status: z.enum(LEAD_STATUSES) });
+export const leadAssignBodySchema = z.object({ userId: z.uuid().nullable() });
+
+/** El secreto del webhook en claro: se muestra una sola vez, al generarlo o rotarlo. */
+export const leadWebhookSecretResponseSchema = z.object({
+  secret: z.string(),
+  /** La ruta pública a la que ManyChat envía el «External Request» (relativa a la API). */
+  path: z.string(),
+});
+export type LeadWebhookSecretResponse = z.infer<typeof leadWebhookSecretResponseSchema>;
+
+/** Lo que recibe ManyChat: solo si se guardó y si ya existía, nunca datos personales. */
+export const leadWebhookResponseSchema = z.object({ ok: z.literal(true), created: z.boolean() });

@@ -13,6 +13,8 @@ export const PERMISSIONS = [
    * programar, publicar y archivar. El dueño de un post es su corredor o marca.
    */
   "posts.manage",
+  /** Ver, cambiar de estado, asignar, exportar y borrar los leads de su corredor (F10, ADR-0033). */
+  "leads.manage",
   /** "Lo publiqué" o "No lo publiqué" en Marketplace. */
   "marketplace.confirm",
   /** Editar la marca, subir el logo y bajar la planilla. */
@@ -64,6 +66,7 @@ export type Permission = (typeof PERMISSIONS)[number];
 const BROKER_PERMISSIONS: ReadonlySet<Permission> = new Set([
   "listings.manage",
   "posts.manage",
+  "leads.manage",
   "marketplace.confirm",
   "brand.edit",
   "broker.view",

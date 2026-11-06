@@ -46,7 +46,7 @@ const isHealthCheck = (method: string, path: string): boolean =>
  * Las vueltas de servidor a servidor (spec F8 §4.3): Meta manda un formulario sin `Origin` (quitar
  * la app y borrar los datos, F8-T17). Las protege su firma, no el CSRF.
  */
-const SERVER_TO_SERVER_PREFIXES = ["/meta/"] as const;
+const SERVER_TO_SERVER_PREFIXES = ["/meta/", "/webhooks/"] as const;
 const isServerToServer = (path: string): boolean => {
   const route = routePathOf(path);
   return SERVER_TO_SERVER_PREFIXES.some((prefix) => route.startsWith(prefix));

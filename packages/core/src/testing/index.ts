@@ -53,6 +53,10 @@ export {
 } from "./import-repositories.js";
 export { createInMemoryJobQueue, type EnqueuedJob, type InMemoryJobQueue } from "./job-queue.js";
 export {
+  createInMemoryLeadRepository,
+  createInMemoryLeadWebhookKeyRepository,
+} from "./leads.js";
+export {
   createInMemoryLlmProvider,
   type InMemoryLlmProvider,
   LLM_ERRORS,

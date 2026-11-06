@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -37,6 +37,8 @@ import {
   createFieldDefinitionRepository,
   createImportRunRepository,
   createInvitationRepository,
+  createLeadRepository,
+  createLeadWebhookKeyRepository,
   createListingLock,
   createListingRepository,
   createLoginChallengeRepository,
@@ -213,6 +215,14 @@ const app = createApp({
   contents: createContentRepository(database.db),
   lock: createListingLock(database.db, { secretBox }),
   posts: createPostRepository(database.db),
+  // Leads (F10): cifrados con la clave del servidor; el webhook guarda solo el hash del secreto.
+  leads: createLeadRepository(database.db, secretBox),
+  leadWebhookKeys: createLeadWebhookKeyRepository(database.db),
+  leadSecrets: {
+    randomSecret: () => randomBytes(32).toString("base64url"),
+    hash: (secret) => createHash("sha256").update(secret).digest("hex"),
+    safeEqual: (a, b) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b)),
+  },
   postLock: createPostLock(database.db, { secretBox }),
   postUploads: createPostUploadRepository(database.db),
   editorialProfiles: createEditorialProfileRepository(database.db),

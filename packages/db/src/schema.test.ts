@@ -87,6 +87,8 @@ const EXPECTED_TABLES = [
   "invitations",
   // F10-T01 (0023): los leads con atribución y sus eventos.
   "lead_events",
+  // F10-T04 (0024): el secreto del webhook de leads de cada corredor.
+  "lead_webhook_keys",
   "leads",
   "listings",
   // F8-T15 (0012): el segundo paso de entrar.

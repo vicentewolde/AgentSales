@@ -24,6 +24,7 @@ export { createContentRepository } from "./repositories/contents.js";
 export { createEditorialProfileRepository } from "./repositories/editorial-profiles.js";
 export { createFieldDefinitionRepository } from "./repositories/field-definitions.js";
 export { createImportRunRepository } from "./repositories/import-runs.js";
+export { createLeadWebhookKeyRepository } from "./repositories/lead-webhook-keys.js";
 export { createLeadRepository } from "./repositories/leads.js";
 export { createListingRepository } from "./repositories/listings.js";
 export { createMediaRepository } from "./repositories/media.js";
