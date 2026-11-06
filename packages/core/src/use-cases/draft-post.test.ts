@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ALL_SCOPE } from "../access.js";
 import { editorialProfileView } from "../editorial-profile.js";
 import type { Language, Platform, PostKind, PostPlatform, PostStatus } from "../enums.js";
@@ -192,6 +192,16 @@ async function setup(options: Setup = {}) {
 }
 
 describe("draftPost", () => {
+  // El repositorio en memoria sella con el reloj real; el tope mira el mes del reloj del caso de uso.
+  // Con la fecha fija, los dos caen siempre en el mismo mes.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-20T15:00:00Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("redacta un texto por red y lo guarda en draft con la versión del prompt social", async () => {
     const t = await setup({
       llm: [
