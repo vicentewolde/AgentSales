@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { editorialProfileView } from "../editorial-profile.js";
 import { AppError, isAppError } from "../errors.js";
 import { monthlySpend } from "../llm-budget.js";
@@ -634,6 +634,16 @@ describe("runPlan con respuestas guionadas", () => {
 });
 
 describe("el gasto del plan", () => {
+  // El repositorio en memoria sella con el reloj real; el tope mira el mes del reloj del caso de uso.
+  // Con la fecha fija, los dos caen siempre en el mismo mes.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-20T15:00:00Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("se anota por marca, entra a sumLlmCost y se anota también si falla después de llamar", async () => {
     const t = await setup({
       apiLlm: [
