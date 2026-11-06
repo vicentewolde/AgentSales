@@ -28,6 +28,7 @@ import {
   POST_UPLOAD_STATUSES,
   PUBLICATION_FORMATS,
   PUBLICATION_STATUSES,
+  REGISTRY_STATUSES,
   SESSION_CLIENTS,
   TERMINAL_PUBLICATION_STATUSES,
   USER_ROLES,
@@ -55,6 +56,8 @@ import {
 // ── Enums ────────────────────────────────────────────────────────────────
 
 export const platformEnum = pgEnum("platform", PLATFORMS);
+/** F12 (0022): el estado del registro verificable de una propiedad. */
+export const registryStatusEnum = pgEnum("registry_status", REGISTRY_STATUSES);
 export const platformAccountStatusEnum = pgEnum(
   "platform_account_status",
   PLATFORM_ACCOUNT_STATUSES,
@@ -621,6 +624,35 @@ export const media = pgTable(
  */
 const activeContentRun = sql.raw(
   `"status" IN (${ACTIVE_CONTENT_RUN_STATUSES.map((status) => `'${status}'`).join(", ")})`,
+);
+
+/**
+ * El registro verificable de una propiedad (F12, ADR-0039): uno por propiedad. `payload` guarda lo
+ * declarado, la política y las afirmaciones con su procedencia; `@agentsales/registry` lo valida.
+ */
+export const registryRecords = pgTable(
+  "registry_records",
+  {
+    id: id(),
+    listingId: uuid("listing_id")
+      .notNull()
+      .references(() => listings.id),
+    brokerId: uuid("broker_id")
+      .notNull()
+      .references(() => brokers.id),
+    status: registryStatusEnum("status").notNull().default("draft"),
+    payload: jsonb("payload").notNull(),
+    /** sha256 del contenido canónico: si cambia, la aprobación se pierde. */
+    contentHash: text("content_hash").notNull(),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    approvedBy: uuid("approved_by").references(() => users.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("registry_records_listing_unique").on(t.listingId),
+    index("registry_records_broker_idx").on(t.brokerId),
+    check("registry_records_hash_len", sql`char_length(${t.contentHash}) = 64`),
+  ],
 );
 
 /**

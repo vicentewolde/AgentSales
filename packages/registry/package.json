@@ -8,12 +8,18 @@
       "@agentsales/source": "./src/index.ts",
       "types": "./dist/src/index.d.ts",
       "default": "./dist/src/index.js"
+    },
+    "./adapters": {
+      "@agentsales/source": "./src/adapters/index.ts",
+      "types": "./dist/src/adapters/index.d.ts",
+      "default": "./dist/src/adapters/index.js"
     }
   },
   "scripts": {
     "build": "tsc -b"
   },
   "dependencies": {
+    "@agentsales/core": "workspace:*",
     "zod": "4.6.5"
   }
 }

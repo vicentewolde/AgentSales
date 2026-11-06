@@ -27,6 +27,7 @@ import {
   postUploads,
   publicationEvents,
   publications,
+  registryRecords,
   sessions,
   userRecoveryCodes,
   users,
@@ -285,6 +286,14 @@ export function createBrokerPurgeRepository(db: SchemaDatabase): BrokerPurgeRepo
               .delete(editorialProfiles)
               .where(eq(editorialProfiles.brokerId, brokerId))
               .returning({ brokerId: editorialProfiles.brokerId }),
+          );
+          // 5a. El registro verificable de sus propiedades (F12), antes de las propiedades.
+          note(
+            "registry_records",
+            await tx
+              .delete(registryRecords)
+              .where(eq(registryRecords.brokerId, brokerId))
+              .returning({ id: registryRecords.id }),
           );
           // 5. Las propiedades (los valores de sus campos van en `attributes`), las cuentas con sus
           // credenciales cifradas, los campos propios del corredor y sus cargas.
