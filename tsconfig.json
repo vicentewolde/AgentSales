@@ -38,6 +38,9 @@
       "path": "./packages/publishers"
     },
     {
+      "path": "./packages/registry"
+    },
+    {
       "path": "./apps/api"
     },
     {

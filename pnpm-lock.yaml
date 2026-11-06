@@ -328,6 +328,12 @@ importers:
         specifier: 0.5.8
         version: 0.5.8
 
+  packages/registry:
+    dependencies:
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+
   packages/storage:
     dependencies:
       '@agentsales/config':
