@@ -211,6 +211,11 @@ Spec detallado: `docs/specs/fase-7-varios-corredores.md` (2026-10-16: el operado
 ## F11 · Organizaciones (hoja de ruta)
 - Organización → oficina → agente, membresías y roles por nodo, alcance por conjunto (modifica ADR-0022), aprobación por niveles, contenido corporativo como plantilla con una copia por agente, reportes por oficina y agente. Su propio spec y ADR.
 
+## F12 · Registro verificable (Aval dentro de AgentSales)
+- El prototipo Aval del hackatón de Meta pasa a ser parte del proyecto: cada propiedad con un registro donde cada dato dice de dónde sale, política de qué se divulga, consulta por agentes (MCP) y vitrina web, y textos con pie verificado.
+- Lote 1: paquete `@agentsales/registry` con la lógica pura (afirmaciones, política, búsqueda, negociación acotada, revisión de títulos). Spec: `docs/specs/fase-12-registro-verificable.md`; ADR-0039 y ADR-0040 (propuestos).
+- Puede ir antes o en paralelo a F10; el orden lo decide el operador según los primeros clientes.
+
 ## Post-MVP (backlog)
 - Respuestas a DMs, comentarios y preguntas de ML (siguiente gran fase).
 - Google Sheets y Drive como origen directo de la carga (spec F2, D8: durante el piloto basta con Excel y zip).
