@@ -193,6 +193,16 @@ export {
   userStateText,
 } from "./labels.js";
 export {
+  type ManychatPayload,
+  manychatPayloadSchema,
+  manychatToLead,
+} from "./lead-sources/manychat.js";
+export {
+  issueLeadWebhookSecret,
+  type LeadWebhookSecretDeps,
+  verifyLeadWebhookSecret,
+} from "./lead-webhook.js";
+export {
   changeLeadStatus,
   csvCell,
   eraseLead,
@@ -564,6 +574,7 @@ export type {
 } from "./ports/instagram-auth.js";
 export type { EnqueueOptions, JobQueue } from "./ports/job-queue.js";
 export type { LeadFilters, LeadRepository } from "./ports/lead-repository.js";
+export type { LeadWebhookKeyRepository } from "./ports/lead-webhook-key-repository.js";
 export type { LinkedInAuth, LinkedInMember, LinkedInToken } from "./ports/linkedin-auth.js";
 export type { ListingLock, LockedRepositories } from "./ports/listing-lock.js";
 export type {

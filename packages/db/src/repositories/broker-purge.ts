@@ -19,6 +19,7 @@ import {
   invitations,
   leadEvents,
   leads,
+  leadWebhookKeys,
   listings,
   loginChallenges,
   media,
@@ -305,6 +306,13 @@ export function createBrokerPurgeRepository(db: SchemaDatabase): BrokerPurgeRepo
           note(
             "leads",
             await tx.delete(leads).where(eq(leads.brokerId, brokerId)).returning({ id: leads.id }),
+          );
+          note(
+            "lead_webhook_keys",
+            await tx
+              .delete(leadWebhookKeys)
+              .where(eq(leadWebhookKeys.brokerId, brokerId))
+              .returning({ brokerId: leadWebhookKeys.brokerId }),
           );
           // 5a. El registro verificable de sus propiedades (F12), antes de las propiedades.
           note(

@@ -23,6 +23,7 @@ import {
   createInMemoryEditorialProfileRepository,
   createInMemoryImportRunRepository,
   createInMemoryJobQueue,
+  createInMemoryLeadRepository,
   createInMemoryListingLock,
   createInMemoryListingRepository,
   createInMemoryMediaRepository,
@@ -73,6 +74,8 @@ export function harness(options: HarnessOptions = {}) {
   const queue = createInMemoryJobQueue();
   // Los posts de una marca (F9-T12): la CLI de `post` habla con sus rutas.
   const posts = createInMemoryPostRepository();
+  // Los leads (F10): la CLI de `leads` habla con sus rutas.
+  const leads = createInMemoryLeadRepository();
   // Los planes de ideas (F9-T21): sus ideas son posts; su gasto entra al tope de IA.
   const planRuns = createInMemoryPlanRunRepository({ posts });
   // El gasto de IA por corredor (F7-T12) cruza la corrida con su aviso o su post, como Postgres.
@@ -140,6 +143,7 @@ export function harness(options: HarnessOptions = {}) {
         queue,
         publications,
         posts,
+        leads,
         postLock,
         planRuns,
         ...repos,
@@ -242,6 +246,8 @@ export function harness(options: HarnessOptions = {}) {
     },
     /** Los posts de la API (F9-T12) y su candado (para mover publicaciones como el worker). */
     posts,
+    /** Los leads de la API (F10): el test los siembra como lo haría el webhook. */
+    leads,
     postLock,
     /** Los planes de ideas de la API (F9-T21): el test los corre como el worker (`runPlan`). */
     planRuns,

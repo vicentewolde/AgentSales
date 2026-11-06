@@ -482,3 +482,6 @@ El registro verificable de una propiedad: uno por propiedad (`listing_id` único
 
 ## `leads` y `lead_events` (F10, migración 0023)
 `leads`: un lead por `(broker_id, source, external_id)` (idempotente). Atribución: `listing_id`, `ad_id`, `campaign`. `name_encrypted`, `phone_encrypted` y `email_encrypted` van cifrados con el id del lead como dato asociado y quedan nulos al borrarlo (`erased_at`). `consent` (jsonb) guarda lo aceptado y cuándo. `status`: `new`, `contacted`, `visit_scheduled`, `won`, `lost`. `lead_events`: cambios de estado, asignaciones y borrado, sin datos personales. Se borran con el corredor.
+
+## `lead_webhook_keys` (F10, migración 0024)
+Una fila por corredor con el `secret_hash` (sha256) del secreto del webhook de ManyChat; el secreto en claro se muestra una sola vez al generarlo o rotarlo. Se borra con el corredor.

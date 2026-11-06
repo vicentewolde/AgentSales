@@ -17,6 +17,9 @@ const INTERNAL_MESSAGE = "Error interno del servidor";
  * entre intentos de un job) son 500; `PUBLICATION_CONFLICT` es 409 por el spec F3 §4.8.
  */
 const CONFLICTS = new Set([
+  // F10-T05: un estado al que el lead no puede pasar, o un lead ya borrado.
+  "LEAD_TRANSITION_INVALID",
+  "LEAD_ERASED",
   "LISTING_NOT_READY",
   "CONTENT_EDITED",
   "CONTENT_NOT_CURRENT",
@@ -151,6 +154,9 @@ const CONFLICTS = new Set([
  * una de Marketplace sin el enlace del aviso (spec F5 §4.3).
  */
 const CLIENT_MISSING = new Set([
+  // F10: un lead sin consentimiento, o una lista que necesita el corredor.
+  "LEAD_CONSENT_REQUIRED",
+  "LEAD_BROKER_REQUIRED",
   "MARKETPLACE_URL_REQUIRED",
   // F9-T06: confirmar en vivo una publicación a mano de otra red sin su enlace.
   "PUBLISHED_URL_REQUIRED",

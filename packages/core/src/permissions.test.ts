@@ -12,6 +12,7 @@ const broker = { role: "broker" as const, brokerId: "b1" };
 const BROKER_CAN: Readonly<Record<Permission, boolean>> = {
   "listings.manage": true,
   "posts.manage": true,
+  "leads.manage": true,
   "marketplace.confirm": true,
   "brand.edit": true,
   "broker.view": true,

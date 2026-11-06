@@ -1,7 +1,7 @@
 // Dobles de la API para tests (`@agentsales/api/testing`): `AppDeps` con repositorios en memoria,
 // para probar contra `createApp` sin red ni base (los tests de la API y de la CLI).
 // Solo para tests: Biome prohíbe importarlo desde código de aplicación.
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { Writable } from "node:stream";
 import { createLogger, createStateSigner, type Logger } from "@agentsales/config";
 import {
@@ -27,6 +27,8 @@ import {
   createInMemoryFieldDefinitionRepository,
   createInMemoryImportRunRepository,
   createInMemoryJobQueue,
+  createInMemoryLeadRepository,
+  createInMemoryLeadWebhookKeyRepository,
   createInMemoryListingLock,
   createInMemoryListingRepository,
   createInMemoryMediaRepository,
@@ -494,6 +496,14 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     contentRuns: content.contentRuns,
     contents: content.contents,
     posts,
+    // F10: los leads y el secreto del webhook; el azar y el hash son los reales.
+    leads: createInMemoryLeadRepository(),
+    leadWebhookKeys: createInMemoryLeadWebhookKeyRepository(),
+    leadSecrets: {
+      randomSecret: () => randomBytes(32).toString("base64url"),
+      hash: (secret) => createHash("sha256").update(secret).digest("hex"),
+      safeEqual: (a, b) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b)),
+    },
     postUploads,
     planRuns,
     // F9.5-T25: sin claves, como un servidor recién instalado (solo las tarjetas); las pruebas de

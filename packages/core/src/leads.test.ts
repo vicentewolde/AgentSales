@@ -3,76 +3,11 @@ import {
   changeLeadStatus,
   csvCell,
   eraseLead,
-  type Lead,
   type LeadDeps,
   leadsToCsv,
   receiveLead,
 } from "./leads.js";
-import type { LeadRepository } from "./ports/lead-repository.js";
-
-function memoryLeads(): LeadRepository {
-  const rows = new Map<string, Lead>();
-  let n = 0;
-  return {
-    async create(input) {
-      const dup = [...rows.values()].find(
-        (l) =>
-          l.brokerId === input.brokerId &&
-          l.source === input.source &&
-          l.externalId === input.externalId,
-      );
-      if (dup) return { lead: dup, created: false };
-      const now = new Date();
-      const lead: Lead = {
-        id: `lead-${++n}`,
-        brokerId: input.brokerId,
-        source: input.source,
-        externalId: input.externalId,
-        listingId: input.listingId,
-        adId: input.adId,
-        campaign: input.campaign,
-        name: input.name,
-        phone: input.phone,
-        email: input.email,
-        consent: input.consent,
-        status: "new",
-        assignedTo: null,
-        erasedAt: null,
-        createdAt: now,
-        updatedAt: now,
-      };
-      rows.set(lead.id, lead);
-      return { lead, created: true };
-    },
-    async get(id) {
-      return rows.get(id) ?? null;
-    },
-    async list() {
-      return [...rows.values()];
-    },
-    async setStatus(id, from, to) {
-      const l = rows.get(id);
-      if (!l || l.status !== from) return null;
-      const next = { ...l, status: to };
-      rows.set(id, next);
-      return next;
-    },
-    async assign(id, userId) {
-      const l = rows.get(id);
-      if (!l) return null;
-      const next = { ...l, assignedTo: userId };
-      rows.set(id, next);
-      return next;
-    },
-    async erase(id) {
-      const l = rows.get(id);
-      if (!l) return null;
-      const next = { ...l, name: null, phone: null, email: null, erasedAt: new Date() };
-      rows.set(id, next);
-      return next;
-    },
-  };
-}
+import { createInMemoryLeadRepository } from "./testing/leads.js";
 
 const CONSENT = {
   given: true as const,
@@ -82,7 +17,7 @@ const CONSENT = {
 
 const setup = () => {
   const deps: LeadDeps = {
-    leads: memoryLeads(),
+    leads: createInMemoryLeadRepository(),
     listings: { get: async (id) => (id === "L1" ? ({ id, brokerId: "B1" } as never) : null) },
   };
   return deps;

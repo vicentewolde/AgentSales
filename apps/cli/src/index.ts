@@ -10,6 +10,7 @@ import * as content from "./commands/content.js";
 import * as doctor from "./commands/doctor/index.js";
 import * as importCommand from "./commands/import.js";
 import * as imports from "./commands/imports.js";
+import * as leads from "./commands/leads.js";
 import * as listing from "./commands/listing.js";
 import * as listings from "./commands/listings.js";
 import * as login from "./commands/login.js";
@@ -56,6 +57,7 @@ for (const command of [
   plan,
   users,
   usage,
+  leads,
 ]) {
   command.register(program, ctx);
 }
