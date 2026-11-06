@@ -98,7 +98,17 @@ export async function receiveLead(
   return deps.leads.create(data);
 }
 
-const TRANSITIONS: Record<LeadStatus, readonly LeadStatus[]> = {
+/** Cómo se nombra cada estado ante el operador (CLI y panel). */
+export const LEAD_STATUS_TEXT: Readonly<Record<LeadStatus, string>> = {
+  new: "nuevo",
+  contacted: "contactado",
+  visit_scheduled: "visita agendada",
+  won: "ganado",
+  lost: "perdido",
+};
+
+/** A qué estados puede pasar un lead desde cada uno. */
+export const LEAD_TRANSITIONS: Readonly<Record<LeadStatus, readonly LeadStatus[]>> = {
   new: ["contacted", "lost"],
   contacted: ["visit_scheduled", "won", "lost"],
   visit_scheduled: ["contacted", "won", "lost"],
@@ -117,7 +127,7 @@ export async function changeLeadStatus(
   if (lead.erasedAt !== null) {
     throw new AppError("LEAD_ERASED", "El lead fue borrado", { details: { leadId } });
   }
-  if (!TRANSITIONS[lead.status].includes(to)) {
+  if (!LEAD_TRANSITIONS[lead.status].includes(to)) {
     throw new AppError("LEAD_TRANSITION_INVALID", `No se pasa de ${lead.status} a ${to}`, {
       details: { leadId, from: lead.status, to },
     });
