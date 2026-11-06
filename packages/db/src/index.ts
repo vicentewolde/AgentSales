@@ -33,6 +33,7 @@ export { createPlatformCatalogRepository } from "./repositories/platform-catalog
 export { createPostImageRunRepository } from "./repositories/post-image-runs.js";
 export { createPostRepository, createPostUploadRepository } from "./repositories/posts.js";
 export { createPublicationRepository } from "./repositories/publications.js";
+export { createRegistryRepository } from "./repositories/registry-records.js";
 export {
   createInvitationRepository,
   createLoginChallengeRepository,

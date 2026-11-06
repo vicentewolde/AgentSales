@@ -155,6 +155,13 @@
       "when": 1792716917638,
       "tag": "0021_f95_imagenes_post",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1793988499566,
+      "tag": "0022_f12_registro",
+      "breakpoints": true
     }
   ]
 }

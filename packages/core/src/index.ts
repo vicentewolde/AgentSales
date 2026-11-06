@@ -677,6 +677,7 @@ export type {
   RemoteStatus,
 } from "./ports/publisher.js";
 export { isPublishHandoff, platformContextOf, storedAccessToken } from "./ports/publisher.js";
+export type { RegistryRepository, RegistryUpsert } from "./ports/registry-repository.js";
 export type { SecretBox } from "./ports/secret-box.js";
 export {
   type CoverData,
@@ -889,6 +890,12 @@ export {
   publicationPublishMode,
 } from "./publish-mode.js";
 export * from "./redact.js";
+export {
+  REGISTRY_STATUSES,
+  type RegistryRecord,
+  type RegistryStatus,
+  registryRecordSchema,
+} from "./registry.js";
 export { RUN_WAIT } from "./run-wait.js";
 export {
   MAX_SCHEDULE_SPACING_MINUTES,

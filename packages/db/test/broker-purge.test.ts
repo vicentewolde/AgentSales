@@ -21,6 +21,7 @@ import {
   postUploads,
   publicationEvents,
   publications,
+  registryRecords,
   sessions,
   userRecoveryCodes,
   users,
@@ -175,6 +176,10 @@ async function seedBroker(
     })
     .returning();
   const l = listing?.id ?? "";
+  // F12: el registro verificable de la propiedad.
+  await db
+    .insert(registryRecords)
+    .values({ listingId: l, brokerId: b, payload: {}, contentHash: "a".repeat(64) });
   const [original] = await db
     .insert(media)
     .values({
@@ -396,6 +401,7 @@ describe("BrokerPurgeRepository (PGlite)", () => {
       "posts",
       "post_uploads",
       "post_image_runs",
+      "registry_records",
       "editorial_profiles",
       "import_runs",
     ]) {
@@ -443,6 +449,7 @@ describe("BrokerPurgeRepository (PGlite)", () => {
       media: 5,
       post_uploads: 1,
       post_image_runs: 1,
+      registry_records: 1,
       posts: 1,
       plan_runs: 1,
       editorial_profiles: 1,

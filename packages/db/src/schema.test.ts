@@ -27,6 +27,7 @@ import {
   POST_UPLOAD_STATUSES,
   PUBLICATION_FORMATS,
   PUBLICATION_STATUSES,
+  REGISTRY_STATUSES,
   SESSION_CLIENTS,
   TERMINAL_PUBLICATION_STATUSES,
   USER_ROLES,
@@ -66,6 +67,8 @@ const EXPECTED_ENUMS: Record<string, readonly string[]> = {
   // F9.5-T25 (0021): los pedidos de imágenes de un post.
   post_image_source: POST_IMAGE_SOURCES,
   post_image_run_status: POST_IMAGE_RUN_STATUSES,
+  // F12-T07 (0022): el registro verificable.
+  registry_status: REGISTRY_STATUSES,
 };
 
 const EXPECTED_TABLES = [
@@ -94,6 +97,7 @@ const EXPECTED_TABLES = [
   "posts",
   "publication_events",
   "publications",
+  "registry_records",
   "sessions",
   // F8-T15 (0012): los códigos de recuperación del doble factor.
   "user_recovery_codes",

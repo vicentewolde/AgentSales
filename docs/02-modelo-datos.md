@@ -476,3 +476,6 @@ Son **aditivas salvo la `0015`**, que además quita el `NOT NULL` de `listing_id
 - Fechas: UTC en la base; se muestran en `America/Santiago`.
 - Borrado: los listings no se borran; pasan a `archived`. La única excepción es borrar el corredor entero (F9.5-T14, ADR-0035, arriba en `brokers`), que se lleva todo lo suyo.
 - `internal_notes` nunca se envía a la IA ni a las plataformas.
+
+## `registry_records` (F12, migración 0022)
+El registro verificable de una propiedad: uno por propiedad (`listing_id` único). `status` (`draft`, `approved`, `withdrawn`), `payload` (jsonb: lo declarado, la política y las afirmaciones con su procedencia; lo valida `@agentsales/registry`), `content_hash` (sha256 del contenido canónico: si cambia al reconstruir, vuelve a `draft` y se quita la aprobación), `approved_at`, `approved_by`. Se borra con el corredor (`broker-purge`).

@@ -48,9 +48,9 @@ Comentario de un post de Instagram (@datos_inmobiliarios, sobre modernización i
 | F12-T04 | Negociación: motor, mandatos firmados y sus pruebas de propiedad (500 negociaciones al azar) | 1 |
 | F12-T05 | Revisión de títulos: esquema, verificación de citas contra el texto del PDF y reglas | 1 |
 | F12-T06 | Reglas de lo que nunca debe decir un texto (contactos, gustos) | 1 |
-| F12-T07 | Esquema Drizzle y repositorios (afirmaciones, pasaporte, revisión, mandatos); migración aditiva | 2 |
-| F12-T08 | Adaptadores: lectura de PDF (pdftotext), cliente de la API de modelos de Meta (Muse Spark, SAM 3.1, voz) detrás de `ModelClient`, tope de gasto por corredor | 2 |
-| F12-T09 | Worker: construir el registro de una propiedad al prepararla; revisión de título al subir un PDF | 2 |
+| F12-T07 | Tabla `registry_records` y su repositorio (migración 0022, aditiva); armar y aprobar el registro desde la propiedad. Pasaporte, revisión de título y mandatos se guardan en lotes siguientes | 2 ✅ |
+| F12-T08 | Adaptadores: lectura de PDF (`pdftotext`) y cliente de la API de modelos de Meta (Muse Spark) detrás de `ModelClient`, con tope de gasto inyectado. SAM 3.1 y voz quedan para el lote 3 | 2 ✅ |
+| F12-T09 | Construir el registro desde el panel, la CLI y el worker (al preparar); revisión de título al subir un PDF | 3 (pasó del lote 2: se une a la API y la CLI) |
 | F12-T10 | API y servidor MCP (herramientas de solo lectura primero) con identidad de agente y bitácora | 3 |
 | F12-T11 | Panel: vitrina pública y búsqueda para compradores; pantalla del corredor para aprobar el registro | 3 |
 | F12-T12 | «Registro» como destino de publicación y pie verificado en los textos de Instagram y Portal | 4 |
@@ -75,7 +75,7 @@ El operador pidió empezar ya a tener clientes. La pista de ventas está en los 
 - **Oferta:** servicio operado por el operador para una oficina (tipo RE/MAX), demo de 20 minutos, sin precio todavía.
 - **Lo que F12 agrega a la demo:** «tus avisos con prueba de que son ciertos» y la vitrina para que un agente de IA del comprador consulte sin riesgo. Es el diferenciador frente a publicar en portales.
 - **Promesas honestas:** solo lo ya probado (ver `docs/14`, §1). Lo de F12 se muestra como piloto hasta que el lote 3 esté desplegado.
-- **Pendiente de decisión del operador:** precio y paquete (por propiedad, por oficina o mensual). No se inventa aquí.
+- **Precio y paquete:** hipótesis de trabajo en `docs/15-precios-y-paquetes.md` (inventadas el 2026-11-06 a pedido del operador; a validar en las primeras demos).
 
 ## 9. Riesgos
 
@@ -86,10 +86,11 @@ El operador pidió empezar ya a tener clientes. La pista de ventas está en los 
 
 ## 10. Preguntas abiertas
 
-- ¿Precio y empaque? (operador)
+- ¿Se validan los precios de `docs/15`? (primeras demos)
 - ¿Se renombra «Aval» como función («Registro verificable» en el panel) o se conserva como marca? Por ahora, solo «registro» en el código.
 - ¿Dónde se aloja el video de la demo para el servidor (R2 o solo local)?
 
 ## 11. Cambios
 
 - 2026-11-06: borrador y lote 1.
+- 2026-11-06: lote 2 (T07, T08): tabla, repositorio, casos de uso `buildRegistry` y `approveRegistry`, adaptadores de Meta y PDF. T09 pasa al lote 3, junto a la API y la CLI.
