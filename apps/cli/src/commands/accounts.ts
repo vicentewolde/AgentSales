@@ -195,8 +195,13 @@ export type ConnectOptions = {
   urlStdin?: boolean;
   /** Marketplace: el nombre de la cuenta (por defecto "Facebook de <corredor>"). */
   label?: string;
-  /** Marketplace a mano (F7, ADR-0023): el corredor publica él mismo, sin el perfil. */
+  /**
+   * Marketplace a mano (F7, ADR-0023) o Instagram a mano de una marca (F9.6, ADR-0041): se publica
+   * a mano, sin el perfil ni el token.
+   */
   manual?: boolean;
+  /** Instagram a mano (F9.6): el usuario de la cuenta. */
+  handle?: string;
   /** Discord (F9-T14): la URL del webhook por la entrada estándar. */
   webhookStdin?: boolean;
 };
@@ -527,6 +532,36 @@ async function connectMarketplace(
 }
 
 /**
+ * `agentsales accounts connect instagram --broker <slug> --manual --handle <usuario>` (F9.6-T02,
+ * ADR-0041; administrador): activa Instagram a mano para una marca, sin token ni Meta. Una cuenta de
+ * Instagram por la API de la marca queda desconectada, salvo que tenga publicaciones por salir.
+ */
+async function connectInstagramManual(
+  deps: AccountsDeps,
+  broker: string,
+  handle: string | undefined,
+): Promise<number> {
+  const c = deps.colors;
+  if (handle === undefined || handle.trim() === "") {
+    throw new CliError(
+      "HANDLE_REQUIRED",
+      "Falta --handle <usuario>: el usuario de la cuenta de Instagram (sin @ o con él)",
+    );
+  }
+  const { account } = await unwrap(
+    deps.client.accounts.instagram.manual.$post({ json: { broker, handle } }),
+    accountResponseSchema,
+  );
+  deps.print(`${c.green("✓")} Instagram a mano activado para ${broker} (${account.displayName})`);
+  deps.print(
+    c.dim(
+      "  A la hora de cada publicación el panel deja el texto y las imágenes listos; tú publicas desde la app de Instagram y confirmas con «Ya lo publiqué»",
+    ),
+  );
+  return 0;
+}
+
+/**
  * `agentsales accounts connect marketplace --broker <slug> --manual` (spec F7 §4.8, ADR-0023;
  * administrador): activa Marketplace a mano, sin abrir Facebook. Reemplaza al perfil del corredor.
  */
@@ -607,6 +642,19 @@ export function runConnect(deps: AccountsDeps, platform: string, options: Connec
         `Se conecta instagram, mercadolibre, marketplace, discord, linkedin, x o tiktok: "${platform}"`,
       );
     }
+    // Instagram a mano (F9.6, ADR-0041): `--manual --handle <usuario>`, sin el token.
+    if (channel === "instagram" && options.manual && options.tokenStdin) {
+      throw new CliError(
+        "OPTION_NOT_FOR_PLATFORM",
+        "--token-stdin no va con --manual: Instagram a mano no usa token; para conectar por la API, quita --manual",
+      );
+    }
+    if (options.handle !== undefined && !(channel === "instagram" && options.manual)) {
+      throw new CliError(
+        "OPTION_NOT_FOR_PLATFORM",
+        "--handle es solo de Instagram a mano: accounts connect instagram --broker <slug> --manual --handle <usuario>",
+      );
+    }
     // Una opción de otro canal no se ignora en silencio.
     const foreign =
       options.tokenStdin && channel !== "instagram"
@@ -617,7 +665,7 @@ export function runConnect(deps: AccountsDeps, platform: string, options: Connec
             ? "--webhook-stdin"
             : options.label !== undefined && channel !== "marketplace"
               ? "--label"
-              : options.manual && channel !== "marketplace"
+              : options.manual && channel !== "marketplace" && channel !== "instagram"
                 ? "--manual"
                 : options.manual && options.label !== undefined
                   ? "--label"
@@ -625,7 +673,7 @@ export function runConnect(deps: AccountsDeps, platform: string, options: Connec
     if (foreign !== null) {
       throw new CliError(
         "OPTION_NOT_FOR_PLATFORM",
-        `${foreign} no es para ${channel}${options.manual && channel === "marketplace" ? " a mano" : ""}: Instagram usa --token-stdin; Mercado Libre, --url-stdin; Marketplace, --label (o --manual, sin --label); Discord, --webhook-stdin; LinkedIn, X y TikTok, ninguna`,
+        `${foreign} no es para ${channel}${options.manual && channel === "marketplace" ? " a mano" : ""}: Instagram usa --token-stdin; Mercado Libre, --url-stdin; Marketplace, --label (o --manual, sin --label); Instagram a mano de una marca, --manual --handle; Discord, --webhook-stdin; LinkedIn, X y TikTok, ninguna`,
       );
     }
     if (options.broker === undefined) {
@@ -637,6 +685,8 @@ export function runConnect(deps: AccountsDeps, platform: string, options: Connec
     if (channel === "tiktok") return connectTikTok(deps, broker);
     if (channel === "mercadolibre")
       return connectMercadoLibre(deps, broker, options.urlStdin === true);
+    if (channel === "instagram" && options.manual)
+      return connectInstagramManual(deps, broker, options.handle);
     if (channel === "marketplace" && options.manual) return connectMarketplaceManual(deps, broker);
     if (channel === "marketplace") return connectMarketplace(deps, broker, options.label);
     const pipeCommand = tokenStdinCommand(broker);
@@ -1010,7 +1060,8 @@ Ejemplos:
   pbpaste | pnpm -s cli accounts connect discord --broker agentpey --webhook-stdin
   pnpm -s cli accounts connect linkedin --broker vinny   (queda a mano: accounts mode <id> api, con S2 y S3)
   pnpm -s cli accounts connect x --broker agentpey       (tope de gasto: accounts spend-limit <id> <dólares>)
-  pnpm -s cli accounts connect tiktok --broker agentpey  (el video llega como borrador a la app)`,
+  pnpm -s cli accounts connect tiktok --broker agentpey  (el video llega como borrador a la app)
+  pnpm -s cli accounts connect instagram --broker agentpey --manual --handle agentpey  (a mano, sin token; solo marcas)`,
     )
     .option("--broker <slug>", "corredor de la cuenta")
     .option(
@@ -1019,8 +1070,9 @@ Ejemplos:
     )
     .option(
       "--manual",
-      "Marketplace a mano: el corredor publica él mismo, sin abrir Facebook en este Mac",
+      "Marketplace a mano (el corredor publica él mismo, sin abrir Facebook en este Mac) o Instagram a mano de una marca (con --handle)",
     )
+    .option("--handle <usuario>", "Instagram a mano: el usuario de la cuenta, con o sin @")
     .option(
       "--token-stdin",
       "Instagram: lee el token largo desde la entrada estándar (pbpaste | …)",

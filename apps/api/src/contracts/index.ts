@@ -1362,6 +1362,14 @@ export const marketplaceManualBodySchema = z
   .strict();
 
 /**
+ * `POST /accounts/instagram/manual` (administrador, F9.6-T02, ADR-0041): activar Instagram a mano
+ * para una marca, con el usuario de su cuenta (el caso de uso lo limpia y lo revisa).
+ */
+export const instagramManualBodySchema = z
+  .object({ broker: z.string().trim().min(1).max(100), handle: z.string().max(100) })
+  .strict();
+
+/**
  * `PATCH /brokers/:id`: la marca (el corredor y el administrador) y, solo el administrador, si es
  * propio, el tope de IA y `autoPublish` (spec F6 §4.10 y F7 §4.6; el corredor que los manda: 403).
  */

@@ -160,6 +160,8 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "POST /accounts/mercadolibre/connect": "admin",
   "POST /accounts/marketplace/login": "admin",
   "POST /accounts/marketplace/manual": "admin",
+  // F9.6-T02 (ADR-0041): Instagram a mano de una marca, como Marketplace a mano.
+  "POST /accounts/instagram/manual": "admin",
   "POST /accounts/:id/refresh": "admin",
   "POST /accounts/:id/disconnect": "admin",
   // F9-T15 (ADR-0029 punto 9): pasar una red de contenido de marca a `manual` o `api`.

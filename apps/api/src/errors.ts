@@ -60,6 +60,8 @@ const CONFLICTS = new Set([
   "OPERATION_NOT_SUPPORTED",
   // F9-T15: el modo `manual`/`api` es solo de las redes de contenido de marca.
   "ACCOUNT_MODE_NOT_SUPPORTED",
+  // F9.6-T02 (ADR-0041): la cuenta de Instagram que se reemplaza tiene publicaciones por salir.
+  "ACCOUNT_HAS_PENDING_PUBLICATIONS",
   "PUBLISH_MODE_MISMATCH",
   "CLOSE_NOT_CONFIRMED",
   "PORTAL_PROGRESS_UNUSABLE",
@@ -404,6 +406,8 @@ const WAITING_PUBLICATION_CODES = new Set([
   "MARKETPLACE_FORM_OPEN",
   // F9-T06: la publicación con resultado dudoso que hay que resolver primero.
   "OUTCOME_UNKNOWN_PENDING",
+  // F9.6-T02: una publicación que todavía necesita la cuenta de Instagram que se reemplaza.
+  "ACCOUNT_HAS_PENDING_PUBLICATIONS",
 ]);
 
 /**

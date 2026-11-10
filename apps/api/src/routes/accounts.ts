@@ -4,6 +4,7 @@ import {
   type ConnectAccountDeps,
   connectAccount,
   connectDiscordAccount,
+  connectManualInstagramAccount,
   connectManualMarketplaceAccount,
   connectMercadoLibreAccount,
   type DiscordWebhooks,
@@ -47,6 +48,7 @@ import {
   connectTokenBodySchema,
   discordConnectBodySchema,
   idParamSchema,
+  instagramManualBodySchema,
   type MarketplaceLoginResponse,
   type MercadoLibreAuthorizeUrlResponse,
   marketplaceLoginBodySchema,
@@ -455,6 +457,18 @@ export function accountRoutes(deps: AccountRoutesDeps) {
         return c.json(body, 200);
       },
     )
+    .post("/instagram/manual", validated("json", instagramManualBodySchema), async (c) => {
+      const account = await connectManualInstagramAccount(
+        {
+          brokers: deps.brokers,
+          platformAccounts: deps.platformAccounts,
+          publications: deps.publications,
+        },
+        c.req.valid("json"),
+      );
+      const body: AccountResponse = { account: accountView(account) };
+      return c.json(body, 201);
+    })
     .post("/marketplace/manual", validated("json", marketplaceManualBodySchema), async (c) => {
       const account = await connectManualMarketplaceAccount(
         {

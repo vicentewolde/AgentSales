@@ -58,6 +58,75 @@ async function setup(options: { oauth?: boolean } = {}) {
   return { h, deps, connect, advance, opened };
 }
 
+describe("accounts connect instagram --manual (F9.6-T02, ADR-0041)", () => {
+  it("activa Instagram a mano para una marca, con el usuario limpio y sin token", async () => {
+    const { h, deps } = await setup();
+    await h.brokers.create(brokerData("agentpey"), { kind: "brand" });
+
+    const code = await runConnect(deps(null), "instagram", {
+      broker: "agentpey",
+      manual: true,
+      handle: "@AgentPey",
+    });
+
+    expect(code).toBe(0);
+    expect(h.text()).toContain("✓ Instagram a mano activado para agentpey (@agentpey)");
+    expect(h.requests).toContain("POST /accounts/instagram/manual");
+    const [account] = await h.platformAccounts.list(ALL_SCOPE);
+    expect(account).toMatchObject({ platform: "instagram", hasCredentials: false });
+  });
+
+  it("sin --handle, con --token-stdin, o con --handle sin --manual: se rechaza sin llamar a la API", async () => {
+    const { h, deps } = await setup();
+    await h.brokers.create(brokerData("agentpey"), { kind: "brand" });
+    const cases: [Promise<number>, string][] = [
+      [
+        runConnect(deps(null), "instagram", { broker: "agentpey", manual: true }),
+        "HANDLE_REQUIRED",
+      ],
+      [
+        runConnect(deps(), "instagram", {
+          broker: "agentpey",
+          manual: true,
+          handle: "agentpey",
+          tokenStdin: true,
+        }),
+        "OPTION_NOT_FOR_PLATFORM",
+      ],
+      [
+        runConnect(deps(), "instagram", {
+          broker: "agentpey",
+          handle: "agentpey",
+          tokenStdin: true,
+        }),
+        "OPTION_NOT_FOR_PLATFORM",
+      ],
+      [
+        runConnect(deps(), "marketplace", { broker: "agentpey", manual: true, handle: "x" }),
+        "OPTION_NOT_FOR_PLATFORM",
+      ],
+    ];
+    for (const [result, code] of cases) {
+      expect(await result).toBe(1);
+      expect(h.errors()).toContain(code);
+    }
+    expect(h.requests).toEqual([]);
+  });
+
+  it("un corredor de propiedades se rechaza con el motivo de la API", async () => {
+    const { h, deps } = await setup();
+
+    const code = await runConnect(deps(null), "instagram", {
+      broker: "marca",
+      manual: true,
+      handle: "agentpey",
+    });
+
+    expect(code).toBe(1);
+    expect(h.errors()).toContain("ACCOUNT_MODE_NOT_SUPPORTED");
+  });
+});
+
 describe("accounts connect", () => {
   it("conecta con el token de la entrada estándar sin mostrarlo ni mandarlo en la URL", async () => {
     const { h, connect } = await setup();
