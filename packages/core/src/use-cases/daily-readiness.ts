@@ -9,7 +9,7 @@ import {
   wouldPassImageAiCap,
 } from "../image-ai-budget.js";
 import { assertCan, scopeOf } from "../permissions.js";
-import { isManualAccount, MANUAL_MODE_PLATFORMS } from "../platform-account.js";
+import { accountPublishingMode } from "../platform-account.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { ContentRunRepository } from "../ports/content-repository.js";
 import type { EditorialProfileRepository } from "../ports/editorial-profile-repository.js";
@@ -96,11 +96,7 @@ export async function getDailyReadiness(
       platform: account.platform,
       displayName: account.displayName,
       status: account.status,
-      publishingMode: (MANUAL_MODE_PLATFORMS as readonly string[]).includes(account.platform)
-        ? isManualAccount(account)
-          ? "manual"
-          : "api"
-        : null,
+      publishingMode: accountPublishingMode(account),
       spendLimitUsd: x ? xSpendLimitOf(account) : null,
       spentUsd: x ? await deps.publications.sumCostUsdSince(account.id, month.from) : null,
     });

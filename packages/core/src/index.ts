@@ -424,6 +424,7 @@ export {
   type AccessTokenCredentials,
   accessTokenCredentialsSchema,
   accessTokenOf,
+  accountPublishingMode,
   accountTokenNeverExpires,
   checkConnectedCredentials,
   checkCredentials,
@@ -439,9 +440,14 @@ export {
   hasAccessToken,
   INSTAGRAM_PUBLISH_SCOPE,
   type InstagramAccountMeta,
+  type InstagramManualMeta,
   instagramAccountMetaSchema,
+  instagramHandleSchema,
+  instagramManualMetaSchema,
   isManualAccount,
+  isManualInstagramAccount,
   isManualMarketplaceAccount,
+  MANUAL_INSTAGRAM_ID_PREFIX,
   MANUAL_MARKETPLACE_ACCOUNT_ID,
   MANUAL_MODE_PLATFORMS,
   type MarketplaceAccountMeta,
@@ -451,6 +457,7 @@ export {
   MERCADOLIBRE_SITE_ID,
   type MercadoLibreAccountMeta,
   type MercadoLibreCredentials,
+  manualInstagramAccountId,
   marketplaceAccountMetaSchema,
   marketplaceManualMetaSchema,
   marketplaceProfileMetaSchema,
@@ -1094,6 +1101,10 @@ export {
   INSTAGRAM_TOKEN_DAYS,
   requireBroker,
 } from "./use-cases/connect-account.js";
+export {
+  type ConnectManualInstagramAccountDeps,
+  connectManualInstagramAccount,
+} from "./use-cases/connect-instagram-manual-account.js";
 export {
   type ConnectLinkedInAccountDeps,
   connectLinkedInAccount,

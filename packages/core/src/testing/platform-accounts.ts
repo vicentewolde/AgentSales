@@ -91,7 +91,7 @@ export function createInMemoryPlatformAccountRepository(
     return structuredCopy(account);
   };
   const upsert = async (input: ConnectedAccount): Promise<PlatformAccount> => {
-    const credentials = checkConnectedCredentials(input.platform, input.credentials);
+    const credentials = checkConnectedCredentials(input.platform, input.credentials, input.meta);
     const meta = normalizeAccountMeta(input.meta);
     checkTokenExpiry(meta, input.tokenExpiresAt);
     if (options.brokers && (await options.brokers.findById(input.brokerId)) === null) {

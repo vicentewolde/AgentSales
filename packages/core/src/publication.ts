@@ -42,7 +42,12 @@ export type InstagramProgress = z.infer<typeof instagramProgressSchema>;
  * (`socialProgressSchema`); cada publisher lo puede reemplazar por uno propio que lo extienda.
  */
 export const PUBLICATION_PROGRESS_SCHEMAS = {
-  instagram: instagramProgressSchema,
+  // Instagram: lo que creó el publisher o, en una cuenta a mano de una marca (ADR-0041), el
+  // traspaso a mano (`manual`), que nunca llama a Meta.
+  instagram: z.union([
+    instagramProgressSchema,
+    socialProgressSchema.refine((progress) => progress.manual !== undefined),
+  ]),
   portal_inmobiliario: portalProgressSchema,
   fb_marketplace: marketplaceProgressSchema,
   x: socialProgressSchema,
