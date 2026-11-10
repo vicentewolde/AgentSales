@@ -1,8 +1,10 @@
 import {
   AppError,
+  accountPublishingMode,
   type ConnectAccountDeps,
   connectAccount,
   connectDiscordAccount,
+  connectManualInstagramAccount,
   connectManualMarketplaceAccount,
   connectMercadoLibreAccount,
   type DiscordWebhooks,
@@ -10,10 +12,9 @@ import {
   discordAccountMetaSchema,
   instagramAccountMetaSchema,
   isAppError,
-  isManualAccount,
+  isManualInstagramAccount,
   type JobQueue,
   linkedinAccountMetaSchema,
-  MANUAL_MODE_PLATFORMS,
   type MercadoLibreAuth,
   marketplaceAccountMetaSchema,
   marketplaceLoginErrorText,
@@ -47,6 +48,7 @@ import {
   connectTokenBodySchema,
   discordConnectBodySchema,
   idParamSchema,
+  instagramManualBodySchema,
   type MarketplaceLoginResponse,
   type MercadoLibreAuthorizeUrlResponse,
   marketplaceLoginBodySchema,
@@ -200,6 +202,17 @@ const NO_SESSION = { sessionCheckedAt: null, lastLoginError: null, marketplaceMo
  * inicio de sesión, F5-T08: sin token ni vencimiento). `null` si no calza (una fila vieja o rota).
  */
 function shownMeta(account: PlatformAccount): ShownMeta | null {
+  if (isManualInstagramAccount(account)) {
+    // Instagram a mano de una marca (ADR-0041): sin token, permisos ni vencimiento que mostrar.
+    return {
+      tokenExpiryEstimated: false,
+      connectedAt: account.createdAt.toISOString(),
+      tokenRefreshedAt: null,
+      accountType: null,
+      permissions: null,
+      ...NO_SESSION,
+    };
+  }
   if (account.platform === "fb_marketplace") {
     const meta = marketplaceAccountMetaSchema.safeParse(account.meta);
     if (!meta.success) return null;
@@ -302,11 +315,7 @@ export function accountView(account: PlatformAccount): PlatformAccountView {
     // X (F9-T16): el tope de gasto del mes.
     ...(account.platform === "x" ? { spendLimitUsd: xSpendLimitOf(account) } : {}),
     // F9-T15: el modo de una red de contenido de marca (ADR-0029 punto 9); sin `mode`, por API.
-    publishingMode: (MANUAL_MODE_PLATFORMS as readonly string[]).includes(account.platform)
-      ? isManualAccount(account)
-        ? "manual"
-        : "api"
-      : null,
+    publishingMode: accountPublishingMode(account),
     createdAt: account.createdAt,
     updatedAt: account.updatedAt,
   };
@@ -448,6 +457,18 @@ export function accountRoutes(deps: AccountRoutesDeps) {
         return c.json(body, 200);
       },
     )
+    .post("/instagram/manual", validated("json", instagramManualBodySchema), async (c) => {
+      const account = await connectManualInstagramAccount(
+        {
+          brokers: deps.brokers,
+          platformAccounts: deps.platformAccounts,
+          publications: deps.publications,
+        },
+        c.req.valid("json"),
+      );
+      const body: AccountResponse = { account: accountView(account) };
+      return c.json(body, 201);
+    })
     .post("/marketplace/manual", validated("json", marketplaceManualBodySchema), async (c) => {
       const account = await connectManualMarketplaceAccount(
         {

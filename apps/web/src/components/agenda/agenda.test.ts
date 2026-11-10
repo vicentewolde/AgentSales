@@ -1,6 +1,6 @@
 import type { AgendaResponse, TrackingResponse } from "@agentsales/api/contracts";
 import { describe, expect, it } from "vitest";
-import { isLinkedInHandTask, recentPublications } from "./agenda.js";
+import { isHandTask, recentPublications } from "./agenda.js";
 
 // LinkedIn a mano (F9.5): qué tarea de la agenda lleva el botón de un clic y cómo se marca lo
 // confirmado sin enlace en lo publicado hace poco.
@@ -30,14 +30,17 @@ const item = (extra: Partial<Item>): Item => ({
   ...extra,
 });
 
-describe("isLinkedInHandTask", () => {
-  it("solo la tarea a mano de LinkedIn de un post con su publicación", () => {
-    expect(isLinkedInHandTask(item({}))).toBe(true);
-    expect(isLinkedInHandTask(item({ platform: "tiktok" }))).toBe(false);
-    expect(isLinkedInHandTask(item({ kind: "upcoming", action: "none" }))).toBe(false);
-    expect(isLinkedInHandTask(item({ action: "retire" }))).toBe(false);
-    expect(isLinkedInHandTask(item({ postId: null, listingId: "l1" }))).toBe(false);
-    expect(isLinkedInHandTask(item({ publicationId: null }))).toBe(false);
+describe("isHandTask", () => {
+  it("la tarea a mano de LinkedIn, X o Instagram de un post con su publicación", () => {
+    expect(isHandTask(item({}))).toBe(true);
+    expect(isHandTask(item({ platform: "x" }))).toBe(true);
+    expect(isHandTask(item({ platform: "instagram" }))).toBe(true);
+    expect(isHandTask(item({ platform: "tiktok" }))).toBe(false);
+    expect(isHandTask(item({ platform: "discord" }))).toBe(false);
+    expect(isHandTask(item({ kind: "upcoming", action: "none" }))).toBe(false);
+    expect(isHandTask(item({ action: "retire" }))).toBe(false);
+    expect(isHandTask(item({ postId: null, listingId: "l1" }))).toBe(false);
+    expect(isHandTask(item({ publicationId: null }))).toBe(false);
   });
 });
 

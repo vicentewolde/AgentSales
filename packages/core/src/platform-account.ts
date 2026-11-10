@@ -359,17 +359,19 @@ export const usesSessionProfile = (platform: Platform): boolean =>
 /**
  * Las credenciales de una cuenta que se conecta, según su plataforma (ADR-0017): Marketplace no
  * tiene (`null`) y las demás exigen la variante de su plataforma (Discord, `{ webhookUrl }`; spec
- * F9 §4.7). Errores (no reintentables, sin el valor recibido): `ACCOUNT_CREDENTIALS_REQUIRED` si
- * faltan, `ACCOUNT_CREDENTIALS_NOT_ALLOWED` si llegan a una cuenta de Marketplace (su sesión nunca
+ * F9 §4.7); Instagram a mano de una marca tampoco (ADR-0041: `meta.mode = "manual"`). Errores (no
+ * reintentables, sin el valor recibido): `ACCOUNT_CREDENTIALS_REQUIRED` si faltan, `ACCOUNT_CREDENTIALS_NOT_ALLOWED` si llegan a una cuenta de Marketplace (su sesión nunca
  * va a la base) y `CREDENTIALS_INVALID` si no calzan con su plataforma.
  */
 export function checkConnectedCredentials<P extends Platform>(
   platform: P,
   credentials: unknown,
+  meta?: Readonly<Record<string, unknown>>,
 ): NonNullable<PlatformCredentialsFor<P>> | null;
 export function checkConnectedCredentials(
   platform: Platform,
   credentials: unknown,
+  meta?: Readonly<Record<string, unknown>>,
 ): PlatformCredentials | null {
   if (usesSessionProfile(platform)) {
     if (credentials === null || credentials === undefined) return null;
@@ -380,6 +382,8 @@ export function checkConnectedCredentials(
     );
   }
   if (credentials === null || credentials === undefined) {
+    // Instagram a mano (ADR-0041): sin token ni llamadas a Meta, solo su `meta.mode = "manual"`.
+    if (platform === "instagram" && meta?.mode === "manual") return null;
     throw new AppError(
       "ACCOUNT_CREDENTIALS_REQUIRED",
       "Falta el acceso de la cuenta al conectarla",
@@ -463,9 +467,10 @@ export function isManualMarketplaceAccount(
 
 /**
  * Las redes donde una cuenta puede estar en modo `manual` por su `meta.mode` (ADR-0029 punto 9):
- * las de contenido de marca. Marketplace tiene su propio modo a mano (ADR-0023). En Instagram y
- * Portal no vale: su enlace no es su id (Portal opera el ítem por su número: sync, pausar,
- * cerrar), así que un `mode: "manual"` ahí se ignora y la cuenta publica por API como siempre.
+ * las de contenido de marca. Marketplace tiene su propio modo a mano (ADR-0023), e Instagram el
+ * suyo, solo para una marca (`isManualInstagramAccount`, ADR-0041). En Portal no vale: opera el
+ * ítem por su número (sync, pausar, cerrar), así que un `mode: "manual"` ahí se ignora y la cuenta
+ * publica por API como siempre; en una cuenta de Instagram por la API, tampoco.
  */
 export const MANUAL_MODE_PLATFORMS = [
   "linkedin",
@@ -475,17 +480,84 @@ export const MANUAL_MODE_PLATFORMS = [
 ] as const satisfies readonly Platform[];
 
 /**
+ * El usuario de una cuenta de Instagram a mano (ADR-0041): sin `@`, en minúsculas, con las letras,
+ * números, puntos y guiones bajos que acepta Instagram (hasta 30). Se limpian los espacios y el `@`
+ * de los bordes antes de revisar.
+ */
+export const instagramHandleSchema = z
+  .string()
+  .trim()
+  .transform((value) => value.replace(/^@/, "").toLowerCase())
+  .pipe(
+    z
+      .string()
+      .min(1, "Escribe el usuario de Instagram")
+      .max(30, "El usuario de Instagram tiene a lo más 30 caracteres")
+      .regex(
+        /^[a-z0-9._]+$/,
+        "El usuario de Instagram solo lleva letras, números, puntos y guiones bajos",
+      ),
+  );
+
+/** El comienzo del `external_account_id` de una cuenta de Instagram a mano (ADR-0041). */
+export const MANUAL_INSTAGRAM_ID_PREFIX = "manual:";
+
+/** El `external_account_id` de una cuenta de Instagram a mano: único por usuario (ADR-0041). */
+export const manualInstagramAccountId = (handle: string): string =>
+  `${MANUAL_INSTAGRAM_ID_PREFIX}${handle}`;
+
+/** El `meta` de una cuenta de Instagram a mano: sin credenciales ni llamadas a Meta (ADR-0041). */
+export const instagramManualMetaSchema = z.object({
+  mode: z.literal("manual"),
+  handle: instagramHandleSchema,
+});
+export type InstagramManualMeta = z.infer<typeof instagramManualMetaSchema>;
+
+/**
  * Si una cuenta publica a mano (ADR-0029 punto 9): nunca llama a la red; el intento deja el texto y
  * los medios listos (`awaiting_manual_confirm`) y el operador confirma con el enlace. En
  * Marketplace, la cuenta a mano de F7 (`isManualMarketplaceAccount`); en las redes de
  * `MANUAL_MODE_PLATFORMS`, `meta.mode = "manual"` (LinkedIn por defecto, spec F9 §4.6); en
- * Instagram y Portal, nunca. Lee solo esa clave: una `meta` vieja no falla.
+ * Instagram, solo la cuenta a mano de una marca (`isManualInstagramAccount`, ADR-0041); en Portal,
+ * nunca. Lee solo esa clave: una `meta` vieja no falla.
  */
 export function isManualAccount(
   account: Pick<PlatformAccount, "platform" | "meta"> &
     Partial<Pick<PlatformAccount, "externalAccountId">>,
 ): boolean {
   if (account.platform === "fb_marketplace") return isManualMarketplaceAccount(account);
+  if (account.platform === "instagram") return isManualInstagramAccount(account);
   if (!(MANUAL_MODE_PLATFORMS as readonly Platform[]).includes(account.platform)) return false;
   return account.meta.mode === "manual";
+}
+
+/**
+ * Si una cuenta de Instagram es la **a mano** de una marca (ADR-0041): su `external_account_id`
+ * empieza con `manual:` (lo fija `connectManualInstagramAccount`) **y** su `meta.mode` es `manual`.
+ * Una cuenta de Instagram por la API, aunque su `meta` diga `manual`, no lo es: los avisos de un
+ * corredor usan el id del medio y siguen por la API.
+ */
+export function isManualInstagramAccount(
+  account: Pick<PlatformAccount, "platform" | "meta"> &
+    Partial<Pick<PlatformAccount, "externalAccountId">>,
+): boolean {
+  return (
+    account.platform === "instagram" &&
+    account.meta.mode === "manual" &&
+    account.externalAccountId?.startsWith(MANUAL_INSTAGRAM_ID_PREFIX) === true
+  );
+}
+
+/**
+ * Cómo publica una cuenta de una red de marca, para el panel y la lista de preparación: `manual` o
+ * `api` en las redes con modo (`MANUAL_MODE_PLATFORMS`); en Instagram, `manual` solo la cuenta a
+ * mano de una marca y `null` la de la API (no tiene modo); `null` en las demás.
+ */
+export function accountPublishingMode(
+  account: Pick<PlatformAccount, "platform" | "meta"> &
+    Partial<Pick<PlatformAccount, "externalAccountId">>,
+): "manual" | "api" | null {
+  if (account.platform === "instagram") return isManualInstagramAccount(account) ? "manual" : null;
+  if (!(MANUAL_MODE_PLATFORMS as readonly Platform[]).includes(account.platform)) return null;
+  return isManualAccount(account) ? "manual" : "api";
 }

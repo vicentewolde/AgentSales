@@ -16,11 +16,12 @@ import {
   AGENDA_ACTION_TEXT,
   type AgendaItem,
   agendaItemWhen,
-  isLinkedInHandTask,
+  isHandTask,
 } from "../components/agenda/agenda.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { errorLineText } from "../components/error-messages.js";
-import { LinkedInHandTask } from "../components/posts/LinkedInHandTask.js";
+import { HandTask } from "../components/posts/HandTask.js";
+import { HAND_LABEL } from "../components/posts/hand.js";
 import { CONFIRMED_WITHOUT_LINK_TEXT, confirmedWithoutLink } from "../components/posts/linkedin.js";
 import { PublicationMode } from "../components/publications/PublicationMode.js";
 import { safeExternalUrl } from "../components/publications/publications.js";
@@ -101,11 +102,12 @@ function AgendaEntry({
       {item.action !== "none" && (
         <span className="block text-xs text-fg-muted">{AGENDA_ACTION_TEXT[item.action]}</span>
       )}
-      {/* LinkedIn a mano (F9.5): «LinkedIn: publica a mano» con el botón de un clic. */}
-      {isLinkedInHandTask(item) && (
+      {/* A mano (LinkedIn, X o Instagram): «<Red>: publica a mano» con el botón de un clic. */}
+      {isHandTask(item) && (
         <div className="mt-1">
-          <span className="font-semibold text-fg">LinkedIn: publica a mano</span>
-          <LinkedInHandTask
+          <span className="font-semibold text-fg">{HAND_LABEL[item.platform]}: publica a mano</span>
+          <HandTask
+            platform={item.platform}
             postId={item.postId}
             publicationId={item.publicationId}
             mode={{ dryRun: item.dryRun, modeFixed: item.modeFixed }}

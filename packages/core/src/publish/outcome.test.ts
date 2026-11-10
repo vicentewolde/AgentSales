@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { socialCaption } from "../content/assemble.js";
 import { AppError } from "../errors.js";
 import { requiresManualConfirm } from "../marketplace/limits.js";
-import { isManualAccount } from "../platform-account.js";
+import {
+  accountPublishingMode,
+  isManualAccount,
+  isManualInstagramAccount,
+} from "../platform-account.js";
 import { checkPublicationProgress } from "../publication.js";
 import {
   isOutcomeUnknown,
@@ -407,6 +411,28 @@ describe("cuenta a mano", () => {
     for (const platform of ["linkedin", "x", "discord", "tiktok"] as const) {
       expect(isManualAccount({ platform, meta: { mode: "manual" } })).toBe(true);
     }
+  });
+
+  it("Instagram es a mano solo con la cuenta de una marca (manual:<usuario> y meta.mode manual); su modo para el panel", () => {
+    const manual = { platform: "instagram", externalAccountId: "manual:agentpey" } as const;
+    expect(isManualAccount({ ...manual, meta: { mode: "manual", handle: "agentpey" } })).toBe(true);
+    expect(isManualInstagramAccount({ ...manual, meta: { mode: "manual" } })).toBe(true);
+    // Sin el id de la cuenta a mano, o con otro meta, es por la API.
+    expect(isManualInstagramAccount({ ...manual, meta: {} })).toBe(false);
+    expect(
+      isManualInstagramAccount({
+        platform: "instagram",
+        externalAccountId: "1789",
+        meta: { mode: "manual" },
+      }),
+    ).toBe(false);
+    expect(accountPublishingMode({ ...manual, meta: { mode: "manual" } })).toBe("manual");
+    expect(accountPublishingMode({ platform: "instagram", meta: {} })).toBeNull();
+    expect(accountPublishingMode({ platform: "linkedin", meta: { mode: "manual" } })).toBe(
+      "manual",
+    );
+    expect(accountPublishingMode({ platform: "x", meta: {} })).toBe("api");
+    expect(accountPublishingMode({ platform: "portal_inmobiliario", meta: {} })).toBeNull();
   });
 
   it("isManualAccount: meta.mode = manual en las redes de marca; en Marketplace, la cuenta a mano de F7", () => {

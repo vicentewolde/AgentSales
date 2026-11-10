@@ -411,6 +411,33 @@ En **Cuentas**, debajo del nombre de cada marca, la lista dice qué falta para p
 - **TikTok:** el video llega como **borrador** a la app del teléfono; lo publicas desde ahí, con el texto de AgentSales, y lo confirmas con su enlace. **Publicar directo espera la auditoría de TikTok** (la revisión de Production con el video demo, que no se pidió todavía).
 - **Discord, X e Instagram** salen solos a su hora con el worker encendido (o por horario).
 
+## Publicar a mano en X e Instagram (F9.6, ADR-0041)
+
+La rutina más simple para empezar: **AgentSales arma el calendario, los textos y las imágenes; tú copias, pegas y publicas** desde tu teléfono o tu computador. Sin créditos de X, sin servidor en vivo y sin el trámite de Meta. Sirve para una marca (AgentPey) en **X** e **Instagram** (y LinkedIn, que ya iba así).
+
+### Preparar una vez
+1. **X a mano:** con la cuenta de X conectada (`pnpm -s cli accounts` muestra su id), `pnpm -s cli accounts mode <id> manual`. Desde ahí, a la hora, el texto queda en «Hoy» y no se llama a X.
+2. **Instagram a mano:** crea la cuenta de Instagram de la marca desde tu teléfono (perfil con el nombre y el enlace de la marca) y actívala **solo con su usuario**, sin token:
+   ```bash
+   pnpm -s cli accounts connect instagram --broker agentpey --manual --handle <usuario>
+   ```
+   Es solo para marcas. Si la marca ya tiene una cuenta de Instagram **por la API** con publicaciones por salir, se niega (`ACCOUNT_HAS_PENDING_PUBLICATIONS`): desprográmalas o descártalas antes y repite. La cuenta por la API queda desconectada.
+3. **Cadencia de Instagram** (hoy AgentPey solo tiene X y Discord): `pnpm -s cli brand edit --broker agentpey --cadence "instagram/3/lun,mie,vie/12:00/6"` (3 por semana; ver «Dar de alta un corredor» para el formato).
+
+### Cada semana (unos 15 minutos), pidiéndoselo a Claude o con la CLI
+1. **Tú dices los días y de qué hablar** (por ejemplo «publicar lunes, miércoles y viernes; esta semana, recibos y límites de gasto»). Claude (o tú, con `pnpm -s cli plan --broker agentpey --days 7 --platform x,instagram --guidance "…"`) pide el plan, acepta las ideas buenas y redacta los textos.
+2. **Imágenes:** «Conseguir imagen» en cada post de Instagram (`pnpm -s cli post media <id> --card`): tarjetas de la marca, gratis. Las **ves en el panel** antes de aprobar (la vista previa muestra cómo se verá cada red).
+3. **Aprobar la semana** (`pnpm -s cli post approve-week --broker agentpey`): aprueba lo que no tiene errores y lo deja programado en el **Calendario**.
+
+### Cada día (2 minutos)
+Abre **Hoy**: a la hora aparece **«X: publica a mano»** o **«Instagram: publica a mano»** con su texto listo.
+- **X:** «Copiar texto y abrir X» abre el editor con el texto puesto (el enlace es de la documentación pública de X y **no se probó en esta cuenta**: si no trae el texto, ya quedó copiado, pégalo con Cmd+V).
+- **Instagram:** «Copiar texto», baja las imágenes a tu teléfono (en el teléfono, mantén apretada la imagen), abre Instagram, crea la publicación y pega el texto.
+- Después toca **«Ya lo publiqué»**: no pide el enlace. Queda «Confirmada a mano, sin enlace». Sin enlace no se abre el post desde Seguimiento ni se retira por la API (se borra a mano en la red).
+- Si no lo publicaste: «No lo publiqué» (`publications not-published <id>`), y se reintenta o se descarta.
+
+Hoy **no hay aviso por correo o WhatsApp** a la hora de cada publicación: lo que está atrasado se ve en «Hoy» y en `pnpm -s cli agenda`.
+
 ## Conectar las redes de los posts (F9)
 
 Cada marca (o corredor) publica sus posts en las cuentas que **tú** conectes. Se conectan en **Cuentas** del panel o con la CLI, con `pnpm dev` corriendo (o contra el servidor). `pnpm -s cli accounts` muestra las conectadas y, debajo, **las redes que faltan con el comando de cada una**.

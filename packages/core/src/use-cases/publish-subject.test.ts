@@ -640,18 +640,59 @@ describe("traspaso a mano por cuenta (ADR-0029 punto 9)", () => {
     ).resolves.toMatchObject({ status: "failed", lastError: { code: "MANUAL_NOT_PUBLISHED" } });
   });
 
-  it("solo LinkedIn se confirma sin enlace: las demás redes lo necesitan para identificar lo publicado", () => {
-    expect(confirmsWithoutUrl("linkedin")).toBe(true);
+  it("LinkedIn, X e Instagram se confirman sin enlace: las demás redes lo necesitan para identificar lo publicado", () => {
+    for (const platform of ["linkedin", "x", "instagram"] as const) {
+      expect(confirmsWithoutUrl(platform)).toBe(true);
+    }
     for (const platform of [
       "fb_marketplace",
       "portal_inmobiliario",
       "tiktok",
-      "x",
       "discord",
     ] as const) {
       expect(confirmsWithoutUrl(platform)).toBe(false);
     }
   });
+
+  it.each([
+    ["x", "text"],
+    ["instagram", "image"],
+  ] as const)(
+    "%s a mano se confirma sin enlace: publicada, sin id ni enlace y con la nota en la bitácora (ADR-0041)",
+    async (platform, kind) => {
+      const t = await createPostPublicationScenario({
+        kind,
+        texts: [{ platform, language: "es" }],
+        accounts: [
+          {
+            platform,
+            meta: { mode: "manual" },
+            ...(platform === "instagram" ? { externalAccountId: "manual:agentpey" } : {}),
+          },
+        ],
+      });
+      const publication = await t.toPublishing(t.publicationOf(platform));
+      await publishPublication(t.publishDeps({}), {
+        publicationId: publication.id,
+        isLastAttempt: false,
+      });
+      expect(t.current(publication.id)?.status).toBe("awaiting_manual_confirm");
+
+      const confirmed = await confirmManualPublication(
+        { ...t.subjectDeps, now: () => NOW },
+        { publicationId: publication.id, withoutUrl: true, actor: "operator" },
+      );
+      expect(confirmed).toMatchObject({
+        changed: true,
+        publication: { status: "published", externalUrl: null, externalId: null, publishedAt: NOW },
+      });
+      const events = await t.publications.listEvents(publication.id);
+      expect(events.find((event) => event.toStatus === "published")?.payload).toMatchObject({
+        confirmedBy: "operator",
+        withoutUrl: true,
+      });
+    },
+  );
 
   it.each([
     ["dry-run", true],

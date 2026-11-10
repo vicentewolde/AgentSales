@@ -18,10 +18,11 @@ export type ConfirmManualPublicationResult = { publication: Publication; changed
 
 /**
  * Las redes cuya publicación a mano se puede confirmar **sin enlace** (F9.5, «LinkedIn al mínimo
- * trabajo»): solo LinkedIn. Sin enlace no se puede abrir el post desde Seguimiento ni leer su id;
- * las demás (Marketplace, Portal, TikTok…) lo necesitan para identificar lo publicado.
+ * trabajo»; F9.6, ADR-0041: también X e Instagram): sin enlace no se puede abrir el post desde
+ * Seguimiento ni leer su id; las demás (Marketplace, Portal, TikTok…) lo necesitan para
+ * identificar lo publicado.
  */
-export const CONFIRM_WITHOUT_URL_PLATFORMS: readonly Platform[] = ["linkedin"];
+export const CONFIRM_WITHOUT_URL_PLATFORMS: readonly Platform[] = ["linkedin", "x", "instagram"];
 
 /** Si la red deja confirmar a mano sin pegar el enlace (`withoutUrl`). */
 export const confirmsWithoutUrl = (platform: Platform): boolean =>
@@ -67,7 +68,7 @@ const notWaiting = (publication: Publication, to: "published" | "failed") => {
  *   `PUBLISHED_URL_REQUIRED` en las demás) y se normaliza (`parsePublishedUrl`): en Marketplace,
  *   `external_id` = el número del aviso; en las demás, el enlace limpio. Un aviso pasa de `ready` a
  *   `active`; un post nunca (ADR-0029 punto 4).
- * - En LinkedIn, `withoutUrl: true` confirma **sin enlace** (F9.5): `external_id = null` y
+ * - En LinkedIn, X e Instagram (`CONFIRM_WITHOUT_URL_PLATFORMS`), `withoutUrl: true` confirma **sin enlace** (F9.5): `external_id = null` y
  *   `external_url = null`, como `resolvePublication`, y la bitácora lo anota (`withoutUrl`). Es opcional y explícito: sin enlace
  *   y sin `withoutUrl`, en vivo sigue siendo `PUBLISHED_URL_REQUIRED`; en las demás redes no existe
  *   (`PUBLISHED_URL_REQUIRED`, también en `dry-run`, antes del candado); con enlace y `withoutUrl` a la vez, `PUBLISHED_URL_INVALID`.

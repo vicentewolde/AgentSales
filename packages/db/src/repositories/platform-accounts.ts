@@ -131,7 +131,11 @@ export function createPlatformAccountRepository(
 
   return {
     async upsertConnected(account, options = {}) {
-      const credentials = checkConnectedCredentials(account.platform, account.credentials);
+      const credentials = checkConnectedCredentials(
+        account.platform,
+        account.credentials,
+        account.meta,
+      );
       const meta = normalizeAccountMeta(account.meta);
       checkTokenExpiry(meta, account.tokenExpiresAt);
       const values = {
