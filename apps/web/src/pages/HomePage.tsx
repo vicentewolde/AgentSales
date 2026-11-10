@@ -15,7 +15,7 @@ import {
   type AgendaItem,
   agendaItemPath,
   agendaItemWhen,
-  isLinkedInHandTask,
+  isHandTask,
   needsAction,
   platformWithFormat,
   RECENT_DAYS,
@@ -25,7 +25,8 @@ import {
 } from "../components/agenda/agenda.js";
 import { daySummary, greetingLine, todayText } from "../components/agenda/today.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
-import { LinkedInHandTask } from "../components/posts/LinkedInHandTask.js";
+import { HandTask } from "../components/posts/HandTask.js";
+import { HAND_LABEL } from "../components/posts/hand.js";
 import { CONFIRMED_WITHOUT_LINK_TEXT } from "../components/posts/linkedin.js";
 import { PublicationMode } from "../components/publications/PublicationMode.js";
 import { safeExternalUrl } from "../components/publications/publications.js";
@@ -137,14 +138,16 @@ function TodoEntry({
       : agendaItemWhen(item);
   const path = agendaItemPath(item);
   const cover = path === null ? undefined : covers.get(path);
-  // LinkedIn a mano (F9.5): la fila «LinkedIn: publica a mano» con el botón de un clic.
-  const linkedin = isLinkedInHandTask(item);
+  // A mano (LinkedIn, X o Instagram): la fila «<Red>: publica a mano» con el botón de un clic.
+  const handTask = isHandTask(item) ? item : null;
   return (
     <li className="flex gap-4 rounded-2xl bg-surface p-4 shadow-md">
       <Thumb src={cover} icon={itemIcon(item)} size="md" />
       <div className="flex min-w-0 flex-1 flex-col items-start gap-1.5">
         <Badge tone={AGENDA_KIND_TONE[item.kind]}>
-          {linkedin ? "LinkedIn: publica a mano" : AGENDA_KIND_TEXT[item.kind]}
+          {handTask !== null
+            ? `${HAND_LABEL[handTask.platform]}: publica a mano`
+            : AGENDA_KIND_TEXT[item.kind]}
         </Badge>
         <div className="min-w-0">
           <ItemTitle item={item} />
@@ -157,16 +160,17 @@ function TodoEntry({
               <span className="block text-sm text-danger-700">Error: {item.code}</span>
             )
           )}
-          {item.action !== "none" && !linkedin && (
+          {item.action !== "none" && handTask === null && (
             <span className="block text-xs font-medium text-brand-800">
               {AGENDA_ACTION_TEXT[item.action]}
             </span>
           )}
         </div>
-        {linkedin && (
-          <LinkedInHandTask
-            postId={item.postId}
-            publicationId={item.publicationId}
+        {handTask !== null && (
+          <HandTask
+            platform={handTask.platform}
+            postId={handTask.postId}
+            publicationId={handTask.publicationId}
             mode={{ dryRun: item.dryRun, modeFixed: item.modeFixed }}
             publishMode={publishMode}
           />

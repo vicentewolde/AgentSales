@@ -33,7 +33,8 @@ import {
 import { ScheduleForm } from "../publications/ScheduleForm.js";
 import { PublicationStatusBadge } from "../StatusBadge.js";
 import { Button } from "../ui/Button.js";
-import { LinkedInAssist } from "./LinkedInAssist.js";
+import { HandAssist } from "./HandAssist.js";
+import { isHandPlatform } from "./hand.js";
 import { LiveConfirmButton } from "./LiveConfirm.js";
 import { postContents } from "./labels.js";
 import {
@@ -387,8 +388,12 @@ function PublicationRow({
           con el enlace. Publicar directo espera la auditoría de TikTok.
         </p>
       )}
-      {publication.platform === "linkedin" && status === "awaiting_manual_confirm" && (
-        <LinkedInAssist content={content} downloads={linkedinDownloads(publication.media)} />
+      {isHandPlatform(publication.platform) && status === "awaiting_manual_confirm" && (
+        <HandAssist
+          platform={publication.platform}
+          content={content}
+          downloads={linkedinDownloads(publication.media)}
+        />
       )}
       {(status === "outcome_unknown" || status === "awaiting_manual_confirm") && (
         <OutcomeBox

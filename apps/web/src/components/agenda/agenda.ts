@@ -10,6 +10,7 @@ import {
   publicationFormatText,
   workerScheduleText,
 } from "@agentsales/core";
+import { type HandPlatform, isHandPlatform } from "../posts/hand.js";
 import { confirmedWithoutLink } from "../posts/linkedin.js";
 import type { BadgeTone } from "../ui/styles.js";
 
@@ -100,15 +101,17 @@ export function agendaItemPath(item: AgendaItem): string | null {
 }
 
 /**
- * Un LinkedIn a mano listo para publicar (F9.5): una tarea a mano de un post que espera tu
- * confirmación. «Hoy» y la agenda le ponen el botón de un clic en vez de mandarte al post.
+ * Una publicación a mano de LinkedIn, X o Instagram lista para publicar (F9.5 y F9.6): una tarea a
+ * mano de un post que espera tu confirmación. «Hoy» y la agenda le ponen el botón de un clic en vez
+ * de mandarte al post.
  */
-export const isLinkedInHandTask = (
+export const isHandTask = (
   item: AgendaItem,
-): item is AgendaItem & { postId: string; publicationId: string } =>
+): item is AgendaItem & { postId: string; publicationId: string; platform: HandPlatform } =>
   item.kind === "manual_task" &&
   item.action === "confirm" &&
-  item.platform === "linkedin" &&
+  item.platform !== null &&
+  isHandPlatform(item.platform) &&
   item.postId !== null &&
   item.publicationId !== null;
 

@@ -78,6 +78,12 @@ function WeekPost({ item }: { item: PostWeekItem }) {
                     LinkedIn va a mano: a su hora, en el post, «Copiar texto y abrir LinkedIn».
                   </span>
                 )}
+                {content.platform === "instagram" && (
+                  <span className="block text-xs text-fg-subtle">
+                    Si esta cuenta de Instagram es a mano, a su hora el texto y las imágenes quedan
+                    listos en «Hoy»: tú los publicas desde la app.
+                  </span>
+                )}
                 {content.platform === "tiktok" && (
                   <span className="block text-xs text-fg-subtle">
                     El video va como borrador a la app de TikTok: publicar directo espera la

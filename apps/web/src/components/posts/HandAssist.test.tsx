@@ -2,7 +2,8 @@
 import type { ContentMedia } from "@agentsales/api/contracts";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LinkedInAssist } from "./LinkedInAssist.js";
+import { HandAssist } from "./HandAssist.js";
+import { handOpenTarget, X_COMPOSE_URL, X_SHARE_URL_MAX } from "./hand.js";
 import {
   confirmedWithoutLink,
   LINKEDIN_EDITOR_URL,
@@ -92,7 +93,7 @@ describe("confirmedWithoutLink", () => {
   });
 });
 
-describe("LinkedInAssist", () => {
+describe("HandAssist · LinkedIn", () => {
   const clipboard = () => {
     const writeText = vi.fn(async () => {});
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
@@ -101,7 +102,12 @@ describe("LinkedInAssist", () => {
 
   it("abre el editor con el texto puesto en otra pestaña y lo copia de respaldo", async () => {
     const writeText = clipboard();
-    render(<LinkedInAssist content={{ body: "Hola LinkedIn", hashtags: ["#agentpey"] }} />);
+    render(
+      <HandAssist
+        platform="linkedin"
+        content={{ body: "Hola LinkedIn", hashtags: ["#agentpey"] }}
+      />,
+    );
     const link = screen.getByRole("link", { name: "Copiar texto y abrir LinkedIn" });
     expect(link.getAttribute("href")).toBe(
       `https://www.linkedin.com/feed/?shareActive=true&text=${encodeURIComponent("Hola LinkedIn\n\n#agentpey")}`,
@@ -122,7 +128,7 @@ describe("LinkedInAssist", () => {
   it("un texto muy largo abre el editor vacío, lo dice y lo deja en el portapapeles", async () => {
     const writeText = clipboard();
     const body = "palabra ".repeat(400);
-    render(<LinkedInAssist content={{ body, hashtags: [] }} />);
+    render(<HandAssist platform="linkedin" content={{ body, hashtags: [] }} />);
     const link = screen.getByRole("link", { name: "Copiar texto y abrir LinkedIn" });
     expect(link.getAttribute("href")).toBe(LINKEDIN_EDITOR_URL);
     expect(screen.getByText(/El texto es largo para ir en el enlace/)).toBeTruthy();
@@ -136,7 +142,7 @@ describe("LinkedInAssist", () => {
       value: { writeText: vi.fn(async () => Promise.reject(new Error("no"))) },
       configurable: true,
     });
-    render(<LinkedInAssist content={{ body: "Hola", hashtags: [] }} />);
+    render(<HandAssist platform="linkedin" content={{ body: "Hola", hashtags: [] }} />);
     fireEvent.click(screen.getByRole("button", { name: "Solo copiar el texto" }));
     expect(await screen.findByText(/No se pudo copiar/)).toBeTruthy();
   });
@@ -146,7 +152,13 @@ describe("LinkedInAssist", () => {
       media({ id: "a", url: "https://r2.test/a.jpg?firma" }),
       media({ id: "b", url: "https://r2.test/b.jpg?firma" }),
     ]);
-    render(<LinkedInAssist content={{ body: "Hola", hashtags: [] }} downloads={downloads} />);
+    render(
+      <HandAssist
+        platform="linkedin"
+        content={{ body: "Hola", hashtags: [] }}
+        downloads={downloads}
+      />,
+    );
     const group = screen.getByRole("group", { name: "Descargar imágenes" });
     const images = within(group).getAllByRole("img");
     expect(images).toHaveLength(2);
@@ -165,7 +177,13 @@ describe("LinkedInAssist", () => {
     const downloads = linkedinDownloads([
       media({ id: "v", variant: "ig_reel", mime: "video/mp4", url: "https://r2.test/r.mp4?firma" }),
     ]);
-    render(<LinkedInAssist content={{ body: "Hola", hashtags: [] }} downloads={downloads} />);
+    render(
+      <HandAssist
+        platform="linkedin"
+        content={{ body: "Hola", hashtags: [] }}
+        downloads={downloads}
+      />,
+    );
     const group = screen.getByRole("group", { name: "Descargar imágenes" });
     expect(within(group).queryByRole("img")).toBeNull();
     expect(group.textContent).not.toContain("arrastra");
@@ -173,10 +191,13 @@ describe("LinkedInAssist", () => {
   });
 
   it("sin medios no hay descargas; una sola imagen dice «Descargar imagen»", () => {
-    const { rerender } = render(<LinkedInAssist content={{ body: "Hola", hashtags: [] }} />);
+    const { rerender } = render(
+      <HandAssist platform="linkedin" content={{ body: "Hola", hashtags: [] }} />,
+    );
     expect(screen.queryByRole("group", { name: "Descargar imágenes" })).toBeNull();
     rerender(
-      <LinkedInAssist
+      <HandAssist
+        platform="linkedin"
         content={{ body: "Hola", hashtags: [] }}
         downloads={linkedinDownloads([media({})])}
       />,
@@ -185,10 +206,86 @@ describe("LinkedInAssist", () => {
   });
 
   it("sin el texto avisa que no lo encontró, sin botón de copiar", () => {
-    render(<LinkedInAssist content={undefined} />);
+    render(<HandAssist platform="linkedin" content={undefined} />);
     expect(screen.getByRole("status").textContent).toContain(
       "No encontré el texto aprobado de esta publicación",
     );
     expect(screen.queryByRole("link", { name: "Copiar texto y abrir LinkedIn" })).toBeNull();
+  });
+});
+
+describe("handOpenTarget (F9.6)", () => {
+  it("LinkedIn es el de LinkedIn; X abre el editor de X con el texto codificado; Instagram no tiene enlace", () => {
+    const text = "Hola: ¿qué tal?\n\n#agentpey";
+    expect(handOpenTarget("linkedin", text)).toEqual(linkedinOpenTarget(text));
+    expect(handOpenTarget("x", text)).toEqual({
+      href: `${X_COMPOSE_URL}?text=${encodeURIComponent(text)}`,
+      withText: true,
+    });
+    expect(handOpenTarget("instagram", text)).toEqual({ href: null, withText: false });
+  });
+
+  it("X con un enlace de más de 1.800 caracteres abre el editor vacío", () => {
+    const base = handOpenTarget("x", "").href?.length ?? 0;
+    const edge = handOpenTarget("x", "a".repeat(X_SHARE_URL_MAX - base));
+    expect(edge.withText).toBe(true);
+    expect(edge.href?.length).toBe(X_SHARE_URL_MAX);
+    expect(handOpenTarget("x", "a".repeat(X_SHARE_URL_MAX - base + 1))).toEqual({
+      href: X_COMPOSE_URL,
+      withText: false,
+    });
+  });
+});
+
+describe("HandAssist · X e Instagram (F9.6, ADR-0041)", () => {
+  const clipboard = () => {
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    return writeText;
+  };
+
+  it("X: «Copiar texto y abrir X» abre el editor con el texto puesto y lo copia de respaldo", async () => {
+    const writeText = clipboard();
+    render(<HandAssist platform="x" content={{ body: "Hola X", hashtags: [] }} />);
+    const link = screen.getByRole("link", { name: "Copiar texto y abrir X" });
+    expect(link.getAttribute("href")).toBe(`${X_COMPOSE_URL}?text=${encodeURIComponent("Hola X")}`);
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toContain("noopener");
+    fireEvent.click(link);
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("Hola X"));
+    expect(await screen.findByText(/Texto copiado también por si X no lo trae/)).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Publicar en X a mano" }).textContent).toContain(
+      "3. Vuelve y toca «Ya lo publiqué»",
+    );
+  });
+
+  it("Instagram: solo «Copiar texto» (sin enlace), con las imágenes para bajar", async () => {
+    const writeText = clipboard();
+    const downloads = linkedinDownloads([
+      media({ id: "a", url: "https://r2.test/a.jpg?firma" }),
+      media({ id: "b", url: "https://r2.test/b.jpg?firma" }),
+    ]);
+    render(
+      <HandAssist
+        platform="instagram"
+        content={{ body: "Hola Instagram", hashtags: ["#agentpey"] }}
+        downloads={downloads}
+      />,
+    );
+    // No hay enlace que abra Instagram con nada puesto.
+    expect(screen.queryByRole("link", { name: /Copiar texto y abrir/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Copiar texto" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("Hola Instagram\n\n#agentpey"));
+    expect(await screen.findByText(/pégalo en la descripción de Instagram/)).toBeTruthy();
+    const region = screen.getByRole("region", { name: "Publicar en Instagram a mano" });
+    expect(region.textContent).toContain("Abre Instagram, crea la publicación");
+    const group = within(region).getByRole("group", { name: "Descargar imágenes" });
+    expect(within(group).getByRole("link", { name: "Descargar imagen 2" })).toBeTruthy();
+    expect(group.textContent).toContain("Instagram no las trae solas");
+  });
+
+  it("sin el texto avisa en qué red publicarlo a mano", () => {
+    render(<HandAssist platform="instagram" content={undefined} />);
+    expect(screen.getByRole("status").textContent).toContain("publícalo a mano en Instagram");
   });
 });

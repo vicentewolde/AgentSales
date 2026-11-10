@@ -4,22 +4,25 @@ import { usePost, usePostPublicationAction } from "../../queries/posts.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 import { PublicationMode } from "../publications/PublicationMode.js";
 import { Button } from "../ui/Button.js";
-import { LinkedInOpenControl } from "./LinkedInAssist.js";
+import { HandOpenControl } from "./HandAssist.js";
+import { HAND_LABEL, type HandPlatform } from "./hand.js";
 import { linkedinDownloads } from "./linkedin.js";
 
 /**
- * «LinkedIn: publica a mano» en «Hoy» y en la agenda de Seguimiento (F9.5): el mismo botón de un
- * clic del post, sin entrar a él. 1) «Copiar texto y abrir LinkedIn», 2) «Publicar» en LinkedIn,
- * 3) «Ya lo publiqué» (sin enlace). El enlace es opcional, pero solo se puede poner **antes** de
- * confirmar: desde el post. Lee el post de la tarea para traer el texto aprobado y los medios de la
- * publicación; si no lo encuentra, manda al post. Dice el modo (simulación o en vivo).
+ * «<Red>: publica a mano» en «Hoy» y en la agenda de Seguimiento (F9.5 para LinkedIn, F9.6 para X e
+ * Instagram): el mismo botón de un clic del post, sin entrar a él. 1) «Copiar texto…», 2) publicar
+ * en la red, 3) «Ya lo publiqué» (sin enlace). El enlace es opcional, pero solo se puede poner
+ * **antes** de confirmar: desde el post. Lee el post de la tarea para traer el texto aprobado y los
+ * medios de la publicación; si no lo encuentra, manda al post. Dice el modo (simulación o en vivo).
  */
-export function LinkedInHandTask({
+export function HandTask({
+  platform,
   postId,
   publicationId,
   mode,
   publishMode,
 }: {
+  platform: HandPlatform;
   postId: string;
   publicationId: string;
   /** El modo de la publicación en la agenda (`dryRun` y si ya está fijado). */
@@ -27,6 +30,7 @@ export function LinkedInHandTask({
   /** El modo de la marca, mientras el de la publicación no está fijado. */
   publishMode?: PublishMode | undefined;
 }) {
+  const label = HAND_LABEL[platform];
   const post = usePost(postId);
   const action = usePostPublicationAction(postId);
   const detail = post.data;
@@ -43,7 +47,7 @@ export function LinkedInHandTask({
     );
   }
   if (detail === undefined) {
-    return <p className="mt-2 text-sm text-fg-muted">Cargando el texto de LinkedIn…</p>;
+    return <p className="mt-2 text-sm text-fg-muted">Cargando el texto de {label}…</p>;
   }
   const publication = detail.publications.find((item) => item.id === publicationId);
   // Ya confirmada (u otro estado) mientras la agenda no se releía: nada que hacer aquí.
@@ -56,12 +60,12 @@ export function LinkedInHandTask({
         <Link to={postPath} className="font-semibold underline underline-offset-2">
           el post
         </Link>{" "}
-        y publícalo a mano en LinkedIn.
+        y publícalo a mano en {label}.
       </p>
     );
   }
   return (
-    <section aria-label="LinkedIn: publica a mano" className="mt-2 min-w-0">
+    <section aria-label={`${label}: publica a mano`} className="mt-2 min-w-0">
       {mode.dryRun !== null && (
         <p className="mb-1.5 text-xs">
           <PublicationMode
@@ -70,7 +74,11 @@ export function LinkedInHandTask({
           />
         </p>
       )}
-      <LinkedInOpenControl content={content} downloads={linkedinDownloads(publication.media)} />
+      <HandOpenControl
+        platform={platform}
+        content={content}
+        downloads={linkedinDownloads(publication.media)}
+      />
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Button
           variant="secondary"
