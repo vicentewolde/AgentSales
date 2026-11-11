@@ -3,10 +3,14 @@ import {
   AGENDA_KIND_TEXT,
   AGENDA_KINDS,
   CLOSE_REASON_TEXT,
+  formatChileDayTime,
   formatChileTime,
+  LANGUAGE_TEXT,
   LISTING_PLATFORMS,
   PLATFORM_TEXT,
   type Platform,
+  POST_PLATFORMS,
+  type PostPlatform,
   type PublishMode,
   publicationFormatText,
 } from "@agentsales/core";
@@ -23,11 +27,17 @@ import { errorLineText } from "../components/error-messages.js";
 import { HandTask } from "../components/posts/HandTask.js";
 import { HAND_LABEL } from "../components/posts/hand.js";
 import { CONFIRMED_WITHOUT_LINK_TEXT, confirmedWithoutLink } from "../components/posts/linkedin.js";
+import {
+  isSupersededSimulation,
+  PostProgressBadge,
+  postProgress,
+  postWhen,
+} from "../components/posts/progress.js";
 import { PublicationMode } from "../components/publications/PublicationMode.js";
 import { safeExternalUrl } from "../components/publications/publications.js";
 import { PublicationStatusBadge, StatusBadge } from "../components/StatusBadge.js";
 import { PageHeader } from "../components/ui/PageHeader.js";
-import { useBrokerModeOf } from "../queries/brokers.js";
+import { useBrokerModeOf, useBrokers } from "../queries/brokers.js";
 import { useAgenda, useTracking } from "../queries/tracking.js";
 import { useBrokerFilter, useScopedBroker } from "../scope/broker-scope.js";
 
@@ -35,6 +45,7 @@ import { useBrokerFilter, useScopedBroker } from "../scope/broker-scope.js";
 // pestaña a la vista (ADR-0007).
 
 type Row = TrackingResponse["rows"][number];
+type PostRow = TrackingResponse["posts"][number];
 type Cell = Row["cells"]["instagram"][number];
 
 function AgendaEntry({
@@ -247,18 +258,21 @@ export function TrackingMatrix({
               </th>
               {LISTING_PLATFORMS.map((platform) => (
                 <td key={platform}>
-                  {row.cells[platform].length === 0 ? (
+                  {row.cells[platform].filter((publication) => !isSupersededSimulation(publication))
+                    .length === 0 ? (
                     <span className="text-fg-subtle">—</span>
                   ) : (
                     <ul className="space-y-1">
-                      {row.cells[platform].map((publication) => (
-                        <CellPublication
-                          key={publication.id}
-                          platform={platform}
-                          publication={publication}
-                          publishMode={modeOf ? modeOf(row.listing.brokerId) : publishMode}
-                        />
-                      ))}
+                      {row.cells[platform]
+                        .filter((publication) => !isSupersededSimulation(publication))
+                        .map((publication) => (
+                          <CellPublication
+                            key={publication.id}
+                            platform={platform}
+                            publication={publication}
+                            publishMode={modeOf ? modeOf(row.listing.brokerId) : publishMode}
+                          />
+                        ))}
                     </ul>
                   )}
                 </td>
@@ -271,16 +285,176 @@ export function TrackingMatrix({
   );
 }
 
-/** Seguimiento (spec F6 §4.9): la agenda y la matriz. */
+/** Una publicación de un post en su celda: idioma, estado, cuándo salió y el enlace de lo publicado. */
+function PostCellPublication({
+  platform,
+  publication,
+  publishMode,
+}: {
+  platform: Platform;
+  publication: Cell;
+  publishMode: PublishMode | undefined;
+}) {
+  const url = safeExternalUrl(publication.externalUrl);
+  const notes = [
+    publication.schedule === "overdue" ? "atrasada" : null,
+    publication.scheduledAt !== null && publication.status === "scheduled"
+      ? `para el ${formatChileDayTime(publication.scheduledAt)}`
+      : null,
+    publication.manualTask ? "tarea a mano" : null,
+    confirmedWithoutLink({ platform, ...publication }) ? CONFIRMED_WITHOUT_LINK_TEXT : null,
+    publication.lastError === null ? null : errorLineText(publication.lastError),
+  ].filter(Boolean);
+  return (
+    <li>
+      <span className="text-xs font-semibold uppercase text-fg-muted">{publication.language}</span>{" "}
+      <PublicationStatusBadge status={publication.status} />
+      <PublicationMode
+        publication={publication}
+        publishMode={publishMode}
+        liveOnly
+        className="ml-1 text-xs"
+      />
+      {publication.status === "published" && publication.publishedAt !== null && (
+        <span className="block text-xs text-fg-muted tabular-nums">
+          Salió el {formatChileDayTime(publication.publishedAt)}
+        </span>
+      )}
+      {notes.length > 0 && <span className="block text-xs text-fg-muted">{notes.join(" · ")}</span>}
+      {url !== null && (
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`Ver lo publicado en ${PLATFORM_TEXT[platform]} (${LANGUAGE_TEXT[publication.language]})`}
+          className="block text-xs text-info-700 underline"
+        >
+          Ver lo publicado
+        </a>
+      )}
+    </li>
+  );
+}
+
+/**
+ * Los posts por red: una fila por post con su avance y la fecha que importa (cuándo salió, la hora
+ * programada o la planeada), y una celda por red con cada texto (idioma), su estado y el enlace. Lo
+ * simulado que un registro real reemplazó no se muestra como «retirada».
+ */
+export function TrackingPosts({
+  posts,
+  modeOf,
+  brandOf,
+}: {
+  posts: readonly PostRow[];
+  modeOf?: (brokerId: string) => PublishMode | undefined;
+  /** La marca de cada post, cuando se mira más de una. */
+  brandOf?: (brokerId: string) => string | null;
+}) {
+  if (posts.length === 0) return <p className="mt-2 text-sm text-fg-muted">Sin posts.</p>;
+  const entries = posts
+    .map((row) => {
+      const progress = postProgress(row);
+      return { row, progress, when: postWhen(row.post.plannedAt, progress) };
+    })
+    .sort(
+      (a, b) =>
+        (b.when?.at.getTime() ?? Number.NEGATIVE_INFINITY) -
+        (a.when?.at.getTime() ?? Number.NEGATIVE_INFINITY),
+    );
+  // Solo las redes donde algún post tiene algo: las demás vacías solo ensanchan la tabla.
+  const visible = (platform: PostPlatform) => (row: PostRow) =>
+    row.cells[platform].some(
+      (publication) => !isSupersededSimulation(publication) && publication.status !== "cancelled",
+    );
+  const columns = POST_PLATFORMS.filter((platform) => posts.some(visible(platform)));
+  return (
+    <div className="mt-2 overflow-x-auto rounded-xl border border-line bg-surface shadow-xs">
+      <table className="ui-table">
+        <thead>
+          <tr>
+            <th scope="col">Post</th>
+            {columns.map((platform) => (
+              <th key={platform} scope="col">
+                {PLATFORM_TEXT[platform]}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map(({ row, progress, when }) => {
+            const brand = brandOf?.(row.post.brokerId) ?? null;
+            return (
+              <tr key={row.post.id}>
+                <th scope="row" className="min-w-48 font-normal">
+                  <Link
+                    to={`/contenido/${row.post.id}`}
+                    className="font-semibold text-fg underline-offset-2 hover:text-brand-700 hover:underline"
+                  >
+                    {row.post.topic}
+                  </Link>
+                  <span className="mt-1 block">
+                    <PostProgressBadge progress={progress} />
+                  </span>
+                  <span className="mt-1 block text-xs text-fg-muted tabular-nums">
+                    {when === null ? "Sin fecha" : `${when.label} ${formatChileDayTime(when.at)}`}
+                  </span>
+                  {brand !== null && <span className="block text-xs text-fg-subtle">{brand}</span>}
+                </th>
+                {columns.map((platform) => {
+                  const shown = row.cells[platform].filter(
+                    (publication) =>
+                      !isSupersededSimulation(publication) && publication.status !== "cancelled",
+                  );
+                  return (
+                    <td key={platform}>
+                      {shown.length === 0 ? (
+                        <span className="text-fg-subtle">—</span>
+                      ) : (
+                        <ul className="space-y-2">
+                          {shown.map((publication) => (
+                            <PostCellPublication
+                              key={publication.id}
+                              platform={platform}
+                              publication={publication}
+                              publishMode={modeOf?.(row.post.brokerId)}
+                            />
+                          ))}
+                        </ul>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/**
+ * Seguimiento (spec F6 §4.9): la agenda, los posts por red y las propiedades por plataforma. Con
+ * posts a la vista van primero; las propiedades quedan debajo, plegadas, y sin ocupar sitio si el
+ * corredor elegido no tiene ninguna.
+ */
 export function TrackingPage() {
   const [archived, setArchived] = useState(false);
   const broker = useBrokerFilter();
   const agenda = useAgenda(broker);
   const tracking = useTracking(archived, broker);
+  const brokers = useBrokers();
   // El modo de la marca (F9.5-T22, ADR-0036): en la agenda, el de la marca elegida (con «Todos» y
   // el servidor en vivo no se dice); en la matriz, el de la marca de cada propiedad.
   const modeOf = useBrokerModeOf();
   const publishMode = modeOf(useScopedBroker()?.id);
+  const postRows = tracking.data?.posts ?? [];
+  const listingRows = tracking.data?.rows ?? [];
+  const brandOf =
+    broker === undefined
+      ? (brokerId: string) => brokers.data?.find((b) => b.id === brokerId)?.brandName ?? null
+      : undefined;
   return (
     <section className="mx-auto max-w-6xl">
       <PageHeader title="Seguimiento" />
@@ -300,30 +474,50 @@ export function TrackingPage() {
         {agenda.data && <Agenda items={agenda.data} publishMode={publishMode} />}
       </section>
 
-      <section aria-labelledby="matriz-titulo" className="mt-8">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 id="matriz-titulo" className="text-lg font-semibold">
-            Propiedades por plataforma
-          </h2>
-          <label className="flex items-center gap-1 text-sm">
-            <input
-              type="checkbox"
-              checked={archived}
-              onChange={(event) => setArchived(event.target.checked)}
-            />
-            Mostrar archivadas
-          </label>
-        </div>
-        {tracking.error && (
-          <ErrorAlert
-            error={tracking.error}
-            onRetry={() => void tracking.refetch()}
-            retrying={tracking.isFetching}
+      <div className="mt-8 flex flex-wrap items-center justify-between gap-2">
+        <h2 id="posts-titulo" className="text-lg font-semibold">
+          Posts por red{tracking.data ? ` (${postRows.length})` : ""}
+        </h2>
+        <label className="flex items-center gap-1 text-sm">
+          <input
+            type="checkbox"
+            checked={archived}
+            onChange={(event) => setArchived(event.target.checked)}
           />
-        )}
-        {tracking.isPending && <p className="mt-2 text-sm text-fg-muted">Cargando…</p>}
-        {tracking.data && <TrackingMatrix rows={tracking.data.rows} modeOf={modeOf} />}
-      </section>
+          Mostrar archivadas
+        </label>
+      </div>
+      {tracking.error && (
+        <ErrorAlert
+          error={tracking.error}
+          onRetry={() => void tracking.refetch()}
+          retrying={tracking.isFetching}
+        />
+      )}
+      {tracking.isPending && <p className="mt-2 text-sm text-fg-muted">Cargando…</p>}
+      {tracking.data && (
+        <section aria-labelledby="posts-titulo">
+          <TrackingPosts posts={postRows} modeOf={modeOf} {...(brandOf ? { brandOf } : {})} />
+        </section>
+      )}
+
+      {listingRows.length > 0 ? (
+        // Plegable: las propiedades no tapan a los posts; abierta solo si no hay posts.
+        <details className="group mt-8" open={postRows.length === 0}>
+          <summary className="cursor-pointer">
+            <h2 className="inline text-lg font-semibold">
+              Propiedades por plataforma ({listingRows.length})
+            </h2>
+          </summary>
+          <TrackingMatrix rows={listingRows} modeOf={modeOf} />
+        </details>
+      ) : (
+        tracking.data && (
+          <p className="mt-6 text-sm text-fg-muted">
+            {broker === undefined ? "No hay propiedades." : "Este corredor no tiene propiedades."}
+          </p>
+        )
+      )}
     </section>
   );
 }

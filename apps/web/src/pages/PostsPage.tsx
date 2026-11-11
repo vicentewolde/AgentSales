@@ -18,7 +18,9 @@ import {
   isStale,
   type PostProgress,
   PostProgressBadge,
+  type PostWhen,
   postProgress,
+  postWhen,
   StaleDateNote,
   type TrackingPostRow,
 } from "../components/posts/progress.js";
@@ -28,7 +30,7 @@ import { PageHeader } from "../components/ui/PageHeader.js";
 import { Tip } from "../components/ui/Tip.js";
 import { useBrokers } from "../queries/brokers.js";
 import { useAcceptIdea, useDiscardIdea } from "../queries/plans.js";
-import { useArchivePosts, useCreatePost, usePosts } from "../queries/posts.js";
+import { useArchivePosts, useCreatePost, usePosts, useUpdatePost } from "../queries/posts.js";
 import { useTracking } from "../queries/tracking.js";
 import { useBrokerFilter, useRole } from "../scope/broker-scope.js";
 
@@ -209,9 +211,10 @@ const weekTitle = (week: string | null) => (week === null ? "Sin fecha" : format
  * Los posts de una lista por semana (lunes a domingo, hora de Chile). `ascending`: lo que viene,
  * de la semana más cercana a la más lejana; si no, lo pasado, de la más reciente a la más antigua.
  */
-function weeksOf<T extends { post: PostJson }>(entries: readonly T[], ascending: boolean) {
+function weeksOf<T extends { when: PostWhen | null }>(entries: readonly T[], ascending: boolean) {
+  // La semana sale de la fecha que se muestra: cuándo salió, la hora programada o la planeada.
   const groups = groupByPlanWeek(
-    entries.map((entry) => ({ ...entry, plannedAt: entry.post.plannedAt })),
+    entries.map((entry) => ({ ...entry, plannedAt: entry.when?.at ?? null })),
   );
   if (ascending) return groups;
   const dated = groups.filter((group) => group.week !== null).reverse();
@@ -284,8 +287,68 @@ function IdeaQuickActions({ post, stale }: { post: PostJson; stale: boolean }) {
   );
 }
 
+/**
+ * «Ponerle fecha» en la fila de un post sin ninguna fecha: guarda la fecha planeada (la misma de
+ * «Editar el post»), en hora de Chile. Programar fija después la hora real de cada red.
+ */
+function SetPlannedDate({ post }: { post: PostJson }) {
+  const ids = useId();
+  const update = useUpdatePost(post.id);
+  const [open, setOpen] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  if (!open) {
+    return (
+      <Button variant="secondary" size="sm" className="mt-1" onClick={() => setOpen(true)}>
+        Ponerle fecha
+      </Button>
+    );
+  }
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const value = String(new FormData(event.currentTarget).get("plannedAt") ?? "").trim();
+    if (value === "") {
+      setProblem("Elige el día y la hora.");
+      return;
+    }
+    try {
+      const plannedAt = parseChileTime(value);
+      setProblem(null);
+      update.mutate({ plannedAt }, { onSuccess: () => setOpen(false) });
+    } catch (error) {
+      setProblem(isAppError(error) ? error.message : String(error));
+    }
+  };
+  return (
+    <form onSubmit={submit} className="mt-1 flex flex-wrap items-end gap-2">
+      <label htmlFor={`${ids}-date`} className="text-xs font-medium text-fg-muted">
+        Fecha planeada (hora de Chile)
+        <Input
+          id={`${ids}-date`}
+          name="plannedAt"
+          type="datetime-local"
+          width="auto"
+          className="mt-1"
+        />
+      </label>
+      <Button type="submit" size="sm" loading={update.isPending}>
+        Guardar fecha
+      </Button>
+      <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
+        Cancelar
+      </Button>
+      {problem !== null && (
+        <p role="alert" className="basis-full text-sm text-danger-700">
+          {problem}
+        </p>
+      )}
+      {update.error && <ErrorAlert error={update.error} />}
+    </form>
+  );
+}
+
 function PostRow({
   post,
+  when,
   brand,
   cover,
   progress,
@@ -295,6 +358,7 @@ function PostRow({
 }: {
   post: PostJson;
   brand: string | null;
+  when: PostWhen | null;
   cover: PostCover | undefined;
   progress: PostProgress;
   stale: boolean;
@@ -304,6 +368,7 @@ function PostRow({
   const [confirming, setConfirming] = useState(false);
   const isPost = post.status === "draft" || post.status === "ready";
   const isIdea = post.status === "idea";
+  const archivedPost = post.status === "archived";
   return (
     <li
       className={`flex flex-wrap items-start gap-x-3 gap-y-2 rounded-xl border p-3 shadow-xs ${
@@ -325,9 +390,23 @@ function PostRow({
         >
           {post.topic}
         </Link>
-        <p className="mt-1 text-sm font-medium text-fg tabular-nums">
-          {post.plannedAt === null ? "sin fecha" : formatChileDayTime(post.plannedAt)}
-        </p>
+        {when === null ? (
+          <div className="mt-1">
+            <p className="text-sm font-medium text-fg-muted">Sin fecha</p>
+            {isPost && !archivedPost && <SetPlannedDate post={post} />}
+          </div>
+        ) : (
+          <div className="mt-1 text-sm tabular-nums">
+            <p className="font-medium text-fg">
+              {when.label} {formatChileDayTime(when.at)}
+            </p>
+            {when.kind === "scheduled" && post.plannedAt !== null && (
+              <p className="text-xs text-fg-muted">
+                Fecha planeada: {formatChileDayTime(post.plannedAt)}
+              </p>
+            )}
+          </div>
+        )}
         <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-fg-muted">
           {isPost ? (
             <PostProgressBadge progress={progress} />
@@ -418,19 +497,27 @@ export function PostsPage() {
     (tracking.data?.posts ?? []).map((row) => [row.post.id, row]),
   );
   const now = new Date();
-  const byDate = (a: PostJson, b: PostJson) =>
-    (a.plannedAt?.getTime() ?? Number.POSITIVE_INFINITY) -
-    (b.plannedAt?.getTime() ?? Number.POSITIVE_INFINITY);
-  const latestFirst = (a: PostJson, b: PostJson) => byDate(b, a);
-  const entries = (posts.data?.posts ?? []).map((post) => {
+  type Entry = { post: PostJson; progress: PostProgress; when: PostWhen | null; view: View };
+  // Se ordena por la fecha que se ve en la fila (salió, programado o planeada), no solo la planeada.
+  const byDate = (a: Entry, b: Entry) =>
+    (a.when?.at.getTime() ?? Number.POSITIVE_INFINITY) -
+    (b.when?.at.getTime() ?? Number.POSITIVE_INFINITY);
+  const latestFirst = (a: Entry, b: Entry) => byDate(b, a);
+  const entries: Entry[] = (posts.data?.posts ?? []).map((post) => {
     const progress = postProgress(trackingRows.get(post.id));
-    return { post, progress, view: viewOf(post, progress, now) };
+    return {
+      post,
+      progress,
+      when:
+        post.status === "idea"
+          ? postWhen(post.plannedAt, postProgress(undefined))
+          : postWhen(post.plannedAt, progress),
+      view: viewOf(post, progress, now),
+    };
   });
   const inView = (which: View) => entries.filter((entry) => entry.view === which);
   const shown = inView(view).sort((a, b) =>
-    view === "por-publicar" || view === "ideas"
-      ? byDate(a.post, b.post)
-      : latestFirst(a.post, b.post),
+    view === "por-publicar" || view === "ideas" ? byDate(a, b) : latestFirst(a, b),
   );
   const brandOf = (post: PostJson) =>
     role === "admin" && brokerId === undefined
@@ -574,10 +661,11 @@ export function PostsPage() {
                 aria-label={`Posts: ${VIEW_TITLE[view]} · ${weekTitle(group.week)}`}
                 className="space-y-2"
               >
-                {group.items.map(({ post, progress, view: own }) => (
+                {group.items.map(({ post, progress, when, view: own }) => (
                   <PostRow
                     key={post.id}
                     post={post}
+                    when={when}
                     brand={brandOf(post)}
                     cover={covers[post.id]}
                     progress={progress}
