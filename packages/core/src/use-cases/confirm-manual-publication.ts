@@ -73,6 +73,9 @@ const notWaiting = (publication: Publication, to: "published" | "failed") => {
  *   y sin `withoutUrl`, en vivo sigue siendo `PUBLISHED_URL_REQUIRED`; en las demás redes no existe
  *   (`PUBLISHED_URL_REQUIRED`, también en `dry-run`, antes del candado); con enlace y `withoutUrl` a la vez, `PUBLISHED_URL_INVALID`.
  * - En `dry-run`, un enlace se ignora: `external_id = dry-run:<id>`, sin enlace.
+ * - Ya publicada **sin enlace** (confirmada con `withoutUrl`, solo en vivo): un enlace nuevo se
+ *   agrega después (`setPublishedLink`, evento `manual_edit` con `linkAdded`), `changed: true`; en
+ *   `dry-run` no se guarda nada.
  * - Ya publicada: con el mismo enlace (o en `dry-run`), no cambia nada (`changed: false`); con otro,
  *   `PUBLICATION_ALREADY_CONFIRMED` (409); `withoutUrl` sobre una ya confirmada sin enlace tampoco
  *   cambia nada. En otro estado, `INVALID_TRANSITION`.
@@ -112,6 +115,20 @@ export async function confirmManualPublication(
     if (publication.status === "published") {
       if (!live || (item !== null && item.externalId === publication.externalId)) {
         return { publication, changed: false };
+      }
+      // Confirmada a mano sin enlace y ahora llega uno: se agrega, sin cambiar el estado.
+      if (
+        item !== null &&
+        publication.externalId === null &&
+        publication.externalUrl === null &&
+        confirmsWithoutUrl(publication.platform)
+      ) {
+        const withLink = await locked.repos.publications.setPublishedLink(
+          publicationId,
+          { externalId: item.externalId, externalUrl: item.url },
+          { actor, payload: { mode: "live", fields: ["link"], linkAdded: true } },
+        );
+        return { publication: withLink, changed: true };
       }
       if (skipUrl && publication.externalId === null && publication.externalUrl === null) {
         return { publication, changed: false };

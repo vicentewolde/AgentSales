@@ -580,7 +580,7 @@ describe("traspaso a mano por cuenta (ADR-0029 punto 9)", () => {
       confirmedBy: "operator",
       withoutUrl: true,
     });
-    // Dos veces lo mismo no cambia nada; con un enlace después, es otra confirmación (409).
+    // Dos veces lo mismo no cambia nada.
     await expect(
       confirmManualPublication(t.subjectDeps, {
         publicationId: publication.id,
@@ -588,15 +588,63 @@ describe("traspaso a mano por cuenta (ADR-0029 punto 9)", () => {
         actor: "cli",
       }),
     ).resolves.toMatchObject({ changed: false });
+    // El enlace se puede agregar después (solo en vivo y solo si no tenía): queda en la bitácora.
+    const url = "https://www.linkedin.com/feed/update/urn:li:share:7380000000000000000/";
+    const withLink = await confirmManualPublication(t.subjectDeps, {
+      publicationId: publication.id,
+      url: `${url}?utm_source=share`,
+      actor: "operator",
+    });
+    expect(withLink).toMatchObject({
+      changed: true,
+      publication: {
+        status: "published",
+        externalUrl: url,
+        externalId: "urn:li:share:7380000000000000000",
+      },
+    });
+    const after = await t.publications.listEvents(publication.id);
+    expect(after.at(-1)).toMatchObject({
+      type: "manual_edit",
+      payload: { linkAdded: true, mode: "live" },
+    });
+    // El mismo enlace otra vez no cambia nada; otro distinto es PUBLICATION_ALREADY_CONFIRMED.
+    await expect(
+      confirmManualPublication(t.subjectDeps, { publicationId: publication.id, url, actor: "cli" }),
+    ).resolves.toMatchObject({ changed: false });
     expect(
       await codeOf(
         confirmManualPublication(t.subjectDeps, {
           publicationId: publication.id,
-          url: "https://www.linkedin.com/feed/update/urn:li:share:7380000000000000000/",
+          url: "https://www.linkedin.com/feed/update/urn:li:share:7380000000000000001/",
           actor: "cli",
         }),
       ),
     ).toBe("PUBLICATION_ALREADY_CONFIRMED");
+  });
+
+  it("en simulación, el enlace pegado después de confirmar no se guarda", async () => {
+    const t = await manualLinkedIn();
+    const publication = await t.toPublishing(t.publicationOf("linkedin"), { dryRun: true });
+    await publishPublication(t.publishDeps({}), {
+      publicationId: publication.id,
+      isLastAttempt: false,
+    });
+    await confirmManualPublication(t.subjectDeps, {
+      publicationId: publication.id,
+      withoutUrl: true,
+      actor: "operator",
+    });
+    const before = t.current(publication.id);
+    await expect(
+      confirmManualPublication(t.subjectDeps, {
+        publicationId: publication.id,
+        url: "https://www.linkedin.com/feed/update/urn:li:share:7380000000000000000/",
+        actor: "operator",
+      }),
+    ).resolves.toMatchObject({ changed: false });
+    expect(t.current(publication.id)?.externalUrl).toBe(before?.externalUrl ?? null);
+    expect(t.current(publication.id)?.externalUrl).toBeNull();
   });
 
   it("sin enlace y sin withoutUrl sigue pidiendo el enlace; enlace y withoutUrl a la vez no valen", async () => {

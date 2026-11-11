@@ -92,8 +92,9 @@ export function OutcomeBox({
       />
       {linkOptional && (
         <p id={helpId} className="mt-1 text-fg-muted">
-          Sin el enlace no podrás abrir el post desde Seguimiento. Para tenerlo, copia el enlace de
-          la barra de direcciones (haz clic en la fecha de la publicación en LinkedIn).
+          Sin el enlace no podrás abrir el post desde Seguimiento. Si confirmas sin él, podrás
+          agregarlo después en este mismo lugar. Para tenerlo, copia el enlace de la barra de
+          direcciones (haz clic en la fecha de la publicación en LinkedIn).
         </p>
       )}
       {linkRequired && (

@@ -210,6 +210,17 @@ export interface PublicationRepository {
     event: PublicationEventInput,
   ): Promise<Publication>;
   /**
+   * Agrega el enlace a una publicación a mano ya `published` que quedó sin id ni enlace (confirmada
+   * sin enlace, F9.6): `external_id` y `external_url` solo si siguen en `null`, sin cambiar el
+   * estado, con un evento `manual_edit` en la misma transacción. Si la publicación no está
+   * `published` o ya tiene id o enlace, `PUBLICATION_STALE`.
+   */
+  setPublishedLink(
+    id: string,
+    link: { externalId: string | null; externalUrl: string | null },
+    event: PublicationEventInput,
+  ): Promise<Publication>;
+  /**
    * Guarda lo que el publisher ya creó en la plataforma, antes del paso que publica (spec F3 §4.4).
    * Solo con la publicación en `publishing`; `null` lo borra.
    */

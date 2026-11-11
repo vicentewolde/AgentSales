@@ -1,9 +1,11 @@
 import type { PublishMode } from "@agentsales/core";
+import { useId, useState } from "react";
 import { Link } from "react-router";
 import { usePost, usePostPublicationAction } from "../../queries/posts.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 import { PublicationMode } from "../publications/PublicationMode.js";
 import { Button } from "../ui/Button.js";
+import { Input } from "../ui/Field.js";
 import { HandOpenControl } from "./HandAssist.js";
 import { HAND_LABEL, type HandPlatform } from "./hand.js";
 import { linkedinDownloads } from "./linkedin.js";
@@ -11,8 +13,8 @@ import { linkedinDownloads } from "./linkedin.js";
 /**
  * «<Red>: publica a mano» en «Hoy» y en la agenda de Seguimiento (F9.5 para LinkedIn, F9.6 para X e
  * Instagram): el mismo botón de un clic del post, sin entrar a él. 1) «Copiar texto…», 2) publicar
- * en la red, 3) «Ya lo publiqué» (sin enlace). El enlace es opcional, pero solo se puede poner
- * **antes** de confirmar: desde el post. Lee el post de la tarea para traer el texto aprobado y los
+ * en la red, 3) «Ya lo publiqué». El enlace es opcional y se puede pegar aquí mismo antes de
+ * confirmar (o, si ya confirmaste sin él, agregarlo después desde el post). Lee el post de la tarea para traer el texto aprobado y los
  * medios de la publicación; si no lo encuentra, manda al post. Dice el modo (simulación o en vivo).
  */
 export function HandTask({
@@ -31,6 +33,9 @@ export function HandTask({
   publishMode?: PublishMode | undefined;
 }) {
   const label = HAND_LABEL[platform];
+  const linkId = useId();
+  const [url, setUrl] = useState("");
+  const link = url.trim() === "" ? undefined : url.trim();
   const post = usePost(postId);
   const action = usePostPublicationAction(postId);
   const detail = post.data;
@@ -79,12 +84,36 @@ export function HandTask({
         content={content}
         downloads={linkedinDownloads(publication.media)}
       />
+      <div className="mt-3 min-w-0">
+        <label htmlFor={linkId} className="mb-1 block text-xs font-medium text-fg">
+          Enlace de la publicación (opcional)
+        </label>
+        <Input
+          id={linkId}
+          type="url"
+          value={url}
+          onChange={(event) => setUrl(event.target.value)}
+          placeholder="https://"
+          autoComplete="off"
+          aria-describedby={`${linkId}-help`}
+        />
+        <p id={`${linkId}-help`} className="mt-1 text-xs text-fg-subtle">
+          Pégalo si ya lo tienes: con él podrás abrir el post desde Seguimiento. Si no, confirma sin
+          él y agrégalo después en el post.
+        </p>
+      </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Button
           variant="secondary"
           size="sm"
           loading={action.isPending}
-          onClick={() => action.mutate({ kind: "confirm", id: publicationId, withoutUrl: true })}
+          onClick={() =>
+            action.mutate(
+              link === undefined
+                ? { kind: "confirm", id: publicationId, withoutUrl: true }
+                : { kind: "confirm", id: publicationId, url: link },
+            )
+          }
         >
           Ya lo publiqué
         </Button>
@@ -92,13 +121,9 @@ export function HandTask({
           to={postPath}
           className="text-xs font-medium text-brand-800 underline underline-offset-2"
         >
-          Poner el enlace (antes de confirmar) o no la publiqué
+          Abrir el post (o si no la publiqué)
         </Link>
       </div>
-      <p className="mt-1 text-xs text-fg-subtle">
-        Sin el enlace no podrás abrir el post desde Seguimiento, y después de confirmar ya no se
-        puede agregar.
-      </p>
       {action.error && <ErrorAlert error={action.error} />}
     </section>
   );

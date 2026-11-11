@@ -178,9 +178,9 @@ export function summaryRows(
       ? {
           ...base,
           publishes: true,
-          tone: "warning",
-          state: "Aprobado, falta programarlo",
-          detail: "usa «Programar…» a la derecha",
+          tone: "info",
+          state: "Listo para publicar",
+          detail: "elige cuándo con «Programar…» a la derecha",
         }
       : {
           ...base,

@@ -8,6 +8,7 @@ import type {
 } from "@agentsales/api/contracts";
 import {
   accountOwnedBy,
+  confirmsWithoutUrl,
   formatChileDayTime,
   LANGUAGE_TEXT,
   PLATFORM_TEXT,
@@ -33,6 +34,7 @@ import {
 import { ScheduleForm } from "../publications/ScheduleForm.js";
 import { PublicationStatusBadge } from "../StatusBadge.js";
 import { Button } from "../ui/Button.js";
+import { Input } from "../ui/Field.js";
 import { HandAssist } from "./HandAssist.js";
 import { isHandPlatform } from "./hand.js";
 import { LiveConfirmButton } from "./LiveConfirm.js";
@@ -322,6 +324,65 @@ export function PostPublishBar({
   );
 }
 
+/**
+ * «Agregar el enlace» a una publicación a mano ya confirmada sin él (solo en vivo): se guarda con
+ * el mismo `confirm` y deja abrir el post desde Seguimiento. En simulación no se guarda nada y la
+ * nota lo dice.
+ */
+function AddLinkBox({
+  publicationId,
+  platform,
+  live,
+  pending,
+  error,
+  onSave,
+}: {
+  publicationId: string;
+  platform: PostPublicationView["platform"];
+  live: boolean;
+  pending: boolean;
+  error: Error | null;
+  onSave: (url: string) => void;
+}) {
+  const id = useId();
+  const [url, setUrl] = useState("");
+  const value = url.trim();
+  if (!live) {
+    return (
+      <p className="mt-2 text-xs text-fg-subtle">
+        Esta publicación es de simulación: no salió de verdad, así que aquí no se guarda ningún
+        enlace.
+      </p>
+    );
+  }
+  return (
+    <div className="mt-2 min-w-0 rounded-lg border border-line bg-canvas p-3">
+      <label htmlFor={`${id}-${publicationId}`} className="mb-1 block text-xs font-medium text-fg">
+        Agregar el enlace de la publicación en {PLATFORM_TEXT[platform]}
+      </label>
+      <div className="flex flex-wrap items-start gap-2">
+        <div className="min-w-0 flex-1 basis-56">
+          <Input
+            id={`${id}-${publicationId}`}
+            type="url"
+            value={url}
+            onChange={(event) => setUrl(event.target.value)}
+            placeholder="https://"
+            autoComplete="off"
+          />
+        </div>
+        <Button size="sm" disabled={pending || value === ""} onClick={() => onSave(value)}>
+          Guardar enlace
+        </Button>
+      </div>
+      <p className="mt-1 text-xs text-fg-subtle">
+        Con el enlace podrás abrir el post desde Seguimiento. Una vez guardado no se cambia.
+      </p>
+      {error !== null && <ErrorAlert error={error} />}
+    </div>
+  );
+}
+
 /** Una publicación del post: red, idioma, estado, hora y lo que se puede hacer con ella. */
 function PublicationRow({
   postId,
@@ -378,6 +439,18 @@ function PublicationRow({
           <span className="text-fg-muted">· {CONFIRMED_WITHOUT_LINK_TEXT}</span>
         )}
       </div>
+      {status === "published" &&
+        confirmsWithoutUrl(publication.platform) &&
+        publication.externalUrl === null && (
+          <AddLinkBox
+            publicationId={publication.id}
+            platform={publication.platform}
+            live={!publication.dryRun}
+            pending={action.isPending}
+            error={action.error}
+            onSave={(url) => action.mutate({ kind: "confirm", id: publication.id, url })}
+          />
+        )}
       {publication.lastError !== null && status === "failed" && (
         <p className="mt-2 text-danger-700">
           <ErrorLine error={publication.lastError} />

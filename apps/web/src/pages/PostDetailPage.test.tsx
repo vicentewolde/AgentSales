@@ -765,6 +765,50 @@ describe("LinkedIn a mano al mínimo trabajo (F9.5)", () => {
     );
   });
 
+  it("confirmada sin enlace en vivo: el post deja agregarlo después y queda el enlace", async () => {
+    const s = await setup();
+    const publication = await linkedinWaiting(s, false);
+    await s.open();
+    const list = screen.getByRole("region", { name: "Publicaciones" });
+    fireEvent.click(await within(list).findByRole("button", { name: "Ya lo publiqué" }));
+    expect(await within(list).findByText(/Confirmada a mano, sin enlace/)).toBeTruthy();
+    fireEvent.change(await within(list).findByLabelText(/Agregar el enlace/), {
+      target: { value: "https://www.linkedin.com/feed/update/urn:li:share:7380000000000000000/" },
+    });
+    fireEvent.click(within(list).getByRole("button", { name: "Guardar enlace" }));
+    expect(await within(list).findByRole("link", { name: /Ver en LinkedIn/ })).toBeTruthy();
+    expect(within(list).queryByLabelText(/Agregar el enlace/)).toBeNull();
+    expect((await s.deps.publications.get(publication.id))?.externalId).toBe(
+      "urn:li:share:7380000000000000000",
+    );
+  });
+
+  it("confirmada sin enlace en simulación: no hay campo, solo la nota de que no se guarda", async () => {
+    const s = await setup();
+    await linkedinWaiting(s, true);
+    await s.open();
+    const list = screen.getByRole("region", { name: "Publicaciones" });
+    fireEvent.click(await within(list).findByRole("button", { name: "Ya lo publiqué" }));
+    expect(await within(list).findByText(/aquí no se guarda ningún enlace/)).toBeTruthy();
+    expect(within(list).queryByLabelText(/Agregar el enlace/)).toBeNull();
+  });
+
+  it("en «Hoy», el enlace pegado en la fila se guarda al confirmar", async () => {
+    const s = await setup();
+    const publication = await linkedinWaiting(s, false);
+    s.renderApp("/");
+    const row = await screen.findByRole("region", { name: "LinkedIn: publica a mano" });
+    fireEvent.change(within(row).getByLabelText(/Enlace de la publicación/), {
+      target: { value: "https://www.linkedin.com/feed/update/urn:li:share:7380000000000000000/" },
+    });
+    fireEvent.click(within(row).getByRole("button", { name: "Ya lo publiqué" }));
+    await waitFor(async () =>
+      expect((await s.deps.publications.get(publication.id))?.externalId).toBe(
+        "urn:li:share:7380000000000000000",
+      ),
+    );
+  });
+
   it("en «Hoy»: la fila «LinkedIn: publica a mano» con el botón de un clic y «Ya lo publiqué», sin entrar al post", async () => {
     const s = await setup();
     const publication = await linkedinWaiting(s, true);
