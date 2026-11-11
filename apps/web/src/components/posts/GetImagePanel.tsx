@@ -490,7 +490,7 @@ export function GetImagePanel({
     return (
       <div id={GET_IMAGE_ANCHOR} className="mt-4 border-t border-line pt-4 text-sm">
         <p className="text-fg-muted">
-          Lo normal: diseña la imagen aparte y súbela en «Fotos y videos».{" "}
+          Lo normal: diseña la imagen aparte y súbela aquí.{" "}
           <Button variant="link" onClick={() => setOpen(true)}>
             {video
               ? "Armar un video con tarjetas (opcional)"
@@ -500,7 +500,7 @@ export function GetImagePanel({
         <p className="mt-1 text-xs text-fg-subtle">
           {video
             ? "Arma un video con las tarjetas de la marca y el texto del post. Cuesta US$0: se dibuja aquí, sin IA."
-            : "Tarjetas con el texto del post y tu marca (US$0) o una foto libre de Pixabay (US$0). La imagen con IA solo aparece si está configurada en el servidor y cuesta unos centavos."}
+            : "Tarjetas con el texto del post y tu marca, o una foto libre de Pixabay. Las dos cuestan US$0."}
         </p>
       </div>
     );

@@ -180,10 +180,9 @@ function RequestPlan({
         La IA propone ideas con fecha desde mañana, con el perfil editorial de la marca. Cada plan
         gasta IA de la marca, aunque descartes todo.
       </p>
-      <p className="mt-1 text-sm text-fg-muted">
-        El plan anterior no se borra: lo que aceptaste sigue en Contenido, y sus ideas sin aceptar
-        quedan como «Ideas sin aceptar» hasta que las descartes (en el plan, con «Descartar las
-        ideas que quedan», o una por una en Contenido).
+      <p className="mt-1 text-xs text-fg-muted">
+        El plan anterior no se borra: lo aceptado sigue en Contenido y sus ideas sin aceptar quedan
+        hasta que las descartes.
       </p>
       <EmptyProfileNotice brandId={brandId} />
       <form key={prefill?.nonce ?? 0} onSubmit={submit} className="mt-3 grid gap-3 md:grid-cols-2">

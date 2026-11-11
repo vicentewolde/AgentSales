@@ -82,7 +82,7 @@ describe("panel: Contenido", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: /^Ideas sin aceptar/ }));
     await waitFor(() => expect(topics()).toEqual(["Una idea del plan"]));
-    expect(screen.getByText(/Se aceptan o se descartan en Plan/)).toBeTruthy();
+    expect(screen.getByText(/Acéptalas o descártalas aquí o en Plan/)).toBeTruthy();
   });
 
   it("las listas van por semana y una idea se acepta o descarta sin salir de Contenido", async () => {

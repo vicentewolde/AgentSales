@@ -141,8 +141,10 @@ export function HashtagSuggestions({
               <button
                 type="button"
                 onClick={() => onAdd(tag)}
-                className="rounded-full border border-line bg-surface px-2.5 py-1 text-xs font-medium text-fg hover:border-brand-600 hover:text-brand-800 focus-visible:outline-2 focus-visible:outline-brand-700"
+                aria-label={`Agregar ${tag}`}
+                className="min-h-9 rounded-full border border-dashed border-brand-300 bg-brand-50 px-3 text-sm text-brand-800 hover:bg-brand-100 focus-visible:outline-2 focus-visible:outline-brand-700 pointer-coarse:min-h-11"
               >
+                <span aria-hidden="true">+ </span>
                 {tag}
               </button>
             </li>

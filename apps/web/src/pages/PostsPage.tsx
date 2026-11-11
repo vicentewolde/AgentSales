@@ -61,7 +61,7 @@ const VIEW_HELP: Readonly<Record<View, string>> = {
     "Su fecha ya pasó y no salieron. Nada se publica solo: ábrelos y cámbiales la fecha para usarlos, o archívalos si ya no sirven.",
   publicados: "Ya salieron en las redes.",
   ideas:
-    "Propuestas de la IA que aún no aceptaste: todavía no son posts. Se aceptan o se descartan en Plan; al aceptar una, pasa a «Por publicar».",
+    "Propuestas de la IA que aún no aceptaste. Acéptalas o descártalas aquí o en Plan; al aceptar una, pasa a «Por publicar».",
   archivados: "Los sacaste de las listas; no se borraron.",
 };
 
@@ -223,7 +223,7 @@ function weeksOf<T extends { post: PostJson }>(entries: readonly T[], ascending:
  * Aceptar o descartar una idea sin salir de Contenido. Aceptar la pasa a «Por publicar» y la IA
  * redacta sus textos; descartar la archiva y no se vuelve a proponer en 60 días.
  */
-function IdeaQuickActions({ post }: { post: PostJson }) {
+function IdeaQuickActions({ post, stale }: { post: PostJson; stale: boolean }) {
   const planId = post.planRunId ?? undefined;
   const accept = useAcceptIdea(planId);
   const discard = useDiscardIdea(planId);
@@ -255,6 +255,7 @@ function IdeaQuickActions({ post }: { post: PostJson }) {
             {(describedBy) => (
               <Button
                 size="sm"
+                variant={stale ? "secondary" : "primary"}
                 aria-describedby={describedBy}
                 loading={accept.isPending}
                 disabled={busy}
@@ -267,6 +268,14 @@ function IdeaQuickActions({ post }: { post: PostJson }) {
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirm(true)}>
             Descartar
           </Button>
+          {stale && (
+            <Link
+              to={post.planRunId === null ? "/plan" : `/plan?plan=${post.planRunId}`}
+              className="inline-flex min-h-9 items-center font-medium text-brand-900 underline underline-offset-2"
+            >
+              Editar la fecha en Plan →
+            </Link>
+          )}
         </>
       )}
       {accept.error && <ErrorAlert error={accept.error} />}
@@ -331,6 +340,9 @@ function PostRow({
           {brand !== null && <span className="text-fg-subtle">{brand}</span>}
         </p>
       </div>
+      {stale && post.plannedAt !== null && (
+        <StaleDateNote plannedAt={post.plannedAt} idea={isIdea} className="basis-full text-sm" />
+      )}
       {post.status !== "archived" && (
         <div className="flex w-full shrink-0 items-center justify-end gap-2 text-sm sm:w-auto">
           {confirming ? (
@@ -352,7 +364,7 @@ function PostRow({
               </Button>
             </span>
           ) : isIdea ? (
-            <IdeaQuickActions post={post} />
+            <IdeaQuickActions post={post} stale={stale} />
           ) : (
             <>
               <Link
@@ -379,9 +391,6 @@ function PostRow({
             </>
           )}
         </div>
-      )}
-      {stale && post.plannedAt !== null && (
-        <StaleDateNote plannedAt={post.plannedAt} idea={isIdea} className="basis-full text-sm" />
       )}
     </li>
   );
@@ -560,7 +569,7 @@ export function PostsPage() {
         <div className="mt-3 space-y-6">
           {weeksOf(shown, view === "por-publicar" || view === "ideas").map((group) => (
             <section key={group.week ?? "sin-fecha"} aria-label={weekTitle(group.week)}>
-              <h2 className="mb-2 text-sm font-semibold text-fg-muted">{weekTitle(group.week)}</h2>
+              <h2 className="mb-2 text-lg font-semibold text-fg">{weekTitle(group.week)}</h2>
               <ul
                 aria-label={`Posts: ${VIEW_TITLE[view]} · ${weekTitle(group.week)}`}
                 className="space-y-2"
