@@ -35,7 +35,8 @@ const topics = () =>
   screen.getAllByRole("list", { name: /^Posts/ }).flatMap((list) =>
     within(list)
       .getAllByRole("link")
-      .map((link) => link.textContent),
+      .map((link) => link.textContent)
+      .filter((text) => !/^(Abrir|Aceptar o descartar)/.test(text ?? "")),
   );
 
 describe("panel: Contenido", () => {
@@ -49,7 +50,7 @@ describe("panel: Contenido", () => {
     // Con "Todos", cada post dice de qué marca es.
     expect(screen.getAllByText("Marca vinny").length).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByRole("button", { name: /^Archivados/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /^Archivados/ }));
     await waitFor(() => expect(topics()).toEqual(["Lo que ya no va"]));
   });
 
@@ -72,14 +73,14 @@ describe("panel: Contenido", () => {
     await screen.findAllByRole("list", { name: /^Posts/ });
     // Por publicar: lo que puede salir (sin el pasado, sin ideas, sin archivados).
     expect(topics().sort()).toEqual(["Bastidores de la semana", "Producto nuevo"]);
-    expect(screen.queryByText("Esta fecha ya pasó.")).toBeNull();
+    expect(screen.queryByText(/^Fecha pasada hace/)).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: /^Fecha pasada/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /^Fecha pasada/ }));
     await waitFor(() => expect(topics()).toEqual(["Quedó en el pasado"]));
-    expect(screen.getByText("Esta fecha ya pasó.")).toBeTruthy();
+    expect(screen.getByText("Fecha pasada hace 3 días")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Archivar todos…" })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: /^Ideas sin aceptar/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /^Ideas sin aceptar/ }));
     await waitFor(() => expect(topics()).toEqual(["Una idea del plan"]));
     expect(screen.getByText(/Se aceptan o se descartan en Plan/)).toBeTruthy();
   });

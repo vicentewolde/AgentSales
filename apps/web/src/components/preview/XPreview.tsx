@@ -50,10 +50,28 @@ export function XPreview({
             aria-hidden="true"
             className="mt-3 flex max-w-xs justify-between text-xs text-fg-subtle"
           >
-            <span>💬 0</span>
-            <span>🔁 0</span>
-            <span>♡ 0</span>
-            <span>📊 0</span>
+            {[
+              "M4 5h16v11H9l-5 4z",
+              "M4 8h12l-3-3M20 16H8l3 3",
+              "M12 20s-7-4.4-7-10a4 4 0 0 1 7-2 4 4 0 0 1 7 2c0 5.6-7 10-7 10z",
+              "M5 20V10M12 20V4M19 20v-7",
+            ].map((d) => (
+              <span key={d} className="inline-flex items-center gap-1">
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  className="size-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d={d} />
+                </svg>
+                0
+              </span>
+            ))}
           </div>
         </div>
       </article>
