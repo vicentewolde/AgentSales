@@ -13,7 +13,8 @@ export function PostThumb({
   cover: PostCover | undefined;
   className?: string;
 }) {
-  const box = "relative aspect-[4/5] w-16 shrink-0 overflow-hidden rounded-lg border border-line";
+  const box =
+    "relative block aspect-[4/5] w-16 shrink-0 overflow-hidden rounded-lg border border-line";
   if (cover === undefined) {
     return (
       <span

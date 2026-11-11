@@ -49,9 +49,39 @@ describe("panel: Contenido", () => {
     // Con "Todos", cada post dice de qué marca es.
     expect(screen.getAllByText("Marca vinny").length).toBeGreaterThan(0);
 
-    fireEvent.change(screen.getByLabelText("Ver"), { target: { value: "archived" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Archivados/ }));
     await waitFor(() => expect(topics()).toEqual(["Lo que ya no va"]));
-    expect(s.requests).toContain("GET /posts?status=archived");
+  });
+
+  it("las listas tienen nombres claros: una fecha pasada va aparte y con alerta; las ideas, en otra lista", async () => {
+    const s = await setup();
+    const agentpey = s.agentpey;
+    await s.deps.posts.create({
+      brokerId: agentpey.id,
+      topic: "Quedó en el pasado",
+      kind: "image",
+      plannedAt: new Date(Date.now() - 3 * 86_400_000),
+    });
+    await s.deps.posts.create({
+      brokerId: agentpey.id,
+      topic: "Una idea del plan",
+      kind: "text",
+      status: "idea",
+    });
+    s.renderApp("/contenido");
+    await screen.findAllByRole("list", { name: /^Posts/ });
+    // Por publicar: lo que puede salir (sin el pasado, sin ideas, sin archivados).
+    expect(topics().sort()).toEqual(["Bastidores de la semana", "Producto nuevo"]);
+    expect(screen.queryByText("Esta fecha ya pasó.")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /^Fecha pasada/ }));
+    await waitFor(() => expect(topics()).toEqual(["Quedó en el pasado"]));
+    expect(screen.getByText("Esta fecha ya pasó.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Archivar todos…" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /^Ideas sin aceptar/ }));
+    await waitFor(() => expect(topics()).toEqual(["Una idea del plan"]));
+    expect(screen.getByText(/Se aceptan o se descartan en Plan/)).toBeTruthy();
   });
 
   it("con una marca elegida en el selector, solo sus posts (por su id)", async () => {

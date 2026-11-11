@@ -531,7 +531,7 @@ Para errores de las últimas 6 horas, Neon tiene además su propia restauración
 
 ## El panel, ordenado (2026-11-10)
 
-- **Contenido** separa «De hoy en adelante» (por fecha) de «Pasados» (plegado). «Archivar todos los pasados…» los saca de la lista sin borrarlos: siguen en «Solo: Archivado». Los que tienen publicaciones pendientes no se archivan.
-- **Plan** muestra «Lo que pediste» en un bloque; «Usar para un plan nuevo…» copia ese pedido, los días y las redes al formulario para ajustarlos y pedir otro. Cada idea lleva su imagen cuando ya la tiene.
+- **Contenido** es lo definitivo: los posts que se van a publicar. Sus listas (botones de arriba, con cuántos hay en cada una): **Por publicar** (con texto, todavía pueden salir), **Fecha pasada** (su fecha ya pasó y no salieron; con alerta, porque nada se publica solo: cámbiales la fecha o archívalos), **Publicados**, **Ideas sin aceptar** (propuestas del plan; no son posts hasta aceptarlas) y **Archivados** (sacados de las listas sin borrarlos). En qué va cada post (publicado, programado, atrasado, te toca a mano…) sale de Seguimiento.
+- **Plan** son ideas de la IA: al aceptar una, pasa a Contenido, y en el Plan sigues viendo en qué va (con un enlace a su post). Una idea con fecha pasada avisa que hay que editarla antes de aceptarla. Muestra «Lo que pediste» en un bloque; «Usar para un plan nuevo…» copia ese pedido, los días y las redes al formulario para ajustarlos y pedir otro. Cada idea lleva su imagen cuando ya la tiene.
 - **En un post**, «Qué se publica» dice, por red e idioma, si ese texto sale (aprobado), cuándo y en qué punto va. Lo que dice «No se publica» no necesita edición. Cada red se programa por separado: puedes dejar X para hoy e Instagram para días después (programas una, y luego vuelves a «Programar…» con la otra).
 - Pasa el mouse por un botón (o enfócalo con el teclado) y aparece qué hace.
