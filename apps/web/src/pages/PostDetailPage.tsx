@@ -312,6 +312,7 @@ export function PostDetailPage() {
   // El modo de la marca del post (F9.5-T22, ADR-0036), no el del servidor.
   const modeOf = useBrokerModeOf();
   const archive = useArchivePost(id);
+  const profile = useEditorialProfile(post.data?.post.brokerId);
   const [editing, setEditing] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
 
@@ -320,6 +321,8 @@ export function PostDetailPage() {
   const { post: item, media, contents, latestRun, publications, uploadsInReview } = post.data;
   const archived = item.status === "archived";
   const publishMode = modeOf(item.brokerId);
+  const pillarName =
+    profile.data?.pillars.find((pillar) => pillar.key === item.pillar)?.name ?? item.pillar;
   const runActive = latestRun !== null && !isTerminalContentRun(latestRun.status);
   // Una fecha pasada sin nada publicado ni a punto de salir: no es una fecha que se pueda usar.
   const stalePlannedAt =
@@ -345,7 +348,7 @@ export function PostDetailPage() {
             <>
               <p>
                 {POST_KIND_LABEL[item.kind]}
-                {item.pillar !== null && ` · línea ${item.pillar}`}
+                {item.pillar !== null && ` · línea ${pillarName}`}
                 {" · "}
                 {item.plannedAt === null
                   ? "sin fecha planeada"
@@ -467,12 +470,6 @@ export function PostDetailPage() {
           </div>
 
           <div className="min-w-0 space-y-6">
-            <XLinkControl
-              post={item}
-              contents={contents}
-              lockReason={archived ? "El post está archivado." : null}
-            />
-
             <Card as="section" aria-label="Publicar" title="Publicar y programar">
               <PostPublishBar
                 post={item}
@@ -483,6 +480,12 @@ export function PostDetailPage() {
                 lockReason={lockReason}
               />
             </Card>
+
+            <XLinkControl
+              post={item}
+              contents={contents}
+              lockReason={archived ? "El post está archivado." : null}
+            />
 
             <Card as="section" aria-label="Publicaciones" title="Publicaciones">
               <PostPublications

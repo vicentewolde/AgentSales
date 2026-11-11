@@ -218,16 +218,22 @@ function PostRow({
 }) {
   const [confirming, setConfirming] = useState(false);
   const isPost = post.status === "draft" || post.status === "ready";
+  const isIdea = post.status === "idea";
   return (
     <li
-      className={`flex items-start gap-3 rounded-xl border p-3 shadow-xs ${
-        stale ? "border-warning-200 bg-warning-50" : "border-line bg-surface"
+      className={`flex flex-wrap items-start gap-x-3 gap-y-2 rounded-xl border p-3 shadow-xs ${
+        stale
+          ? "border-warning-200 border-l-4 border-l-warning-500 bg-warning-50"
+          : "border-line bg-surface"
       }`}
     >
-      <Link to={`/contenido/${post.id}`} tabIndex={-1} aria-hidden="true">
-        <PostThumb cover={cover} />
-      </Link>
-      <div className="min-w-0 flex-1">
+      {/* Una idea sin imagen no necesita un recuadro vacío. */}
+      {!(cover === undefined && (isIdea || post.kind === "text")) && (
+        <Link to={`/contenido/${post.id}`} tabIndex={-1} aria-hidden="true">
+          <PostThumb cover={cover} />
+        </Link>
+      )}
+      <div className="min-w-0 flex-1 basis-48">
         <Link
           to={`/contenido/${post.id}`}
           className="font-semibold text-fg underline-offset-2 hover:text-brand-700 hover:underline"
@@ -237,26 +243,20 @@ function PostRow({
         <p className="mt-1 text-sm font-medium text-fg tabular-nums">
           {post.plannedAt === null ? "sin fecha" : formatChileDayTime(post.plannedAt)}
         </p>
-        <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-fg-muted">
+        <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-fg-muted">
           {isPost ? (
             <PostProgressBadge progress={progress} />
           ) : (
             <PostStatusBadge status={post.status} />
           )}
-          <span>{POST_KIND_LABEL[post.kind]}</span>
-          <span aria-hidden="true">·</span>
-          <span>{networksOf(post)}</span>
-          {brand !== null && (
-            <>
-              <span aria-hidden="true">·</span>
-              <span className="text-fg-subtle">{brand}</span>
-            </>
-          )}
+          <span>
+            {POST_KIND_LABEL[post.kind]} · {networksOf(post)}
+          </span>
+          {brand !== null && <span className="text-fg-subtle">{brand}</span>}
         </p>
-        {stale && <StaleDateNote className="mt-1 text-sm" idea={post.status === "idea"} />}
       </div>
       {post.status !== "archived" && (
-        <div className="shrink-0 text-sm">
+        <div className="flex w-full shrink-0 items-center justify-end gap-2 text-sm sm:w-auto">
           {confirming ? (
             <span className="flex flex-wrap items-center justify-end gap-2">
               ¿Archivar?
@@ -275,24 +275,43 @@ function PostRow({
                 No
               </Button>
             </span>
-          ) : (
-            <Tip
-              align="end"
-              text="Lo saca de las listas sin borrarlo: lo encuentras en «Archivados». No se puede archivar si tiene publicaciones pendientes."
+          ) : isIdea ? (
+            // Una idea no se archiva: se acepta o se descarta en el plan.
+            <Link
+              to={post.planRunId === null ? "/plan" : `/plan?plan=${post.planRunId}`}
+              className="font-medium text-brand-700 underline underline-offset-2"
             >
-              {(describedBy) => (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  aria-describedby={describedBy}
-                  onClick={() => setConfirming(true)}
-                >
-                  Archivar
-                </Button>
-              )}
-            </Tip>
+              Aceptar o descartar en Plan →
+            </Link>
+          ) : (
+            <>
+              <Link
+                to={`/contenido/${post.id}`}
+                className="inline-flex min-h-11 items-center px-2 font-medium text-brand-900 underline underline-offset-2"
+              >
+                Abrir →
+              </Link>
+              <Tip
+                align="end"
+                text="Lo saca de las listas sin borrarlo: lo encuentras en «Archivados». No se puede archivar si tiene publicaciones pendientes."
+              >
+                {(describedBy) => (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-describedby={describedBy}
+                    onClick={() => setConfirming(true)}
+                  >
+                    Archivar
+                  </Button>
+                )}
+              </Tip>
+            </>
           )}
         </div>
+      )}
+      {stale && post.plannedAt !== null && (
+        <StaleDateNote plannedAt={post.plannedAt} idea={isIdea} className="basis-full text-sm" />
       )}
     </li>
   );
@@ -355,17 +374,20 @@ export function PostsPage() {
           </>
         }
       />
-      <fieldset className="mt-4 flex min-w-0 flex-wrap gap-2 border-0 p-0">
-        <legend className="sr-only">Ver</legend>
+      <div
+        role="tablist"
+        aria-label="Ver"
+        className="mt-4 flex gap-1 overflow-x-auto border-b border-line [mask-image:linear-gradient(to_right,black_88%,transparent)] sm:[mask-image:none]"
+      >
         {VIEWS.map((value) => {
           const count = inView(value).length;
           const active = value === view;
           return (
-            <Button
+            <button
               key={value}
-              aria-pressed={active}
-              variant={active ? "primary" : "secondary"}
-              size="sm"
+              type="button"
+              role="tab"
+              aria-selected={active}
               onClick={() => {
                 const next = new URLSearchParams(params);
                 if (value === "por-publicar") next.delete("ver");
@@ -373,14 +395,33 @@ export function PostsPage() {
                 setParams(next, { replace: true });
                 setConfirmPast(false);
               }}
+              className={`-mb-px inline-flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-brand-700 ${
+                active
+                  ? "border-brand-700 font-semibold text-fg"
+                  : "border-transparent font-medium text-fg-muted hover:text-fg"
+              }`}
             >
               {VIEW_TITLE[value]}
-              {!loading && <span className="ml-1.5 tabular-nums opacity-80">{count}</span>}
-            </Button>
+              {!loading && (
+                <span
+                  className={`inline-flex min-w-6 items-center justify-center gap-1 rounded-full px-1.5 text-xs font-semibold tabular-nums ${
+                    value === "fecha-pasada" && count > 0
+                      ? "bg-warning-100 text-warning-800"
+                      : active
+                        ? "bg-brand-50 text-brand-900"
+                        : "bg-sand text-fg-muted"
+                  }`}
+                >
+                  {count}
+                </span>
+              )}
+            </button>
           );
         })}
-      </fieldset>
-      <p className="mt-2 text-sm text-fg-muted">{VIEW_HELP[view]}</p>
+      </div>
+      <p role="tabpanel" className="mt-3 text-sm text-fg-muted">
+        {VIEW_HELP[view]}
+      </p>
       {posts.error && <ErrorAlert error={posts.error} onRetry={() => void posts.refetch()} />}
       {tracking.error && (
         <p role="status" className="mt-2 text-sm text-warning-800">
@@ -397,7 +438,7 @@ export function PostsPage() {
         </p>
       )}
       {view === "fecha-pasada" && shown.length > 0 && !loading && (
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+        <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
           {confirmPast ? (
             <>
               <span>

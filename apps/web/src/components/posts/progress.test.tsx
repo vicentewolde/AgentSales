@@ -101,6 +101,6 @@ describe("la insignia y la miniatura", () => {
     );
     const box = container.firstElementChild as HTMLElement;
     expect(box.className).toContain("block");
-    expect(box.className).toContain("w-16");
+    expect(box.className).toContain("w-20");
   });
 });

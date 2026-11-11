@@ -175,13 +175,8 @@ function RequestPlan({
     );
   };
   return (
-    <section
-      id="pedir-plan"
-      aria-label="Pedir un plan"
-      className="mt-4 scroll-mt-4 rounded-xl border border-line bg-surface p-4 shadow-xs"
-    >
-      <h2 className="text-lg font-semibold">Pedir un plan</h2>
-      <p className="mt-1 text-sm text-fg-muted">
+    <section aria-label="Pedir un plan" className="px-4 pb-4">
+      <p className="text-sm text-fg-muted">
         La IA propone ideas con fecha desde mañana, con el perfil editorial de la marca. Cada plan
         gasta IA de la marca, aunque descartes todo.
       </p>
@@ -387,10 +382,17 @@ function IdeaEditForm({
 }
 
 /** En qué van los textos de una idea aceptada. */
-function textsState(idea: PlanIdeaView): string {
+function textsState(idea: PlanIdeaView, progress: PostProgress): string {
   const run = idea.latestRun;
   if (run !== null && !isTerminalContentRun(run.status)) return "La IA está redactando sus textos…";
-  if (idea.texts > 0) return `${idea.texts} texto(s): revísalos, apruébalos y prográmalos`;
+  if (progress.state === "published") return "Ya salió";
+  if (progress.state === "partial") return "Salió en parte: falta publicar el resto";
+  if (progress.state === "scheduled" || progress.state === "overdue") {
+    return progress.state === "scheduled" ? "Programado" : "Programado, pero no salió a su hora";
+  }
+  if (idea.texts > 0) {
+    return `${idea.texts} ${idea.texts === 1 ? "texto" : "textos"}: revísalos, apruébalos y prográmalos`;
+  }
   if (run?.status === "failed") {
     return `La redacción falló${run.error === null ? "" : `: ${run.error.message}`}`;
   }
@@ -429,7 +431,10 @@ function IdeaCard({
       } ${archived ? "opacity-60" : ""}`}
     >
       <div className="flex items-start gap-3">
-        <PostThumb cover={cover} />
+        {/* Una idea o un post de solo texto sin imagen no necesita un recuadro vacío. */}
+        {!(cover === undefined && (idea.status === "idea" || idea.kind === "text")) && (
+          <PostThumb cover={cover} />
+        )}
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-fg tabular-nums">
             {idea.plannedAt === null ? "sin fecha" : formatChileDayTime(idea.plannedAt)}
@@ -474,14 +479,24 @@ function IdeaCard({
           Sin esa red: {note}
         </p>
       ))}
-      {stale && <StaleDateNote className="mt-1 text-sm" idea={idea.status === "idea"} />}
+      {stale && idea.plannedAt !== null && (
+        <StaleDateNote
+          plannedAt={idea.plannedAt}
+          className="mt-1 text-sm"
+          idea={idea.status === "idea"}
+        />
+      )}
       {isPost && (
         <p role="status" className="mt-1 text-sm text-fg-muted">
-          <span>{textsState(idea)}</span>
-          {" · "}
+          {progress.state !== "overdue" && (
+            <>
+              <span>{textsState(idea, progress)}</span>
+              {" · "}
+            </>
+          )}
           <Link
             to={`/contenido/${idea.id}`}
-            className="font-medium text-brand-700 underline underline-offset-2"
+            className="font-medium text-brand-800 underline underline-offset-2"
           >
             Ya es un post: ábrelo en Contenido
           </Link>
@@ -624,49 +639,63 @@ function PlanRequestBox({ plan, onReuse }: { plan: PlanRunView; onReuse: () => v
           .map((part) => part.trim())
           .filter((part) => part !== "");
   return (
-    <section
-      aria-label="Tu pedido"
-      className="mt-3 rounded-xl border border-line bg-canvas p-4 text-sm"
-    >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <h3 className="font-semibold text-fg">Lo que pediste</h3>
-        <Tip
-          align="end"
-          text="Un plan ya pedido no se cambia. Esto copia su pedido, sus días y sus redes al formulario «Pedir un plan», para que lo ajustes y pidas otro. Las ideas de este plan no se tocan."
-        >
-          {(describedBy) => (
-            <Button variant="secondary" size="sm" aria-describedby={describedBy} onClick={onReuse}>
-              Usar para un plan nuevo…
-            </Button>
+    <section aria-label="Tu pedido" className="mt-3">
+      <details className="rounded-xl border border-line bg-canvas p-4 text-sm">
+        <summary className="cursor-pointer font-semibold text-fg">
+          Lo que pediste{" "}
+          <span className="font-normal text-fg-muted">
+            · {planDays(plan)} días · {networksText(plan.platforms)}
+          </span>
+        </summary>
+        <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
+          <span className="text-fg-muted">
+            Un plan ya pedido no se cambia; puedes usarlo de base.
+          </span>
+          <Tip
+            align="end"
+            text="Un plan ya pedido no se cambia. Esto copia su pedido, sus días y sus redes al formulario «Pedir un plan», para que lo ajustes y pidas otro. Las ideas de este plan no se tocan."
+          >
+            {(describedBy) => (
+              <Button
+                variant="secondary"
+                size="sm"
+                aria-describedby={describedBy}
+                onClick={onReuse}
+              >
+                Usar para un plan nuevo…
+              </Button>
+            )}
+          </Tip>
+        </div>
+        <dl className="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-[auto_1fr]">
+          <dt className="font-medium text-fg-muted">Días</dt>
+          <dd>
+            {planDays(plan)} ({formatChileDay(plan.firstDay)} al {formatChileDay(plan.lastDay)})
+          </dd>
+          <dt className="font-medium text-fg-muted">Redes</dt>
+          <dd>{networksText(plan.platforms)}</dd>
+          {plan.count !== null && (
+            <>
+              <dt className="font-medium text-fg-muted">Ideas</dt>
+              <dd>{plan.count}</dd>
+            </>
           )}
-        </Tip>
-      </div>
-      <dl className="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-[auto_1fr]">
-        <dt className="font-medium text-fg-muted">Días</dt>
-        <dd>
-          {planDays(plan)} ({formatChileDay(plan.firstDay)} al {formatChileDay(plan.lastDay)})
-        </dd>
-        <dt className="font-medium text-fg-muted">Redes</dt>
-        <dd>{networksText(plan.platforms)}</dd>
-        {plan.count !== null && (
-          <>
-            <dt className="font-medium text-fg-muted">Ideas</dt>
-            <dd>{plan.count}</dd>
-          </>
-        )}
-        <dt className="font-medium text-fg-muted">Qué tratar</dt>
-        <dd>
-          {parts.length === 0 ? (
-            <span className="text-fg-subtle">Nada en particular: la IA elige según el perfil.</span>
-          ) : (
-            <ul className="list-disc space-y-1 pl-5">
-              {parts.map((part) => (
-                <li key={part}>{part}</li>
-              ))}
-            </ul>
-          )}
-        </dd>
-      </dl>
+          <dt className="font-medium text-fg-muted">Qué tratar</dt>
+          <dd>
+            {parts.length === 0 ? (
+              <span className="text-fg-subtle">
+                Nada en particular: la IA elige según el perfil.
+              </span>
+            ) : (
+              <ul className="list-disc space-y-1 pl-5">
+                {parts.map((part) => (
+                  <li key={part}>{part}</li>
+                ))}
+              </ul>
+            )}
+          </dd>
+        </dl>
+      </details>
     </section>
   );
 }
@@ -701,25 +730,36 @@ function PlanView({
       {plan.status === "succeeded" && (
         <>
           <div className="mt-3 rounded-md border border-info-200 bg-info-50 p-3 text-sm text-info-800">
-            <p className="font-semibold">¿Qué es esto y qué es lo definitivo?</p>
-            <ul className="mt-1 list-disc space-y-1 pl-5">
-              <li>
-                <strong>Plan</strong> (esta página) son <strong>ideas</strong> que propuso la IA.
-                Una «Idea» todavía no es un post: puedes aceptarla, editarla o descartarla.
-              </li>
-              <li>
-                Al <strong>aceptar</strong> una, la IA redacta sus textos y pasa a{" "}
-                <Link to="/contenido" className="font-medium underline underline-offset-2">
-                  Contenido
-                </Link>
-                , que es <strong>lo definitivo</strong>: ahí revisas el texto, lo apruebas y lo
-                programas (o toda la semana de una vez con «Aprobar la semana»).
-              </li>
-              <li>
-                Las aceptadas siguen apareciendo aquí solo para que veas en qué van. Nada se publica
-                sin que lo apruebes y lo programes.
-              </li>
-            </ul>
+            <p>
+              <strong>Plan = ideas. Contenido = lo definitivo.</strong> Al aceptar una idea pasa a{" "}
+              <Link to="/contenido" className="font-medium underline underline-offset-2">
+                Contenido
+              </Link>
+              , donde la apruebas y la programas. Nada sale sin tu aprobación.
+            </p>
+            <details className="mt-1">
+              <summary className="cursor-pointer font-medium">
+                ¿Qué es esto y qué es lo definitivo?
+              </summary>
+              <ul className="mt-1 list-disc space-y-1 pl-5">
+                <li>
+                  <strong>Plan</strong> (esta página) son <strong>ideas</strong> que propuso la IA.
+                  Una «Idea» todavía no es un post: puedes aceptarla, editarla o descartarla.
+                </li>
+                <li>
+                  Al <strong>aceptar</strong> una, la IA redacta sus textos y pasa a{" "}
+                  <Link to="/contenido" className="font-medium underline underline-offset-2">
+                    Contenido
+                  </Link>
+                  , que es <strong>lo definitivo</strong>: ahí revisas el texto, lo apruebas y lo
+                  programas (o toda la semana de una vez con «Aprobar la semana»).
+                </li>
+                <li>
+                  Las aceptadas siguen apareciendo aquí solo para que veas en qué van. Nada se
+                  publica sin que lo apruebes y lo programes.
+                </li>
+              </ul>
+            </details>
           </div>
           <DraftAccepted planId={plan.id} ideas={ideas} />
           {ideas.length === 0 && (
@@ -734,7 +774,14 @@ function PlanView({
               </h3>
               {/* F9.5-T27: aprobar y programar de una vez lo aceptado de la semana. */}
               {group.week !== null &&
-                group.items.some((idea) => idea.status === "draft" || idea.status === "ready") && (
+                group.items.some((idea) => {
+                  const progress = postProgress(trackingRows.get(idea.id));
+                  return (
+                    (idea.status === "draft" || idea.status === "ready") &&
+                    (progress.state === "none" || progress.state === "approved") &&
+                    !isStale(idea.plannedAt, progress)
+                  );
+                }) && (
                   <div className="mt-2">
                     <ApproveWeek brandId={brandId} week={group.week} />
                   </div>
@@ -792,6 +839,8 @@ export function PlanPage() {
   const [params, setParams] = useSearchParams();
   const [reusedNote, setReusedNote] = useState<"no" | "same" | "guidance-ignored">("no");
   const [prefill, setPrefill] = useState<PlanPrefill | null>(null);
+  // `null`: abierto solo si la marca todavía no tiene planes; después manda lo que elija el usuario.
+  const [requestOpen, setRequestOpen] = useState<boolean | null>(null);
   const plans = usePlans(
     role === "admin" ? brandId : undefined,
     role !== null && brandId !== undefined,
@@ -828,14 +877,26 @@ export function PlanPage() {
       )}
       {brandId !== undefined && (
         <>
-          <RequestPlan
-            brandId={brandId}
-            prefill={prefill}
-            onRequested={(id, reused) => {
-              setReusedNote(reused);
-              select(id);
-            }}
-          />
+          {/* Pedir un plan se hace una vez a la semana: plegado si ya hay uno, para ver primero las ideas. */}
+          <details
+            id="pedir-plan"
+            open={requestOpen ?? plans.data?.length === 0}
+            onToggle={(event) => setRequestOpen(event.currentTarget.open)}
+            className="mt-4 scroll-mt-4 rounded-xl border border-line bg-surface shadow-xs"
+          >
+            <summary className="cursor-pointer p-4 text-lg font-semibold">
+              Pedir un plan nuevo
+            </summary>
+            <RequestPlan
+              brandId={brandId}
+              prefill={prefill}
+              onRequested={(id, reused) => {
+                setReusedNote(reused);
+                setRequestOpen(false);
+                select(id);
+              }}
+            />
+          </details>
           {reusedNote !== "no" && (
             <p role="status" className="mt-2 text-sm text-warning-800">
               {reusedNote === "guidance-ignored"
@@ -875,6 +936,7 @@ export function PlanPage() {
               brandId={brandId}
               onReuse={() => {
                 const { guidance, platforms } = detail.plan;
+                setRequestOpen(true);
                 setPrefill({
                   nonce: (prefill?.nonce ?? 0) + 1,
                   guidance: guidance ?? "",

@@ -105,19 +105,46 @@ export function PostProgressBadge({ progress }: { progress: PostProgress }) {
   return <Badge tone={PROGRESS_TONE[progress.state]}>{POST_PROGRESS_LABEL[progress.state]}</Badge>;
 }
 
+/** «hoy», «hace 1 día», «hace 3 días»: cuánto pasó desde una fecha. */
+export function daysAgoText(date: Date, now: Date = new Date()): string {
+  const days = Math.floor((now.getTime() - date.getTime()) / 86_400_000);
+  if (days <= 0) return "hoy, hace unas horas";
+  return days === 1 ? "hace 1 día" : `hace ${days} días`;
+}
+
 /**
- * La alerta de una fecha que ya pasó sin que el post saliera. En una idea (aún no es un post) el
- * remedio es otro: cambiar la fecha antes de aceptarla.
+ * La alerta de una fecha que ya pasó sin que el post saliera, en una línea y con cuánto pasó. El
+ * remedio largo va en la ayuda de la lista y en el detalle del post. En una idea (aún no es un
+ * post) el remedio es otro: editar la fecha antes de aceptarla.
  */
-export function StaleDateNote({ className, idea = false }: { className?: string; idea?: boolean }) {
+export function StaleDateNote({
+  plannedAt,
+  className,
+  idea = false,
+}: {
+  plannedAt: Date;
+  className?: string;
+  idea?: boolean;
+}) {
   return (
     <p role="status" className={className}>
-      <span className="font-semibold text-warning-800">Esta fecha ya pasó.</span>{" "}
-      <span className="text-fg-muted">
-        {idea
-          ? "Edita la fecha antes de aceptar la idea, o descártala."
-          : "No salió y no se publica sola: cámbiale la fecha para usarlo, o archívalo si ya no sirve."}
+      <span className="inline-flex items-center gap-1.5 font-semibold text-warning-800">
+        <svg
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          className="size-4 shrink-0"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M12 3 2.5 20h19z" />
+          <path d="M12 10v4M12 17.2v.1" />
+        </svg>
+        Fecha pasada {daysAgoText(plannedAt)}
       </span>
+      {idea && <span className="text-fg-muted"> · edítala antes de aceptar la idea</span>}
     </p>
   );
 }

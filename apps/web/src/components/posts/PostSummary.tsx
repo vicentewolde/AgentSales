@@ -179,11 +179,9 @@ export function PostSummary({
         {rows.map((row) => (
           <li
             key={row.key}
-            className={`flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm first:pt-0 last:pb-0 ${
-              row.publishes ? "" : "opacity-60"
-            }`}
+            className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm first:pt-0 last:pb-0"
           >
-            <span className="w-40 font-semibold text-fg">
+            <span className={`w-40 font-semibold ${row.publishes ? "text-fg" : "text-fg-muted"}`}>
               {PLATFORM_TEXT[row.platform]} · {LANGUAGE_TEXT[row.language]}
             </span>
             <Badge tone={row.tone}>{row.state}</Badge>

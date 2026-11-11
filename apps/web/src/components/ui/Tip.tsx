@@ -26,8 +26,10 @@ export function Tip({
         id={id}
         role="tooltip"
         className={cx(
-          "pointer-events-none invisible absolute top-full z-30 mt-1.5 w-72 max-w-[80vw] rounded-lg border border-line bg-surface p-3 text-left text-xs font-normal leading-relaxed text-fg opacity-0 shadow-lg transition-opacity",
-          "group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100",
+          // `hidden` (no `invisible`): un globo invisible igual ocupa ancho y la página se desplaza
+          // de lado en el celular.
+          "pointer-events-none absolute top-full z-30 mt-1.5 hidden w-72 max-w-[min(18rem,calc(100vw-2rem))] rounded-lg border border-line bg-surface p-3 text-left text-xs font-normal leading-relaxed text-fg shadow-lg",
+          "group-hover:block group-focus-within:block",
           align === "end" ? "right-0" : "left-0",
         )}
       >
