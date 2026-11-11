@@ -32,6 +32,7 @@ function withUserEvents(
     reschedule: (id, change, event) => publications.reschedule(id, change, withUser(event)),
     replacePublishedSource: (id, guard, source, event) =>
       publications.replacePublishedSource(id, guard, source, withUser(event)),
+    setPublishedLink: (id, link, event) => publications.setPublishedLink(id, link, withUser(event)),
     setRemoteState: (id, remoteState, event) =>
       publications.setRemoteState(
         id,

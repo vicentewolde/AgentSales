@@ -49,7 +49,7 @@ describe("summaryRows", () => {
     );
     expect(rows.map((row) => [row.key, row.publishes, row.state, row.detail])).toEqual([
       ["x:en", true, "Programado", "jue 12 nov · 12:00 (simulación)"],
-      ["instagram:en", true, "Aprobado, falta programarlo", "usa «Programar…» a la derecha"],
+      ["instagram:en", true, "Listo para publicar", "elige cuándo con «Programar…» a la derecha"],
       ["x:es", false, "No se publica", "falta aprobar este texto"],
     ]);
   });
@@ -70,7 +70,7 @@ describe("summaryRows", () => {
     );
     expect(rows.map((row) => row.state)).toEqual([
       "Te toca publicarlo a mano",
-      "Aprobado, falta programarlo",
+      "Listo para publicar",
     ]);
   });
 });

@@ -19,7 +19,7 @@ import {
   TERMINAL_PUBLICATION_STATUSES,
   xSpendLimitReached,
 } from "@agentsales/core";
-import { and, asc, eq, gte, inArray, lt, lte, ne, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, lt, lte, ne, notInArray, or, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { isUniqueViolation, sqlStateOf, withDbErrors } from "../errors.js";
 import { platformAccounts, publicationEvents, publications } from "../schema.js";
@@ -462,6 +462,44 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
               updatedAt: sql`clock_timestamp()`,
             })
             .where(and(eq(publications.id, id), eq(publications.status, guard.from)))
+            .returning();
+          if (updated === undefined) return undefined;
+          await insertEvent(tx, id, {
+            type: "manual_edit",
+            fromStatus: null,
+            toStatus: null,
+            actor: event.actor,
+            userId: event.userId ?? null,
+            payload,
+          });
+          return updated;
+        }),
+      );
+      if (row === undefined) throw publicationStale(id);
+      return toPublication(row);
+    },
+
+    async setPublishedLink(id, link, event) {
+      const current = await findRow(id);
+      if (current === undefined) throw notFound(id);
+      const payload = normalizeEventPayload(event.payload);
+      const row = await withDbErrors(() =>
+        db.transaction(async (tx) => {
+          const [updated] = await tx
+            .update(publications)
+            .set({
+              externalId: link.externalId,
+              externalUrl: link.externalUrl,
+              updatedAt: sql`clock_timestamp()`,
+            })
+            .where(
+              and(
+                eq(publications.id, id),
+                eq(publications.status, "published"),
+                isNull(publications.externalId),
+                isNull(publications.externalUrl),
+              ),
+            )
             .returning();
           if (updated === undefined) return undefined;
           await insertEvent(tx, id, {

@@ -946,6 +946,34 @@ export function publicationRepositoryContract(
       expect((await repos.publications.get(created.id))?.listingSourceHash).toBe("hash-2");
     });
 
+    it("setPublishedLink agrega el enlace solo a una publicada sin id ni enlace, con manual_edit", async () => {
+      const input = await newPublication();
+      const created = await repos.publications.create(input, operator);
+      await repos.publications.transition(
+        created.id,
+        { from: "approved", to: "publishing", changes: { dryRun: false } },
+        operator,
+      );
+      await repos.publications.transition(
+        created.id,
+        { from: "publishing", to: "published", changes: { externalId: null, externalUrl: null } },
+        { actor: "system" },
+      );
+      const link = { externalId: "ig-1", externalUrl: "https://www.instagram.com/p/abc/" };
+      const updated = await repos.publications.setPublishedLink(created.id, link, {
+        actor: "operator",
+        payload: { mode: "live", fields: ["link"], linkAdded: true },
+      });
+      expect(updated).toMatchObject({ status: "published", ...link });
+      expect((await repos.publications.listEvents(created.id)).at(-1)).toMatchObject({
+        type: "manual_edit",
+        payload: { linkAdded: true },
+      });
+      await expect(
+        repos.publications.setPublishedLink(created.id, link, operator),
+      ).rejects.toMatchObject({ code: "PUBLICATION_STALE" });
+    });
+
     it("replacePublishedSource es solo de Portal publicada o pausada (ADR-0020)", async () => {
       const input = await newPublication();
       const instagram = await repos.publications.create(input, operator);

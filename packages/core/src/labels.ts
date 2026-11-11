@@ -471,6 +471,7 @@ export function publicationEventDetail(event: {
     return "Meta pidió borrar los datos de la cuenta de Instagram: se borraron el enlace y el id";
   }
   if (event.type === "manual_edit") {
+    if (payload.linkAdded === true) return "se agregó el enlace después de confirmar";
     const fields = Array.isArray(payload.fields) ? payload.fields.join(", ") : "";
     return `actualizada en Portal${fields === "" ? "" : `: ${fields}`}`;
   }
