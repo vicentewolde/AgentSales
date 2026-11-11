@@ -431,7 +431,10 @@ function IdeaCard({
       } ${archived ? "opacity-60" : ""}`}
     >
       <div className="flex items-start gap-3">
-        <PostThumb cover={cover} />
+        {/* Una idea o un post de solo texto sin imagen no necesita un recuadro vacío. */}
+        {!(cover === undefined && (idea.status === "idea" || idea.kind === "text")) && (
+          <PostThumb cover={cover} />
+        )}
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-fg tabular-nums">
             {idea.plannedAt === null ? "sin fecha" : formatChileDayTime(idea.plannedAt)}
@@ -485,11 +488,15 @@ function IdeaCard({
       )}
       {isPost && (
         <p role="status" className="mt-1 text-sm text-fg-muted">
-          <span>{textsState(idea, progress)}</span>
-          {" · "}
+          {progress.state !== "overdue" && (
+            <>
+              <span>{textsState(idea, progress)}</span>
+              {" · "}
+            </>
+          )}
           <Link
             to={`/contenido/${idea.id}`}
-            className="font-medium text-brand-700 underline underline-offset-2"
+            className="font-medium text-brand-800 underline underline-offset-2"
           >
             Ya es un post: ábrelo en Contenido
           </Link>

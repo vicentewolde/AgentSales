@@ -228,7 +228,7 @@ function PostRow({
       }`}
     >
       {/* Una idea sin imagen no necesita un recuadro vacío. */}
-      {!(isIdea && cover === undefined) && (
+      {!(cover === undefined && (isIdea || post.kind === "text")) && (
         <Link to={`/contenido/${post.id}`} tabIndex={-1} aria-hidden="true">
           <PostThumb cover={cover} />
         </Link>
@@ -287,7 +287,7 @@ function PostRow({
             <>
               <Link
                 to={`/contenido/${post.id}`}
-                className="px-2 font-medium text-brand-700 underline underline-offset-2"
+                className="inline-flex min-h-11 items-center px-2 font-medium text-brand-900 underline underline-offset-2"
               >
                 Abrir →
               </Link>
@@ -377,7 +377,7 @@ export function PostsPage() {
       <div
         role="tablist"
         aria-label="Ver"
-        className="mt-4 flex gap-1 overflow-x-auto border-b border-line"
+        className="mt-4 flex gap-1 overflow-x-auto border-b border-line [mask-image:linear-gradient(to_right,black_88%,transparent)] sm:[mask-image:none]"
       >
         {VIEWS.map((value) => {
           const count = inView(value).length;
