@@ -115,12 +115,12 @@ describe("panel: Plan", () => {
       ).toBeTruthy();
     }
     expect(
-      screen.getAllByRole("heading", { name: /^Semana del \d{2}-\d{2} al/ }).length,
+      screen.getAllByRole("heading", { name: /^Semana del [a-zé]{3} \d{1,2} [a-z]{3} al/ }).length,
     ).toBeGreaterThan(0);
     expect(screen.getByText(/Una idea no se publica sola/)).toBeTruthy();
     const card = screen.getByRole("listitem", { name: ideas[0]?.topic ?? "" });
     expect(within(card).getByText(/^Por qué:/)).toBeTruthy();
-    expect(within(card).getByText(/LinkedIn · tema Producto/)).toBeTruthy();
+    expect(within(card).getByText(/LinkedIn · línea Producto/)).toBeTruthy();
 
     // Terminado el plan (y sin textos redactándose), la página deja de volver a mirar.
     const reads = () => s.requests.filter((request) => request === `GET /plans/${run?.id}`).length;
@@ -275,9 +275,8 @@ describe("panel: el plan que obedece (F9.5-T23)", () => {
     expect(await screen.findByText("Plan en cola…")).toBeTruthy();
     const [run] = await s.deps.planRuns.listByBroker(s.brand.id);
     expect(run?.request).toMatchObject({ guidance: "Solo ideas para principiantes" });
-    expect(screen.getByText("Tu pedido:").parentElement?.textContent).toBe(
-      "Tu pedido: Solo ideas para principiantes",
-    );
+    const request_ = await screen.findByRole("region", { name: "Tu pedido" });
+    expect(within(request_).getByText("Solo ideas para principiantes")).toBeTruthy();
     await s.work();
     expect(
       await screen.findByRole(

@@ -139,3 +139,53 @@ export const chileDateOf = (date: Date): string => formatChileTime(date).slice(0
 
 /** El mes de Chile (`"2026-10"`) de un instante. */
 export const chileMonthOf = (date: Date): string => formatChileTime(date).slice(0, 7);
+
+// --- Cómo se lee una fecha en el panel --------------------------------------------------------
+
+const WEEKDAYS_SHORT = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"] as const;
+const MONTHS_SHORT = [
+  "ene",
+  "feb",
+  "mar",
+  "abr",
+  "may",
+  "jun",
+  "jul",
+  "ago",
+  "sep",
+  "oct",
+  "nov",
+  "dic",
+] as const;
+
+/**
+ * Un día `AAAA-MM-DD` como se dice en voz alta: `mié 11 nov`. El año solo aparece si no es el de
+ * `now` (por defecto, el de hoy en Chile): `mié 11 nov 2027`.
+ */
+export function formatChileDay(day: string, now: Date = new Date()): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/u.exec(day);
+  if (match === null) return day;
+  const [, year = "", month = "", date = ""] = match;
+  const weekday =
+    WEEKDAYS_SHORT[new Date(Date.UTC(Number(year), Number(month) - 1, Number(date))).getUTCDay()];
+  const named = `${weekday} ${Number(date)} ${MONTHS_SHORT[Number(month) - 1]}`;
+  return year === chileDateOf(now).slice(0, 4) ? named : `${named} ${year}`;
+}
+
+/** Un instante como se dice en voz alta, en hora de Chile: `mié 11 nov · 12:00`. */
+export function formatChileDayTime(date: Date, now: Date = new Date()): string {
+  const text = formatChileTime(date);
+  return `${formatChileDay(text.slice(0, 10), now)} · ${text.slice(11)}`;
+}
+
+/** Un rango de días `AAAA-MM-DD`: `lun 16 nov al dom 22 nov`. */
+export const formatChileDayRange = (from: string, to: string, now: Date = new Date()): string =>
+  `${formatChileDay(from, now)} al ${formatChileDay(to, now)}`;
+
+/** Una semana de lunes a domingo, por su lunes (`AAAA-MM-DD`): `Semana del lun 16 nov al dom 22 nov`. */
+export function formatChileWeek(monday: string, now: Date = new Date()): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/u.exec(monday);
+  if (match === null) return `Semana del ${monday}`;
+  const sunday = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + 6));
+  return `Semana del ${formatChileDayRange(monday, sunday.toISOString().slice(0, 10), now)}`;
+}

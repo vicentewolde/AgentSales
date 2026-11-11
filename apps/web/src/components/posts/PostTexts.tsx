@@ -239,7 +239,8 @@ function TextTab({
     ...new Set([
       editBlocked,
       blocked,
-      post.kind === "text" ? null : cardLanguageNotice(media, content.language),
+      // Solo si este texto va a salir (aprobado): uno sin aprobar no se publica y no necesita sus tarjetas.
+      post.kind === "text" || !approved ? null : cardLanguageNotice(media, content.language),
     ]),
   ].filter((notice): notice is string => notice !== null);
   return (

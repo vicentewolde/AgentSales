@@ -494,8 +494,8 @@ export function GetImagePanel({
         </Button>
         <p className="mt-1.5 text-xs text-fg-subtle">
           {video
-            ? "Un video con las tarjetas de la marca y el texto del post, sin costo."
-            : "Tarjetas con el texto del post y tu marca (sin costo), una foto de la biblioteca o una imagen con IA."}
+            ? "Arma un video con las tarjetas de la marca y el texto del post. Cuesta US$0: se dibuja aquí, sin IA."
+            : "Para qué sirve: el post necesita una imagen y esto la consigue. Tres opciones: tarjetas con el texto del post y tu marca (US$0, se dibujan aquí), una foto libre de la biblioteca Pixabay (US$0) o una imagen creada con IA (cuesta unos centavos y cuenta contra el tope de la marca). Si ya tienes tus propias imágenes, súbelas en «Fotos y videos»."}
         </p>
       </div>
     );

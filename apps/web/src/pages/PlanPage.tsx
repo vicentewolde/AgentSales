@@ -1,7 +1,14 @@
-import type { PlanDetailResponse, PlanIdeaView, PlanRunView } from "@agentsales/api/contracts";
+import type {
+  PlanDetailResponse,
+  PlanIdeaView,
+  PlanRunView,
+  PostCover,
+} from "@agentsales/api/contracts";
 import {
   chileInputValue,
-  formatChileTime,
+  formatChileDay,
+  formatChileDayTime,
+  formatChileWeek,
   groupByPlanWeek,
   ideaNeedsDraft,
   isAppError,
@@ -16,7 +23,6 @@ import {
   POST_PLATFORMS,
   type PostPlatform,
   parseChileTime,
-  planWeekText,
 } from "@agentsales/core";
 import { type FormEvent, useId, useState } from "react";
 import { Link, useSearchParams } from "react-router";
@@ -26,10 +32,12 @@ import { useBrandPlatforms } from "../components/posts/brand-platforms.js";
 import { Examples } from "../components/posts/EditorialProfileForm.js";
 import { addLine, lines } from "../components/posts/editorial-profile-draft.js";
 import { POST_KIND_LABEL, PostStatusBadge } from "../components/posts/labels.js";
+import { PostThumb } from "../components/posts/PostThumb.js";
 import { EmptyProfileNotice } from "../components/posts/ProfileWizard.js";
 import { Button } from "../components/ui/Button.js";
 import { Input, Select, Textarea } from "../components/ui/Field.js";
 import { PageHeader } from "../components/ui/PageHeader.js";
+import { Tip } from "../components/ui/Tip.js";
 import { useMe } from "../queries/auth.js";
 import {
   useAcceptIdea,
@@ -110,18 +118,34 @@ const PLAN_GUIDANCE_EXAMPLES = [
  * Pedir un plan: días, redes, cuántas ideas y, desde F9.5-T23, qué quieres que trate (una guía de
  * temas y tono, nunca una fuente de hechos: ADR-0030). Con el perfil vacío, antes avisa.
  */
+export type PlanPrefill = {
+  /** Cambia con cada «Usar para un plan nuevo»: así el formulario se rellena otra vez. */
+  nonce: number;
+  guidance: string;
+  days: number;
+  platforms: readonly PostPlatform[];
+};
+
 function RequestPlan({
   brandId,
+  prefill,
   onRequested,
 }: {
   brandId: string;
+  prefill: PlanPrefill | null;
   onRequested: (planId: string, reused: "no" | "same" | "guidance-ignored") => void;
 }) {
   const ids = useId();
   const role = useRole();
   const request = useRequestPlan();
   const options = useBrandPlatforms(brandId);
-  const [guidance, setGuidance] = useState("");
+  const [guidance, setGuidance] = useState(prefill?.guidance ?? "");
+  // Al usar un plan anterior como base, el texto y los días vuelven a rellenarse.
+  const [lastNonce, setLastNonce] = useState(prefill?.nonce ?? 0);
+  if (prefill !== null && prefill.nonce !== lastNonce) {
+    setLastNonce(prefill.nonce);
+    setGuidance(prefill.guidance);
+  }
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -143,8 +167,9 @@ function RequestPlan({
   };
   return (
     <section
+      id="pedir-plan"
       aria-label="Pedir un plan"
-      className="mt-4 rounded-xl border border-line bg-surface p-4 shadow-xs"
+      className="mt-4 scroll-mt-4 rounded-xl border border-line bg-surface p-4 shadow-xs"
     >
       <h2 className="text-lg font-semibold">Pedir un plan</h2>
       <p className="mt-1 text-sm text-fg-muted">
@@ -152,7 +177,7 @@ function RequestPlan({
         gasta IA de la marca, aunque descartes todo.
       </p>
       <EmptyProfileNotice brandId={brandId} />
-      <form onSubmit={submit} className="mt-3 grid gap-3 md:grid-cols-2">
+      <form key={prefill?.nonce ?? 0} onSubmit={submit} className="mt-3 grid gap-3 md:grid-cols-2">
         <div className="md:col-span-2">
           <label htmlFor={`${ids}-guidance`} className="block text-sm font-medium text-fg">
             ¿Qué quieres que trate este plan? (opcional)
@@ -194,7 +219,7 @@ function RequestPlan({
             type="number"
             min={1}
             max={PLAN_MAX_DAYS}
-            defaultValue={PLAN_DEFAULT_DAYS}
+            defaultValue={prefill?.days ?? PLAN_DEFAULT_DAYS}
             className="mt-1"
           />
         </label>
@@ -213,14 +238,23 @@ function RequestPlan({
           <NetworkChoices
             name="platforms"
             options={options}
-            checked={[]}
+            checked={prefill?.platforms ?? []}
             legend="Redes (sin marcar ninguna: todas las de la marca)"
           />
         </div>
         <div className="md:col-span-2">
-          <Button size="sm" type="submit" disabled={request.isPending}>
-            {request.isPending ? "Pidiendo…" : "Pedir el plan"}
-          </Button>
+          <Tip text="La IA propone ideas nuevas con fecha según la cadencia de la marca. No publica nada y no toca lo que ya aceptaste: las ideas llegan para que las aceptes o descartes. Gasta IA de la marca, aunque descartes todo.">
+            {(describedBy) => (
+              <Button
+                size="sm"
+                type="submit"
+                aria-describedby={describedBy}
+                disabled={request.isPending}
+              >
+                {request.isPending ? "Pidiendo…" : "Pedir el plan"}
+              </Button>
+            )}
+          </Tip>
         </div>
       </form>
       {request.error && <ErrorAlert error={request.error} />}
@@ -360,11 +394,13 @@ function IdeaCard({
   planId,
   pillarName,
   networks,
+  cover,
 }: {
   idea: PlanIdeaView;
   planId: string;
   pillarName: string | null;
   networks: readonly PostPlatform[];
+  cover: PostCover | undefined;
 }) {
   const accept = useAcceptIdea(planId);
   const discard = useDiscardIdea(planId);
@@ -377,26 +413,31 @@ function IdeaCard({
       aria-label={idea.topic}
       className={`rounded-xl border border-line bg-surface p-3 ${archived ? "opacity-60" : ""}`}
     >
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className="text-sm font-medium text-fg">
-          {idea.plannedAt === null ? "sin fecha" : formatChileTime(idea.plannedAt)}
-        </span>
-        {idea.status === "idea" ? (
-          <span className="font-semibold">{idea.topic}</span>
-        ) : (
-          <Link
-            to={`/contenido/${idea.id}`}
-            className="font-semibold text-fg underline-offset-2 hover:text-brand-700 hover:underline"
-          >
-            {idea.topic}
-          </Link>
-        )}
-        <PostStatusBadge status={idea.status} />
+      <div className="flex items-start gap-3">
+        <PostThumb cover={cover} />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-fg tabular-nums">
+            {idea.plannedAt === null ? "sin fecha" : formatChileDayTime(idea.plannedAt)}
+          </p>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+            {idea.status === "idea" ? (
+              <span className="font-semibold">{idea.topic}</span>
+            ) : (
+              <Link
+                to={`/contenido/${idea.id}`}
+                className="font-semibold text-fg underline-offset-2 hover:text-brand-700 hover:underline"
+              >
+                {idea.topic}
+              </Link>
+            )}
+            <PostStatusBadge status={idea.status} />
+          </div>
+          <p className="mt-1 text-sm text-fg-muted">
+            {POST_KIND_LABEL[idea.kind]} · {networksText(idea.platforms)}
+            {pillarName !== null && ` · línea ${pillarName}`}
+          </p>
+        </div>
       </div>
-      <p className="mt-1 text-sm text-fg-muted">
-        {POST_KIND_LABEL[idea.kind]} · {networksText(idea.platforms)}
-        {pillarName !== null && ` · tema ${pillarName}`}
-      </p>
       {idea.rationale !== null && (
         <p className="mt-1 text-sm text-fg">
           <span className="font-medium">Por qué: </span>
@@ -421,12 +462,31 @@ function IdeaCard({
       )}
       {idea.status === "idea" && !editing && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Button size="sm" disabled={busy} onClick={() => accept.mutate(idea.id)}>
-            {accept.isPending ? "Aceptando…" : "Aceptar"}
-          </Button>
-          <Button variant="secondary" size="sm" disabled={busy} onClick={() => setEditing(true)}>
-            Editar
-          </Button>
+          <Tip text="Te gusta la idea: la IA redacta sus textos por red e idioma. Todavía no se publica nada; después tú los revisas, los apruebas y los programas.">
+            {(describedBy) => (
+              <Button
+                size="sm"
+                aria-describedby={describedBy}
+                disabled={busy}
+                onClick={() => accept.mutate(idea.id)}
+              >
+                {accept.isPending ? "Aceptando…" : "Aceptar"}
+              </Button>
+            )}
+          </Tip>
+          <Tip text="Cambia el brief, la fecha y hora o las redes de la idea antes de aceptarla.">
+            {(describedBy) => (
+              <Button
+                variant="secondary"
+                size="sm"
+                aria-describedby={describedBy}
+                disabled={busy}
+                onClick={() => setEditing(true)}
+              >
+                Editar
+              </Button>
+            )}
+          </Tip>
           {confirmDiscard ? (
             <span className="flex flex-wrap items-center gap-2 text-sm">
               ¿Descartarla? No se vuelve a proponer en 60 días.
@@ -445,14 +505,19 @@ function IdeaCard({
               </Button>
             </span>
           ) : (
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={busy}
-              onClick={() => setConfirmDiscard(true)}
-            >
-              Descartar
-            </Button>
+            <Tip text="Saca la idea del plan y no se vuelve a proponer en 60 días. No se borra nada importante: no tiene textos ni publicaciones.">
+              {(describedBy) => (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  aria-describedby={describedBy}
+                  disabled={busy}
+                  onClick={() => setConfirmDiscard(true)}
+                >
+                  Descartar
+                </Button>
+              )}
+            </Tip>
           )}
         </div>
       )}
@@ -509,9 +574,87 @@ function DraftAccepted({ planId, ideas }: { planId: string; ideas: readonly Plan
   );
 }
 
+/** Los días que cubre un plan (de su primer a su último día, ambos incluidos). */
+const planDays = (plan: PlanRunView) =>
+  Math.max(
+    1,
+    Math.round(
+      (Date.parse(`${plan.lastDay}T00:00:00Z`) - Date.parse(`${plan.firstDay}T00:00:00Z`)) /
+        86_400_000,
+    ) + 1,
+  );
+
+/**
+ * El pedido del plan, en un bloque que se lee: qué se pidió (cada línea o frase aparte), por
+ * cuántos días y para qué redes, y el botón para usarlo como base de otro plan y cambiarlo.
+ */
+function PlanRequestBox({ plan, onReuse }: { plan: PlanRunView; onReuse: () => void }) {
+  const parts =
+    plan.guidance === null
+      ? []
+      : plan.guidance
+          .split(/\r?\n|(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÑ¿¡])/u)
+          .map((part) => part.trim())
+          .filter((part) => part !== "");
+  return (
+    <section
+      aria-label="Tu pedido"
+      className="mt-3 rounded-xl border border-line bg-canvas p-4 text-sm"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <h3 className="font-semibold text-fg">Lo que pediste</h3>
+        <Tip
+          align="end"
+          text="Un plan ya pedido no se cambia. Esto copia su pedido, sus días y sus redes al formulario «Pedir un plan», para que lo ajustes y pidas otro. Las ideas de este plan no se tocan."
+        >
+          {(describedBy) => (
+            <Button variant="secondary" size="sm" aria-describedby={describedBy} onClick={onReuse}>
+              Usar para un plan nuevo…
+            </Button>
+          )}
+        </Tip>
+      </div>
+      <dl className="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-[auto_1fr]">
+        <dt className="font-medium text-fg-muted">Días</dt>
+        <dd>
+          {planDays(plan)} ({formatChileDay(plan.firstDay)} al {formatChileDay(plan.lastDay)})
+        </dd>
+        <dt className="font-medium text-fg-muted">Redes</dt>
+        <dd>{networksText(plan.platforms)}</dd>
+        {plan.count !== null && (
+          <>
+            <dt className="font-medium text-fg-muted">Ideas</dt>
+            <dd>{plan.count}</dd>
+          </>
+        )}
+        <dt className="font-medium text-fg-muted">Qué tratar</dt>
+        <dd>
+          {parts.length === 0 ? (
+            <span className="text-fg-subtle">Nada en particular: la IA elige según el perfil.</span>
+          ) : (
+            <ul className="list-disc space-y-1 pl-5">
+              {parts.map((part) => (
+                <li key={part}>{part}</li>
+              ))}
+            </ul>
+          )}
+        </dd>
+      </dl>
+    </section>
+  );
+}
+
 /** El plan elegido: su estado y, si terminó, las ideas por semana y lo que se descartó. */
-function PlanView({ detail, brandId }: { detail: PlanDetailResponse; brandId: string }) {
-  const { plan, report, ideas } = detail;
+function PlanView({
+  detail,
+  brandId,
+  onReuse,
+}: {
+  detail: PlanDetailResponse;
+  brandId: string;
+  onReuse: () => void;
+}) {
+  const { plan, report, ideas, covers } = detail;
   const profile = useEditorialProfile(brandId);
   const networks = useBrandPlatforms(brandId);
   const pillarName = (key: string | null) =>
@@ -519,15 +662,10 @@ function PlanView({ detail, brandId }: { detail: PlanDetailResponse; brandId: st
   return (
     <section aria-label="El plan" className="mt-4">
       <p className="text-sm text-fg-muted">
-        Del {plan.firstDay} al {plan.lastDay} · {networksText(plan.platforms)} ·{" "}
-        {PLAN_RUN_STATUS_TEXT[plan.status]}
+        Del {formatChileDay(plan.firstDay)} al {formatChileDay(plan.lastDay)} ·{" "}
+        {networksText(plan.platforms)} · {PLAN_RUN_STATUS_TEXT[plan.status]}
       </p>
-      {plan.guidance !== null && (
-        <p className="mt-1 whitespace-pre-wrap text-sm text-fg-muted">
-          <span className="font-medium">Tu pedido: </span>
-          {plan.guidance}
-        </p>
-      )}
+      <PlanRequestBox plan={plan} onReuse={onReuse} />
       <PlanStatus plan={plan} />
       {plan.status === "succeeded" && (
         <>
@@ -543,9 +681,9 @@ function PlanView({ detail, brandId }: { detail: PlanDetailResponse; brandId: st
             </p>
           )}
           {groupByPlanWeek(ideas).map((group) => (
-            <div key={group.week ?? "sin-fecha"} className="mt-4">
-              <h3 className="font-semibold">
-                {group.week === null ? "Sin fecha" : planWeekText(group.week)}
+            <div key={group.week ?? "sin-fecha"} className="mt-6">
+              <h3 className="text-lg font-semibold">
+                {group.week === null ? "Sin fecha" : formatChileWeek(group.week)}
               </h3>
               {/* F9.5-T27: aprobar y programar de una vez lo aceptado de la semana. */}
               {group.week !== null &&
@@ -555,7 +693,7 @@ function PlanView({ detail, brandId }: { detail: PlanDetailResponse; brandId: st
                   </div>
                 )}
               <ul
-                aria-label={group.week === null ? "Sin fecha" : planWeekText(group.week)}
+                aria-label={group.week === null ? "Sin fecha" : formatChileWeek(group.week)}
                 className="mt-2 space-y-2"
               >
                 {group.items.map((idea) => (
@@ -565,6 +703,7 @@ function PlanView({ detail, brandId }: { detail: PlanDetailResponse; brandId: st
                     planId={plan.id}
                     pillarName={pillarName(idea.pillar)}
                     networks={networks}
+                    cover={covers[idea.id]}
                   />
                 ))}
               </ul>
@@ -604,6 +743,7 @@ export function PlanPage() {
   const brandId = usePlanBrandId();
   const [params, setParams] = useSearchParams();
   const [reusedNote, setReusedNote] = useState<"no" | "same" | "guidance-ignored">("no");
+  const [prefill, setPrefill] = useState<PlanPrefill | null>(null);
   const plans = usePlans(
     role === "admin" ? brandId : undefined,
     role !== null && brandId !== undefined,
@@ -615,6 +755,7 @@ export function PlanPage() {
       ? fromUrl
       : plans.data?.[0]?.id;
   const plan = usePlan(selectedId);
+  const detail = plan.data;
   const pickerId = useId();
   const select = (id: string) => {
     const next = new URLSearchParams(params);
@@ -641,6 +782,7 @@ export function PlanPage() {
         <>
           <RequestPlan
             brandId={brandId}
+            prefill={prefill}
             onRequested={(id, reused) => {
               setReusedNote(reused);
               select(id);
@@ -671,14 +813,32 @@ export function PlanPage() {
               >
                 {plans.data.map((item) => (
                   <option key={item.id} value={item.id}>
-                    Del {item.firstDay} al {item.lastDay} ({PLAN_RUN_STATUS_TEXT[item.status]})
+                    Del {formatChileDay(item.firstDay)} al {formatChileDay(item.lastDay)} (
+                    {PLAN_RUN_STATUS_TEXT[item.status]})
                   </option>
                 ))}
               </Select>
             </div>
           )}
           {plan.error && <ErrorAlert error={plan.error} onRetry={() => void plan.refetch()} />}
-          {plan.data !== undefined && <PlanView detail={plan.data} brandId={brandId} />}
+          {detail !== undefined && (
+            <PlanView
+              detail={detail}
+              brandId={brandId}
+              onReuse={() => {
+                const { guidance, platforms } = detail.plan;
+                setPrefill({
+                  nonce: (prefill?.nonce ?? 0) + 1,
+                  guidance: guidance ?? "",
+                  days: planDays(detail.plan),
+                  platforms,
+                });
+                document
+                  .getElementById("pedir-plan")
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+            />
+          )}
         </>
       )}
     </div>

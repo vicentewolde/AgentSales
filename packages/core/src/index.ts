@@ -48,7 +48,11 @@ export {
   chileInputValue,
   chileMonthOf,
   chileMonthRange,
+  formatChileDay,
+  formatChileDayRange,
+  formatChileDayTime,
   formatChileTime,
+  formatChileWeek,
   parseChileTime,
 } from "./chile-time.js";
 export * from "./content/index.js";

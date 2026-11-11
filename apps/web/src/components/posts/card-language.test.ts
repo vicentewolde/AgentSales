@@ -17,13 +17,13 @@ describe("cardLanguageNotice", () => {
 
   it("el cierre que comparten dos idiomas no cuenta como tarjeta propia", () => {
     expect(cardLanguageNotice(media(["es", "en"], ["es"]), "en")).toBe(
-      "Este texto está en inglés, pero las tarjetas del post están en español: en «Conseguir imagen» haz las tarjetas en inglés.",
+      "Este texto está aprobado en inglés, pero las tarjetas del post están en español. En «Conseguir imagen», más abajo, pide las tarjetas en inglés.",
     );
   });
 
   it("con tarjetas solo de otro idioma, lo dice y qué hacer", () => {
     expect(cardLanguageNotice(media(null, ["en"], ["en"]), "es")).toBe(
-      "Este texto está en español, pero las tarjetas del post están en inglés: en «Conseguir imagen» haz las tarjetas en español.",
+      "Este texto está aprobado en español, pero las tarjetas del post están en inglés. En «Conseguir imagen», más abajo, pide las tarjetas en español.",
     );
   });
 

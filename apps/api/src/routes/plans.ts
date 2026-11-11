@@ -6,6 +6,8 @@ import {
   getPlanRun,
   type JobQueue,
   listPlanRuns,
+  type MediaRepository,
+  type MediaStorage,
   type PlanRun,
   type PlanRunRepository,
   type PlatformAccountRepository,
@@ -30,6 +32,7 @@ import {
 } from "../contracts/index.js";
 import { validated } from "../validation.js";
 import { contentRunView } from "./content.js";
+import { postCovers } from "./post-covers.js";
 
 export type PlanRoutesDeps = {
   brokers: Pick<BrokerRepository, "findById">;
@@ -40,6 +43,9 @@ export type PlanRoutesDeps = {
   /** El tope de IA del mes (`sumLlmCost`) y el estado de los textos de cada idea (`latest`). */
   contentRuns: Pick<ContentRunRepository, "sumLlmCost" | "latest">;
   contents: Pick<ContentRepository, "listCurrent">;
+  /** Las portadas de las ideas, para verlas con su imagen. */
+  media: Pick<MediaRepository, "listBySubject">;
+  storage: Pick<MediaStorage, "signedReadUrl">;
   /** `content.plan`, después de crear el plan. */
   queue: JobQueue;
 };
@@ -123,6 +129,10 @@ export function planRoutes(deps: PlanRoutesDeps) {
           }),
         );
         const body: PlanDetailResponse = {
+          covers: await postCovers(
+            deps,
+            ideas.map((idea) => idea.id),
+          ),
           plan: planRunView(run),
           report:
             report === null

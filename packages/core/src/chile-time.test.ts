@@ -3,7 +3,11 @@ import {
   chileInputValue,
   chileMonthOf,
   chileMonthRange,
+  formatChileDay,
+  formatChileDayRange,
+  formatChileDayTime,
   formatChileTime,
+  formatChileWeek,
   parseChileTime,
 } from "./chile-time.js";
 import { isAppError } from "./errors.js";
@@ -86,5 +90,27 @@ describe("el mes de Chile (F7-T02: el gasto del mes)", () => {
         expect.objectContaining({ code: "MONTH_INVALID" }),
       );
     }
+  });
+});
+
+describe("fechas para leer en el panel", () => {
+  const now = new Date("2026-11-10T22:00:00Z");
+  it("dice el día de la semana, el día y el mes", () => {
+    expect(formatChileDay("2026-11-11", now)).toBe("mié 11 nov");
+    expect(formatChileDay("2026-12-01", now)).toBe("mar 1 dic");
+  });
+  it("agrega el año solo si no es el actual", () => {
+    expect(formatChileDay("2027-01-04", now)).toBe("lun 4 ene 2027");
+  });
+  it("junta el día y la hora de Chile", () => {
+    // 15:00 UTC en noviembre es 12:00 en Chile (UTC−3).
+    expect(formatChileDayTime(new Date("2026-11-12T15:00:00Z"), now)).toBe("jue 12 nov · 12:00");
+  });
+  it("arma un rango", () => {
+    expect(formatChileDayRange("2026-11-16", "2026-11-22", now)).toBe("lun 16 nov al dom 22 nov");
+  });
+  it("dice una semana por su lunes, también al cruzar el mes", () => {
+    expect(formatChileWeek("2026-11-16", now)).toBe("Semana del lun 16 nov al dom 22 nov");
+    expect(formatChileWeek("2026-11-30", now)).toBe("Semana del lun 30 nov al dom 6 dic");
   });
 });

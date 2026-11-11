@@ -85,6 +85,7 @@ import {
 import { brokerMode, isDryRun } from "../publish-modes.js";
 import { validated } from "../validation.js";
 import { contentMedia, contentRunView, contentView } from "./content.js";
+import { postCovers } from "./post-covers.js";
 import { actorOf, publicationView, skippedView } from "./publication-views.js";
 
 export type PostRoutesDeps = EditContentDeps &
@@ -260,7 +261,13 @@ export function postRoutes(deps: PostRoutesDeps) {
           from: dateOf(from),
           to: dateOf(to),
         });
-        const body: PostListResponse = { posts };
+        const body: PostListResponse = {
+          posts,
+          covers: await postCovers(
+            deps,
+            posts.map((post) => post.id),
+          ),
+        };
         return c.json(body, 200);
       })
       .post("/", validated("json", createPostBodySchema), async (c) => {

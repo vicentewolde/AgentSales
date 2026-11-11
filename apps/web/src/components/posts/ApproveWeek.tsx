@@ -1,9 +1,9 @@
 import type { ContentView, PostWeekApproveResponse, PostWeekItem } from "@agentsales/api/contracts";
 import {
-  formatChileTime,
+  formatChileDayTime,
+  formatChileWeek,
   LANGUAGE_TEXT,
   PLATFORM_TEXT,
-  planWeekText,
   publicationModeText,
   WEEK_PROBLEM_TEXT,
 } from "@agentsales/core";
@@ -15,6 +15,7 @@ import { SubjectBrokerContext } from "../../queries/health.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 import { Badge } from "../ui/Badge.js";
 import { Button } from "../ui/Button.js";
+import { Tip } from "../ui/Tip.js";
 import { LiveConfirmButton } from "./LiveConfirm.js";
 import { postContents } from "./labels.js";
 
@@ -51,7 +52,7 @@ function WeekPost({ item }: { item: PostWeekItem }) {
     <li className="rounded-xl border border-line bg-surface p-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="text-sm font-medium text-fg tabular-nums">
-          {item.post.plannedAt === null ? "sin fecha" : formatChileTime(item.post.plannedAt)}
+          {item.post.plannedAt === null ? "sin fecha" : formatChileDayTime(item.post.plannedAt)}
         </span>
         <Link
           to={`/contenido/${item.post.id}`}
@@ -114,8 +115,8 @@ export function WeekResult({ result }: { result: PostWeekApproveResponse }) {
           <ul className="mt-0.5 space-y-0.5 pl-3">
             {post.scheduled.map((row) => (
               <li key={row.platform} className="text-success-800">
-                ✓ {PLATFORM_TEXT[row.platform]}: programado para el {formatChileTime(row.at)} (hora
-                de Chile, {mode})
+                ✓ {PLATFORM_TEXT[row.platform]}: programado para el {formatChileDayTime(row.at)}{" "}
+                (hora de Chile, {mode})
               </li>
             ))}
             {post.kept.map((kept) => (
@@ -183,9 +184,19 @@ export function ApproveWeek({ brandId, week }: { brandId: string; week: string }
   }, [open]);
   if (!open) {
     return (
-      <Button ref={opener} variant="secondary" size="sm" onClick={() => setOpen(true)}>
-        Aprobar la semana…
-      </Button>
+      <Tip text="Abre un resumen de esta semana; todavía no cambia nada. Ahí ves cada post con sus textos y, solo si apruebas, se aprueban los textos sin errores y cada post queda programado a su fecha. Nada se publica en ese momento.">
+        {(describedBy) => (
+          <Button
+            ref={opener}
+            variant="secondary"
+            size="sm"
+            aria-describedby={describedBy}
+            onClick={() => setOpen(true)}
+          >
+            Aprobar la semana…
+          </Button>
+        )}
+      </Tip>
     );
   }
   const posts = preview.data?.posts ?? [];
@@ -193,7 +204,7 @@ export function ApproveWeek({ brandId, week }: { brandId: string; week: string }
     <section
       ref={region}
       tabIndex={-1}
-      aria-label={`Aprobar la ${planWeekText(week).toLowerCase()}`}
+      aria-label={`Aprobar la ${formatChileWeek(week).toLowerCase()}`}
       className="mt-2 rounded-xl border border-line bg-sand p-4 focus:outline-2 focus:outline-brand-700"
       onKeyDown={(event) => {
         if (event.key === "Escape") setOpen(false);
