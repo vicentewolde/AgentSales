@@ -43,11 +43,7 @@ describe("summaryRows", () => {
   it("lo aprobado y programado sale con su día y hora; lo sin aprobar, no sale y va al final", () => {
     const rows = summaryRows(
       { platforms: null },
-      [
-        text("x", "es", "generated"),
-        text("x", "en", "approved"),
-        text("instagram", "en", "approved"),
-      ],
+      [text("x", "es", "draft"), text("x", "en", "approved"), text("instagram", "en", "approved")],
       [publication("x-en", "scheduled", { scheduledAt: new Date("2026-11-12T15:00:00Z") })],
       now,
     );
