@@ -66,7 +66,8 @@ export function textMediaLine(
   const byId = new Map(media.map((item) => [item.id, item]));
   const names = chosen.map((item) => languageName(byId.get(item.id)));
   if (chosen.length === 1) {
-    return `con ${video === null ? "la imagen" : "el video"} de ${names[0]}`;
+    const prep = names[0] === "todos los idiomas" ? "para" : "en";
+    return `con ${video === null ? "la imagen" : "el video"} ${prep} ${names[0]}`;
   }
   return `con ${chosen.length} imágenes: ${names.join(", luego ")}`;
 }
@@ -237,14 +238,16 @@ export function PostSummary({
             key={row.key}
             className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm first:pt-0 last:pb-0"
           >
-            <span className={`w-40 font-semibold ${row.publishes ? "text-fg" : "text-fg-muted"}`}>
+            <span
+              className={`w-full font-semibold sm:w-40 ${row.publishes ? "text-fg" : "text-fg-muted"}`}
+            >
               {PLATFORM_TEXT[row.platform]} · {LANGUAGE_TEXT[row.language]}
             </span>
             <Badge tone={row.tone}>{row.state}</Badge>
+            {row.media !== null && <span className="text-fg-muted">{row.media}</span>}
             {row.detail !== null && (
               <span className="text-fg-muted tabular-nums">{row.detail}</span>
             )}
-            {row.media !== null && <span className="text-fg-subtle">· {row.media}</span>}
           </li>
         ))}
       </ul>

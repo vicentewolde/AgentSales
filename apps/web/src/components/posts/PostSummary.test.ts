@@ -96,7 +96,7 @@ describe("qué imágenes lleva cada texto (ADR-0042)", () => {
   const media = [photo("es", 0, "es"), photo("en", 1, "en")];
 
   it("X lleva la de su idioma; Instagram, las dos con la del texto primero", () => {
-    expect(textMediaLine("x", "es", "image", media)).toBe("con la imagen de español");
+    expect(textMediaLine("x", "es", "image", media)).toBe("con la imagen en español");
     expect(textMediaLine("instagram", "en", "image", media)).toBe(
       "con 2 imágenes: inglés, luego español",
     );
@@ -109,7 +109,7 @@ describe("qué imágenes lleva cada texto (ADR-0042)", () => {
     );
     expect(Object.fromEntries(rows.map((row) => [row.key, row.media]))).toEqual({
       "instagram:en": "con 2 imágenes: inglés, luego español",
-      "x:es": "con la imagen de español",
+      "x:es": "con la imagen en español",
     });
   });
 
@@ -117,7 +117,7 @@ describe("qué imágenes lleva cada texto (ADR-0042)", () => {
     expect(textMediaLine("x", "es", "image", [photo("a", 0, null)])).toBeNull();
     expect(textMediaLine("x", "es", "image", [photo("en", 0, "en")])).toBe("sin imagen en español");
     expect(textMediaLine("x", "es", "image", [photo("en", 0, "en"), photo("todos", 1, null)])).toBe(
-      "con la imagen de todos los idiomas",
+      "con la imagen para todos los idiomas",
     );
   });
 });

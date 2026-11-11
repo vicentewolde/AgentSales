@@ -87,7 +87,7 @@ function MediaLanguage({
         onChange={(event) =>
           onChange(LANGUAGES.find((language) => language === event.target.value) ?? null)
         }
-        className="block w-full rounded-md border border-line-strong bg-surface px-1.5 py-1 text-xs text-fg focus-visible:outline-2 focus-visible:outline-brand-700 disabled:cursor-not-allowed disabled:bg-canvas disabled:text-fg-subtle"
+        className="block min-h-9 w-full rounded-md border border-line-strong bg-surface px-2 text-sm text-fg pointer-coarse:min-h-11 focus-visible:outline-2 focus-visible:outline-brand-700 disabled:cursor-not-allowed disabled:bg-canvas disabled:text-fg-subtle"
       >
         <option value="">Todos</option>
         {LANGUAGE_CHOICES.map((language) => (
@@ -195,21 +195,28 @@ export function PostMedia({
         <ul className="flex flex-wrap gap-3">
           {media.map((item, index) => (
             <li key={item.id} className="w-28 text-xs text-fg-muted tabular-nums">
-              {item.thumbUrl !== null ? (
-                <img
-                  src={item.thumbUrl}
-                  alt={`${item.kind === "video" ? "Video" : "Foto"} ${index + 1}`}
-                  className="h-28 w-28 rounded-lg border border-line object-cover"
-                />
-              ) : (
-                <span
-                  role="img"
-                  aria-label={`${item.kind === "video" ? "Video" : "Foto"} ${index + 1}`}
-                  className="flex h-28 w-28 items-center justify-center rounded-lg border border-line bg-sand"
-                >
-                  {item.kind === "video" ? "video" : "foto"}
-                </span>
-              )}
+              <span className="relative block">
+                {item.thumbUrl !== null ? (
+                  <img
+                    src={item.thumbUrl}
+                    alt={`${item.kind === "video" ? "Video" : "Foto"} ${index + 1}`}
+                    className="h-28 w-28 rounded-lg border border-line object-cover"
+                  />
+                ) : (
+                  <span
+                    role="img"
+                    aria-label={`${item.kind === "video" ? "Video" : "Foto"} ${index + 1}`}
+                    className="flex h-28 w-28 items-center justify-center rounded-lg border border-line bg-sand"
+                  >
+                    {item.kind === "video" ? "video" : "foto"}
+                  </span>
+                )}
+                {languageOf(item) !== null && (
+                  <span className="absolute top-1.5 left-1.5 rounded bg-fg/80 px-1.5 text-[11px] font-semibold text-surface">
+                    {languageOf(item) === "en" ? "EN" : "ES"}
+                  </span>
+                )}
+              </span>
               <span className="mt-1 block">
                 {item.kind === "video" && item.durationS !== null
                   ? `${Math.round(item.durationS)} s · `
