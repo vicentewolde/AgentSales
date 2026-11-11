@@ -180,6 +180,10 @@ function RequestPlan({
         La IA propone ideas con fecha desde mañana, con el perfil editorial de la marca. Cada plan
         gasta IA de la marca, aunque descartes todo.
       </p>
+      <p className="mt-1 text-xs text-fg-muted">
+        El plan anterior no se borra: lo aceptado sigue en Contenido y sus ideas sin aceptar quedan
+        hasta que las descartes.
+      </p>
       <EmptyProfileNotice brandId={brandId} />
       <form key={prefill?.nonce ?? 0} onSubmit={submit} className="mt-3 grid gap-3 md:grid-cols-2">
         <div className="md:col-span-2">
@@ -577,6 +581,74 @@ function IdeaCard({
   );
 }
 
+/**
+ * Descartar de una vez las ideas que quedan sin aceptar de un plan que no sirvió. Lo aceptado no se
+ * toca (sigue en Contenido); cada idea descartada no se vuelve a proponer en 60 días.
+ */
+function DiscardRemaining({ planId, ideas }: { planId: string; ideas: readonly PlanIdeaView[] }) {
+  const discard = useDiscardIdea(planId);
+  const [confirm, setConfirm] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; failed: number } | null>(null);
+  const remaining = ideas.filter((idea) => idea.status === "idea");
+  if (remaining.length === 0 && progress === null) return null;
+  const run = async () => {
+    let done = 0;
+    let failed = 0;
+    for (const idea of remaining) {
+      try {
+        await discard.mutateAsync(idea.id);
+        done += 1;
+      } catch {
+        failed += 1;
+      }
+      setProgress({ done, failed });
+    }
+    setConfirm(false);
+  };
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-line bg-surface p-3 text-sm">
+      {remaining.length > 0 && !confirm && (
+        <>
+          <span className="text-fg-muted">
+            {remaining.length === 1
+              ? "Queda 1 idea sin aceptar en este plan."
+              : `Quedan ${remaining.length} ideas sin aceptar en este plan.`}
+          </span>
+          <Button variant="secondary" size="sm" onClick={() => setConfirm(true)}>
+            Descartar las ideas que quedan…
+          </Button>
+        </>
+      )}
+      {confirm && (
+        <>
+          <span>
+            ¿Descartar {remaining.length === 1 ? "la idea" : `las ${remaining.length} ideas`} sin
+            aceptar? Lo que ya aceptaste no se toca, y no se vuelven a proponer en 60 días.
+          </span>
+          <Button variant="danger" size="sm" loading={discard.isPending} onClick={() => void run()}>
+            Sí, descartarlas
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={discard.isPending}
+            onClick={() => setConfirm(false)}
+          >
+            Cancelar
+          </Button>
+        </>
+      )}
+      {progress !== null && !confirm && (
+        <span role="status" className={progress.failed > 0 ? "text-warning-800" : "text-fg-muted"}>
+          {progress.done === 1 ? "Se descartó 1 idea." : `Se descartaron ${progress.done} ideas.`}
+          {progress.failed > 0 &&
+            ` ${progress.failed} no se pudieron descartar: inténtalo de nuevo.`}
+        </span>
+      )}
+    </div>
+  );
+}
+
 /** Las ideas aceptadas que quedaron sin textos ni corrida en curso (las pide "Redactar lo aceptado"). */
 export const acceptedWithoutTexts = (ideas: readonly PlanIdeaView[]) =>
   ideas.filter(ideaNeedsDraft);
@@ -762,6 +834,7 @@ function PlanView({
             </details>
           </div>
           <DraftAccepted planId={plan.id} ideas={ideas} />
+          <DiscardRemaining planId={plan.id} ideas={ideas} />
           {ideas.length === 0 && (
             <p className="mt-3 text-fg-muted">
               La IA no dejó ideas válidas: mira lo descartado abajo y pide otro plan.
