@@ -334,7 +334,11 @@ export function postCardPlan(
   // otro idioma); sin texto o sin una primera oración, del tema.
   const headline = options.language === undefined ? null : coverFromText(source.body);
   const cover = headline?.cover ?? topicCover;
-  const single: CardSpec[] = [{ role: "cover", text: cover, detail: null, position: 1, total: 1 }];
+  // El contacto de la marca va en el pie de todas las tarjetas (y en el cierre, destacado).
+  const contact = brandContact(broker);
+  const single: CardSpec[] = [
+    { role: "cover", text: cover, detail: contact, position: 1, total: 1 },
+  ];
   if (post.kind === "image") {
     return {
       cards: single,
@@ -354,18 +358,18 @@ export function postCardPlan(
   if (post.kind === "video" && total < POST_CARDS.videoMinCards) throw needsText(post.id);
   return {
     cards: [
-      { role: "cover", text: cover, detail: null, position: 1, total },
+      { role: "cover", text: cover, detail: contact, position: 1, total },
       ...points.map((text, index) => ({
         role: "point" as const,
         text,
-        detail: null,
+        detail: contact,
         position: index + 2,
         total,
       })),
       {
         role: "closing",
         text: broker.brandName,
-        detail: brandContact(broker),
+        detail: contact,
         position: total,
         total,
       },
