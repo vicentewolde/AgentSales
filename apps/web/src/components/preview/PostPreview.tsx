@@ -4,7 +4,7 @@ import { DiscordPreview } from "./DiscordPreview.js";
 import { InstagramPostPreview, InstagramReelPreview } from "./InstagramPreview.js";
 import { LinkedInPreview } from "./LinkedInPreview.js";
 import {
-  mediaForLanguage,
+  mediaForText,
   type PreviewImage,
   type PreviewText,
   type PreviewVideo,
@@ -32,7 +32,10 @@ export function PostPreview({
   platform: PostPlatform;
   kind: PostKind;
   media: readonly PostMediaItem[];
-  /** El idioma del texto: lleva las tarjetas de su idioma (F9.5, tarjetas por idioma). */
+  /**
+   * El idioma del texto: lleva las tarjetas de su idioma (F9.5) y las fotos de su idioma (ADR-0042;
+   * en Instagram, todas, primero las de su idioma).
+   */
   language: Language;
   text: Pick<PreviewText, "body" | "hashtags">;
   accountName: string;
@@ -41,7 +44,8 @@ export function PostPreview({
   const { images, video, problem } = postPreviewMedia(
     platform,
     kind,
-    mediaForLanguage(media, language),
+    mediaForText(media, platform, language),
+    language,
   );
   return (
     <div className="space-y-2">

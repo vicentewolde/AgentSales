@@ -1,8 +1,10 @@
 import type { PostMediaItem } from "@agentsales/api/contracts";
 import {
+  byLanguageThenOrder,
   CAROUSEL_MAX_ITEMS,
+  mediaForText as coreMediaForText,
   DISCORD_MAX_FILES,
-  hiddenCardIds,
+  isBilingualImageSet,
   type Language,
   type PostKind,
   type PostPlatform,
@@ -87,11 +89,22 @@ export function cutText(text: string, cut: TextCut): string | null {
  */
 const CAROUSEL_MIN_ITEMS = 2;
 
-/** Los originales de un tipo, en el orden del publisher: `sortOrder` y después el id. */
-const originalsOf = (media: readonly PostMediaItem[], kind: PostMediaItem["kind"]) =>
+/**
+ * Los originales de un tipo, en el orden del publisher: `sortOrder` y después el id; con el idioma
+ * del texto, primero los de su idioma y los de todos (ADR-0042).
+ */
+const originalsOf = (
+  media: readonly PostMediaItem[],
+  kind: PostMediaItem["kind"],
+  language?: Language,
+) =>
   media
     .filter((item) => item.kind === kind)
-    .sort((a, b) => a.sortOrder - b.sortOrder || (a.id < b.id ? -1 : 1));
+    .sort(
+      language === undefined
+        ? (a, b) => a.sortOrder - b.sortOrder || (a.id < b.id ? -1 : 1)
+        : byLanguageThenOrder(language),
+    );
 
 /**
  * Las versiones del video que publica cada red (`postPublicationPlan`): X, el video reducido
@@ -111,28 +124,25 @@ const VIDEO_VARIANTS: Readonly<Record<PostPlatform, readonly PostMediaItem["vari
 export type PreviewMediaProblem = string | null;
 
 /**
- * Los medios de un post que lleva una publicación de `language`: todos menos las tarjetas de otro
- * idioma (`hiddenCardIds`, la misma regla que usa la publicación al abrirse). Lo que subió el
- * usuario va igual en todos los idiomas.
+ * Los medios de un post que lleva el texto de `platform` en `language`, con la misma regla que usa
+ * la publicación al abrirse (`mediaForText` de core, ADR-0042): las tarjetas de su idioma; fuera de
+ * Instagram, lo que el usuario marcó en su idioma y lo de todos; en Instagram, todo, con lo de su
+ * idioma primero.
  */
-export function mediaForLanguage(
+export function mediaForText(
   media: readonly PostMediaItem[],
+  platform: PostPlatform,
   language: Language,
 ): PostMediaItem[] {
   const cards = new Map(
     media.flatMap((item) => (item.cardLanguages === null ? [] : [[item.id, item.cardLanguages]])),
   );
-  if (cards.size === 0) return [...media];
-  const hidden = hiddenCardIds(
-    media.map((item) => item.id),
-    cards,
-    language,
-  );
-  return media.filter((item) => !hidden.has(item.id));
+  return coreMediaForText(media, cards, platform, language);
 }
 
 /**
- * Los medios de un post que van a una red, como los elige el publisher (`postPublicationPlan`):
+ * Los medios de un post que van a una red, como los elige el publisher (`postPublicationPlan`), de
+ * entre los que lleva su texto (`mediaForText`):
  * un texto solo, ninguno; un video, el primer video original con la versión de esa red; las
  * imágenes originales en su orden (`sortOrder` y el id) con su `ig_4x5`, hasta lo que admite la red
  * (Instagram una sola en un post de imagen y hasta 10 en un carrusel, X hasta 4, Discord hasta 10).
@@ -144,6 +154,8 @@ export function postPreviewMedia(
   platform: PostPlatform,
   kind: PostKind,
   media: readonly PostMediaItem[],
+  /** El idioma del texto: ordena por idioma y arma el carrusel bilingüe de Instagram (ADR-0042). */
+  language?: Language,
 ): { images: PreviewImage[]; video: PreviewVideo | null; problem: PreviewMediaProblem } {
   const none = { images: [], video: null };
   if (platform === "tiktok" && kind !== "video") {
@@ -156,7 +168,7 @@ export function postPreviewMedia(
     };
   }
   if (kind === "video") {
-    const [first] = originalsOf(media, "video");
+    const [first] = originalsOf(media, "video", language);
     if (first === undefined) return { ...none, problem: null };
     const ready = VIDEO_VARIANTS[platform].some((variant) => first.variants.includes(variant));
     return {
@@ -165,14 +177,18 @@ export function postPreviewMedia(
       problem: null,
     };
   }
-  const images = originalsOf(media, "image").map((item) => ({
+  const photos = originalsOf(media, "image", language);
+  const images = photos.map((item) => ({
     id: item.id,
     src: item.thumbUrl,
     processing: !item.variants.includes("ig_4x5"),
   }));
+  // ADR-0042: en Instagram, un post de imagen con imágenes de dos idiomas va como carrusel.
+  const bilingual =
+    platform === "instagram" && language !== undefined && isBilingualImageSet(photos, language);
   const max =
     platform === "instagram"
-      ? kind === "image"
+      ? kind === "image" && !bilingual
         ? 1
         : CAROUSEL_MAX_ITEMS
       : platform === "x"

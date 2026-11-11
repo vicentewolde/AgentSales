@@ -1,14 +1,21 @@
 import type { PostJson, PostMediaItem } from "@agentsales/api/contracts";
-import { POST_MEDIA_TYPES, POST_UPLOAD } from "@agentsales/core";
+import {
+  LANGUAGE_TEXT,
+  LANGUAGES,
+  type Language,
+  POST_MEDIA_TYPES,
+  POST_UPLOAD,
+} from "@agentsales/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
 import { useApiClient, useUploadDeps } from "../../api/context.js";
 import { type PostUploadProgress, uploadPostMedia } from "../../api/post-upload.js";
-import { mediaProcessing, postKeys } from "../../queries/posts.js";
+import { mediaProcessing, postKeys, usePostMediaLanguage } from "../../queries/posts.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 import { Button } from "../ui/Button.js";
 import { Card } from "../ui/Card.js";
 import { FILE_INPUT } from "../ui/styles.js";
+import { HelpDot } from "../ui/Tip.js";
 import { GetImagePanel } from "./GetImagePanel.js";
 import { POST_MEDIA_ANCHOR } from "./media-anchor.js";
 
@@ -25,6 +32,72 @@ function progressText(progress: PostUploadProgress): string {
   const percent =
     progress.totalBytes === 0 ? 100 : Math.round((progress.sentBytes / progress.totalBytes) * 100);
   return `Subiendo ${progress.doneFiles} de ${progress.totalFiles} · ${percent} % (${mb(progress.sentBytes)} de ${mb(progress.totalBytes)})`;
+}
+
+/** «Inglés», «Español»: el nombre de un idioma con mayúscula, para el selector. */
+const languageLabel = (language: Language) =>
+  `${LANGUAGE_TEXT[language].charAt(0).toUpperCase()}${LANGUAGE_TEXT[language].slice(1)}`;
+
+/** Inglés primero (el selector que pidió el operador: Todos, Inglés, Español). */
+const LANGUAGE_CHOICES: readonly Language[] = [...LANGUAGES].sort((a, b) =>
+  a === "en" ? -1 : b === "en" ? 1 : 0,
+);
+
+/** La ayuda del idioma de cada foto (ADR-0042). */
+const LANGUAGE_HELP =
+  "En X (y LinkedIn, Discord y TikTok) cada idioma sale con su imagen. En Instagram van juntas en un carrusel, primero la del idioma del texto. «Todos» va con cualquier idioma.";
+
+/**
+ * El idioma de una foto o un video del post (ADR-0042): «Todos», «Inglés» o «Español». Una tarjeta
+ * de la marca ya tiene el suyo (el de su pedido): se dice, sin selector.
+ */
+function MediaLanguage({
+  item,
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  item: PostMediaItem;
+  label: string;
+  value: Language | null;
+  disabled: boolean;
+  onChange: (language: Language | null) => void;
+}) {
+  const id = useId();
+  if (item.cardLanguages !== null) {
+    return (
+      <span className="block">
+        {item.cardLanguages.length === 0
+          ? "Tarjeta"
+          : `Tarjeta en ${item.cardLanguages.map((language) => LANGUAGE_TEXT[language]).join(" y ")}`}
+      </span>
+    );
+  }
+  return (
+    <span className="mt-1 block">
+      <label htmlFor={id} className="block text-fg-muted">
+        Idioma
+      </label>
+      <select
+        id={id}
+        aria-label={label}
+        value={value ?? ""}
+        disabled={disabled}
+        onChange={(event) =>
+          onChange(LANGUAGES.find((language) => language === event.target.value) ?? null)
+        }
+        className="block w-full rounded-md border border-line-strong bg-surface px-1.5 py-1 text-xs text-fg focus-visible:outline-2 focus-visible:outline-brand-700 disabled:cursor-not-allowed disabled:bg-canvas disabled:text-fg-subtle"
+      >
+        <option value="">Todos</option>
+        {LANGUAGE_CHOICES.map((language) => (
+          <option key={language} value={language}>
+            {languageLabel(language)}
+          </option>
+        ))}
+      </select>
+    </span>
+  );
 }
 
 /**
@@ -58,6 +131,13 @@ export function PostMedia({
   const [failed, setFailed] = useState<File[] | null>(null);
   const abort = useRef<AbortController | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  const setLanguage = usePostMediaLanguage(postId);
+  /** El idioma que se ve: el que se está guardando, o el del medio. */
+  const languageOf = (item: PostMediaItem) =>
+    setLanguage.isPending && setLanguage.variables?.mediaId === item.id
+      ? setLanguage.variables.language
+      : item.language;
+  const ownMedia = media.filter((item) => item.cardLanguages === null);
   // Al salir de la página se corta lo que se estaba subiendo.
   useEffect(() => () => abort.current?.abort(), []);
 
@@ -100,6 +180,15 @@ export function PostMedia({
       aria-label="Medios"
       title={`Fotos y videos (${media.length})`}
     >
+      {ownMedia.length > 0 && kind !== "text" && (
+        <p className="mb-3 flex items-start gap-2 text-sm text-fg-muted">
+          <span>
+            Marca el idioma de cada imagen si tiene texto en un idioma: en X cada idioma sale con su
+            imagen; en Instagram van juntas en un carrusel, primero la del idioma del texto.
+          </span>
+          <HelpDot label="Cómo funciona el idioma de cada imagen" text={LANGUAGE_HELP} />
+        </p>
+      )}
       {media.length === 0 ? (
         <p className="text-sm text-fg-muted">Sin medios: un post de solo texto no los necesita.</p>
       ) : (
@@ -128,10 +217,18 @@ export function PostMedia({
                 {mb(item.bytes)}
               </span>
               {mediaProcessing(item) && <span className="block text-warning-800">procesando…</span>}
+              <MediaLanguage
+                item={item}
+                label={`Idioma de ${item.kind === "video" ? "el video" : "la foto"} ${index + 1}`}
+                value={languageOf(item)}
+                disabled={lockReason !== null || setLanguage.isPending}
+                onChange={(language) => setLanguage.mutate({ mediaId: item.id, language })}
+              />
             </li>
           ))}
         </ul>
       )}
+      {setLanguage.error !== null && <ErrorAlert error={setLanguage.error} />}
       {waiting > 0 && (
         <p role="status" className="mt-3 text-sm text-fg-muted">
           {waiting === 1

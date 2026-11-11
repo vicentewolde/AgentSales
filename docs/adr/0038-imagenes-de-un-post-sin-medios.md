@@ -68,3 +68,5 @@ Un post de marca (F9) sin fotos no se puede publicar en Instagram, TikTok ni en 
   - **9:16 con zona segura.** Margen de 200 px arriba y 270 px abajo: Instagram y TikTok tapan esas franjas con su interfaz al ver un reel.
   - **El contacto en todas las tarjetas.** `postCardPlan` pone el contacto de la marca (`@cuenta` o sitio) en `detail` de todas las tarjetas, no solo del cierre; el texto y el reparto de puntos no cambian.
   - **Límite conocido:** en este equipo de desarrollo (Linux, sharp 0.35.5) `fontfile` no registra Inter (el texto sale con la fuente del sistema, Noto Sans), así que lo visto en pruebas locales puede diferir un poco de producción en el ancho de las letras; el diseño no depende de las métricas de Inter (el texto se achica hasta caber).
+
+- **2026-11-11 (ADR-0042, `feat/idioma-de-cada-imagen`):** lo que sube el usuario también puede tener idioma (`media.language`). Las tarjetas siguen esta regla por idioma en todas las redes; la marca del usuario se suma a ella (`mediaForText`).
