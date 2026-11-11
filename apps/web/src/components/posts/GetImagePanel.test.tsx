@@ -61,7 +61,11 @@ async function setup(
 }
 
 const openPanel = async () => {
-  fireEvent.click(await screen.findByRole("button", { name: "Conseguir imagen" }));
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: /^(Conseguir una imagen automática|Armar un video con tarjetas)/,
+    }),
+  );
   return screen.findByRole("region", { name: "Conseguir imagen" });
 };
 
@@ -512,6 +516,6 @@ describe("panel: conseguir imagen", () => {
 
   it("un post de solo texto no ofrece conseguir imagen", async () => {
     await setup({ kind: "text" });
-    expect(screen.queryByRole("button", { name: "Conseguir imagen" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Conseguir una imagen automática/ })).toBeNull();
   });
 });

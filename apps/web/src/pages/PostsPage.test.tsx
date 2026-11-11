@@ -82,7 +82,25 @@ describe("panel: Contenido", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: /^Ideas sin aceptar/ }));
     await waitFor(() => expect(topics()).toEqual(["Una idea del plan"]));
-    expect(screen.getByText(/Se aceptan o se descartan en Plan/)).toBeTruthy();
+    expect(screen.getByText(/Acéptalas o descártalas aquí o en Plan/)).toBeTruthy();
+  });
+
+  it("las listas van por semana y una idea se acepta o descarta sin salir de Contenido", async () => {
+    const s = await setup();
+    const idea = await s.deps.posts.create({
+      brokerId: s.agentpey.id,
+      topic: "Una idea para descartar",
+      kind: "text",
+      status: "idea",
+      plannedAt: new Date(Date.now() + 2 * 86_400_000),
+    });
+    s.renderApp("/contenido?ver=ideas");
+    await waitFor(() => expect(topics()).toEqual(["Una idea para descartar"]));
+    expect(screen.getByRole("heading", { name: /^Semana del / })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Descartar" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Sí, descartar" }));
+    await waitFor(async () => expect((await s.deps.posts.get(idea.id))?.status).toBe("archived"));
+    expect(s.requests).toContain(`POST /posts/${idea.id}/discard`);
   });
 
   it("con una marca elegida en el selector, solo sus posts (por su id)", async () => {

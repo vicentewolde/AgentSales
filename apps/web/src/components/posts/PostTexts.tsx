@@ -28,6 +28,7 @@ import { Badge } from "../ui/Badge.js";
 import { Button } from "../ui/Button.js";
 import { Field, Input, Textarea } from "../ui/Field.js";
 import { cardLanguageNotice } from "./card-language.js";
+import { HashtagSuggestions } from "./HashtagSuggestions.js";
 import { type PostContentView, postContents } from "./labels.js";
 import { needsXLinkMark, X_LINK_COST_TEXT } from "./XLinkControl.js";
 
@@ -176,6 +177,12 @@ function Editor({
           placeholder="#bastidores #producto"
         />
       </Field>
+      <HashtagSuggestions
+        platform={platform}
+        body={body}
+        hashtags={hashtags}
+        onAdd={(tag) => changeHashtags(`${hashtags.trim()} ${tag}`.trim())}
+      />
       <PostCounter platform={platform} body={body} hashtags={tags} id={`${ids}-counter`} />
       <XLinkNote platform={platform} text={body} />
       {blank && (

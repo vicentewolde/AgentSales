@@ -156,6 +156,26 @@ describe("panel: Plan", () => {
     );
   });
 
+  it("«Descartar las ideas que quedan» descarta las sin aceptar y no toca lo aceptado", async () => {
+    const s = await setup();
+    await s.planned(3);
+    const [kept, ...rest] = await s.ideas();
+    if (kept === undefined || rest.length !== 2) throw new Error("faltan ideas");
+    s.signInAsBroker(s.brand.id);
+    s.renderApp("/plan");
+    const card = await screen.findByRole("listitem", { name: kept.topic });
+    fireEvent.click(within(card).getByRole("button", { name: "Aceptar" }));
+    await waitFor(async () => expect((await s.deps.posts.get(kept.id))?.status).toBe("draft"));
+    fireEvent.click(await screen.findByRole("button", { name: "Descartar las ideas que quedan…" }));
+    expect(screen.getByText(/Lo que ya aceptaste no se toca/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Sí, descartarlas" }));
+    await waitFor(async () => {
+      for (const idea of rest) expect((await s.deps.posts.get(idea.id))?.status).toBe("archived");
+    });
+    expect((await s.deps.posts.get(kept.id))?.status).toBe("draft");
+    expect(await screen.findByText("Se descartaron 2 ideas.")).toBeTruthy();
+  });
+
   it("una semana con ideas aceptadas ofrece «Aprobar la semana» (F9.5-T27); sin aceptar, no", async () => {
     const s = await setup();
     await s.planned(1);
