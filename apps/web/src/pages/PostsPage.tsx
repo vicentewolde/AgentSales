@@ -1,6 +1,8 @@
 import type { PostCover, PostJson } from "@agentsales/api/contracts";
 import {
   formatChileDayTime,
+  formatChileWeek,
+  groupByPlanWeek,
   isAppError,
   PLATFORM_TEXT,
   POST_KINDS,
@@ -25,6 +27,7 @@ import { Input, Select, Textarea } from "../components/ui/Field.js";
 import { PageHeader } from "../components/ui/PageHeader.js";
 import { Tip } from "../components/ui/Tip.js";
 import { useBrokers } from "../queries/brokers.js";
+import { useAcceptIdea, useDiscardIdea } from "../queries/plans.js";
 import { useArchivePosts, useCreatePost, usePosts } from "../queries/posts.js";
 import { useTracking } from "../queries/tracking.js";
 import { useBrokerFilter, useRole } from "../scope/broker-scope.js";
@@ -199,6 +202,79 @@ const networksOf = (post: PostJson) =>
     ? "todas las redes"
     : post.platforms.map((platform) => PLATFORM_TEXT[platform]).join(" + ");
 
+/** El título de un grupo semanal («Semana del lun 9 nov al dom 15 nov») o «Sin fecha». */
+const weekTitle = (week: string | null) => (week === null ? "Sin fecha" : formatChileWeek(week));
+
+/**
+ * Los posts de una lista por semana (lunes a domingo, hora de Chile). `ascending`: lo que viene,
+ * de la semana más cercana a la más lejana; si no, lo pasado, de la más reciente a la más antigua.
+ */
+function weeksOf<T extends { post: PostJson }>(entries: readonly T[], ascending: boolean) {
+  const groups = groupByPlanWeek(
+    entries.map((entry) => ({ ...entry, plannedAt: entry.post.plannedAt })),
+  );
+  if (ascending) return groups;
+  const dated = groups.filter((group) => group.week !== null).reverse();
+  for (const group of dated) group.items.reverse();
+  return [...dated, ...groups.filter((group) => group.week === null)];
+}
+
+/**
+ * Aceptar o descartar una idea sin salir de Contenido. Aceptar la pasa a «Por publicar» y la IA
+ * redacta sus textos; descartar la archiva y no se vuelve a proponer en 60 días.
+ */
+function IdeaQuickActions({ post }: { post: PostJson }) {
+  const planId = post.planRunId ?? undefined;
+  const accept = useAcceptIdea(planId);
+  const discard = useDiscardIdea(planId);
+  const [confirm, setConfirm] = useState(false);
+  const busy = accept.isPending || discard.isPending;
+  return (
+    <span className="flex flex-wrap items-center justify-end gap-2">
+      {confirm ? (
+        <>
+          ¿Descartarla? No se vuelve a proponer en 60 días.
+          <Button
+            variant="danger"
+            size="sm"
+            loading={discard.isPending}
+            onClick={() => discard.mutate(post.id, { onSettled: () => setConfirm(false) })}
+          >
+            Sí, descartar
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setConfirm(false)}>
+            No
+          </Button>
+        </>
+      ) : (
+        <>
+          <Tip
+            align="end"
+            text="Pasa a «Por publicar» y la IA redacta sus textos (gasta unos centavos de IA). No se publica nada hasta que lo apruebes y lo programes."
+          >
+            {(describedBy) => (
+              <Button
+                size="sm"
+                aria-describedby={describedBy}
+                loading={accept.isPending}
+                disabled={busy}
+                onClick={() => accept.mutate(post.id)}
+              >
+                Aceptar
+              </Button>
+            )}
+          </Tip>
+          <Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirm(true)}>
+            Descartar
+          </Button>
+        </>
+      )}
+      {accept.error && <ErrorAlert error={accept.error} />}
+      {discard.error && <ErrorAlert error={discard.error} />}
+    </span>
+  );
+}
+
 function PostRow({
   post,
   brand,
@@ -276,13 +352,7 @@ function PostRow({
               </Button>
             </span>
           ) : isIdea ? (
-            // Una idea no se archiva: se acepta o se descarta en el plan.
-            <Link
-              to={post.planRunId === null ? "/plan" : `/plan?plan=${post.planRunId}`}
-              className="font-medium text-brand-700 underline underline-offset-2"
-            >
-              Aceptar o descartar en Plan →
-            </Link>
+            <IdeaQuickActions post={post} />
           ) : (
             <>
               <Link
@@ -487,23 +557,33 @@ export function PostsPage() {
         </p>
       )}
       {!loading && shown.length > 0 && (
-        <ul aria-label={`Posts: ${VIEW_TITLE[view]}`} className="mt-3 space-y-2">
-          {shown.map(({ post, progress, view: own }) => (
-            <PostRow
-              key={post.id}
-              post={post}
-              brand={brandOf(post)}
-              cover={covers[post.id]}
-              progress={progress}
-              stale={
-                own === "fecha-pasada" ||
-                (own === "ideas" && isStale(post.plannedAt, progress, now))
-              }
-              onArchive={(id) => archive.mutate([id])}
-              archiving={archivingId.includes(post.id)}
-            />
+        <div className="mt-3 space-y-6">
+          {weeksOf(shown, view === "por-publicar" || view === "ideas").map((group) => (
+            <section key={group.week ?? "sin-fecha"} aria-label={weekTitle(group.week)}>
+              <h2 className="mb-2 text-sm font-semibold text-fg-muted">{weekTitle(group.week)}</h2>
+              <ul
+                aria-label={`Posts: ${VIEW_TITLE[view]} · ${weekTitle(group.week)}`}
+                className="space-y-2"
+              >
+                {group.items.map(({ post, progress, view: own }) => (
+                  <PostRow
+                    key={post.id}
+                    post={post}
+                    brand={brandOf(post)}
+                    cover={covers[post.id]}
+                    progress={progress}
+                    stale={
+                      own === "fecha-pasada" ||
+                      (own === "ideas" && isStale(post.plannedAt, progress, now))
+                    }
+                    onArchive={(id) => archive.mutate([id])}
+                    archiving={archivingId.includes(post.id)}
+                  />
+                ))}
+              </ul>
+            </section>
           ))}
-        </ul>
+        </div>
       )}
       {archive.error && <ErrorAlert error={archive.error} />}
       <CreatePost scopedBrokerId={brokerId} />

@@ -488,14 +488,19 @@ export function GetImagePanel({
   const busy = request.isPending || active;
   if (!open) {
     return (
-      <div id={GET_IMAGE_ANCHOR} className="mt-4 border-t border-line pt-4">
-        <Button variant="secondary" onClick={() => setOpen(true)}>
-          Conseguir imagen
-        </Button>
-        <p className="mt-1.5 text-xs text-fg-subtle">
+      <div id={GET_IMAGE_ANCHOR} className="mt-4 border-t border-line pt-4 text-sm">
+        <p className="text-fg-muted">
+          Lo normal: diseña la imagen aparte y súbela en «Fotos y videos».{" "}
+          <Button variant="link" onClick={() => setOpen(true)}>
+            {video
+              ? "Armar un video con tarjetas (opcional)"
+              : "Conseguir una imagen automática (opcional)"}
+          </Button>
+        </p>
+        <p className="mt-1 text-xs text-fg-subtle">
           {video
             ? "Arma un video con las tarjetas de la marca y el texto del post. Cuesta US$0: se dibuja aquí, sin IA."
-            : "Para qué sirve: el post necesita una imagen y esto la consigue. Tres opciones: tarjetas con el texto del post y tu marca (US$0, se dibujan aquí), una foto libre de la biblioteca Pixabay (US$0) o una imagen creada con IA (cuesta unos centavos y cuenta contra el tope de la marca). Si ya tienes tus propias imágenes, súbelas en «Fotos y videos»."}
+            : "Tarjetas con el texto del post y tu marca (US$0) o una foto libre de Pixabay (US$0). La imagen con IA solo aparece si está configurada en el servidor y cuesta unos centavos."}
         </p>
       </div>
     );
