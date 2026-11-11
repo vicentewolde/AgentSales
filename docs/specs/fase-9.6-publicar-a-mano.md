@@ -27,6 +27,9 @@ Que el operador publique a diario desde la marca AgentPey en **X e Instagram con
 - **D4.** `CONFIRM_WITHOUT_URL_PLATFORMS = ["linkedin", "x", "instagram"]`; `confirmedWithoutLink` y los textos del panel ya dependen de esa lista.
 - **D5.** Panel: `HandAssist` (generaliza al de LinkedIn) por red: LinkedIn y X abren el editor con el texto por un enlace normal; Instagram solo copia y muestra las imágenes o el video. El enlace de X es `https://x.com/intent/post?text=<texto>` (**NO VERIFICADO**; con el enlace entero sobre ~1.800 caracteres, el editor se abre vacío y el texto va por el portapapeles). Ninguna automatiza el navegador.
 - **D6.** La lista «Lista para publicar a diario» dice, para Instagram a mano, «A mano: publicas tú desde la app y confirmas», sin pedir token ni prueba de entrada (S1 es para publicar por la API).
+- **D7 (T05, ADR-0042).** El idioma de una imagen: `media.language` (`es`, `en` o `null` = sirve para todos los idiomas, lo de siempre), solo con sentido en los originales de un post. Se marca con `PATCH /posts/:id/media/:mediaId` (`{ language }`), `post upload --language`, `post media-language` y un selector bajo cada foto en el panel. Se niega con `POST_MEDIA_IN_USE` (409) si el post tiene publicaciones con sus medios ya fijados (aprobadas, programadas, publicándose, fallidas, esperando el clic, pausadas o con resultado dudoso).
+- **D8 (T05).** Qué medios lleva un texto (`mediaForText`, core, la usan la publicación, la revisión, la vista previa y «Qué se publica»): en X, LinkedIn, Discord y TikTok, los de su idioma y los sin idioma; en Instagram, todos, primero los de su idioma y los sin idioma y después los de otros idiomas (cada grupo por `sortOrder`). Las tarjetas siguen su regla por idioma (ADR-0038). En Instagram, un post de imagen cuyas imágenes son de más de un idioma sale como carrusel (de 2 a 10).
+- **D9 (T05).** El orden de lo subido sigue el orden del pedido: `post_uploads.sort_order` se reserva al pedir la URL, y `complete` (y el worker, para los archivos grandes) crea cada medio con ese orden. `post_uploads.language` lleva el idioma pedido con `--language` hasta el medio.
 
 ## 5. Tareas
 ### T01 · Core: Instagram a mano para marcas y confirmar sin enlace
@@ -44,6 +47,10 @@ Que el operador publique a diario desde la marca AgentPey en **X e Instagram con
 ### T04 · Documentación y cierre
 - **Archivos:** `docs/08-guia-operador.md` (la rutina «Publicar a mano en X e Instagram»), `docs/integraciones/x.md`, `docs/integraciones/instagram-contenido-propio.md`, `docs/ESTADO.md`, ADR-0029 (nota al punto 9).
 - **Hecho cuando:** la guía describe la rutina completa y qué hacer con la cuenta nueva; el operador probó una publicación a mano de X y una de Instagram (en `docs/ESTADO.md`).
+
+### T05 · El idioma de cada imagen (ADR-0042)
+- **Archivos:** `packages/core` (nuevo `post-media-language.ts`, `media.ts`, `ports/media-repository.ts`, `post.ts`, `use-cases/post-uploads.ts`, `use-cases/open-publications.ts`, `social/check.ts`, nuevo `use-cases/post-media-language.ts`), `packages/db` (esquema, migración, repositorios de medios y subidas), `apps/api` (`routes/posts.ts`, contratos, `access.ts`, `errors.ts`), `apps/cli` (`post upload --language`, `post media-language`, `post show`), `apps/web` (`PostMedia`, `preview/`, `PostSummary`), `docs/02-modelo-datos.md`, `docs/08-guia-operador.md`.
+- **Hecho cuando:** D7 a D9 con sus pruebas: la función pura (X separa por idioma, Instagram junta y ordena, el post de imagen bilingüe es carrusel), la revisión cuenta los medios de cada texto, el repositorio con PGlite guarda y lee el idioma y el orden reservado, la ruta (rol, 404, 409, archivado), la CLI y el selector del panel; dos archivos subidos en un pedido quedan en el orden pedido aunque terminen al revés.
 
 ## 6. Criterios de aceptación
 1. `accounts connect instagram --broker agentpey --manual --handle <usuario>` crea la cuenta a mano y lo dice; en un corredor de propiedades se niega.
@@ -65,3 +72,4 @@ Que el operador publique a diario desde la marca AgentPey en **X e Instagram con
 
 ## 9. Registro de cambios del spec
 - 2026-11-10: creado y aprobado por el operador.
+- 2026-11-11: T05 (el idioma de cada imagen, D7 a D9, ADR-0042), a pedido del operador.

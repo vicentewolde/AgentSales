@@ -145,6 +145,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Únic
 | sort_order | int | Orden del carrusel |
 | is_cover | boolean | |
 | ai_metadata | jsonb null | Descripción y puntaje de la IA. Sin uso en F2: la IA no ve las fotos (D3 del spec F2); queda para la sugerencia de portada con visión (backlog) |
+| language | text null | Desde la migración `0025` (ADR-0042): el idioma de un original de un post (`LANGUAGES` de core, validado al leer). `null` sirve para todos los idiomas (lo de siempre). Fuera de Instagram, el texto de un idioma lleva solo lo de su idioma y lo de todos; en Instagram, todo, primero lo de su idioma (`mediaForText`). Se marca con `PATCH /posts/:id/media/:mediaId` (`MediaRepository.setLanguage`, solo originales de ese post). En variantes y avisos no se usa |
 
 Únicos (migración `0001`): `(listing_id, checksum) WHERE role = 'original'` (el mismo archivo no se sube dos veces a una propiedad) y `UNIQUE (storage_path)`, que también cubre el logo (`listing_id` null). El logo es un medio `original` sin aviso (`listing_id` null), en `brokers/{brokerId}/brand/{sha256}.{ext}`; `brokers.logo_media_id` apunta a él. Que sea un original sin aviso ni post y del mismo corredor lo valida `BrokerRepository.setLogo`, no la base (solo hay FK). Desde F9, único parcial `media_original_post_checksum_unique` `(post_id, checksum) WHERE role = 'original'`: el mismo archivo no se sube dos veces a un post. Los originales de un post van en `posts/{postId}/original/{sha256}.{ext}` y sus variantes en `posts/{postId}/processed/{variante}/{sha256}-v{versión}.jpg|.mp4` (F9-T10). En F1, `width`, `height` y `duration_s` quedan en `null`; los mide la etapa `media` del job `content.prepare` en F2 (ADR-0012).
 
@@ -284,6 +285,8 @@ El registro de las URL prefirmadas de R2 pedidas para un post (ADR-0025); `impor
 | expected_bytes | bigint | El tamaño anunciado al pedir la URL |
 | status | enum `post_upload_status` default `pending` | `pending`, `completed` (registrada como medio) o `abandoned` (vencida; la limpieza la borró de R2). Un pedido nuevo del mismo archivo la vuelve a `pending`. Desde F9-T17 (migración `0017`, `ALTER TYPE … ADD VALUE`, al final del tipo), `uploaded`: un archivo grande sin sha256 que llegó a R2 y espera que el worker lo hashee (`post.media`); de ahí pasa a `completed` (medio nuevo, o duplicado y su objeto borrado) o a `abandoned` (el archivo ya no estaba). La limpieza cierra las `pending` vencidas y las `uploaded` con más de 24 h desde que llegaron (`updated_at`: el worker agotó sus reintentos) |
 | expires_at | timestamptz | Cuándo vence la subida: 24 h después de pedirla (la URL dura 6 h) |
+| sort_order | int null | Desde la migración `0025` (ADR-0042): el lugar de su medio, reservado al pedir la URL en el orden de los archivos (después de los medios del post y de las subidas pendientes). `complete` y el worker crean el medio con él, así el orden es el del pedido aunque terminen de subir al revés. `null` en las anteriores: toman el siguiente libre |
+| language | text null | Desde la `0025`: el idioma pedido para su medio (`post upload --language`); pasa a `media.language`. `null`: todos |
 
 Índices `(post_id)` y `(status, expires_at)` (la limpieza periódica).
 
@@ -467,6 +470,8 @@ Son **aditivas salvo la `0015`**, que además quita el `NOT NULL` de `listing_id
 | `0016_f9_x_enlace` | T16 | `posts.x_link_allowed` (`false` por defecto) |
 | `0017_f9_subida_grande` | T17 | `post_upload_status` suma `uploaded` |
 | `0018_f9_plan_ideas` | T20 | `posts.platforms` (`text[]` nulo) y el único parcial `plan_runs_one_active_per_broker` |
+
+**F9.6:** `0025_f96_idioma_de_cada_imagen` (T05, ADR-0042) agrega `media.language`, `post_uploads.sort_order` y `post_uploads.language` (todas nulas): aditiva; la versión anterior no las lee (todo vuelve a ir en todos los idiomas), y volver atrás no pide deshacerla.
 
 **F9.5 (lista para mostrar):** `0019_f95_musica` (T19) agrega `listings.music_track_id` y `posts.music_track_id` (texto nulo): aditiva; la versión anterior no las lee, y volver atrás no pide deshacerla. `0020_f95_en_vivo_por_marca` (T22) agrega `brokers.live_enabled` (ver `brokers`). `0021_f95_imagenes_post` (T25) agrega la tabla `post_image_runs` con sus tipos `post_image_source` y `post_image_run_status`: aditiva; la versión anterior no la lee, y volver atrás no pide deshacerla.
 

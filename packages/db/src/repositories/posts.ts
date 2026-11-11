@@ -197,6 +197,8 @@ export function createPostUploadRepository(db: SchemaDatabase): PostUploadReposi
               objectPath: input.objectPath,
               expectedBytes: input.expectedBytes,
               expiresAt: input.expiresAt,
+              sortOrder: input.sortOrder ?? null,
+              language: input.language ?? null,
             })
             .returning();
           if (row === undefined) {
@@ -236,7 +238,8 @@ export function createPostUploadRepository(db: SchemaDatabase): PostUploadReposi
           .select()
           .from(postUploads)
           .where(eq(postUploads.postId, postId))
-          .orderBy(asc(postUploads.createdAt), asc(postUploads.id));
+          // Las de un mismo pedido nacen a la misma hora: después, el lugar reservado (ADR-0042).
+          .orderBy(asc(postUploads.createdAt), asc(postUploads.sortOrder), asc(postUploads.id));
         return rows.map(toPostUpload);
       });
     },
@@ -267,11 +270,17 @@ export function createPostUploadRepository(db: SchemaDatabase): PostUploadReposi
     markUploaded: (id) => settle(id, "uploaded"),
     markAbandoned: (id) => settle(id, "abandoned", ["pending", "uploaded"]),
 
-    reopen(id, expiresAt) {
+    reopen(id, expiresAt, changes = {}) {
       return withDbErrors(async () => {
         const [row] = await db
           .update(postUploads)
-          .set({ status: "pending", expiresAt, updatedAt: sql`now()` })
+          .set({
+            status: "pending",
+            expiresAt,
+            ...(changes.sortOrder === undefined ? {} : { sortOrder: changes.sortOrder }),
+            ...(changes.language === undefined ? {} : { language: changes.language }),
+            updatedAt: sql`now()`,
+          })
           .where(eq(postUploads.id, id))
           .returning();
         return row === undefined ? null : toPostUpload(row);

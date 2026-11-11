@@ -42,6 +42,7 @@ import {
   requestPostUploads,
   schedulePost,
   searchStockPhotos,
+  setPostMediaLanguage,
   unapproveContent,
   updatePost,
 } from "@agentsales/core";
@@ -65,6 +66,7 @@ import {
   type PostImageStockResponse,
   type PostListResponse,
   type PostMediaItem,
+  type PostMediaLanguageResponse,
   type PostPublishResponse,
   type PostResponse,
   type PostScheduleResponse,
@@ -76,6 +78,8 @@ import {
   postImageCardsQuerySchema,
   postImageRunParamSchema,
   postImageStockQuerySchema,
+  postMediaLanguageBodySchema,
+  postMediaParamSchema,
   postPublishBodySchema,
   postQuerySchema,
   postScheduleBodySchema,
@@ -210,6 +214,7 @@ export function postRoutes(deps: PostRoutesDeps) {
             durationS: item.durationS,
             variants: (variants.get(item.id) ?? []).sort(),
             cardLanguages: cards.has(item.id) ? [...(cards.get(item.id) ?? [])] : null,
+            language: item.language ?? null,
           };
         }),
     );
@@ -344,6 +349,7 @@ export function postRoutes(deps: PostRoutesDeps) {
             requireAuth(c).user,
             c.req.valid("param").id,
             c.req.valid("json").files,
+            { language: c.req.valid("json").language ?? null },
           );
           const body: PostUploadResponse = { post, uploads };
           return c.json(body, 201);
@@ -361,6 +367,24 @@ export function postRoutes(deps: PostRoutesDeps) {
         };
         return c.json(body, 200);
       })
+      // ADR-0042: el idioma de una foto o un video del post (`null`: todos los idiomas).
+      .patch(
+        "/:id/media/:mediaId",
+        validated("param", postMediaParamSchema),
+        validated("json", postMediaLanguageBodySchema),
+        async (c) => {
+          const { id, mediaId } = c.req.valid("param");
+          await setPostMediaLanguage(
+            deps,
+            requireAuth(c).user,
+            id,
+            mediaId,
+            c.req.valid("json").language,
+          );
+          const body: PostMediaLanguageResponse = { media: await mediaOf(id) };
+          return c.json(body, 200);
+        },
+      )
       // F9.5-T25 (ADR-0038): conseguir imágenes. Las fuentes, lo propuesto y los últimos pedidos;
       // buscar en la biblioteca (una lectura); pedir (el worker las consigue con `post.image`) y
       // seguir un pedido.

@@ -8,6 +8,7 @@ import {
   errorBodySchema,
   postDetailResponseSchema,
   postListResponseSchema,
+  postMediaLanguageResponseSchema,
   postResponseSchema,
   postUploadCompleteResponseSchema,
   postUploadResponseSchema,
@@ -271,6 +272,7 @@ describe("/posts: permisos (ADR-0022, `posts.manage`)", () => {
       "POST /posts/:id/archive",
       "POST /posts/:id/uploads",
       "POST /posts/:id/uploads/complete",
+      "PATCH /posts/:id/media/:mediaId",
     ]) {
       expect([route, ROUTE_ACCESS[route]]).toEqual([route, "session"]);
     }
@@ -306,6 +308,95 @@ describe("GET /posts: la portada de cada post", () => {
     expect(Object.keys(list.covers)).toEqual([withMedia.id]);
     expect(list.covers[withMedia.id]).toMatchObject({ kind: "image", count: 1 });
     expect(list.covers[withMedia.id]?.url).toContain(`posts/${withMedia.id}/original/`);
+  });
+});
+
+describe("PATCH /posts/:id/media/:mediaId: el idioma de una foto (ADR-0042)", () => {
+  /** Un post de imagen con dos fotos subidas, la segunda pedida en inglés. */
+  async function withPhotos() {
+    const s = await setup();
+    const post = await s.deps.posts.create({
+      brokerId: s.mine.id,
+      topic: "Bilingüe",
+      kind: "image",
+    });
+    const other = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 9, 8, 7]);
+    for (const [bytes, language] of [
+      [PHOTO, undefined],
+      [other, "en"],
+    ] as const) {
+      const requested = postUploadResponseSchema.parse(
+        await (
+          await s.broker(`/posts/${post.id}/uploads`, {
+            method: "POST",
+            json: {
+              files: [{ name: "foto.jpg", size: bytes.length, sha256: sha256(bytes) }],
+              ...(language === undefined ? {} : { language }),
+            },
+          })
+        ).json(),
+      );
+      const [target] = requested.uploads;
+      if (target?.status !== "upload") throw new Error("sin URL");
+      await s.storage.receiveUpload(target.url, target.headers, bytes);
+    }
+    const done = postUploadCompleteResponseSchema.parse(
+      await (await s.broker(`/posts/${post.id}/uploads/complete`, { method: "POST" })).json(),
+    );
+    return { s, post, media: done.media };
+  }
+
+  it("lo subido con idioma lo trae; marcar y desmarcar devuelve los medios con el idioma nuevo", async () => {
+    const { s, post, media } = await withPhotos();
+    expect(media.map((item) => item.language)).toEqual([null, "en"]);
+    const [first] = media;
+    if (first === undefined) throw new Error("sin medios");
+    const marked = await s.broker(`/posts/${post.id}/media/${first.id}`, {
+      method: "PATCH",
+      json: { language: "es" },
+    });
+    expect(marked.status).toBe(200);
+    const body = postMediaLanguageResponseSchema.parse(await marked.json());
+    expect(body.media.map((item) => item.language)).toEqual(["es", "en"]);
+    const cleared = await s.broker(`/posts/${post.id}/media/${first.id}`, {
+      method: "PATCH",
+      json: { language: null },
+    });
+    expect(postMediaLanguageResponseSchema.parse(await cleared.json()).media[0]?.language).toBe(
+      null,
+    );
+    const detail = postDetailResponseSchema.parse(
+      await (await s.broker(`/posts/${post.id}`)).json(),
+    );
+    expect(detail.media.map((item) => item.language)).toEqual([null, "en"]);
+  });
+
+  it("un idioma inventado es 400, un medio que no es del post 404, lo ajeno 404 y archivado 409", async () => {
+    const { s, post, media } = await withPhotos();
+    const [first] = media;
+    if (first === undefined) throw new Error("sin medios");
+    const path = `/posts/${post.id}/media/${first.id}`;
+    expect((await s.broker(path, { method: "PATCH", json: { language: "fr" } })).status).toBe(400);
+    const missing = await s.broker(`/posts/${post.id}/media/no-existe`, {
+      method: "PATCH",
+      json: { language: "en" },
+    });
+    expect(missing.status).toBe(404);
+    expect((await errorOf(missing)).code).toBe("MEDIA_NOT_FOUND");
+    const foreign = await s.deps.posts.create({
+      brokerId: s.theirs.id,
+      topic: "Ajeno",
+      kind: "image",
+    });
+    const notMine = await s.broker(`/posts/${foreign.id}/media/${first.id}`, {
+      method: "PATCH",
+      json: { language: "en" },
+    });
+    expect(notMine.status).toBe(404);
+    await s.broker(`/posts/${post.id}/archive`, { method: "POST" });
+    const archived = await s.broker(path, { method: "PATCH", json: { language: "en" } });
+    expect(archived.status).toBe(409);
+    expect((await errorOf(archived)).code).toBe("POST_ARCHIVED");
   });
 });
 

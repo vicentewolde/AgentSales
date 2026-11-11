@@ -3,6 +3,8 @@ import {
   checkArrangement,
   checkDerivative,
   checkNewMedia,
+  LANGUAGES,
+  type Language,
   type Media,
   type MediaRecord,
   type MediaRepository,
@@ -66,6 +68,7 @@ function toMedia(row: typeof media.$inferSelect): Media {
     checksum: row.checksum,
     sortOrder: row.sortOrder,
     isCover: row.isCover,
+    language: row.language,
   });
   if (!parsed.success) {
     throw new AppError("MEDIA_ROW_INVALID", `El medio ${row.id} tiene datos inválidos`, {
@@ -87,7 +90,22 @@ const recordColumns = {
   checksum: media.checksum,
   sortOrder: media.sortOrder,
   isCover: media.isCover,
+  language: media.language,
 };
+
+/**
+ * Fila de `recordColumns` → `MediaRecord`. `language` es texto en la base: se valida con
+ * `LANGUAGES` al leer (ADR-0042); un valor desconocido es `MEDIA_ROW_INVALID`.
+ */
+function toRecord(row: Omit<MediaRecord, "language"> & { language: string | null }): MediaRecord {
+  const { language } = row;
+  if (language !== null && !(LANGUAGES as readonly string[]).includes(language)) {
+    throw new AppError("MEDIA_ROW_INVALID", `El medio ${row.id} tiene un idioma inválido`, {
+      details: { id: row.id, language },
+    });
+  }
+  return { ...row, language: language as Language | null };
+}
 
 /** Solo originales: los derivados (`processed`, `rendered`) llegan en F2 y no son de la ingesta. */
 const isOriginal = eq(media.role, "original");
@@ -96,25 +114,29 @@ const isOriginal = eq(media.role, "original");
 export function createMediaRepository(db: SchemaDatabase): MediaRepository {
   return {
     listOriginals(subject) {
-      return withDbErrors(() =>
-        db
-          .select(recordColumns)
-          .from(media)
-          .where(and(ofSubject(subject), isOriginal))
-          .orderBy(asc(media.sortOrder), asc(media.id)),
+      return withDbErrors(async () =>
+        (
+          await db
+            .select(recordColumns)
+            .from(media)
+            .where(and(ofSubject(subject), isOriginal))
+            .orderBy(asc(media.sortOrder), asc(media.id))
+        ).map(toRecord),
       );
     },
 
     listCovers(listingIds) {
       if (listingIds.length === 0) return Promise.resolve([]);
-      return withDbErrors(() =>
-        db
-          .select(recordColumns)
-          .from(media)
-          .where(
-            and(inArray(media.listingId, [...listingIds]), isOriginal, eq(media.isCover, true)),
-          )
-          .orderBy(asc(media.sortOrder), asc(media.id)),
+      return withDbErrors(async () =>
+        (
+          await db
+            .select(recordColumns)
+            .from(media)
+            .where(
+              and(inArray(media.listingId, [...listingIds]), isOriginal, eq(media.isCover, true)),
+            )
+            .orderBy(asc(media.sortOrder), asc(media.id))
+        ).map(toRecord),
       );
     },
 
@@ -124,7 +146,7 @@ export function createMediaRepository(db: SchemaDatabase): MediaRepository {
           .select(recordColumns)
           .from(media)
           .where(and(eq(media.storagePath, storagePath), isOriginal));
-        return row ?? null;
+        return row === undefined ? null : toRecord(row);
       });
     },
 
@@ -137,7 +159,7 @@ export function createMediaRepository(db: SchemaDatabase): MediaRepository {
             .values({ ...data, postId: data.postId ?? null, role: "original" })
             .returning(recordColumns);
           if (row === undefined) throw new AppError("MEDIA_WRITE_FAILED", "No se creó el medio");
-          return row;
+          return toRecord(row);
         });
       } catch (error) {
         if (isMediaConflict(error)) {
@@ -387,6 +409,17 @@ export function createMediaRepository(db: SchemaDatabase): MediaRepository {
           return [...deleted, ...variants].map((row) => row.storagePath);
         }),
       );
+    },
+
+    setLanguage(subject, id, language) {
+      return withDbErrors(async () => {
+        const [row] = await db
+          .update(media)
+          .set({ language })
+          .where(and(eq(media.id, id), ofSubject(subject), isOriginal))
+          .returning(recordColumns);
+        return row === undefined ? null : toRecord(row);
+      });
     },
 
     deleteDerivative(id) {

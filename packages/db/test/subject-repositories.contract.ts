@@ -738,6 +738,61 @@ export function subjectRepositoriesContract(
           }),
         ).resolves.toMatchObject({ postId: post.id });
       });
+
+      it("el idioma de un original (ADR-0042): nace con él o sin él, setLanguage solo en originales de ese post", async () => {
+        const post = await newPost();
+        const other = await newPost();
+        const english = await repos.media.create({
+          ...original(post.id, unique("sha-en")),
+          language: "en",
+        });
+        const plain = await repos.media.create({
+          ...original(post.id, unique("sha-todos")),
+          sortOrder: 1,
+        });
+        expect(english.language).toBe("en");
+        expect(plain.language ?? null).toBeNull();
+
+        const marked = await repos.media.setLanguage(postSubject(post.id), plain.id, "es");
+        expect(marked).toMatchObject({ id: plain.id, language: "es" });
+        expect(
+          (await repos.media.listOriginals(postSubject(post.id))).map((item) => [
+            item.id,
+            item.language ?? null,
+          ]),
+        ).toEqual([
+          [english.id, "en"],
+          [plain.id, "es"],
+        ]);
+        const listed = await repos.media.listBySubject(postSubject(post.id));
+        expect(listed.find((item) => item.id === plain.id)?.language).toBe("es");
+        // Volver a todos los idiomas.
+        expect(
+          (await repos.media.setLanguage(postSubject(post.id), english.id, null))?.language ?? null,
+        ).toBeNull();
+        // Otro post, un id que no existe o una variante: null, sin tocar nada.
+        expect(await repos.media.setLanguage(postSubject(other.id), plain.id, "en")).toBeNull();
+        expect(
+          await repos.media.setLanguage(postSubject(post.id), repos.missingId, "en"),
+        ).toBeNull();
+        const { media: thumb } = await repos.media.upsertDerivative({
+          role: "processed",
+          variant: "thumb",
+          parentMediaId: plain.id,
+          postId: post.id,
+          brokerId: brand,
+          kind: "image",
+          storagePath: `posts/${post.id}/processed/thumb/${plain.id}.jpg`,
+          mime: "image/jpeg",
+          width: 100,
+          height: 100,
+          durationS: null,
+          bytes: 100,
+          checksum: unique("sha-thumb"),
+        });
+        expect(await repos.media.setLanguage(postSubject(post.id), thumb.id, "en")).toBeNull();
+        expect((await repos.media.get(plain.id))?.language).toBe("es");
+      });
     });
 
     describe("PostUploadRepository", () => {
@@ -803,6 +858,38 @@ export function subjectRepositoriesContract(
         expect(await repos.postUploads.markCompleted(upload.id)).toBe(true);
         expect((await repos.postUploads.reopen(upload.id, later))?.status).toBe("pending");
         expect(await repos.postUploads.reopen(repos.missingId, later)).toBeNull();
+      });
+
+      it("el lugar reservado y el idioma (ADR-0042): nacen con la subida y los cambia reopen", async () => {
+        const post = await newPost();
+        const later = new Date(Date.now() + 3_600_000);
+        const upload = await repos.postUploads.create({
+          postId: post.id,
+          objectPath: `posts/${post.id}/original/${unique("sha")}.jpg`,
+          expectedBytes: 7,
+          expiresAt: later,
+          sortOrder: 3,
+          language: "en",
+        });
+        expect(upload).toMatchObject({ sortOrder: 3, language: "en" });
+        const plain = await repos.postUploads.create({
+          postId: post.id,
+          objectPath: `posts/${post.id}/original/${unique("sha")}.jpg`,
+          expectedBytes: 7,
+          expiresAt: later,
+        });
+        expect([plain.sortOrder ?? null, plain.language ?? null]).toEqual([null, null]);
+        // Sin cambios, reopen los deja; con cambios, los reemplaza.
+        expect(await repos.postUploads.reopen(upload.id, later)).toMatchObject({
+          sortOrder: 3,
+          language: "en",
+        });
+        const moved = await repos.postUploads.reopen(upload.id, later, {
+          sortOrder: 5,
+          language: null,
+        });
+        expect([moved?.sortOrder, moved?.language ?? null]).toEqual([5, null]);
+        expect((await repos.postUploads.get(upload.id))?.sortOrder).toBe(5);
       });
 
       it("con su id en la clave: pending → uploaded → completed, o uploaded → abandoned (F9-T17)", async () => {

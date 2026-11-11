@@ -1,5 +1,12 @@
 import type { AccessScope } from "../access.js";
-import type { BriefOrigin, PostKind, PostPlatform, PostSource, PostStatus } from "../enums.js";
+import type {
+  BriefOrigin,
+  Language,
+  PostKind,
+  PostPlatform,
+  PostSource,
+  PostStatus,
+} from "../enums.js";
 import type { Post, PostUpload } from "../post.js";
 
 /** Un post nuevo (spec F9 §4.2): manual por defecto, en `draft` y con el brief del operador. */
@@ -124,7 +131,13 @@ export type NewPostUpload = {
   objectPath: string;
   expectedBytes: number;
   expiresAt: Date;
+  /** El lugar reservado para su medio y su idioma (ADR-0042). */
+  sortOrder?: number | null;
+  language?: Language | null;
 };
+
+/** Lo que cambia al reabrir una subida pedida otra vez: su lugar y su idioma (ADR-0042). */
+export type PostUploadReopen = { sortOrder?: number | null; language?: Language | null };
 
 /**
  * Las subidas pendientes de un post (`post_uploads`, spec F9 §4.5). Los cambios de estado son
@@ -138,7 +151,7 @@ export type NewPostUpload = {
 export interface PostUploadRepository {
   create(upload: NewPostUpload): Promise<PostUpload>;
   get(id: string): Promise<PostUpload | null>;
-  /** Las de un post, por fecha de creación y después id. */
+  /** Las de un post, por fecha de creación, después el lugar reservado (ADR-0042) y el id. */
   listByPost(postId: string): Promise<PostUpload[]>;
   /** Las `pending` vencidas (`expires_at` anterior a `now`), las más antiguas primero. */
   listExpired(now: Date): Promise<PostUpload[]>;
@@ -166,7 +179,8 @@ export interface PostUploadRepository {
   /**
    * Vuelve a `pending` con un vencimiento nuevo, venga del estado que venga (F9-T10): el mismo
    * archivo pedido otra vez (una URL vencida, o una subida que la limpieza abandonó) reutiliza su
-   * fila y su clave. Devuelve la subida actualizada; `null` si no existe.
+   * fila y su clave. Con `changes`, también su lugar y su idioma (los del pedido nuevo, ADR-0042).
+   * Devuelve la subida actualizada; `null` si no existe.
    */
-  reopen(id: string, expiresAt: Date): Promise<PostUpload | null>;
+  reopen(id: string, expiresAt: Date, changes?: PostUploadReopen): Promise<PostUpload | null>;
 }

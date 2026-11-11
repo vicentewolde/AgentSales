@@ -398,6 +398,42 @@ describe("checkPostContent: medios", () => {
     expect(x("en", lean)).toEqual([]);
   });
 
+  it("ADR-0042: cada texto cuenta las imágenes de su idioma; en Instagram, un post de imagen bilingüe es carrusel", () => {
+    const image = (id: string, sortOrder: number, language: "es" | "en" | null) => ({
+      id,
+      role: "original" as const,
+      kind: "image" as const,
+      sortOrder,
+      language,
+    });
+    const build = (media: ReturnType<typeof image>[]) =>
+      buildPostCheckContext({
+        post: { ...OPERATOR_POST, kind: "image" },
+        profile: PROFILE,
+        broker: BRAND,
+        media,
+      });
+    const run = (platform: PostPlatform, language: "es" | "en", ctx: PostCheckContext) =>
+      checkPostContent(platform, { body: "Foto.", hashtags: [], language }, ctx);
+    const bilingual = build([image("es", 0, "es"), image("en", 1, "en")]);
+    // X: una imagen por idioma; Instagram: las dos, como carrusel y sin «solo la primera».
+    expect(bilingual.mediaByText?.x?.es).toMatchObject({ images: 1, videos: 0 });
+    expect(bilingual.mediaByText?.instagram?.en).toMatchObject({ images: 2, bilingual: true });
+    expect(run("x", "es", bilingual).map((item) => item.code)).toEqual([]);
+    expect(run("x", "en", bilingual).map((item) => item.code)).toEqual([]);
+    expect(run("instagram", "en", bilingual).map((item) => item.code)).toEqual([]);
+    // Sin marcas, Instagram sigue avisando que publica solo la primera.
+    const plain = build([image("a", 0, null), image("b", 1, null)]);
+    expect(plain.mediaByText).toBeUndefined();
+    expect(run("instagram", "en", plain).map((item) => item.code)).toEqual(["MEDIA_UNUSED"]);
+    // Solo una imagen en inglés: el texto en español de X no tiene la suya, y lo dice.
+    const onlyEnglish = build([image("en", 0, "en")]);
+    const missing = run("x", "es", onlyEnglish);
+    expect(missing.map((item) => item.code)).toEqual(["MEDIA_REQUIREMENT"]);
+    expect(missing[0]?.message).toContain("en español: las del post están marcadas en otro idioma");
+    expect(run("instagram", "es", onlyEnglish).map((item) => item.code)).toEqual([]);
+  });
+
   it("Instagram necesita imagen o video, y TikTok solo video", () => {
     expect(codes("instagram", "Solo texto.", withMedia("text", 0))).toEqual([
       "MEDIA_NOT_SUPPORTED",

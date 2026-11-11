@@ -5,7 +5,7 @@ import {
   draftDiffers,
   INSTAGRAM_CUT,
   LINKEDIN_CUT,
-  mediaForLanguage,
+  mediaForText,
   postPreviewMedia,
 } from "./preview.js";
 
@@ -23,6 +23,7 @@ const item = (id: string, kind: "image" | "video"): PostMediaItem => ({
   durationS: null,
   variants: [],
   cardLanguages: null,
+  language: null,
 });
 
 describe("cutText", () => {
@@ -65,32 +66,71 @@ describe("draftDiffers", () => {
   });
 });
 
-describe("mediaForLanguage: cada texto ve las tarjetas de su idioma", () => {
-  const card = (id: string, cardLanguages: PostMediaItem["cardLanguages"]) => ({
+describe("mediaForText: cada texto ve las tarjetas de su idioma", () => {
+  const card = (id: string, cardLanguages: PostMediaItem["cardLanguages"], sortOrder: number) => ({
     ...item(id, "image"),
+    sortOrder,
     cardLanguages,
   });
   const media = [
     item("foto", "image"),
-    card("es1", ["es"]),
-    card("en1", ["en"]),
-    card("cierre", ["es", "en"]),
+    card("es1", ["es"], 1),
+    card("en1", ["en"], 2),
+    card("cierre", ["es", "en"], 3),
   ];
   const ids = (list: readonly { id: string }[]) => list.map((entry) => entry.id);
 
   it("la foto del usuario va en los dos; el cierre compartido, también", () => {
-    expect(ids(mediaForLanguage(media, "es"))).toEqual(["foto", "es1", "cierre"]);
-    expect(ids(mediaForLanguage(media, "en"))).toEqual(["foto", "en1", "cierre"]);
+    expect(ids(mediaForText(media, "x", "es"))).toEqual(["foto", "es1", "cierre"]);
+    expect(ids(mediaForText(media, "x", "en"))).toEqual(["foto", "en1", "cierre"]);
+    // Las tarjetas siguen su idioma también en Instagram.
+    expect(ids(mediaForText(media, "instagram", "en"))).toEqual(["foto", "en1", "cierre"]);
   });
 
   it("sin tarjetas de su idioma, ve las únicas que haya", () => {
-    const onlyEnglish = [item("foto", "image"), card("en1", ["en"]), card("cierre", ["en"])];
-    expect(ids(mediaForLanguage(onlyEnglish, "es"))).toEqual(["foto", "en1", "cierre"]);
+    const onlyEnglish = [item("foto", "image"), card("en1", ["en"], 1), card("cierre", ["en"], 2)];
+    expect(ids(mediaForText(onlyEnglish, "x", "es"))).toEqual(["foto", "en1", "cierre"]);
   });
 
-  it("sin tarjetas, no cambia nada", () => {
-    const plain = [item("a", "image"), item("b", "image")];
-    expect(ids(mediaForLanguage(plain, "es"))).toEqual(["a", "b"]);
+  it("sin tarjetas ni idiomas, no cambia nada", () => {
+    const plain = [item("a", "image"), { ...item("b", "image"), sortOrder: 1 }];
+    expect(ids(mediaForText(plain, "x", "es"))).toEqual(["a", "b"]);
+  });
+});
+
+describe("el idioma de cada foto (ADR-0042)", () => {
+  const photo = (id: string, sortOrder: number, language: PostMediaItem["language"]) =>
+    ({
+      ...item(id, "image"),
+      sortOrder,
+      language,
+      variants: ["ig_4x5"],
+    }) satisfies PostMediaItem;
+  // La española se subió primero.
+  const media = [photo("es", 0, "es"), photo("en", 1, "en")];
+  const preview = (platform: "x" | "instagram", language: "es" | "en") =>
+    postPreviewMedia(
+      platform,
+      "image",
+      mediaForText(media, platform, language),
+      language,
+    ).images.map((image) => image.id);
+
+  it("en X cada texto ve solo la foto de su idioma", () => {
+    expect(preview("x", "es")).toEqual(["es"]);
+    expect(preview("x", "en")).toEqual(["en"]);
+  });
+
+  it("en Instagram un post de imagen bilingüe se ve como carrusel, primero la del idioma del texto", () => {
+    expect(preview("instagram", "en")).toEqual(["en", "es"]);
+    expect(preview("instagram", "es")).toEqual(["es", "en"]);
+  });
+
+  it("sin marcas, Instagram muestra solo la primera de un post de imagen", () => {
+    const plain = [photo("a", 0, null), photo("b", 1, null)];
+    expect(
+      postPreviewMedia("instagram", "image", mediaForText(plain, "instagram", "en"), "en").images,
+    ).toHaveLength(1);
   });
 });
 

@@ -301,6 +301,72 @@ describe("requestPostUploads y completePostUploads", () => {
   });
 });
 
+// ADR-0042: el orden de lo subido es el del pedido, y el idioma pedido llega al medio.
+describe("requestPostUploads · el orden del pedido y el idioma (ADR-0042)", () => {
+  it("dos archivos de un pedido quedan en el orden pedido aunque el segundo llegue antes", async () => {
+    const s = await setup();
+    const { uploads } = await requestPostUploads(s.deps, ADMIN, s.post.id, [
+      { name: "ingles.png", size: 10, sha256: sha(31) },
+      { name: "espanol.png", size: 20, sha256: sha(32) },
+    ]);
+    const english = asUpload(uploads[0]);
+    const spanish = asUpload(uploads[1]);
+    // Llega primero el segundo y se completa solo.
+    await s.storage.receiveUpload(spanish.url, spanish.headers, bytes(20));
+    await completePostUploads(s.deps, ADMIN, s.post.id);
+    await s.storage.receiveUpload(english.url, english.headers, bytes(10));
+    const done = await completePostUploads(s.deps, ADMIN, s.post.id);
+    expect(done.media.map((item) => [item.checksum, item.sortOrder])).toEqual([
+      [sha(31), 0],
+      [sha(32), 1],
+    ]);
+  });
+
+  it("un pedido nuevo va después de los medios del post y de las subidas que siguen pendientes", async () => {
+    const s = await setup();
+    const first = await requestPostUploads(s.deps, ADMIN, s.post.id, [
+      { name: "a.png", size: 10, sha256: sha(41) },
+      { name: "b.png", size: 10, sha256: sha(42) },
+    ]);
+    const a = asUpload(first.uploads[0]);
+    await s.storage.receiveUpload(a.url, a.headers, bytes(10));
+    await completePostUploads(s.deps, ADMIN, s.post.id);
+    // `b` sigue pendiente: el pedido nuevo no le quita su lugar.
+    const second = await requestPostUploads(s.deps, ADMIN, s.post.id, [
+      { name: "c.png", size: 10, sha256: sha(43) },
+    ]);
+    const b = asUpload(first.uploads[1]);
+    const c = asUpload(second.uploads[0]);
+    await s.storage.receiveUpload(c.url, c.headers, bytes(10));
+    await s.storage.receiveUpload(b.url, b.headers, bytes(10));
+    const done = await completePostUploads(s.deps, ADMIN, s.post.id);
+    expect(done.media.map((item) => item.checksum)).toEqual([sha(41), sha(42), sha(43)]);
+    expect(done.media.map((item) => item.sortOrder)).toEqual([0, 1, 2]);
+  });
+
+  it("el idioma del pedido llega a cada medio; sin idioma, sirve para todos", async () => {
+    const s = await setup();
+    const english = await requestPostUploads(
+      s.deps,
+      ADMIN,
+      s.post.id,
+      [{ name: "en.png", size: 10, sha256: sha(51) }],
+      { language: "en" },
+    );
+    const plain = await requestPostUploads(s.deps, ADMIN, s.post.id, [
+      { name: "todos.png", size: 10, sha256: sha(52) },
+    ]);
+    for (const target of [english.uploads[0], plain.uploads[0]].map(asUpload)) {
+      await s.storage.receiveUpload(target.url, target.headers, bytes(10));
+    }
+    const done = await completePostUploads(s.deps, ADMIN, s.post.id);
+    expect(done.media.map((item) => [item.checksum, item.language ?? null])).toEqual([
+      [sha(51), "en"],
+      [sha(52), null],
+    ]);
+  });
+});
+
 describe("closeAbandonedPostUploads", () => {
   it("una subida vencida se borra de R2 y queda abandoned; pedirla otra vez la reabre", async () => {
     const s = await setup();

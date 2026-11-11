@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isAppError } from "../errors.js";
 import type { Media } from "../media.js";
+import { mediaForText } from "../post-media-language.js";
 import { postSubject } from "../subject.js";
 import { createPostPublicationScenario } from "../testing/index.js";
 import { postPublicationPlan } from "./open-publications.js";
@@ -95,6 +96,58 @@ describe("postPublicationPlan · Instagram (F9-T13)", () => {
     expect(postPublicationPlan("linkedin", "carousel", one.media)).toEqual({
       format: "post",
       mediaIds: ids(one.t.images),
+    });
+  });
+});
+
+// ADR-0042: una imagen en inglés y otra en español. En X cada idioma sale con la suya; en
+// Instagram, un post de imagen bilingüe sale como carrusel, primero la del idioma del texto.
+describe("postPublicationPlan · el idioma de cada imagen (ADR-0042)", () => {
+  async function bilingual() {
+    const { t } = await mediaOf({ kind: "image", images: 2 });
+    const subject = postSubject(t.post.id);
+    const [spanish, english] = await t.media.listOriginals(subject);
+    if (spanish === undefined || english === undefined) throw new Error("faltan las fotos");
+    await t.media.setLanguage(subject, spanish.id, "es");
+    await t.media.setLanguage(subject, english.id, "en");
+    const media = await t.media.listBySubject(subject);
+    const [es, en] = t.images.map((item) => item.id);
+    return { media, es, en };
+  }
+  const plan = (
+    media: readonly Media[],
+    platform: "instagram" | "x",
+    language: "es" | "en",
+    kind: "image" | "carousel" = "image",
+  ) =>
+    postPublicationPlan(
+      platform,
+      kind,
+      mediaForText(media, new Map(), platform, language),
+      language,
+    );
+
+  it("X: cada idioma lleva solo su imagen", async () => {
+    const { media, es, en } = await bilingual();
+    expect(plan(media, "x", "es")).toEqual({ format: "post", mediaIds: [es] });
+    expect(plan(media, "x", "en")).toEqual({ format: "post", mediaIds: [en] });
+  });
+
+  it("Instagram: un post de imagen bilingüe es carrusel, primero la del idioma del texto", async () => {
+    const { media, es, en } = await bilingual();
+    expect(plan(media, "instagram", "en")).toEqual({ format: "post", mediaIds: [en, es] });
+    expect(plan(media, "instagram", "es")).toEqual({ format: "post", mediaIds: [es, en] });
+    expect(plan(media, "instagram", "en", "carousel")).toEqual({
+      format: "post",
+      mediaIds: [en, es],
+    });
+  });
+
+  it("sin el idioma del texto, Instagram sigue con la primera foto", async () => {
+    const { media, es } = await bilingual();
+    expect(postPublicationPlan("instagram", "image", media)).toEqual({
+      format: "post",
+      mediaIds: [es],
     });
   });
 });

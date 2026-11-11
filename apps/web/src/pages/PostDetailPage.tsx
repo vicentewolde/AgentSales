@@ -428,7 +428,12 @@ export function PostDetailPage() {
         )}
         {!archived && item.status !== "idea" && (
           <div className="mb-6">
-            <PostSummary post={item} contents={contents} publications={publications} />
+            <PostSummary
+              post={item}
+              contents={contents}
+              publications={publications}
+              media={media}
+            />
           </div>
         )}
         {editing && (

@@ -1,6 +1,6 @@
-import type { ContentView, PostPublicationView } from "@agentsales/api/contracts";
+import type { ContentView, PostMediaItem, PostPublicationView } from "@agentsales/api/contracts";
 import { describe, expect, it } from "vitest";
-import { summaryRows } from "./PostSummary.js";
+import { summaryRows, textMediaLine } from "./PostSummary.js";
 
 // «Qué se publica»: cada texto (red e idioma) dice si sale, cuándo y en qué punto va.
 
@@ -72,5 +72,52 @@ describe("summaryRows", () => {
       "Te toca publicarlo a mano",
       "Aprobado, falta programarlo",
     ]);
+  });
+});
+
+describe("qué imágenes lleva cada texto (ADR-0042)", () => {
+  const photo = (id: string, sortOrder: number, language: PostMediaItem["language"]) =>
+    ({
+      id,
+      kind: "image",
+      mime: "image/jpeg",
+      bytes: 10,
+      sortOrder,
+      isCover: false,
+      url: `https://r2.example/${id}`,
+      thumbUrl: null,
+      width: null,
+      height: null,
+      durationS: null,
+      variants: ["ig_4x5"],
+      cardLanguages: null,
+      language,
+    }) satisfies PostMediaItem;
+  const media = [photo("es", 0, "es"), photo("en", 1, "en")];
+
+  it("X lleva la de su idioma; Instagram, las dos con la del texto primero", () => {
+    expect(textMediaLine("x", "es", "image", media)).toBe("con la imagen en español");
+    expect(textMediaLine("instagram", "en", "image", media)).toBe(
+      "con 2 imágenes: inglés, luego español",
+    );
+    const rows = summaryRows(
+      { platforms: null, kind: "image" },
+      [text("x", "es", "approved"), text("instagram", "en", "approved")],
+      [],
+      now,
+      media,
+    );
+    expect(Object.fromEntries(rows.map((row) => [row.key, row.media]))).toEqual({
+      "instagram:en": "con 2 imágenes: inglés, luego español",
+      "x:es": "con la imagen en español",
+    });
+  });
+
+  it("sin idiomas marcados no dice nada; sin la de su idioma, lo avisa", () => {
+    expect(textMediaLine("x", "es", "image", [photo("a", 0, null)])).toBeNull();
+    expect(textMediaLine("x", "es", "image", [photo("en", 0, "en")])).toBe("sin imagen en español");
+    expect(textMediaLine("x", "es", "image", [photo("en", 0, "en"), photo("todos", 1, null)])).toBe(
+      "con la imagen para todos los idiomas",
+    );
   });
 });

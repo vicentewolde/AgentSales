@@ -813,6 +813,16 @@ export {
   postImageSuggestions,
   sniffImage,
 } from "./post-image.js";
+export {
+  byLanguageThenOrder,
+  carriesAllLanguages,
+  isBilingualImageSet,
+  type LanguageMediaItem,
+  languageRank,
+  mediaForText,
+  mediaLanguageOf,
+  otherLanguageOriginals,
+} from "./post-media-language.js";
 export { formatListingPrice, formatNumber, formatPrice } from "./price.js";
 export {
   checkPublicationProgress,
@@ -1246,6 +1256,11 @@ export {
   searchStockPhotos,
 } from "./use-cases/post-images.js";
 export {
+  MEDIA_LANGUAGE_LOCKED_BY,
+  type SetPostMediaLanguageDeps,
+  setPostMediaLanguage,
+} from "./use-cases/post-media-language.js";
+export {
   type CloseAbandonedPostUploadsDeps,
   type CloseAbandonedPostUploadsResult,
   type CompletePostUploadsDeps,
@@ -1258,6 +1273,7 @@ export {
   POST_MEDIA_TYPES,
   POST_UPLOAD,
   type PostUploadFile,
+  type PostUploadOptions,
   type PostUploadTarget,
   type RequestPostUploadsDeps,
   requestPostUploads,

@@ -1651,8 +1651,34 @@ export const postMediaItemSchema = mediaItemSchema.extend({
    * Un servidor anterior no lo manda: se lee `null`.
    */
   cardLanguages: z.array(z.enum(LANGUAGES)).nullable().default(null),
+  /**
+   * El idioma que marcó el usuario (ADR-0042): `null` sirve para todos los idiomas. Un servidor
+   * anterior no lo manda: se lee `null`.
+   */
+  language: z.enum(LANGUAGES).nullable().default(null),
 });
 export type PostMediaItem = z.infer<typeof postMediaItemSchema>;
+
+/**
+ * `PATCH /posts/:id/media/:mediaId` (ADR-0042). El id del medio se busca entre los originales del
+ * post antes de escribir (core), así que basta un texto corto: uno que no es suyo es 404.
+ */
+export const postMediaParamSchema = z.object({
+  id: z.uuid(),
+  mediaId: z.string().trim().min(1).max(100),
+});
+
+/** El idioma de una foto o un video del post; `null`: sirve para todos los idiomas. */
+export const postMediaLanguageBodySchema = z
+  .object({ language: z.enum(LANGUAGES).nullable() })
+  .strict();
+export type PostMediaLanguageBody = z.infer<typeof postMediaLanguageBodySchema>;
+
+/** La respuesta: los medios del post ya con el idioma nuevo (como `GET /posts/:id`). */
+export const postMediaLanguageResponseSchema = z.object({
+  media: z.array(postMediaItemSchema),
+});
+export type PostMediaLanguageResponse = z.infer<typeof postMediaLanguageResponseSchema>;
 
 /**
  * Una publicación de un post con los medios que lleva, firmados (F9.5, LinkedIn a mano): como
@@ -1722,6 +1748,8 @@ export const postUploadRequestSchema = z
           .strict(),
       )
       .max(2 * POST_UPLOAD.maxFilesPerRequest),
+    /** El idioma de todo lo pedido (ADR-0042, `post upload --language`); sin él, todos. */
+    language: z.enum(LANGUAGES).optional(),
   })
   .strict();
 export type PostUploadRequest = z.infer<typeof postUploadRequestSchema>;

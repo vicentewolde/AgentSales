@@ -14,6 +14,7 @@ import {
   type PublicationView,
   postDetailResponseSchema,
   postListResponseSchema,
+  postMediaLanguageResponseSchema,
   postPublishResponseSchema,
   postResponseSchema,
   postScheduleResponseSchema,
@@ -29,6 +30,7 @@ import {
   healthReportSchema,
   isTerminalContentRun,
   LANGUAGE_TEXT,
+  LANGUAGES,
   type Language,
   MUSIC_TRACK_IDS,
   type MusicTrackId,
@@ -176,6 +178,8 @@ function postHint(error: ApiCallError, postId: string, xLinkMissing = false): st
       "Ya empezó en vivo y no se reintenta en simulación: descártala con agentsales publications cancel <id>, o reinicia la API en vivo si lo decides tú",
     OUTCOME_UNKNOWN_PENDING: `No se sabe si salió: dilo con agentsales publications resolve ${error.publicationId ?? "<id>"} --published|--not-published`,
     MANUAL_CONFIRM_PENDING: manualConfirmHint(error.publicationId),
+    POST_MEDIA_IN_USE: `Quita la aprobación de esos textos (agentsales post approve ${postId} --undo), cambia el idioma y vuelve a aprobar; una fallida se descarta con agentsales publications cancel <id>`,
+    MEDIA_NOT_FOUND: `Mira los ids de sus fotos y videos con ${show(postId)}`,
   };
   return error.code === undefined ? undefined : hints[error.code];
 }
@@ -462,9 +466,18 @@ export function renderPostDetail(detail: PostDetailResponse, brandSlug: string, 
         ? c.yellow("procesando…")
         : `variantes: ${item.variants.join(", ")}`;
     lines.push(
-      `  ${index + 1}. ${item.kind === "video" ? "video" : "imagen"} · ${item.mime} · ${formatBytes(item.bytes)} · ${variants}`,
+      `  ${index + 1}. ${item.kind === "video" ? "video" : "imagen"} · ${mediaLanguageText(item)} · ${item.mime} · ${formatBytes(item.bytes)} · ${variants}`,
+      c.dim(`     id: ${item.id}`),
     );
   });
+  // ADR-0042: qué hace el idioma de cada foto, solo si alguna lo tiene.
+  if (media.some((item) => item.language !== null)) {
+    lines.push(
+      c.dim(
+        "  En X, LinkedIn, Discord y TikTok cada idioma sale con lo suyo y lo de todos; en Instagram van juntas en un carrusel, primero las del idioma del texto.",
+      ),
+    );
+  }
 
   // Una red agregada al post después de redactar (F9-T21): falta su texto. Si no hay ninguno,
   // ese aviso basta (no se repite el "ninguno").
@@ -506,6 +519,70 @@ export function renderPostDetail(detail: PostDetailResponse, brandSlug: string, 
   }
   return lines.join("\n").replace(/\n{3,}/g, "\n\n");
 }
+
+/**
+ * El idioma de una foto o un video (ADR-0042): el que marcó el usuario, el de una tarjeta (de su
+ * pedido) o «todos los idiomas».
+ */
+function mediaLanguageText(item: PostDetailResponse["media"][number]): string {
+  if (item.language !== null) return `idioma: ${LANGUAGE_TEXT[item.language]}`;
+  if (item.cardLanguages !== null && item.cardLanguages.length > 0) {
+    return `tarjeta en ${item.cardLanguages.map((language) => LANGUAGE_TEXT[language]).join(" y ")}`;
+  }
+  return "idioma: todos";
+}
+
+/** `en`, `es` o `todos` (también `ninguno`): el idioma de una foto; `null` es todos (ADR-0042). */
+export function mediaLanguageArgument(value: string): Language | null {
+  const text = value.trim().toLowerCase();
+  if (text === "todos" || text === "ninguno") return null;
+  const found = LANGUAGES.find((language) => language === text);
+  if (found === undefined) {
+    throw new CliError(
+      "LANGUAGE_INVALID",
+      `El idioma debe ser ${LANGUAGES.join(", ")} o todos: "${value}"`,
+    );
+  }
+  return found;
+}
+
+/**
+ * `agentsales post media-language <id> <id_medio> <en|es|todos>` (ADR-0042): el idioma de una foto o
+ * un video del post. En X, LinkedIn, Discord y TikTok cada texto lleva lo de su idioma y lo de todos;
+ * en Instagram, todo, con lo de su idioma primero.
+ */
+export function runPostMediaLanguage(deps: PostDeps, id: string, mediaId: string, value: string) {
+  const c = deps.colors;
+  return guarded(deps, async () => {
+    const postId = postIdOf(id);
+    const language = mediaLanguageArgument(value);
+    const { media } = await setMediaLanguage(deps.client, postId, mediaId.trim(), language);
+    const index = media.findIndex((item) => item.id === mediaId.trim());
+    deps.print(
+      `${c.green("✓")} ${index < 0 ? "El medio" : `El medio ${index + 1}`} quedó ${
+        language === null ? "para todos los idiomas" : `en ${LANGUAGE_TEXT[language]}`
+      }`,
+    );
+    deps.print(c.dim(`→ Míralo con ${show(postId)}`));
+    return 0;
+  });
+}
+
+const setMediaLanguage = (
+  client: ApiClient,
+  postId: string,
+  mediaId: string,
+  language: Language | null,
+) =>
+  unwrap(
+    client.posts[":id"].media[":mediaId"].$patch({
+      param: { id: postId, mediaId },
+      json: { language },
+    }),
+    postMediaLanguageResponseSchema,
+  ).catch((error: unknown) => {
+    throw explained(error, postId);
+  });
 
 /**
  * El detalle para `--json` sin las URLs de los medios: son URLs prefirmadas de R2 (dan acceso de
@@ -555,10 +632,17 @@ const COMPLETE_ROUNDS = 3;
  * avance, y llama a `complete` hasta que no falte ninguno de los suyos (lo que falte se vuelve a
  * subir). Un archivo que el post ya tiene no se sube. Nunca imprime las URLs.
  */
-export function runPostUpload(deps: PostDeps, id: string, paths: readonly string[]) {
+export function runPostUpload(
+  deps: PostDeps,
+  id: string,
+  paths: readonly string[],
+  options: { language?: string } = {},
+) {
   const c = deps.colors;
   return guarded(deps, async () => {
     const postId = postIdOf(id);
+    // ADR-0042: el idioma de lo que se sube (sin él, sirve para todos los idiomas).
+    const language = options.language === undefined ? undefined : languageOption(options.language);
     if (paths.length === 0) {
       throw new CliError(
         "POST_UPLOAD_INVALID",
@@ -585,7 +669,10 @@ export function runPostUpload(deps: PostDeps, id: string, paths: readonly string
       files.push({ name, size: info.size, sha256 });
     }
     const requested = await unwrap(
-      deps.client.posts[":id"].uploads.$post({ param: { id: postId }, json: { files } }),
+      deps.client.posts[":id"].uploads.$post({
+        param: { id: postId },
+        json: { files, ...(language === undefined ? {} : { language }) },
+      }),
       postUploadResponseSchema,
     ).catch((error: unknown) => {
       throw explained(error, postId);
@@ -598,6 +685,11 @@ export function runPostUpload(deps: PostDeps, id: string, paths: readonly string
     for (const upload of requested.uploads) {
       if (upload.status === "existing") {
         deps.print(c.dim(`  ${upload.name}: el post ya lo tiene`));
+        // El idioma pedido también vale para lo que ya estaba (ADR-0042).
+        if (language !== undefined) {
+          await setMediaLanguage(deps.client, postId, upload.mediaId, language);
+          deps.print(c.dim(`  ${upload.name}: marcado en ${LANGUAGE_TEXT[language]}`));
+        }
         continue;
       }
       if (!targets.has(upload.uploadId)) {
@@ -660,7 +752,7 @@ export function runPostUpload(deps: PostDeps, id: string, paths: readonly string
       deps.printError(c.yellow(`  Faltan ${pending.length} archivo(s) en R2: los subo de nuevo`));
     }
     deps.print(
-      `${c.green("✓")} ${targets.size === 0 ? "Nada nuevo que subir" : `${targets.size} archivo(s) subidos`}: el post tiene ${media.length} medio(s)`,
+      `${c.green("✓")} ${targets.size === 0 ? "Nada nuevo que subir" : `${targets.size} archivo(s) subidos${language === undefined ? "" : ` en ${LANGUAGE_TEXT[language]}`}`}: el post tiene ${media.length} medio(s)`,
     );
     deps.print(c.dim(`→ El worker arma sus variantes; míralas con ${show(postId)}`));
     return 0;
@@ -1454,7 +1546,24 @@ export function register(program: Command, ctx: CliContext): void {
     .description("Sube fotos o videos al post, directo a R2 (jpg, png, webp, heic, mp4 o mov)")
     .argument("<id>", "id del post")
     .argument("<archivos...>", "los archivos")
-    .action((id: string, files: string[]) => exitWith(() => runPostUpload(deps(), id, files)));
+    .option(
+      "--language <idioma>",
+      "el idioma de lo que subes (es o en): en X sale solo con el texto de ese idioma; en Instagram, junto a las demás",
+    )
+    .action((id: string, files: string[], options: { language?: string }) =>
+      exitWith(() => runPostUpload(deps(), id, files, options)),
+    );
+  post
+    .command("media-language")
+    .description(
+      "El idioma de una foto o un video del post: en X sale con el texto de su idioma; en Instagram, en el carrusel, primero la del idioma del texto",
+    )
+    .argument("<id>", "id del post")
+    .argument("<id_medio>", "id de la foto o el video (agentsales post show <id>)")
+    .argument("<idioma>", "en, es o todos")
+    .action((id: string, mediaId: string, language: string) =>
+      exitWith(() => runPostMediaLanguage(deps(), id, mediaId, language)),
+    );
   // F9.5-T25: conseguir imágenes (tarjetas, biblioteca o IA).
   registerPostMedia(post, ctx);
   post

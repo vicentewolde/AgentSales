@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MEDIA_KINDS, MEDIA_ROLES, MEDIA_VARIANTS } from "./enums.js";
+import { LANGUAGES, MEDIA_KINDS, MEDIA_ROLES, MEDIA_VARIANTS } from "./enums.js";
 
 /**
  * Medio (`media`): un original subido en la carga, una variante (`processed`) o un render
@@ -36,6 +36,11 @@ export const mediaSchema = z
     checksum: z.string(),
     sortOrder: z.number().int(),
     isCover: z.boolean(),
+    /**
+     * El idioma de un original de un post (ADR-0042): `null` (o sin el campo) sirve para todos los
+     * idiomas. En variantes y avisos no se usa.
+     */
+    language: z.enum(LANGUAGES).nullable().optional(),
   })
   .refine((media) => media.listingId === null || media.postId === null, {
     path: ["postId"],

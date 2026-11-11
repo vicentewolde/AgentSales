@@ -12,6 +12,7 @@ import {
   type PostScheduleResponse,
   postDetailResponseSchema,
   postListResponseSchema,
+  postMediaLanguageResponseSchema,
   postPublishResponseSchema,
   postResponseSchema,
   postScheduleResponseSchema,
@@ -157,6 +158,28 @@ export function useUpdatePost(id: string) {
     mutationFn: async (body: UpdatePostBody) =>
       (await unwrap(client.posts[":id"].$patch({ param: { id }, json: body }), postResponseSchema))
         .post,
+    onSettled: refresh,
+  });
+}
+
+/**
+ * `PATCH /posts/:id/media/:mediaId` (ADR-0042): el idioma de una foto o un video del post (`null`:
+ * todos los idiomas). Al terminar se relee el post (la vista previa y «Qué se publica» cambian).
+ */
+export function usePostMediaLanguage(id: string) {
+  const client = useApiClient();
+  const refresh = useRefreshPost(id);
+  return useMutation({
+    mutationFn: async ({ mediaId, language }: { mediaId: string; language: Language | null }) =>
+      (
+        await unwrap(
+          client.posts[":id"].media[":mediaId"].$patch({
+            param: { id, mediaId },
+            json: { language },
+          }),
+          postMediaLanguageResponseSchema,
+        )
+      ).media,
     onSettled: refresh,
   });
 }

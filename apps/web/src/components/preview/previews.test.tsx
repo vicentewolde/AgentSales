@@ -26,6 +26,7 @@ const item = (id: string, kind: "image" | "video"): PostMediaItem => ({
   durationS: null,
   variants: kind === "image" ? ["thumb", "ig_4x5"] : ["thumb", "ig_reel", "x_video"],
   cardLanguages: null,
+  language: null,
 });
 
 const images = ["i1", "i2", "i3", "i4", "i5"].map((id) => item(id, "image"));

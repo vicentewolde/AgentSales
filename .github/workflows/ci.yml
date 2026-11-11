@@ -93,9 +93,26 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
+      # El navegador sale de la caché o del CDN de Playwright, sin apt.
       - name: Instalar Chromium
         timeout-minutes: 15
-        run: pnpm --filter @agentsales/media exec playwright install --with-deps chromium
+        run: pnpm --filter @agentsales/media exec playwright install chromium
+
+      # Las bibliotecas del sistema que pide Chromium ya vienen casi todas en la imagen de GitHub
+      # (trae Google Chrome). Si los espejos de Ubuntu no responden (pasó el 2026-11-11: «Temporary
+      # failure resolving 'archive.ubuntu.com'»), se reintenta y luego se sigue sin bloquear la CI;
+      # si de verdad faltara algo, las pruebas del navegador lo dirán.
+      - name: Dependencias de Chromium (apt, con reintento)
+        timeout-minutes: 8
+        continue-on-error: true
+        run: |
+          for i in 1 2 3; do
+            timeout 150 pnpm --filter @agentsales/media exec playwright install-deps chromium && exit 0
+            echo "::warning::apt no respondió (intento $i); reintento en 20 s"
+            sleep 20
+          done
+          echo "::warning::Sigo sin las dependencias de apt: uso las que trae la imagen"
+          exit 1
 
       - name: Lint, tipos y tests
         run: pnpm check

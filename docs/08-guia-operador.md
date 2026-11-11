@@ -293,6 +293,29 @@ Cada texto, el de un post (en su pestaña de red e idioma) y el de una propiedad
 
 **Al editar**, la vista previa cambia mientras escribes, antes de guardar; cuando el borrador ya es distinto del texto guardado, lo dice arriba («con tu borrador, sin guardar»). Si cancelas, vuelve al texto guardado. Si la cuenta de la red no está conectada, aparece «tu cuenta» en vez del nombre.
 
+### Una imagen por idioma (F9.6-T05, ADR-0042)
+
+Si diseñas una imagen en inglés y otra en español (con texto dentro de la imagen), márcales el idioma y cada red usa la que corresponde:
+
+- **X, LinkedIn, Discord y TikTok:** cada idioma sale como publicación aparte, **con su texto y su imagen**. El texto en español lleva las imágenes marcadas en español y las de «Todos»; el de inglés, las de inglés y las de «Todos».
+- **Instagram:** sale **un solo** post con **todas** las imágenes en un carrusel, primero la del idioma del texto y después la otra. Aprueba **un** texto de Instagram (por ejemplo el de inglés, con el inglés arriba y el español abajo): un post de tipo imagen con imágenes de dos idiomas sale como carrusel, sin tener que cambiarle el tipo.
+- **Sin marcar** («Todos», lo de siempre), una imagen va con todos los idiomas.
+- Las **tarjetas de la marca** ya tienen su idioma (el de su pedido): no se marcan.
+
+**En el panel:** en **Fotos y videos**, debajo de cada imagen, el selector **Idioma: Todos / Inglés / Español**. La vista previa de cada texto y **«Qué se publica»** (por ejemplo «con 2 imágenes: inglés, luego español») muestran enseguida qué lleva cada uno.
+
+**En la CLI:**
+```bash
+pnpm -s cli post upload <id_post> --language en imagen-en.png   # sube y marca en inglés
+pnpm -s cli post upload <id_post> --language es imagen-es.png   # sube y marca en español
+pnpm -s cli post media-language <id_post> <id_medio> en|es|todos   # cambia el idioma de una que ya está
+pnpm -s cli post show <id_post>                                   # cada medio con su idioma y su id
+```
+
+- **Con textos ya aprobados** el idioma no se cambia (`POST_MEDIA_IN_USE`): las publicaciones guardan sus imágenes al aprobarse. Quita la aprobación (`post approve <id> --undo`, o el botón en el panel), marca y vuelve a aprobar.
+- **Si a un idioma no le queda imagen** (en X, por ejemplo, el texto en español cuando solo hay una imagen en inglés), la revisión lo dice: «Falta la imagen en español: las del post están marcadas en otro idioma».
+- **El orden de lo que subes** es el del comando (o el de la selección en el panel), aunque un archivo termine de subir antes que otro.
+
 ## Música en los reels (F9.5-T19)
 
 Cada propiedad y cada post con video puede llevar **música de fondo** de una biblioteca de 5 pistas libres de derechos (CC0: no hay que dar crédito). Por defecto, **sin música**.

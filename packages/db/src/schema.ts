@@ -519,6 +519,13 @@ export const postUploads = pgTable(
     expectedBytes: bigint("expected_bytes", { mode: "number" }).notNull(),
     status: postUploadStatusEnum("status").notNull().default("pending"),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    /**
+     * ADR-0042: el lugar de su medio, reservado al pedir la URL en el orden de los archivos; `null`
+     * en las anteriores (toman el siguiente libre al completarse).
+     */
+    sortOrder: integer("sort_order"),
+    /** ADR-0042: el idioma pedido para su medio (`LANGUAGES`, core); `null`: todos los idiomas. */
+    language: text("language"),
     ...timestamps,
   },
   (t) => [
@@ -597,6 +604,11 @@ export const media = pgTable(
     sortOrder: integer("sort_order").notNull().default(0),
     isCover: boolean("is_cover").notNull().default(false),
     aiMetadata: jsonb("ai_metadata"),
+    /**
+     * ADR-0042: el idioma de un original de un post (`LANGUAGES`, core); `null` sirve para todos los
+     * idiomas (lo de siempre). En variantes y avisos no se usa.
+     */
+    language: text("language"),
     ...timestamps,
   },
   (t) => [
