@@ -133,18 +133,18 @@ describe("postCardDeck", () => {
 
   it("imagen: una tarjeta con el tema", () => {
     expect(postCardDeck(post("image"), contents, BRAND)).toEqual([
-      { role: "cover", text: "Cómo fijar el precio", detail: null, position: 1, total: 1 },
+      { role: "cover", text: "Cómo fijar el precio", detail: "@agentpey", position: 1, total: 1 },
     ]);
   });
 
-  it("carrusel: portada, un punto por tarjeta y el cierre con la marca y su cuenta", () => {
+  it("carrusel: portada, un punto por tarjeta y el cierre con la marca, y su cuenta en el pie de todas", () => {
     const deck = postCardDeck(post("carousel"), contents, BRAND);
     expect(
       deck.map((card) => [card.role, card.text, card.detail, `${card.position}/${card.total}`]),
     ).toEqual([
-      ["cover", "Cómo fijar el precio", null, "1/4"],
-      ["point", "Uno primero", null, "2/4"],
-      ["point", "Dos después", null, "3/4"],
+      ["cover", "Cómo fijar el precio", "@agentpey", "1/4"],
+      ["point", "Uno primero", "@agentpey", "2/4"],
+      ["point", "Dos después", "@agentpey", "3/4"],
       ["closing", "AgentPey", "@agentpey", "4/4"],
     ]);
   });
@@ -158,6 +158,8 @@ describe("postCardDeck", () => {
     expect(site.at(-1)?.detail).toBe("agentpey.com");
     const none = postCardDeck(post("carousel"), [], { ...BRAND, instagramHandle: null });
     expect(none.at(-1)?.detail).toBeNull();
+    expect(none.every((card) => card.detail === null)).toBe(true);
+    expect(site.every((card) => card.detail === "agentpey.com")).toBe(true);
   });
 
   it("video sin texto redactado: POST_IMAGE_NEEDS_TEXT (no inventa puntos)", () => {
@@ -332,7 +334,7 @@ describe("tarjetas de un idioma: la portada y los puntos salen del texto de ese 
   it("una imagen sola lleva la primera frase del texto de su idioma", () => {
     const plan = postCardPlan(post("image", ["x"]), bilingual, BRAND, { language: "en" });
     expect(plan.cards).toEqual([
-      { role: "cover", text: "Pricing is hard", detail: null, position: 1, total: 1 },
+      { role: "cover", text: "Pricing is hard", detail: "@agentpey", position: 1, total: 1 },
     ]);
     expect(describeCardPlan(plan, "image")).toBe(
       "1 tarjeta con la primera frase del texto en inglés.",

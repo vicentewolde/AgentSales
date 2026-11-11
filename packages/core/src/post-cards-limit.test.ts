@@ -33,7 +33,7 @@ describe("tope extremo de una red", () => {
     limits.x = 1;
     const plan = postCardPlan(post, contents, BRAND);
     expect(plan.cards).toEqual([
-      { role: "cover", text: "Cómo fijar el precio", detail: null, position: 1, total: 1 },
+      { role: "cover", text: "Cómo fijar el precio", detail: "@agentpey", position: 1, total: 1 },
     ]);
     expect(describeCardPlan(plan, "carousel")).toBe(
       "1 tarjeta: X admite hasta 1 imagen por post; solo la portada, del texto en español.",

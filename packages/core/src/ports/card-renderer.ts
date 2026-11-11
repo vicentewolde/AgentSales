@@ -13,7 +13,10 @@ export type CardSpec = {
   role: CardRole;
   /** Portada: el tema; punto: el punto del texto; cierre: el nombre de la marca. */
   text: string;
-  /** Cierre: el contacto de la marca (`@cuenta` o su sitio), si tiene. */
+  /**
+   * El contacto de la marca (`@cuenta` o su sitio), si tiene: va en el pie de cada tarjeta y, en el
+   * cierre, destacado.
+   */
   detail: string | null;
   /** Posición (desde 1) y total del carrusel, para «2/6». */
   position: number;
