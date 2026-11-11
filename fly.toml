@@ -24,8 +24,10 @@ swap_size_mb = 512            # para un pico breve del worker (Chromium y ffmpeg
   API_HOST = "0.0.0.0"        # Fly Proxy llega por la red de la máquina, no por 127.0.0.1
   API_PORT = "8080"
   CLIENT_IP_HEADER = "Fly-Client-IP"
-  # Simulación hasta que el operador diga lo contrario en el chat (D9): el cambio es suyo.
-  PUBLISH_MODE = "dry-run"
+  # En vivo desde el 2026-11-11, por decisión del operador en el chat (D9): es la primera llave y solo
+  # permite publicar de verdad; publica únicamente la marca encendida (segunda llave, `brokers live`).
+  # Para volver a simulación basta un PR que ponga "dry-run" (o `fly machine update --env`, ver docs/10-despliegue.md).
+  PUBLISH_MODE = "live"
   LLM_PROVIDER = "anthropic-api"
   LOG_LEVEL = "info"
   # El respaldo diario va al bucket de respaldos (spec F8 §4.9, D13); su token es un secreto.
