@@ -1,4 +1,5 @@
 import type {
+  Language,
   MediaKind,
   MediaVariant,
   ProcessedMediaVariant,
@@ -29,6 +30,8 @@ export type MediaRecord = {
   checksum: string;
   sortOrder: number;
   isCover: boolean;
+  /** El idioma de un original de un post (ADR-0042); `null` o sin el campo: todos los idiomas. */
+  language?: Language | null;
 };
 
 /**
@@ -207,6 +210,11 @@ export interface MediaRepository {
    * post.
    */
   deleteOriginals(subject: Subject, ids: readonly string[]): Promise<string[]>;
+  /**
+   * Fija el idioma de un original **de ese sujeto** (ADR-0042; `null`: todos los idiomas) y lo
+   * devuelve; `null` si el id no es un original de ese aviso o post.
+   */
+  setLanguage(subject: Subject, id: string, language: Language | null): Promise<MediaRecord | null>;
 }
 
 /**

@@ -97,7 +97,11 @@ describe("migración 0017 sobre una base con subidas de posts", () => {
   });
 
   it("no cambia las subidas de antes, y una subida nueva puede quedar `uploaded`", async () => {
-    expect((await client.query("SELECT * FROM post_uploads ORDER BY id")).rows).toEqual(before);
+    // Las migraciones siguientes solo suman columnas nulas (la 0025, ADR-0042: el lugar reservado y
+    // el idioma); lo de antes queda igual.
+    expect((await client.query("SELECT * FROM post_uploads ORDER BY id")).rows).toEqual(
+      before.map((row) => ({ ...(row as object), sort_order: null, language: null })),
+    );
     const inserted = await client.query<{ status: string }>(
       `INSERT INTO post_uploads (post_id, object_path, expected_bytes, status, expires_at)
        VALUES ($1, $2, 200000000, 'uploaded', now()) RETURNING status`,

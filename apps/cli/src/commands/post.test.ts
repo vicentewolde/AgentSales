@@ -26,6 +26,7 @@ import {
   runPostDraft,
   runPostEdit,
   runPostList,
+  runPostMediaLanguage,
   runPostPublish,
   runPostSchedule,
   runPostShow,
@@ -387,6 +388,43 @@ describe("post de punta a punta", () => {
     expect(text).not.toContain("sin cuenta conectada");
     expect(text).not.toContain("→ Conecta la cuenta");
     expect(s.publicationsOf(post.id)).toEqual([]);
+  });
+
+  it("upload --language marca lo subido, media-language lo cambia y show dice el idioma (ADR-0042)", async () => {
+    const s = await setup();
+    await writeFile(join(s.cwd, "en.jpg"), "imagen en inglés");
+    await writeFile(join(s.cwd, "es.jpg"), "imagen en español");
+    await runPostCreate(s.deps(), "Bilingüe", { broker: "agentpey", kind: "image" });
+    const post = await s.created();
+    // En el orden pedido, aunque sean dos subidas del mismo comando.
+    expect(await runPostUpload(s.deps(), post.id, ["en.jpg"], { language: "en" })).toBe(0);
+    expect(s.h.text()).toContain("1 archivo(s) subidos en inglés");
+    expect(await runPostUpload(s.deps(), post.id, ["es.jpg"])).toBe(0);
+    const [english, spanish] = await s.h.media.listOriginals({ kind: "post", id: post.id });
+    expect([english?.language, spanish?.language ?? null]).toEqual(["en", null]);
+    if (spanish === undefined) throw new Error("sin la segunda foto");
+
+    expect(await runPostMediaLanguage(s.deps(), post.id, spanish.id, "es")).toBe(0);
+    expect(s.h.text()).toContain("El medio 2 quedó en español");
+    s.h.out.length = 0;
+    expect(await runPostShow(s.deps(), post.id)).toBe(0);
+    expect(s.h.text()).toContain("imagen · idioma: inglés");
+    expect(s.h.text()).toContain("imagen · idioma: español");
+    expect(s.h.text()).toContain(`id: ${spanish.id}`);
+    expect(s.h.text()).toContain("en Instagram van juntas en un carrusel");
+
+    // Volver a subir lo mismo con otro idioma lo marca, y «todos» lo desmarca.
+    expect(await runPostUpload(s.deps(), post.id, ["es.jpg"], { language: "en" })).toBe(0);
+    expect(s.h.text()).toContain("es.jpg: marcado en inglés");
+    expect(await runPostMediaLanguage(s.deps(), post.id, spanish.id, "todos")).toBe(0);
+    expect(
+      (await s.h.media.listOriginals({ kind: "post", id: post.id })).map(
+        (item) => item.language ?? null,
+      ),
+    ).toEqual(["en", null]);
+    // Un idioma inventado no llega a la API.
+    expect(await runPostMediaLanguage(s.deps(), post.id, spanish.id, "fr")).toBe(1);
+    expect(s.h.errors()).toContain("LANGUAGE_INVALID");
   });
 
   it("edit toma el texto de la entrada estándar y lo deja editado; publish lo envía en simulación", async () => {

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   BRIEF_ORIGINS,
+  LANGUAGES,
   POST_KINDS,
   POST_PLATFORMS,
   POST_SOURCES,
@@ -88,6 +89,13 @@ export const postUploadSchema = z.object({
   expectedBytes: z.number().int().nonnegative(),
   status: z.enum(POST_UPLOAD_STATUSES),
   expiresAt: z.date(),
+  /**
+   * El lugar del medio, reservado al pedir la URL en el orden de los archivos (ADR-0042); `null` o
+   * sin el campo en las subidas anteriores (toman el siguiente libre al completarse).
+   */
+  sortOrder: z.number().int().nullable().optional(),
+  /** El idioma pedido para el medio (`post upload --language`, ADR-0042); `null`: todos. */
+  language: z.enum(LANGUAGES).nullable().optional(),
   createdAt: z.date(),
   updatedAt: z.date(),
 });

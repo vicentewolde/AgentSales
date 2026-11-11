@@ -163,6 +163,8 @@ export function createInMemoryPostUploadRepository(): PostUploadRepository {
         expectedBytes: input.expectedBytes,
         status: "pending",
         expiresAt: new Date(input.expiresAt),
+        ...(input.sortOrder === undefined ? {} : { sortOrder: input.sortOrder }),
+        ...(input.language === undefined ? {} : { language: input.language }),
         createdAt: now,
         updatedAt: now,
       };
@@ -197,11 +199,13 @@ export function createInMemoryPostUploadRepository(): PostUploadRepository {
     async markAbandoned(id) {
       return settle(id, "abandoned", ["pending", "uploaded"]);
     },
-    async reopen(id, expiresAt) {
+    async reopen(id, expiresAt, changes = {}) {
       const current = uploads.get(id);
       if (current === undefined) return null;
       const upload: PostUpload = {
         ...current,
+        ...(changes.sortOrder === undefined ? {} : { sortOrder: changes.sortOrder }),
+        ...(changes.language === undefined ? {} : { language: changes.language }),
         status: "pending",
         expiresAt: new Date(expiresAt),
         updatedAt: later(current.updatedAt),

@@ -150,7 +150,7 @@ async function requirePostMedia(
 ): Promise<void> {
   const media = await repos.media.listBySubject(postSubject(post.id));
   // Lanza `CONTENT_NOT_READY` si, con lo que hay, el post no tiene lo que esa red pide.
-  postPublicationPlan(publication.platform, post.kind, media);
+  postPublicationPlan(publication.platform, post.kind, media, publication.language);
   const present = new Set(media.map((item) => item.id));
   if (publication.mediaIds.some((id) => !present.has(id))) {
     throw new AppError(

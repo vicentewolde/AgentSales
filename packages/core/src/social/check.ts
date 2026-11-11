@@ -7,11 +7,25 @@ import {
 } from "../content/check.js";
 import { CAROUSEL_MAX_ITEMS, CAROUSEL_MIN_ITEMS } from "../content/compose.js";
 import type { EditorialProfileView } from "../editorial-profile.js";
-import { LANGUAGES, type Language, type PostKind, type PostPlatform } from "../enums.js";
+import {
+  LANGUAGES,
+  type Language,
+  POST_PLATFORMS,
+  type PostKind,
+  type PostPlatform,
+} from "../enums.js";
+import { LANGUAGE_TEXT } from "../labels.js";
 import { foldText } from "../listing-validator/normalizers.js";
 import type { Media } from "../media.js";
 import type { Post } from "../post.js";
 import { type CardLanguages, hiddenCardIds } from "../post-card-languages.js";
+import {
+  isBilingualImageSet,
+  type LanguageMediaItem,
+  mediaForText,
+  mediaLanguageOf,
+  otherLanguageOriginals,
+} from "../post-media-language.js";
 import { operatorBriefOf, xLinksOf } from "./brief.js";
 import {
   DISCORD_MAX_FILES,
@@ -30,6 +44,18 @@ import {
 // al leer y al aprobar). Los errores impiden aprobar; las advertencias, no.
 
 /**
+ * Cuántas imágenes y videos lleva un texto. `bilingual`: en Instagram, imágenes de más de un idioma
+ * (un post de imagen sale como carrusel, ADR-0042). `otherLanguage`: los originales que no lleva
+ * solo porque están marcados en otro idioma (para decir eso y no «no tiene ninguna»).
+ */
+export type PostMediaCounts = {
+  images: number;
+  videos: number;
+  bilingual?: boolean;
+  otherLanguage?: number;
+};
+
+/**
  * Lo que la revisión necesita de un post: lo que lleva (`kind` y sus medios), las **fuentes de
  * hechos** (el perfil editorial de su marca, y el brief y el tema solo si los escribió el
  * operador), los enlaces que el operador marcó para X y lo que el perfil pide evitar.
@@ -44,6 +70,11 @@ export type PostCheckContext = {
    * (más las que subió el usuario). Sin una entrada, vale `media`.
    */
   mediaByLanguage?: Partial<Record<Language, { images: number; videos: number }>>;
+  /**
+   * Lo mismo por red e idioma (ADR-0042): con imágenes marcadas en un idioma, cada texto lleva las
+   * suyas (`mediaForText`; en Instagram, todas). Manda sobre `mediaByLanguage`.
+   */
+  mediaByText?: Partial<Record<PostPlatform, Partial<Record<Language, PostMediaCounts>>>>;
   /** Todo el texto que es fuente de hechos, junto (ver `buildPostCheckContext`). */
   sources: string;
   /** Los enlaces del brief del operador (`linkKey`): los únicos permitidos en X. */
@@ -91,7 +122,8 @@ export function buildPostCheckContext(params: {
     "facts" | "audience" | "pillars" | "defaultHashtags" | "avoid"
   >;
   broker: Pick<Broker, "brandName" | "fixedHashtags">;
-  media: readonly (Pick<Media, "role" | "kind"> & { id?: string })[];
+  media: readonly (Pick<Media, "role" | "kind"> &
+    Partial<Pick<Media, "id" | "sortOrder" | "parentMediaId" | "language">>)[];
   /** El idioma de las tarjetas del post (`loadCardLanguages`); sin él, no se separan por idioma. */
   cards?: CardLanguages;
 }): PostCheckContext {
@@ -113,6 +145,23 @@ export function buildPostCheckContext(params: {
       mediaByLanguage[language] = counts(originals.filter((item) => !hidden.has(item.id ?? "")));
     }
   }
+  // ADR-0042: con un original marcado en un idioma, los medios de cada texto por red e idioma.
+  const items = originals.map((item, index) => ({
+    id: item.id ?? `#${index}`,
+    kind: item.kind,
+    sortOrder: item.sortOrder ?? index,
+    language: item.language ?? null,
+  }));
+  const mediaByText: NonNullable<PostCheckContext["mediaByText"]> = {};
+  if (items.some((item) => mediaLanguageOf(item) !== null)) {
+    for (const platform of POST_PLATFORMS) {
+      const byLanguage: Partial<Record<Language, PostMediaCounts>> = {};
+      for (const language of LANGUAGES) {
+        byLanguage[language] = textMediaCounts(items, cards, platform, language);
+      }
+      mediaByText[platform] = byLanguage;
+    }
+  }
   const sources = [
     profileSources(profile, broker),
     operatorBriefOf(post) ?? "",
@@ -124,10 +173,28 @@ export function buildPostCheckContext(params: {
     kind: post.kind,
     media: counts(originals),
     ...(cards.size > 0 ? { mediaByLanguage } : {}),
+    ...(Object.keys(mediaByText).length > 0 ? { mediaByText } : {}),
     sources,
     xLinks: xLinksOf(post),
     xLinkAllowed: post.xLinkAllowed,
     avoid: [...profile.avoid],
+  };
+}
+
+/** Cuántos medios lleva el texto de esa red e idioma (`mediaForText`). */
+function textMediaCounts(
+  items: readonly (LanguageMediaItem & Pick<Media, "kind">)[],
+  cards: CardLanguages,
+  platform: PostPlatform,
+  language: Language,
+): PostMediaCounts {
+  const chosen = mediaForText(items, cards, platform, language);
+  const images = chosen.filter((item) => item.kind === "image");
+  return {
+    images: images.length,
+    videos: chosen.filter((item) => item.kind === "video").length,
+    bilingual: platform === "instagram" && isBilingualImageSet(images, language),
+    otherLanguage: otherLanguageOriginals(items, platform, language).length,
   };
 }
 
@@ -481,13 +548,23 @@ const unsupported = (message: string): MediaProblem => ({
 function mediaProblem(
   platform: PostPlatform,
   ctx: PostCheckContext,
-  media: PostCheckContext["media"],
+  media: PostMediaCounts,
+  language: Language | undefined,
 ): MediaProblem | null {
-  const { kind } = ctx;
-  if (kind === "video") {
-    return media.videos === 0
-      ? missing("Falta el video: el post es de video y aún no tiene ninguno. Súbelo o consíguelo")
+  // Un post de imagen bilingüe va como carrusel en Instagram (ADR-0042).
+  const kind = platform === "instagram" && media.bilingual === true ? "carousel" : ctx.kind;
+  // Lo que falta solo porque lo del post está marcado en otro idioma (ADR-0042).
+  const elsewhere =
+    (media.otherLanguage ?? 0) > 0 && language !== undefined
+      ? ` en ${LANGUAGE_TEXT[language]}: las del post están marcadas en otro idioma. Sube una en ${LANGUAGE_TEXT[language]} o marca una como «Todos»`
       : null;
+  if (kind === "video") {
+    if (media.videos > 0) return null;
+    return missing(
+      elsewhere === null
+        ? "Falta el video: el post es de video y aún no tiene ninguno. Súbelo o consíguelo"
+        : `Falta el video${elsewhere}`,
+    );
   }
   if (platform === "tiktok") {
     return unsupported("TikTok publica solo video: cambia el post a video y súbelo");
@@ -498,6 +575,11 @@ function mediaProblem(
       : null;
   }
   if (media.images === 0) {
+    if (elsewhere !== null) {
+      return missing(
+        `${kind === "carousel" ? "Faltan las imágenes" : "Falta la imagen"}${elsewhere}`,
+      );
+    }
     return missing(
       kind === "carousel"
         ? "Faltan las imágenes del carrusel: el post aún no tiene ninguna. Súbelas o consíguelas"
@@ -690,13 +772,18 @@ export function checkPostContent(
     );
   }
 
-  // Las imágenes de **este** texto: sus tarjetas (las de su idioma) y lo que subió el usuario.
-  const media =
-    (text.language === undefined ? undefined : ctx.mediaByLanguage?.[text.language]) ?? ctx.media;
-  const problem = mediaProblem(platform, ctx, media);
+  // Las imágenes de **este** texto: sus tarjetas (las de su idioma) y lo que subió el usuario, según
+  // su idioma (ADR-0042).
+  const media: PostMediaCounts =
+    (text.language === undefined
+      ? undefined
+      : (ctx.mediaByText?.[platform]?.[text.language] ?? ctx.mediaByLanguage?.[text.language])) ??
+    ctx.media;
+  const problem = mediaProblem(platform, ctx, media, text.language);
   if (problem !== null) add(problem.code, problem.message);
-  // Instagram publica una imagen suelta con la primera foto (F9-T13): las demás no salen.
-  if (platform === "instagram" && ctx.kind === "image" && media.images > 1) {
+  // Instagram publica una imagen suelta con la primera foto (F9-T13): las demás no salen. Un post
+  // bilingüe (imágenes de dos idiomas) sale como carrusel con todas (ADR-0042).
+  if (platform === "instagram" && ctx.kind === "image" && media.images > 1 && !media.bilingual) {
     add(
       "MEDIA_UNUSED",
       `Instagram publicará solo la primera de ${media.images} fotos; usa carrusel para publicarlas todas`,

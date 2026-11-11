@@ -53,6 +53,7 @@ function toRecord(media: Media): MediaRecord {
     checksum: media.checksum,
     sortOrder: media.sortOrder,
     isCover: media.isCover,
+    language: media.language ?? null,
   };
 }
 
@@ -266,6 +267,13 @@ export function createInMemoryMediaRepository(
       const deleted = [...found, ...variants];
       for (const media of deleted) stored.delete(media.id);
       return deleted.map((media) => media.storagePath);
+    },
+    async setLanguage(subject, id, language) {
+      const current = stored.get(id);
+      if (current?.role !== "original" || !ofSubject(subject)(current)) return null;
+      const updated: Media = { ...current, language };
+      stored.set(id, updated);
+      return toRecord(updated);
     },
     async deleteDerivative(id) {
       const current = stored.get(id);

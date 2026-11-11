@@ -149,6 +149,8 @@ const CONFLICTS = new Set([
   "POST_IMAGE_NEEDS_TEXT",
   // Cambiar las tarjetas de un post cuyas imágenes ya están en una publicación.
   "POST_CARDS_IN_USE",
+  // ADR-0042: cambiar el idioma de una foto de un post con publicaciones que ya fijaron sus medios.
+  "POST_MEDIA_IN_USE",
 ]);
 
 /**

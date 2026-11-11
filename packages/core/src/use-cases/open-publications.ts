@@ -15,7 +15,8 @@ import type { Media } from "../media.js";
 import type { LockedRepositories } from "../ports/listing-lock.js";
 import type { PostLockedRepositories } from "../ports/post-lock.js";
 import type { Post } from "../post.js";
-import { loadCardLanguages, mediaForLanguage } from "../post-card-languages.js";
+import { loadCardLanguages } from "../post-card-languages.js";
+import { byLanguageThenOrder, isBilingualImageSet, mediaForText } from "../post-media-language.js";
 import type { Publication, PublicationActor } from "../publication.js";
 import { ACTIVE_PUBLICATION_STATUSES } from "../publication-state.js";
 import { X_MAX_IMAGES } from "../social/networks.js";
@@ -183,17 +184,34 @@ export async function channelPublications(
 // Posts (F9, ADR-0029): una publicación por cuenta, formato **e idioma**. Lo propio del aviso
 // (`listing_source_hash`, las reglas de Portal y Marketplace, republicar) no aplica.
 
-/** Las imágenes de un post: el `ig_4x5` de cada foto original, en su orden. */
-const postImages = (media: readonly Media[]): Media[] =>
+/**
+ * Las fotos originales de un post, en su orden: `sortOrder` y el id; con el idioma del texto,
+ * primero las de su idioma y las de todos (ADR-0042: en Instagram van también las de otro idioma).
+ */
+const postPhotos = (media: readonly Media[], language?: Language): Media[] =>
   media
     .filter((item) => item.role === "original" && item.kind === "image")
-    .sort((a, b) => a.sortOrder - b.sortOrder || (a.id < b.id ? -1 : 1))
+    .sort(
+      language === undefined
+        ? (a, b) => a.sortOrder - b.sortOrder || (a.id < b.id ? -1 : 1)
+        : byLanguageThenOrder(language),
+    );
+
+/** Las imágenes de un post: el `ig_4x5` de cada foto original, en su orden (`postPhotos`). */
+const postImages = (media: readonly Media[], language?: Language): Media[] =>
+  postPhotos(media, language)
     .map((photo) => variantOf(media, photo.id, "ig_4x5"))
     .filter((variant): variant is Media => variant !== null);
 
+/** El primer video original del post (con el idioma del texto, primero los de su idioma). */
+const firstVideo = (media: readonly Media[], language?: Language): Media | undefined =>
+  language === undefined
+    ? videosOf(media)[0]
+    : videosOf(media).sort(byLanguageThenOrder(language))[0];
+
 /** El video de un post: el `ig_reel` (9:16, hasta 90 s) de su primer video original. */
-const postVideo = (media: readonly Media[]): Media | null => {
-  const first = videosOf(media)[0];
+const postVideo = (media: readonly Media[], language?: Language): Media | null => {
+  const first = firstVideo(media, language);
   return first === undefined ? null : variantOf(media, first.id, "ig_reel");
 };
 
@@ -203,8 +221,8 @@ const postVideo = (media: readonly Media[]): Media | null => {
  * liviana entre el video reducido de X (`x_video`, 720p) y el reel (`ig_reel`), para que quepa en
  * los 20 MiB por archivo de Discord. Si igual no cabe, el publisher no lo adjunta (`discord.md`).
  */
-const discordVideo = (media: readonly Media[]): Media | null => {
-  const first = videosOf(media)[0];
+const discordVideo = (media: readonly Media[], language?: Language): Media | null => {
+  const first = firstVideo(media, language);
   if (first === undefined) return null;
   const light = variantOf(media, first.id, "discord_video");
   if (light !== null) return light;
@@ -218,8 +236,8 @@ const discordVideo = (media: readonly Media[]): Media | null => {
  * El video de un post para X (F9-T16): el video reducido de X (`x_video`, 720p, F9-T10) de su
  * primer video, que cabe en el máximo de 1280×1024 de la doc (`x.md` §5.3). Sin él, falta procesar.
  */
-const xVideo = (media: readonly Media[]): Media | null => {
-  const first = videosOf(media)[0];
+const xVideo = (media: readonly Media[], language?: Language): Media | null => {
+  const first = firstVideo(media, language);
   return first === undefined ? null : variantOf(media, first.id, "x_video");
 };
 
@@ -242,8 +260,14 @@ const MISSING_CAROUSEL = `Faltan las imágenes del carrusel: súbelas o consígu
  * como `reel` con su `ig_reel` (9:16, de 3 a 90 s, sin texto encima; la portada es el cuadro del
  * segundo 1, el mismo de su `thumb`). Un post de solo texto no se publica en Instagram. Lo que
  * falta procesar es `CONTENT_NOT_READY`. El carrusel de un aviso (`composeCarousel`) no cambia.
+ * Con el idioma del texto (ADR-0042), las fotos y el video de su idioma van primero, y un post de
+ * imagen con imágenes de más de un idioma (`isBilingualImageSet`) va como carrusel.
  */
-function instagramPostPlan(kind: Post["kind"], media: readonly Media[]): PublicationPlanItem {
+function instagramPostPlan(
+  kind: Post["kind"],
+  media: readonly Media[],
+  language?: Language,
+): PublicationPlanItem {
   // Inalcanzable mientras la revisión del texto frene antes un post de solo texto en Instagram
   // con el error `MEDIA_NOT_SUPPORTED` (no se aprueba): queda como segunda barrera (F9.5-T21).
   if (kind === "text") {
@@ -253,14 +277,16 @@ function instagramPostPlan(kind: Post["kind"], media: readonly Media[]): Publica
     );
   }
   if (kind === "video") {
-    const video = postVideo(media);
+    const video = postVideo(media, language);
     if (video === null) {
       throw postMediaMissing("instagram", MISSING_VIDEO);
     }
     return { format: "reel", mediaIds: [video.id] };
   }
-  const images = postImages(media);
-  if (kind === "image") {
+  const images = postImages(media, language);
+  // ADR-0042: un post de imagen con imágenes de más de un idioma sale como carrusel bilingüe.
+  const bilingual = language !== undefined && isBilingualImageSet(postPhotos(media), language);
+  if (kind === "image" && !bilingual) {
     const [first] = images;
     if (first === undefined) {
       throw postMediaMissing("instagram", MISSING_IMAGE);
@@ -294,13 +320,15 @@ export function postPublicationPlan(
   platform: Platform,
   kind: Post["kind"],
   media: readonly Media[],
+  /** El idioma del texto: ordena por idioma (ADR-0042). Sin él, por `sortOrder`, como antes. */
+  language?: Language,
 ): PublicationPlanItem {
   if (!isPostPlatform(platform)) {
     throw new AppError("CONTENT_PLATFORM_INVALID", "Esa plataforma no publica posts", {
       details: { platform },
     });
   }
-  if (platform === "instagram") return instagramPostPlan(kind, media);
+  if (platform === "instagram") return instagramPostPlan(kind, media, language);
   if (kind === "text") {
     // TikTok sin video: inalcanzable mientras la revisión lo frene antes con `MEDIA_NOT_SUPPORTED`
     // (como el `kind !== "video"` de más abajo); queda como segunda barrera (F9.5-T21).
@@ -312,10 +340,10 @@ export function postPublicationPlan(
   if (kind === "video") {
     const video =
       platform === "discord"
-        ? discordVideo(media)
+        ? discordVideo(media, language)
         : platform === "x"
-          ? xVideo(media)
-          : postVideo(media);
+          ? xVideo(media, language)
+          : postVideo(media, language);
     if (video === null) {
       throw postMediaMissing(platform, MISSING_VIDEO);
     }
@@ -325,7 +353,7 @@ export function postPublicationPlan(
   if (platform === "tiktok") {
     throw postMediaMissing(platform, "TikTok publica solo video: súbelo al post");
   }
-  const images = postImages(media);
+  const images = postImages(media, language);
   if (images.length === 0) {
     throw postMediaMissing(platform, kind === "carousel" ? MISSING_CAROUSEL : MISSING_IMAGE);
   }
@@ -364,15 +392,18 @@ export async function planPostPublications(
 
   const subject = postSubject(post.id);
   // Las tarjetas son de un idioma: una publicación toma las de su texto (las únicas que haya, si no
-  // hay de su idioma); lo que subió el usuario va igual en todos los idiomas.
+  // hay de su idioma). Lo que subió el usuario va según su idioma (ADR-0042): fuera de Instagram,
+  // solo lo de su idioma y lo de todos; en Instagram, todo, con lo de su idioma primero.
   const item = postPublicationPlan(
     content.platform,
     post.kind,
-    mediaForLanguage(
+    mediaForText(
       await repos.media.listBySubject(subject),
       await loadCardLanguages(repos.postImageRuns, post.id),
+      content.platform,
       content.language,
     ),
+    content.language,
   );
   const active = (await repos.publications.listBySubject(subject)).filter(
     (publication) =>

@@ -1,6 +1,6 @@
 import type { AbortSignalLike } from "../abort.js";
 import { postOriginalPath, postOriginalsPrefix } from "../content/media-keys.js";
-import type { MediaKind } from "../enums.js";
+import type { Language, MediaKind } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
 import type { JobQueue } from "../ports/job-queue.js";
 import type { MediaRecord } from "../ports/media-repository.js";
@@ -168,6 +168,13 @@ export type RequestPostUploadsDeps = {
   now?: () => Date;
 };
 
+/** Lo que vale para todos los archivos de un pedido: el idioma de sus medios (ADR-0042). */
+export type PostUploadOptions = { language?: Language | null };
+
+/** El primer lugar libre después de esos medios y subidas (el `sortOrder` reservado, ADR-0042). */
+const nextFreeOrder = (taken: readonly { sortOrder?: number | null }[]) =>
+  taken.reduce((max, item) => Math.max(max, (item.sortOrder ?? -1) + 1), 0);
+
 /**
  * Pide las URLs de subida de los medios de un post (`POST /api/posts/:id/uploads`, ADR-0025). Por
  * cada archivo: si ese contenido ya es un medio del post, `existing`; si no, una URL de `PUT` de
@@ -176,6 +183,8 @@ export type RequestPostUploadsDeps = {
  * la misma clave. Dos nombres con el mismo contenido son una sola subida. Un archivo de más de
  * 100 MB sin sha256 es siempre una subida nueva, con la clave de su id (F9-T17): pedirlo otra vez
  * deja la anterior pendiente hasta que la limpieza la abandone. Firmar no habla con R2.
+ * Cada subida reserva el lugar de su medio en el orden de los archivos (ADR-0042: el orden de lo
+ * subido es el del pedido, aunque terminen de subir al revés) y lleva el idioma de `options`.
  * Errores: `POST_UPLOAD_INVALID` (400), `POST_UPLOAD_TOO_LARGE` (413), `POST_ARCHIVED` (409).
  */
 export async function requestPostUploads(
@@ -183,6 +192,7 @@ export async function requestPostUploads(
   actor: Actor,
   postId: string,
   files: readonly PostUploadFile[],
+  options: PostUploadOptions = {},
 ): Promise<{ post: Post; uploads: PostUploadTarget[] }> {
   const post = assertPostAccess(actor, await deps.posts.get(postId), postId);
   if (post.status === "archived") throw postArchived(postId);
@@ -244,6 +254,16 @@ export async function requestPostUploads(
       });
     }
 
+    // El lugar de cada medio se reserva ahora, en el orden pedido, después de los medios del post y
+    // de las subidas que siguen por llegar (que no se repiten en este pedido).
+    let nextOrder = nextFreeOrder([
+      ...originals.values(),
+      ...uploads.filter(
+        (upload) =>
+          (upload.status === "pending" || upload.status === "uploaded") &&
+          !requested.has(upload.objectPath),
+      ),
+    ]);
     const result = new Map<string, { mediaId: string } | { upload: PostUpload }>();
     for (const [sha, file] of unique) {
       const existing = originals.get(sha);
@@ -254,6 +274,7 @@ export async function requestPostUploads(
       const key = signed.get(sha)?.key ?? "";
       const previous = byPath.get(key);
       const id = uploadIdOf(sha);
+      const place = { sortOrder: nextOrder++, language: options.language ?? null };
       const upload =
         previous === undefined
           ? await postUploads.create({
@@ -262,8 +283,9 @@ export async function requestPostUploads(
               objectPath: key,
               expectedBytes: file.size,
               expiresAt,
+              ...place,
             })
-          : await postUploads.reopen(previous.id, expiresAt);
+          : await postUploads.reopen(previous.id, expiresAt, place);
       if (upload === null) throw postNotFound(postId);
       result.set(sha, { upload });
     }
@@ -320,8 +342,9 @@ export type CompletePostUploadsResult = {
 
 /**
  * Termina las subidas de un post (`POST /api/posts/:id/uploads/complete`): revisa en R2 (un solo
- * `list`) cuáles de las pendientes llegaron con su tamaño, crea sus medios originales (en el orden
- * en que se pidieron, después de los que ya tenía) y las marca `completed`. Las que faltan siguen
+ * `list`) cuáles de las pendientes llegaron con su tamaño, crea sus medios originales (cada uno en
+ * el lugar que reservó al pedirse, ADR-0042, y con su idioma; una subida anterior sin lugar, después
+ * de lo que ya tenía) y las marca `completed`. Las que faltan siguen
  * pendientes: el cliente las sube y vuelve a llamar (avance y reintento). Una subida grande sin
  * sha256 que llegó queda `uploaded` (F9-T17): su medio lo crea el worker. Si el post tiene medios o
  * subidas `uploaded`, encola `post.media` (`singletonKey = postId`) para armar sus variantes;
@@ -348,12 +371,17 @@ export async function completePostUploads(
     if (current.status === "archived") throw postArchived(postId);
     const originals = await media.listOriginals(postSubject(postId));
     const byChecksum = new Set(originals.map((item) => item.checksum));
-    let nextOrder = originals.reduce((max, item) => Math.max(max, item.sortOrder + 1), 0);
+    const uploads = await postUploads.listByPost(postId);
+    // Una subida sin lugar reservado (anterior a ADR-0042) va después de todo lo reservado.
+    let nextOrder = nextFreeOrder([
+      ...originals,
+      ...uploads.filter((upload) => upload.status === "pending" || upload.status === "uploaded"),
+    ]);
     const completed: string[] = [];
     const missing: string[] = [];
     const uploaded: string[] = [];
     let waiting = false;
-    for (const upload of await postUploads.listByPost(postId)) {
+    for (const upload of uploads) {
       if (upload.status === "uploaded") waiting = true;
       if (upload.status !== "pending") continue;
       if (UPLOAD_KEY.test(upload.objectPath)) {
@@ -389,8 +417,9 @@ export async function completePostUploads(
           mime: type.mime,
           bytes: upload.expectedBytes,
           checksum: sha256,
-          sortOrder: nextOrder++,
+          sortOrder: upload.sortOrder ?? nextOrder++,
           isCover: false,
+          language: upload.language ?? null,
         });
         byChecksum.add(sha256);
       }
@@ -559,8 +588,9 @@ export async function finalizePostUploads(
         mime: type.mime,
         bytes: current.expectedBytes,
         checksum: sha256,
-        sortOrder: originals.reduce((max, item) => Math.max(max, item.sortOrder + 1), 0),
+        sortOrder: current.sortOrder ?? nextFreeOrder(originals),
         isCover: false,
+        language: current.language ?? null,
       });
       await postUploads.markCompleted(current.id);
       return "created" as const;
