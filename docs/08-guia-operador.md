@@ -529,3 +529,9 @@ Restaurar **nunca** se hace sobre la base que usa AgentSales: se restaura en una
 
 Para errores de las últimas 6 horas, Neon tiene además su propia restauración instantánea (en su consola), más rápida que un respaldo; ver `docs/integraciones/neon-backup.md`.
 
+## El panel, ordenado (2026-11-10)
+
+- **Contenido** separa «De hoy en adelante» (por fecha) de «Pasados» (plegado). «Archivar todos los pasados…» los saca de la lista sin borrarlos: siguen en «Solo: Archivado». Los que tienen publicaciones pendientes no se archivan.
+- **Plan** muestra «Lo que pediste» en un bloque; «Usar para un plan nuevo…» copia ese pedido, los días y las redes al formulario para ajustarlos y pedir otro. Cada idea lleva su imagen cuando ya la tiene.
+- **En un post**, «Qué se publica» dice, por red e idioma, si ese texto sale (aprobado), cuándo y en qué punto va. Lo que dice «No se publica» no necesita edición. Cada red se programa por separado: puedes dejar X para hoy e Instagram para días después (programas una, y luego vuelves a «Programar…» con la otra).
+- Pasa el mouse por un botón (o enfócalo con el teclado) y aparece qué hace.

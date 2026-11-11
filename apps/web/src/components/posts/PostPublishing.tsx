@@ -8,7 +8,7 @@ import type {
 } from "@agentsales/api/contracts";
 import {
   accountOwnedBy,
-  formatChileTime,
+  formatChileDayTime,
   LANGUAGE_TEXT,
   PLATFORM_TEXT,
   type PostPlatform,
@@ -117,7 +117,7 @@ function ScheduleResults({ result }: { result: PostScheduleResponse }) {
         >
           {row.platform === null ? "El post" : PLATFORM_TEXT[row.platform]}:{" "}
           {row.outcome === "scheduled"
-            ? `programado para el ${row.at === undefined ? "" : formatChileTime(row.at)} (hora de Chile)`
+            ? `programado para el ${row.at === undefined ? "" : formatChileDayTime(row.at)} (hora de Chile)`
             : (row.message ?? "no se programó")}
         </li>
       ))}
@@ -242,6 +242,10 @@ export function PostPublishBar({
           </Button>
         )}
       </div>
+      <p className="text-xs text-fg-subtle">
+        Cada red se programa por separado: elige solo X para hoy y, otro día, vuelve a «Programar…»
+        con Instagram.
+      </p>
       {noMedia.size > 0 && (
         <p className="text-sm text-warning-800">
           {[...new Set(noMedia.values())].join(" ")}{" "}
@@ -336,9 +340,9 @@ function PublicationRow({
   const link = safeExternalUrl(publication.externalUrl);
   const when =
     status === "published" && publication.publishedAt !== null
-      ? `publicada el ${formatChileTime(publication.publishedAt)}`
+      ? `publicada el ${formatChileDayTime(publication.publishedAt)}`
       : publication.scheduledAt !== null && status === "scheduled"
-        ? `programada para el ${formatChileTime(publication.scheduledAt)}`
+        ? `programada para el ${formatChileDayTime(publication.scheduledAt)}`
         : null;
   return (
     <li className="py-3 text-sm first:pt-0 last:pb-0">
