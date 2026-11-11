@@ -11,7 +11,7 @@ import {
   requestContentRun,
 } from "@agentsales/core";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { brokerData, harness, newListing } from "../../test/harness.js";
 import { dayLabel } from "../components/calendar/calendar.js";
 
@@ -19,7 +19,10 @@ import { dayLabel } from "../components/calendar/calendar.js";
 // Chile, mover una fecha con el caso de uso de F6 (en vivo, con confirmación) y cada corredor con
 // lo suyo.
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
 
 const HOUR = 60 * 60 * 1000;
 
@@ -146,6 +149,27 @@ async function setup(options: { publishMode?: PublishMode } = {}) {
       ? h.deps.postLock.run(post.id, transition)
       : h.deps.lock.run(listing.id, transition);
   };
+  /** La deja como una publicación que salió a esa hora y se retiró después. */
+  const retire = async (kind: "post" | "listing", at: Date) => {
+    await schedule(kind, new Date(Date.now() + 3 * HOUR));
+    const id = kind === "post" ? postPublication.id : listingPublication.id;
+    const steps = (
+      [
+        ["scheduled", "publishing", { dryRun: true }],
+        ["publishing", "published", { publishedAt: at }],
+        ["published", "unpublished", {}],
+      ] as const
+    ).map(
+      ([from, to, changes]) =>
+        ({ publications }: { publications: Pick<PublicationRepository, "transition"> }) =>
+          publications.transition(id, { from, to, changes }, { actor: "system" }),
+    );
+    for (const step of steps) {
+      await (kind === "post"
+        ? h.deps.postLock.run(post.id, step)
+        : h.deps.lock.run(listing.id, step));
+    }
+  };
   const current = (id: string) => h.deps.publications.get(id);
   /** Abre la semana (o el mes) del día y devuelve la celda del día. */
   const openDay = async (day: string, view: "semana" | "mes" = "semana") => {
@@ -161,16 +185,22 @@ async function setup(options: { publishMode?: PublishMode } = {}) {
     postPublication,
     listingPublication,
     schedule,
+    retire,
     current,
     openDay,
   };
 }
 
-/** La entrada de una publicación en su día (por su hora, su red y su título). */
-const entryIn = (day: HTMLElement, at: Date, platform: string, title: string) =>
-  within(day).findByRole("listitem", {
-    name: `${formatChileTime(at).slice(11)} ${platform} ${title}`,
-  });
+/**
+ * La ficha de una publicación: abre el detalle de su día desde su chip y la busca ahí (por su
+ * hora, su red y su título).
+ */
+const entryIn = async (day: HTMLElement, at: Date, platform: string, title: string) => {
+  const name = `${formatChileTime(at).slice(11)} ${platform} ${title}`;
+  const chip = await within(day).findByRole("button", { name: new RegExp(`^${name}`) });
+  fireEvent.click(chip);
+  return within(await screen.findByRole("dialog")).findByRole("listitem", { name });
+};
 
 describe("panel: calendario", () => {
   it("muestra posts y avisos programados en su día y hora de Chile, con enlace a su página", async () => {
@@ -325,5 +355,58 @@ describe("panel: calendario", () => {
     expect(within(day).queryByText("Lo que aprendí esta semana")).toBeNull();
     // Sin el nombre del corredor: todo es suyo.
     expect(day.textContent).not.toContain("vinny");
+  });
+
+  it("por defecto no muestra lo retirado; el filtro lo trae y se recuerda en el navegador", async () => {
+    const s = await setup();
+    const scheduledAt = new Date(Date.now() + 3 * HOUR);
+    const retiredAt = new Date(scheduledAt.getTime() + 60_000);
+    await s.retire("listing", retiredAt);
+    await s.schedule("post", scheduledAt);
+
+    const day = await s.openDay(chileDateOf(scheduledAt));
+    expect(await entryIn(day, scheduledAt, "Discord", "Lo que aprendí esta semana")).toBeTruthy();
+    expect(within(day).queryByRole("button", { name: /Instagram/ })).toBeNull();
+    expect(screen.getByText(/oculta|Sin nada oculto/).textContent).toContain("1 oculta");
+
+    const toggle = screen.getByRole("button", { name: /Retiradas y descartadas/ });
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(toggle);
+
+    const retired = await within(day).findByRole("button", { name: /Instagram P-001, retirada/ });
+    expect(retired).toBeTruthy();
+    expect(screen.getByText(/oculta|Sin nada oculto/).textContent).toContain("Sin nada oculto");
+    expect(JSON.parse(localStorage.getItem("agentsales.calendar.filters") ?? "{}")).toEqual({
+      retired: true,
+      failed: true,
+    });
+
+    // Recargar la página recuerda la elección.
+    cleanup();
+    const again = await s.openDay(chileDateOf(scheduledAt));
+    expect(
+      await within(again).findByRole("button", { name: /Instagram P-001, retirada/ }),
+    ).toBeTruthy();
+  });
+
+  it("funciona aunque el navegador no deje guardar", async () => {
+    const s = await setup();
+    const spy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("bloqueado");
+    });
+    const setSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("bloqueado");
+    });
+    try {
+      const at = new Date(Date.now() + 3 * HOUR);
+      await s.retire("listing", at);
+      const day = await s.openDay(chileDateOf(at));
+      expect(within(day).queryByRole("button", { name: /Instagram/ })).toBeNull();
+      fireEvent.click(await screen.findByRole("button", { name: /Retiradas y descartadas/ }));
+      expect(await within(day).findByRole("button", { name: /Instagram P-001/ })).toBeTruthy();
+    } finally {
+      spy.mockRestore();
+      setSpy.mockRestore();
+    }
   });
 });

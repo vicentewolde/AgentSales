@@ -1,4 +1,4 @@
-import { chileDateOf, chileDateStart } from "@agentsales/core";
+import { chileDateOf, chileDateStart, type PublicationStatus } from "@agentsales/core";
 
 // El calendario del panel (F9-T18): los días que se muestran y su rango, en hora de Chile. Un día
 // es `"AAAA-MM-DD"` de Chile; la semana empieza el lunes. La aritmética de días va en UTC (sin
@@ -130,4 +130,65 @@ export function periodLabel(view: CalendarView, anchor: string): string {
         ? `${start.date} de ${start.month}`
         : `${start.date}`;
   return `Semana del ${from} al ${end.date} de ${end.month} de ${end.year}`;
+}
+
+// Qué se ve por defecto. Para el operador el calendario es lo que sale de verdad: lo retirado o
+// descartado no se ve salvo que lo pida, y lo que falló o quedó dudoso sí (piden una acción). Los
+// borradores y las ideas no llegan aquí: la API del calendario solo trae lo programado y lo que
+// ya salió (`calendarEntries`); viven en Contenido y Seguimiento.
+
+/** El grupo de una entrada para los filtros. */
+export type EntryGroup = "retired" | "failed" | "current";
+
+export const entryGroup = (status: PublicationStatus): EntryGroup =>
+  status === "unpublished" || status === "cancelled"
+    ? "retired"
+    : status === "failed" || status === "outcome_unknown"
+      ? "failed"
+      : "current";
+
+export type EntryFilters = { retired: boolean; failed: boolean };
+export const DEFAULT_ENTRY_FILTERS: EntryFilters = { retired: false, failed: true };
+
+/** Lo guardado en el navegador (JSON), o los valores por defecto si falta o no sirve. */
+export function parseEntryFilters(raw: string | null): EntryFilters {
+  if (raw === null) return DEFAULT_ENTRY_FILTERS;
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== "object" || value === null) return DEFAULT_ENTRY_FILTERS;
+    const { retired, failed } = value as Record<string, unknown>;
+    return {
+      retired: typeof retired === "boolean" ? retired : DEFAULT_ENTRY_FILTERS.retired,
+      failed: typeof failed === "boolean" ? failed : DEFAULT_ENTRY_FILTERS.failed,
+    };
+  } catch {
+    return DEFAULT_ENTRY_FILTERS;
+  }
+}
+
+/** Las entradas a mostrar y cuántas hay en cada grupo opcional (estén o no a la vista). */
+export function applyEntryFilters<T extends { status: PublicationStatus }>(
+  entries: readonly T[],
+  filters: EntryFilters,
+): { shown: T[]; counts: { retired: number; failed: number } } {
+  const counts = { retired: 0, failed: 0 };
+  const shown: T[] = [];
+  for (const entry of entries) {
+    const group = entryGroup(entry.status);
+    if (group !== "current") counts[group] += 1;
+    if (group === "current" || filters[group]) shown.push(entry);
+  }
+  return { shown, counts };
+}
+
+/** Cuántas entradas caben en la celda de un día antes del «+N más». */
+export const DAY_ENTRY_LIMIT = 3;
+
+/** Las primeras `limit` entradas del día (por hora) y cuántas quedan sin mostrar. */
+export function capDay<T extends { at: Date }>(
+  entries: readonly T[],
+  limit = DAY_ENTRY_LIMIT,
+): { shown: T[]; more: number } {
+  const sorted = [...entries].sort((a, b) => a.at.getTime() - b.at.getTime());
+  return { shown: sorted.slice(0, limit), more: Math.max(0, sorted.length - limit) };
 }
