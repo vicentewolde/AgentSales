@@ -34,6 +34,14 @@ import { addLine, lines } from "../components/posts/editorial-profile-draft.js";
 import { POST_KIND_LABEL, PostStatusBadge } from "../components/posts/labels.js";
 import { PostThumb } from "../components/posts/PostThumb.js";
 import { EmptyProfileNotice } from "../components/posts/ProfileWizard.js";
+import {
+  isStale,
+  type PostProgress,
+  PostProgressBadge,
+  postProgress,
+  StaleDateNote,
+  type TrackingPostRow,
+} from "../components/posts/progress.js";
 import { Button } from "../components/ui/Button.js";
 import { Input, Select, Textarea } from "../components/ui/Field.js";
 import { PageHeader } from "../components/ui/PageHeader.js";
@@ -49,7 +57,8 @@ import {
   useUpdateIdea,
 } from "../queries/plans.js";
 import { useEditorialProfile } from "../queries/posts.js";
-import { useRole } from "../scope/broker-scope.js";
+import { useTracking } from "../queries/tracking.js";
+import { useBrokerFilter, useRole } from "../scope/broker-scope.js";
 import { useScopedBrokerId } from "./PostsPage.js";
 
 /**
@@ -395,12 +404,14 @@ function IdeaCard({
   pillarName,
   networks,
   cover,
+  progress,
 }: {
   idea: PlanIdeaView;
   planId: string;
   pillarName: string | null;
   networks: readonly PostPlatform[];
   cover: PostCover | undefined;
+  progress: PostProgress;
 }) {
   const accept = useAcceptIdea(planId);
   const discard = useDiscardIdea(planId);
@@ -408,10 +419,14 @@ function IdeaCard({
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const busy = accept.isPending || discard.isPending;
   const archived = idea.status === "archived";
+  const isPost = idea.status === "draft" || idea.status === "ready";
+  const stale = !archived && isStale(idea.plannedAt, progress);
   return (
     <li
       aria-label={idea.topic}
-      className={`rounded-xl border border-line bg-surface p-3 ${archived ? "opacity-60" : ""}`}
+      className={`rounded-xl border p-3 ${
+        stale ? "border-warning-200 bg-warning-50" : "border-line bg-surface"
+      } ${archived ? "opacity-60" : ""}`}
     >
       <div className="flex items-start gap-3">
         <PostThumb cover={cover} />
@@ -430,7 +445,11 @@ function IdeaCard({
                 {idea.topic}
               </Link>
             )}
-            <PostStatusBadge status={idea.status} />
+            {isPost ? (
+              <PostProgressBadge progress={progress} />
+            ) : (
+              <PostStatusBadge status={idea.status} />
+            )}
           </div>
           <p className="mt-1 text-sm text-fg-muted">
             {POST_KIND_LABEL[idea.kind]} · {networksText(idea.platforms)}
@@ -455,9 +474,17 @@ function IdeaCard({
           Sin esa red: {note}
         </p>
       ))}
-      {(idea.status === "draft" || idea.status === "ready") && (
+      {stale && <StaleDateNote className="mt-1 text-sm" idea={idea.status === "idea"} />}
+      {isPost && (
         <p role="status" className="mt-1 text-sm text-fg-muted">
-          {textsState(idea)}
+          <span>{textsState(idea)}</span>
+          {" · "}
+          <Link
+            to={`/contenido/${idea.id}`}
+            className="font-medium text-brand-700 underline underline-offset-2"
+          >
+            Ya es un post: ábrelo en Contenido
+          </Link>
         </p>
       )}
       {idea.status === "idea" && !editing && (
@@ -657,6 +684,10 @@ function PlanView({
   const { plan, report, ideas, covers } = detail;
   const profile = useEditorialProfile(brandId);
   const networks = useBrandPlatforms(brandId);
+  const tracking = useTracking(false, useBrokerFilter());
+  const trackingRows = new Map<string, TrackingPostRow>(
+    (tracking.data?.posts ?? []).map((row) => [row.post.id, row]),
+  );
   const pillarName = (key: string | null) =>
     key === null ? null : (profile.data?.pillars.find((pillar) => pillar.key === key)?.name ?? key);
   return (
@@ -669,11 +700,27 @@ function PlanView({
       <PlanStatus plan={plan} />
       {plan.status === "succeeded" && (
         <>
-          <p className="mt-3 rounded-md border border-info-200 bg-info-50 p-3 text-sm text-info-800">
-            Una idea no se publica sola: al aceptarla, la IA redacta sus textos; después tú los
-            revisas y los apruebas y programas en Contenido, o toda la semana de una vez con
-            «Aprobar la semana».
-          </p>
+          <div className="mt-3 rounded-md border border-info-200 bg-info-50 p-3 text-sm text-info-800">
+            <p className="font-semibold">¿Qué es esto y qué es lo definitivo?</p>
+            <ul className="mt-1 list-disc space-y-1 pl-5">
+              <li>
+                <strong>Plan</strong> (esta página) son <strong>ideas</strong> que propuso la IA.
+                Una «Idea» todavía no es un post: puedes aceptarla, editarla o descartarla.
+              </li>
+              <li>
+                Al <strong>aceptar</strong> una, la IA redacta sus textos y pasa a{" "}
+                <Link to="/contenido" className="font-medium underline underline-offset-2">
+                  Contenido
+                </Link>
+                , que es <strong>lo definitivo</strong>: ahí revisas el texto, lo apruebas y lo
+                programas (o toda la semana de una vez con «Aprobar la semana»).
+              </li>
+              <li>
+                Las aceptadas siguen apareciendo aquí solo para que veas en qué van. Nada se publica
+                sin que lo apruebes y lo programes.
+              </li>
+            </ul>
+          </div>
           <DraftAccepted planId={plan.id} ideas={ideas} />
           {ideas.length === 0 && (
             <p className="mt-3 text-fg-muted">
@@ -704,6 +751,7 @@ function PlanView({
                     pillarName={pillarName(idea.pillar)}
                     networks={networks}
                     cover={covers[idea.id]}
+                    progress={postProgress(trackingRows.get(idea.id))}
                   />
                 ))}
               </ul>

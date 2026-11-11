@@ -117,7 +117,7 @@ describe("panel: Plan", () => {
     expect(
       screen.getAllByRole("heading", { name: /^Semana del [a-zé]{3} \d{1,2} [a-z]{3} al/ }).length,
     ).toBeGreaterThan(0);
-    expect(screen.getByText(/Una idea no se publica sola/)).toBeTruthy();
+    expect(screen.getByText("¿Qué es esto y qué es lo definitivo?")).toBeTruthy();
     const card = screen.getByRole("listitem", { name: ideas[0]?.topic ?? "" });
     expect(within(card).getByText(/^Por qué:/)).toBeTruthy();
     expect(within(card).getByText(/LinkedIn · línea Producto/)).toBeTruthy();

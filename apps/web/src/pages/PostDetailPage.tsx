@@ -321,6 +321,14 @@ export function PostDetailPage() {
   const archived = item.status === "archived";
   const publishMode = modeOf(item.brokerId);
   const runActive = latestRun !== null && !isTerminalContentRun(latestRun.status);
+  // Una fecha pasada sin nada publicado ni a punto de salir: no es una fecha que se pueda usar.
+  const stalePlannedAt =
+    !archived &&
+    item.plannedAt !== null &&
+    item.plannedAt.getTime() < Date.now() &&
+    !publications.some((pub) =>
+      ["published", "scheduled", "publishing", "awaiting_manual_confirm"].includes(pub.status),
+    );
   const lockReason = archived
     ? "El post está archivado."
     : runActive
@@ -393,6 +401,20 @@ export function PostDetailPage() {
               }
             : {})}
         />
+        {stalePlannedAt && (
+          <Alert role="status" tone="warning" className="mb-6">
+            <p className="font-semibold">
+              La fecha planeada ya pasó ({formatChileDayTime(item.plannedAt as Date)}) y este post
+              no salió.
+            </p>
+            <p className="mt-1">
+              No se publica solo.{" "}
+              {item.status === "idea"
+                ? "Cámbiale la fecha con «Editar el post» antes de aceptarlo en el plan, o archívalo."
+                : "Para usarlo, cámbiale la fecha con «Editar el post» y vuelve a programarlo; si ya no sirve, archívalo."}
+            </p>
+          </Alert>
+        )}
         {item.brief !== null && (
           <div className="mb-6 rounded-xl border border-line bg-surface shadow-xs px-4 py-3">
             <p className="text-xs font-medium text-fg-subtle">
