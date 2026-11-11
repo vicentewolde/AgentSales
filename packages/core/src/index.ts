@@ -1351,6 +1351,11 @@ export {
   purgeBrokerSummary,
 } from "./use-cases/purge-broker.js";
 export {
+  type RecordExternalPublicationDeps,
+  type RecordExternalPublicationResult,
+  recordExternalPublication,
+} from "./use-cases/record-external-publication.js";
+export {
   MERCADOLIBRE_REFRESH_AGE_MS,
   type RefreshAccountTokensDeps,
   refreshAccountToken,

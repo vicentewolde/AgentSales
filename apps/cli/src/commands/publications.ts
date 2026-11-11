@@ -4,6 +4,7 @@ import {
   listingPublicationsResponseSchema,
   MARKETPLACE_URL_MAX_LENGTH,
   type PublicationView,
+  postRecordResponseSchema,
   publicationConfirmResponseSchema,
   publicationEventsResponseSchema,
   publicationOperationResponseSchema,
@@ -36,10 +37,13 @@ import {
   renderRemoteState,
   theName,
 } from "./publication-view.js";
+import { atOption } from "./schedule.js";
 import {
   brokersGoLive,
   fetchBrokers,
+  languageOption,
   manualConfirmHint,
+  postPlatformOption,
   publicationBrokerId,
   resolveListingId,
   withConfirmation,
@@ -409,6 +413,63 @@ export function runConfirmPublication(deps: ConfirmDeps, id: string, options: Co
           "  Confirmada a mano, sin enlace: no se podrá abrir desde Seguimiento (queda anotada)",
         ),
       );
+    }
+    return 0;
+  });
+}
+
+export type RecordOptions = {
+  platform?: string;
+  language?: string;
+  urlStdin?: boolean;
+  at?: string;
+};
+
+/**
+ * `pbpaste | agentsales publications record <id_post> --platform x --language es --url-stdin
+ * [--at "AAAA-MM-DD HH:MM"]`: el texto del post ya está en la red (se publicó fuera de AgentSales o
+ * antes). Crea la publicación real con su enlace (nunca como argumento ni impreso) y deja superada,
+ * sin borrarla, la simulada que hubiera. `--at` en hora de Chile; sin él, ahora.
+ */
+export function runRecordPublication(deps: ConfirmDeps, id: string, options: RecordOptions = {}) {
+  const c = deps.colors;
+  return guarded(deps, async () => {
+    const postId = id.trim();
+    if (!z.uuid().safeParse(postId).success) {
+      throw new CliError(
+        "POST_ID_INVALID",
+        `"${id}" no es el id de un post`,
+        "Mira los ids con agentsales post list",
+      );
+    }
+    if (options.platform === undefined || options.language === undefined) {
+      throw new CliError("RECORD_OPTIONS_REQUIRED", "Faltan --platform y --language del texto");
+    }
+    const pipe = `pbpaste | agentsales publications record ${postId} --platform ${options.platform} --language ${options.language} --url-stdin`;
+    if (!options.urlStdin) {
+      throw new CliError("URL_STDIN_REQUIRED", "El enlace del post va con --url-stdin", pipe);
+    }
+    const platform = postPlatformOption(options.platform);
+    const language = languageOption(options.language);
+    const publishedAt = options.at === undefined ? undefined : atOption(options.at);
+    const url = await urlFromStdin(deps, pipe);
+    const { publication, superseded } = await unwrap(
+      deps.client.posts[":id"].record.$post({
+        param: { id: postId },
+        json: {
+          platform,
+          language,
+          url,
+          ...(publishedAt === undefined ? {} : { publishedAt: publishedAt.toISOString() }),
+        },
+      }),
+      postRecordResponseSchema,
+    );
+    deps.print(
+      `${c.green("✓")} ${publicationName(publication)} registrada como publicada (${publicationModeText(publication.dryRun)})`,
+    );
+    for (const old of superseded) {
+      deps.print(c.dim(`  Quedó superada (sin borrar): ${old.id} (${old.status})`));
     }
     return 0;
   });
@@ -908,6 +969,19 @@ export function register(program: Command, ctx: CliContext): void {
     )
     .action((id: string, options: ConfirmOptions) =>
       exitWith(() => runConfirmPublication(deps(), id, options)),
+    );
+  publications
+    .command("record")
+    .description(
+      "Un post que ya está en la red (publicado fuera de AgentSales o antes): lo registra con su enlace (pbpaste | … --url-stdin; no se imprime)",
+    )
+    .argument("<id>", "id del post (agentsales post list)")
+    .option("--platform <red>", "la red del texto (x, linkedin, instagram, discord, tiktok)")
+    .option("--language <es|en>", "el idioma del texto")
+    .option("--url-stdin", "lee el enlace del post desde la entrada estándar (pbpaste | …)")
+    .option("--at <hora>", 'cuándo salió, hora de Chile: "AAAA-MM-DD HH:MM" (sin él, ahora)')
+    .action((id: string, options: RecordOptions) =>
+      exitWith(() => runRecordPublication(deps(), id, options)),
     );
   publications
     .command("not-published")

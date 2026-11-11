@@ -12,7 +12,7 @@ Guía paso a paso para poner AgentSales en internet, en `https://agentsales.agen
   - **`api`**: el panel y la API. Se apaga sola cuando nadie la usa y se enciende con el primer pedido (tarda unos segundos).
   - **`worker`**: prepara, publica y corre lo programado. Hoy **no se apaga solo**: lo enciendes y lo apagas tú (paso 8). Con el **horario activado** (paso 8, "El worker con horario", F9.5-T24, ADR-0037) lo enciende una revisión cada hora (a los :50, de 06:50 a 22:50 hora de Chile) y se apaga solo cuando no le queda nada que hacer ni nada que venza antes de la próxima revisión.
 - **Modo demo (D1):** las máquinas se encienden los días de demo y se apagan después. Cuesta unos US$ 0,56 por día encendido, más centavos por el disco de las máquinas apagadas. Con el worker apagado, Neon se duerme y no gasta su cupo gratis.
-- **Simulación (D9):** el servidor corre con `PUBLISH_MODE=dry-run` (en `fly.toml`). Pasarlo a `live` es una decisión tuya, que pides en el chat.
+- **Modo del servidor (D9):** desde el 2026-11-11 la instancia principal corre con `PUBLISH_MODE=live` (en `fly.toml`, decisión del operador en el chat); eso solo **permite** publicar de verdad, y publica únicamente la marca encendida. Volver a simulación es una decisión tuya, que pides en el chat: un PR que ponga `dry-run` en `fly.toml`, o los dos `fly machine update --env PUBLISH_MODE=dry-run` de abajo (el próximo despliegue lo vuelve a `live`).
 - **Dos llaves (F9.5-T22, ADR-0036):** el servidor en `live` solo **permite** publicar de verdad. Cada marca, además, tiene su propio interruptor (`brokers live <slug> on|off`, o en su ficha del panel) y solo las marcas propias del operador pueden encenderse. Una publicación sale de verdad solo con las dos llaves abiertas; si falta cualquiera, es simulación. Todas las marcas nacen apagadas y el seed no enciende ninguna. Encender o apagar una marca, igual que cambiar `PUBLISH_MODE`, lo decides tú, en el chat.
 - **Las migraciones** se aplican solas en cada despliegue, antes de reemplazar nada. Si fallan, el despliegue se detiene y queda la versión anterior.
 - **Una sola instancia por ahora (D19 de F9):** esta guía es la de la instancia de hoy (`principal`). Cuando haga falta otra del mismo código, con sus propios datos y cuentas, sigue "Una segunda instancia", al final.
@@ -134,7 +134,7 @@ Esto no toca el otro proyecto de `agentpey.com`: es otro nombre, y las cookies d
 
 ## Paso 6 · Comprobar que funciona
 
-1. Abre `https://agentsales.agentpey.com/api/health`: debe responder con `"environment":"production"` y `"publishMode":"dry-run"`.
+1. Abre `https://agentsales.agentpey.com/api/health`: debe responder con `"environment":"production"` y `"publishMode":"live"` (desde el 2026-11-11; antes, `"dry-run"`).
 2. Abre `https://agentsales.agentpey.com`: debe aparecer la página **Entrar**. Entra con tu correo.
 3. La CLI contra el servidor:
    ```bash
@@ -231,7 +231,7 @@ En vez de encenderlo y apagarlo tú, el worker puede **encenderse solo** cada ho
 
 ### En vivo solo durante una demo (F9.5)
 
-El servidor corre en simulación (`PUBLISH_MODE = "dry-run"` en `fly.toml`). Para publicar de verdad durante una demo, **tú** cambias el modo de las dos máquinas, la API y el worker, que deben quedar iguales (si no, publicar da `PUBLISH_MODE_MISMATCH`). Es una decisión tuya, por esa vez, y la dices en el chat.
+Desde el 2026-11-11 el servidor principal corre con `PUBLISH_MODE = "live"` en `fly.toml`; los pasos de abajo valen para volver a simulación (con `dry-run`) o para otra instancia que siga en simulación. Para cambiar el modo, **tú** cambias el modo de las dos máquinas, la API y el worker, que deben quedar iguales (si no, publicar da `PUBLISH_MODE_MISMATCH`). Es una decisión tuya, por esa vez, y la dices en el chat.
 
 **Desde F9.5-T22 ese cambio es la primera de dos llaves** (ADR-0036): después de pasar el servidor a `live`, solo publican de verdad las marcas encendidas. Con el servidor en `live` y ninguna marca encendida, todo sigue saliendo en simulación. La segunda llave se abre por marca, con tu instrucción en el chat:
 
@@ -250,7 +250,7 @@ pnpm -s cli brokers live <slug> on --confirm <slug>
    ```
 2. Comprobar: `pnpm -s cli status` dice `PUBLISH_MODE: live`, y el panel muestra la franja roja «En vivo».
 3. **Al terminar, volver a simulación** con los mismos dos comandos y `PUBLISH_MODE=dry-run`, y comprobar de nuevo. Antes, mira en **Hoy** o en `pnpm -s cli agenda` que no quede nada programado en vivo: lo programado en vivo conserva su modo y, con el servidor ya en simulación, a su hora falla con `PUBLISH_MODE_MISMATCH` (sin publicar nada) y queda fallida en la agenda. Desprográmalo antes con `pnpm -s cli unschedule <id>` (lo mismo si apagas una marca: lo suyo programado en vivo también falla así).
-4. Un despliegue nuevo deja las dos máquinas otra vez en `dry-run` (el valor de `fly.toml`). Las marcas encendidas quedan encendidas (es un dato de la base), pero sin el servidor en `live` no publican de verdad.
+4. Un despliegue nuevo deja las dos máquinas con el valor de `fly.toml`: `live` en la instancia principal desde el 2026-11-11, así que un `dry-run` puesto con `--env` se pierde en el siguiente despliegue. Las marcas encendidas quedan encendidas (es un dato de la base) y, con el servidor en `live`, publican de verdad.
 
 NO VERIFICADO: que `fly machine update --env` conserve el resto del entorno y los secretos de la máquina (así lo describe Fly). Compruébalo con `pnpm -s cli status` y `pnpm -s cli doctor` después del primer cambio, en el ensayo del jueves.
 
@@ -477,7 +477,7 @@ Fuera de F8. Cuando quieras que los corredores usen la herramienta cualquier dí
 
 Pídele a Claude "la instancia `<instancia>` con la app `<app>` y el dominio `<dominio>`". El PR trae:
 
-- **`fly.<instancia>.toml`:** una copia de `fly.toml` con cuatro valores cambiados: `app = "<app>"`, `PUBLIC_URL = "https://<dominio>"`, el `Host` del chequeo (`<dominio>`) y `BACKUP_R2_BUCKET = "<app>-backups"`. Todo lo demás igual, también `PUBLISH_MODE = "dry-run"` (pasarlo a `live` en esa instancia es otra decisión tuya, en el chat).
+- **`fly.<instancia>.toml`:** una copia de `fly.toml` con cuatro valores cambiados: `app = "<app>"`, `PUBLIC_URL = "https://<dominio>"`, el `Host` del chequeo (`<dominio>`) y `BACKUP_R2_BUCKET = "<app>-backups"`. Todo lo demás igual, **pero con `PUBLISH_MODE = "dry-run"`**: la principal está en `live` desde el 2026-11-11, y las demás instancias nacen en simulación (pasarlas a `live` es otra decisión tuya, en el chat).
 - **`.github/workflows/deploy.yml`:** `<instancia>` agregada a las opciones de la entrada `instance`.
 - **Sin el apagado solo:** en `fly.<instancia>.toml`, `WORKER_IDLE_EXIT_MINUTES` queda comentado. El flujo que enciende el worker (`worker-schedule.yml`, paso 8) solo enciende la app principal (`FLY_APP` está fijo), así que el worker de otra instancia que se apagara solo no volvería a encenderse y nada programado saldría. Para activarlo en esa instancia hace falta su propio horario (otro flujo o una entrada de instancia en este, con su Environment y su token): pídelo antes.
 

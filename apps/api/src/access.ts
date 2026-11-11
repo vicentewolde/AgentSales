@@ -127,6 +127,8 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "POST /posts/:id/contents/:platform/:language/approve": "session",
   "POST /posts/:id/contents/:platform/:language/unapprove": "session",
   "POST /posts/:id/publish": "session",
+  // «Ya lo publiqué fuera de AgentSales»: registrar con su enlace un texto que ya está en la red.
+  "POST /posts/:id/record": "session",
   "POST /posts/:id/schedule": "session",
   // F9-T21: el plan de ideas (pedirlo, listarlo y verlo) y aceptar o descartar una idea, con
   // `posts.manage` revisado en core; un plan o una idea de otra marca es 404.

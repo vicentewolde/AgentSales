@@ -38,6 +38,7 @@ import {
   runCancelPublication,
   runConfirmPublication,
   runNotPublished,
+  runRecordPublication,
   runResolvePublication,
   runRetryPublication,
 } from "./publications.js";
@@ -486,6 +487,32 @@ describe("publications resolve, retry, confirm y not-published con posts", () =>
     expect(s.h.text()).toContain("Simulación: el enlace no se guarda");
     // El enlace pegado no se imprime.
     expect(s.h.text()).not.toContain("discord.com/channels");
+  });
+
+  it("record registra un post que ya está en la red con su enlace (por la entrada estándar, sin imprimirlo)", async () => {
+    const s = await setup();
+    const { post, publication } = await approvedPost(s);
+    await s.move(post.id, publication.id, ["publishing", "published"]);
+    s.setStdin("https://discord.com/channels/1/2/3\n");
+    expect(
+      await runRecordPublication(s.deps(), post.id, {
+        platform: "discord",
+        language: "es",
+        urlStdin: true,
+        at: "2026-11-10 12:00",
+      }),
+    ).toBe(0);
+    expect(s.h.text()).toContain("registrada como publicada");
+    expect(s.h.text()).toContain("Quedó superada");
+    expect(s.h.text()).not.toContain("discord.com/channels");
+    expect(s.publicationsOf(post.id).map((p) => [p.status, p.dryRun])).toEqual(
+      expect.arrayContaining([["published", false]]),
+    );
+    // Sin --url-stdin no se llama a la API.
+    expect(
+      await runRecordPublication(s.deps(), post.id, { platform: "discord", language: "es" }),
+    ).toBe(1);
+    expect(s.h.errors()).toContain("URL_STDIN_REQUIRED");
   });
 
   it("resolve sin decir si salió, o con las dos, se explica sin llamar a la API", async () => {
