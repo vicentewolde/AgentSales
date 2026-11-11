@@ -50,26 +50,26 @@ export const postKeys = {
 /** Las URLs firmadas del detalle duran lo que el resto del panel: se vuelve a pedir a los 5 min. */
 const POST_STALE_MS = 5 * 60 * 1000;
 
-/** `GET /posts`: los del alcance (el corredor o marca elegido) y, si se pide, de un estado. */
+/** `GET /posts`: los del alcance (el corredor o marca elegido) y, si se pide, de un estado; con la portada de cada uno. */
 export function usePosts(filters: { brokerId?: string | undefined; status?: PostStatus }) {
   const client = useApiClient();
   return useQuery({
     queryKey: postKeys.list(filters),
     queryFn: async ({ signal }) =>
-      (
-        await unwrap(
-          client.posts.$get(
-            {
-              query: {
-                ...(filters.brokerId === undefined ? {} : { brokerId: filters.brokerId }),
-                ...(filters.status === undefined ? {} : { status: filters.status }),
-              },
+      unwrap(
+        client.posts.$get(
+          {
+            query: {
+              ...(filters.brokerId === undefined ? {} : { brokerId: filters.brokerId }),
+              ...(filters.status === undefined ? {} : { status: filters.status }),
             },
-            { init: { signal } },
-          ),
-          postListResponseSchema,
-        )
-      ).posts,
+          },
+          { init: { signal } },
+        ),
+        postListResponseSchema,
+      ),
+    // Las miniaturas vienen firmadas: se vuelve a pedir antes de que venzan.
+    staleTime: POST_STALE_MS,
   });
 }
 
@@ -169,6 +169,30 @@ export function useArchivePost(id: string) {
     mutationFn: async () =>
       (await unwrap(client.posts[":id"].archive.$post({ param: { id } }), postResponseSchema)).post,
     onSettled: refresh,
+  });
+}
+
+/**
+ * Archiva varios posts de la lista (Contenido): uno por uno por la misma ruta, así que cada post
+ * sigue negándose si tiene publicaciones pendientes. Devuelve cuántos se archivaron y de cuáles no
+ * se pudo. Archivar no borra nada: el post sigue en el filtro «Archivado».
+ */
+export function useArchivePosts() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (ids: readonly string[]) => {
+      const results = await Promise.allSettled(
+        ids.map((id) =>
+          unwrap(client.posts[":id"].archive.$post({ param: { id } }), postResponseSchema),
+        ),
+      );
+      return {
+        archived: results.filter((result) => result.status === "fulfilled").length,
+        failed: ids.filter((_, index) => results[index]?.status === "rejected"),
+      };
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: postKeys.lists() }),
   });
 }
 

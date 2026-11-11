@@ -277,6 +277,38 @@ describe("/posts: permisos (ADR-0022, `posts.manage`)", () => {
   });
 });
 
+describe("GET /posts: la portada de cada post", () => {
+  it("trae la imagen de los posts que tienen medios y nada de los que no", async () => {
+    const s = await setup();
+    const withMedia = await s.deps.posts.create({
+      brokerId: s.mine.id,
+      topic: "Con foto",
+      kind: "image",
+    });
+    const bare = await s.deps.posts.create({
+      brokerId: s.mine.id,
+      topic: "Sin foto",
+      kind: "text",
+    });
+    const files = [{ name: "foto.jpg", size: PHOTO.length, sha256: sha256(PHOTO) }];
+    const requested = postUploadResponseSchema.parse(
+      await (
+        await s.broker(`/posts/${withMedia.id}/uploads`, { method: "POST", json: { files } })
+      ).json(),
+    );
+    const [photo] = requested.uploads;
+    if (photo?.status !== "upload") throw new Error("sin URL");
+    await s.storage.receiveUpload(photo.url, photo.headers, PHOTO);
+    await s.broker(`/posts/${withMedia.id}/uploads/complete`, { method: "POST" });
+
+    const list = postListResponseSchema.parse(await (await s.broker("/posts")).json());
+    expect(list.posts.map((item) => item.id).sort()).toEqual([bare.id, withMedia.id].sort());
+    expect(Object.keys(list.covers)).toEqual([withMedia.id]);
+    expect(list.covers[withMedia.id]).toMatchObject({ kind: "image", count: 1 });
+    expect(list.covers[withMedia.id]?.url).toContain(`posts/${withMedia.id}/original/`);
+  });
+});
+
 describe("/posts/:id/uploads (ADR-0025)", () => {
   it("una imagen y un video: URL bajo posts/{postId}/, avance, reintento, medios y post.media", async () => {
     const s = await setup();

@@ -21,8 +21,8 @@ export function cardLanguageNotice(
   const others = [...new Set(cards.flat())]
     .filter((other) => other !== language)
     .map((other) => LANGUAGE_TEXT[other]);
-  const where = `en «Conseguir imagen» haz las tarjetas en ${LANGUAGE_TEXT[language]}`;
+  const where = `En «Conseguir imagen», más abajo, pide las tarjetas en ${LANGUAGE_TEXT[language]}`;
   return others.length > 0
-    ? `Este texto está en ${LANGUAGE_TEXT[language]}, pero las tarjetas del post están en ${others.join(" y ")}: ${where}.`
-    : `Este texto está en ${LANGUAGE_TEXT[language]}, pero las tarjetas del post son de un pedido anterior y no se sabe en qué idioma están: ${where}.`;
+    ? `Este texto está aprobado en ${LANGUAGE_TEXT[language]}, pero las tarjetas del post están en ${others.join(" y ")}. ${where}.`
+    : `Este texto está aprobado en ${LANGUAGE_TEXT[language]}, pero las tarjetas del post son de un pedido anterior y no se sabe en qué idioma están. ${where}.`;
 }

@@ -32,9 +32,11 @@ async function setup() {
 }
 
 const topics = () =>
-  within(screen.getByRole("list", { name: "Posts" }))
-    .getAllByRole("link")
-    .map((link) => link.textContent);
+  screen.getAllByRole("list", { name: /^Posts/ }).flatMap((list) =>
+    within(list)
+      .getAllByRole("link")
+      .map((link) => link.textContent),
+  );
 
 describe("panel: Contenido", () => {
   it("el menú muestra Contenido; el administrador ve los posts de todas las marcas, sin los archivados", async () => {
@@ -42,12 +44,12 @@ describe("panel: Contenido", () => {
     s.renderApp("/contenido");
     expect(await screen.findByRole("heading", { name: "Contenido" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Contenido" })).toBeTruthy();
-    await screen.findByRole("list", { name: "Posts" });
+    await screen.findAllByRole("list", { name: /^Posts/ });
     expect(topics().sort()).toEqual(["Bastidores de la semana", "Producto nuevo"]);
     // Con "Todos", cada post dice de qué marca es.
     expect(screen.getAllByText("Marca vinny").length).toBeGreaterThan(0);
 
-    fireEvent.change(screen.getByLabelText("Estado"), { target: { value: "archived" } });
+    fireEvent.change(screen.getByLabelText("Ver"), { target: { value: "archived" } });
     await waitFor(() => expect(topics()).toEqual(["Lo que ya no va"]));
     expect(s.requests).toContain("GET /posts?status=archived");
   });

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { Language, Platform, PublicationStatus } from "@agentsales/core";
-import { chileInputValue, formatChileTime, requestContentRun } from "@agentsales/core";
+import { chileInputValue, formatChileDayTime, requestContentRun } from "@agentsales/core";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { brokerData, harness } from "../../test/harness.js";
@@ -259,7 +259,9 @@ describe("panel: detalle de un post", () => {
     fireEvent.click(screen.getByRole("button", { name: "Programar" }));
     await waitFor(() => expect(s.requests).toContain(`POST /posts/${s.post.id}/schedule`));
     expect(
-      await screen.findByText(`Discord: programado para el ${formatChileTime(at)} (hora de Chile)`),
+      await screen.findByText(
+        `Discord: programado para el ${formatChileDayTime(at)} (hora de Chile)`,
+      ),
     ).toBeTruthy();
     const list = screen.getByRole("region", { name: "Publicaciones" });
     expect(await within(list).findByText("programada")).toBeTruthy();
@@ -582,11 +584,15 @@ describe("panel: un post sin imágenes (F9.5-T21)", () => {
     const s = await withCards({ es: 2 });
     await s.open();
     // El español tiene las suyas: sin aviso.
-    expect(screen.queryByText(/Este texto está en español, pero/u)).toBeNull();
+    expect(screen.queryByText(/Este texto está aprobado en español, pero/u)).toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: /^X · inglés/ }));
+    // Sin aprobar, el texto no sale: tampoco necesita sus tarjetas, y no se avisa.
+    expect(await screen.findByRole("button", { name: "Aprobar" })).toBeTruthy();
+    expect(screen.queryByText(/Este texto está aprobado en inglés/u)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Aprobar" }));
     expect(
       await screen.findByText(
-        "Este texto está en inglés, pero las tarjetas del post están en español: en «Conseguir imagen» haz las tarjetas en inglés.",
+        "Este texto está aprobado en inglés, pero las tarjetas del post están en español. En «Conseguir imagen», más abajo, pide las tarjetas en inglés.",
       ),
     ).toBeTruthy();
   });

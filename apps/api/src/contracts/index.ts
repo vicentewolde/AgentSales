@@ -1689,7 +1689,22 @@ export const postDetailResponseSchema = z.object({
 });
 export type PostDetailResponse = z.infer<typeof postDetailResponseSchema>;
 
-export const postListResponseSchema = z.object({ posts: z.array(postJsonSchema) });
+/**
+ * La imagen de portada de un post en la lista: la miniatura (o el original si aún no la tiene) del
+ * primer medio, y cuántos medios lleva. Solo para mirar la lista; nunca va a la CLI ni a los logs.
+ */
+export const postCoverSchema = z.object({
+  url: z.string(),
+  kind: z.enum(MEDIA_KINDS),
+  count: z.number().int().positive(),
+});
+export type PostCover = z.infer<typeof postCoverSchema>;
+
+/** `GET /posts`: los posts y, por id de post, su portada (los que no tienen medios no aparecen). */
+export const postListResponseSchema = z.object({
+  posts: z.array(postJsonSchema),
+  covers: z.record(z.string(), postCoverSchema).default({}),
+});
 export type PostListResponse = z.infer<typeof postListResponseSchema>;
 
 /**
@@ -1998,6 +2013,8 @@ export const planDetailResponseSchema = z.object({
   plan: planRunViewSchema,
   report: planReportViewSchema.nullable(),
   ideas: z.array(planIdeaViewSchema),
+  /** La portada de cada idea que ya tiene medios, por id de post. */
+  covers: z.record(z.string(), postCoverSchema).default({}),
 });
 export type PlanDetailResponse = z.infer<typeof planDetailResponseSchema>;
 

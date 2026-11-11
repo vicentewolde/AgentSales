@@ -1,7 +1,7 @@
 import type { ContentRunView, PostJson } from "@agentsales/api/contracts";
 import {
   chileInputValue,
-  formatChileTime,
+  formatChileDayTime,
   isAppError,
   isTerminalContentRun,
   PLATFORM_TEXT,
@@ -21,6 +21,7 @@ import { POST_KIND_LABEL, PostStatusBadge } from "../components/posts/labels.js"
 import { PostMedia } from "../components/posts/PostMedia.js";
 import { PostMusic } from "../components/posts/PostMusic.js";
 import { PostPublications, PostPublishBar } from "../components/posts/PostPublishing.js";
+import { PostSummary } from "../components/posts/PostSummary.js";
 import { PostTexts } from "../components/posts/PostTexts.js";
 import { XLinkControl } from "../components/posts/XLinkControl.js";
 import { Alert } from "../components/ui/Alert.js";
@@ -49,13 +50,13 @@ function runText(run: ContentRunView): string {
     case "running":
       return "La IA está redactando los textos…";
     case "succeeded":
-      return `Textos redactados el ${formatChileTime(run.finishedAt ?? run.createdAt)}.`;
+      return `Textos redactados el ${formatChileDayTime(run.finishedAt ?? run.createdAt)}.`;
     default:
       return `La redacción falló${run.error === null ? "" : `: ${run.error.message}`}`;
   }
 }
 
-/** Editar el tema, el brief, el tipo, el tema de la marca y la fecha planeada. */
+/** Editar el tema, el brief, el tipo, la línea editorial y la fecha planeada. */
 function PostEditForm({ post, onClose }: { post: PostJson; onClose: () => void }) {
   const update = useUpdatePost(post.id);
   const profile = useEditorialProfile(post.brokerId);
@@ -99,10 +100,18 @@ function PostEditForm({ post, onClose }: { post: PostJson; onClose: () => void }
   const pillars = profile.data?.pillars ?? [];
   return (
     <form aria-label="Editar el post" onSubmit={submit} className="grid gap-4 md:grid-cols-2">
-      <Field label="Tema" className="md:col-span-2">
+      <Field
+        label="Tema"
+        hint="De qué trata este post, en una frase. Es el título que ves en las listas y en lo que la IA redacta."
+        className="md:col-span-2"
+      >
         <Input name="topic" required defaultValue={post.topic} />
       </Field>
-      <Field label="Brief" className="md:col-span-2">
+      <Field
+        label="Brief (opcional)"
+        hint="Lo que tú sabes y quieres que diga: datos, cifras, el ángulo. La IA puede afirmar lo que escribas aquí. Vacío está bien: entonces solo usa el perfil de la marca."
+        className="md:col-span-2"
+      >
         <Textarea name="brief" rows={3} defaultValue={post.brief ?? ""} />
       </Field>
       <Field label="Tipo">
@@ -114,9 +123,12 @@ function PostEditForm({ post, onClose }: { post: PostJson; onClose: () => void }
           ))}
         </Select>
       </Field>
-      <Field label="Tema de la marca">
+      <Field
+        label="Línea editorial"
+        hint="Una de las líneas de contenido del perfil de la marca (por ejemplo «Producto» o «Educación»). Sirve para repartir los temas en el plan; no cambia el texto."
+      >
         <Select name="pillar" defaultValue={post.pillar ?? ""}>
-          <option value="">sin tema</option>
+          <option value="">sin línea</option>
           {pillars.map((pillar) => (
             <option key={pillar.key} value={pillar.key}>
               {pillar.name}
@@ -127,7 +139,10 @@ function PostEditForm({ post, onClose }: { post: PostJson; onClose: () => void }
           )}
         </Select>
       </Field>
-      <Field label="Fecha planeada (Chile)">
+      <Field
+        label="Fecha planeada (Chile)"
+        hint="Cuándo quieres que salga. Programar fija la hora real de cada red."
+      >
         <Input
           name="plannedAt"
           type="datetime-local"
@@ -322,11 +337,11 @@ export function PostDetailPage() {
             <>
               <p>
                 {POST_KIND_LABEL[item.kind]}
-                {item.pillar !== null && ` · tema ${item.pillar}`}
+                {item.pillar !== null && ` · línea ${item.pillar}`}
                 {" · "}
                 {item.plannedAt === null
                   ? "sin fecha planeada"
-                  : `planeado para el ${formatChileTime(item.plannedAt)} (hora de Chile)`}
+                  : `planeado para el ${formatChileDayTime(item.plannedAt)} (hora de Chile)`}
                 {item.source === "ai" && " · propuesto por la IA"}
                 {" · "}
                 {item.platforms === null
@@ -380,8 +395,15 @@ export function PostDetailPage() {
         />
         {item.brief !== null && (
           <div className="mb-6 rounded-xl border border-line bg-surface shadow-xs px-4 py-3">
-            <p className="text-xs font-medium text-fg-subtle">Brief</p>
+            <p className="text-xs font-medium text-fg-subtle">
+              Brief: lo que tú sabes y la IA puede afirmar
+            </p>
             <p className="mt-1 whitespace-pre-wrap text-sm text-fg">{item.brief}</p>
+          </div>
+        )}
+        {!archived && item.status !== "idea" && (
+          <div className="mb-6">
+            <PostSummary post={item} contents={contents} publications={publications} />
           </div>
         )}
         {editing && (
