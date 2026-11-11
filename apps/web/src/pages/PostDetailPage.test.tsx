@@ -305,6 +305,22 @@ describe("panel: detalle de un post", () => {
     expect(await within(list).findByText("publicada")).toBeTruthy();
   });
 
+  it("«Ya lo publiqué fuera de AgentSales» registra el post con su enlace", async () => {
+    const s = await setup();
+    await s.approvedPublication(["publishing", "published"]);
+    await s.open();
+    const card = screen.getByRole("region", { name: "Ya publicado" });
+    fireEvent.click(
+      within(card).getByRole("button", { name: "Ya lo publiqué fuera de AgentSales" }),
+    );
+    fireEvent.change(within(card).getByLabelText(/Enlace del post en Discord/), {
+      target: { value: "https://discord.com/channels/1/2/3" },
+    });
+    fireEvent.click(within(card).getByRole("button", { name: "Registrar como publicado" }));
+    await waitFor(() => expect(s.requests).toContain(`POST /posts/${s.post.id}/record`));
+    expect(await within(card).findByText(/quedó registrado como publicado/)).toBeTruthy();
+  });
+
   it("LinkedIn a mano: «Copiar texto y abrir LinkedIn» sale solo cuando espera la confirmación (F9.5-T27)", async () => {
     const s = await setup();
     await s.platformAccounts.upsertConnected({

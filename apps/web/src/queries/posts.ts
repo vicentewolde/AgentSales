@@ -14,6 +14,7 @@ import {
   postListResponseSchema,
   postMediaLanguageResponseSchema,
   postPublishResponseSchema,
+  postRecordResponseSchema,
   postResponseSchema,
   postScheduleResponseSchema,
   publicationConfirmResponseSchema,
@@ -300,6 +301,28 @@ export function usePublishPost(id: string) {
       unwrap(
         client.posts[":id"].publish.$post({ param: { id }, json: { platform } }),
         postPublishResponseSchema,
+      ),
+    onSettled: refresh,
+  });
+}
+
+/**
+ * `POST /posts/:id/record` («Ya lo publiqué fuera de AgentSales»): registra con su enlace un texto que
+ * ya está en la red. No publica nada: solo anota lo que ya pasó.
+ */
+export function useRecordPost(id: string) {
+  const client = useApiClient();
+  const refresh = useRefreshPost(id);
+  return useMutation({
+    mutationFn: (body: {
+      platform: PostPlatform;
+      language: Language;
+      url: string;
+      publishedAt?: string;
+    }) =>
+      unwrap(
+        client.posts[":id"].record.$post({ param: { id }, json: body }),
+        postRecordResponseSchema,
       ),
     onSettled: refresh,
   });

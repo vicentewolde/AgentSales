@@ -84,7 +84,8 @@ export const ERROR_MESSAGES: Readonly<Record<string, string>> = {
     "Hay una publicación esperando tu confirmación: di si se publicó o no antes de seguir.",
   MARKETPLACE_URL_REQUIRED: "Pega el enlace de la publicación para confirmarla.",
   PUBLISHED_URL_REQUIRED: "Pega el enlace de la publicación para confirmarla.",
-  PUBLICATION_ALREADY_CONFIRMED: "Esa publicación ya estaba confirmada con otro enlace.",
+  PUBLICATION_ALREADY_CONFIRMED:
+    "Esa publicación ya estaba confirmada (con otro enlace, o ya está registrada como publicada): no se registra otra.",
   // Posts de marca.
   POST_NOT_READY: "Ese post todavía es una idea o está archivado: acéptalo primero.",
   POST_NOT_IDEA: "Esa idea ya no está pendiente.",

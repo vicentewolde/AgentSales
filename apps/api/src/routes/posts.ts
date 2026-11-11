@@ -36,6 +36,7 @@ import {
   postContentId,
   postSubject,
   publishPost,
+  recordExternalPublication,
   removePostCards,
   requestContentRun,
   requestPostImage,
@@ -68,6 +69,7 @@ import {
   type PostMediaItem,
   type PostMediaLanguageResponse,
   type PostPublishResponse,
+  type PostRecordResponse,
   type PostResponse,
   type PostScheduleResponse,
   type PostUploadCompleteResponse,
@@ -82,6 +84,7 @@ import {
   postMediaParamSchema,
   postPublishBodySchema,
   postQuerySchema,
+  postRecordBodySchema,
   postScheduleBodySchema,
   postUploadRequestSchema,
   updatePostBodySchema,
@@ -535,6 +538,29 @@ export function postRoutes(deps: PostRoutesDeps) {
             publications: result.publications.map(publicationView),
           };
           return c.json(body, 202);
+        },
+      )
+      // «Ya lo publiqué fuera de AgentSales»: registra con su enlace un texto que ya está en la red.
+      .post(
+        "/:id/record",
+        validated("param", idParamSchema),
+        validated("json", postRecordBodySchema),
+        async (c) => {
+          const post = await ownPost(c, c.req.valid("param").id);
+          const { platform, language, url, publishedAt } = c.req.valid("json");
+          const { publication, superseded } = await recordExternalPublication(deps, {
+            postId: post.id,
+            platform,
+            language,
+            url,
+            actor: actorOf(c),
+            ...(publishedAt === undefined ? {} : { publishedAt: new Date(publishedAt) }),
+          });
+          const body: PostRecordResponse = {
+            publication: publicationView(publication),
+            superseded: superseded.map(publicationView),
+          };
+          return c.json(body, 200);
         },
       )
       // Programar las redes pedidas (o cada una con texto aprobado y cuenta) a una hora.

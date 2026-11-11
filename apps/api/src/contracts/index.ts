@@ -1918,6 +1918,32 @@ export const postPublishResponseSchema = listingPublishResponseSchema;
 export type PostPublishResponse = ListingPublishResponse;
 
 /**
+ * `POST /posts/:id/record`: «Ya lo publiqué fuera de AgentSales». El texto vigente de la red e
+ * idioma ya está en la red: el enlace (obligatorio, se revisa por red) y, si se quiere, cuándo
+ * salió (ISO con zona; sin él, ahora).
+ */
+export const postRecordBodySchema = z
+  .object({
+    platform: z.enum(POST_PLATFORMS),
+    language: z.enum(LANGUAGES),
+    url: z
+      .string()
+      .trim()
+      .min(1, "falta el enlace")
+      .max(MARKETPLACE_URL_MAX_LENGTH, "el enlace es demasiado largo"),
+    publishedAt: scheduleAtSchema.optional(),
+  })
+  .strict();
+export type PostRecordBody = z.infer<typeof postRecordBodySchema>;
+
+/** La publicación real registrada y las que quedaron superadas (simuladas o sin publicar). */
+export const postRecordResponseSchema = z.object({
+  publication: publicationViewSchema,
+  superseded: z.array(publicationViewSchema),
+});
+export type PostRecordResponse = z.infer<typeof postRecordResponseSchema>;
+
+/**
  * `POST /posts/:id/schedule`: las redes (sin ellas, cada una con texto aprobado y la cuenta
  * conectada) y la hora (ISO con zona; la CLI la pide en hora de Chile).
  */

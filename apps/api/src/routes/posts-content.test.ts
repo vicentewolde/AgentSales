@@ -11,6 +11,7 @@ import {
   errorBodySchema,
   postDetailResponseSchema,
   postPublishResponseSchema,
+  postRecordResponseSchema,
   postScheduleResponseSchema,
   publicationConfirmResponseSchema,
 } from "../contracts/index.js";
@@ -620,5 +621,57 @@ describe("permisos de las rutas nuevas (ADR-0022, `posts.manage`)", () => {
     ]) {
       expect([route, ROUTE_ACCESS[route]]).toEqual([route, "session"]);
     }
+  });
+});
+
+describe("registrar un post que ya está en la red", () => {
+  const link = "https://discord.com/channels/111/222/333";
+  const record = (s: Awaited<ReturnType<typeof setup>>, postId: string, json: unknown) =>
+    s.broker(`/posts/${postId}/record`, { method: "POST", json });
+
+  it("crea la publicación real con el enlace y deja superada la simulada", async () => {
+    const s = await setup();
+    await s.broker(`/posts/${s.post.id}/draft`, { method: "POST", json: {} });
+    await s.finishDraft(s.post.id);
+    await s.broker(`/posts/${s.post.id}/contents/discord/es/approve`, { method: "POST" });
+    const [sim] = await s.deps.publications.listBySubject({ kind: "post", id: s.post.id });
+    await s.move(s.post.id, sim?.id ?? "", ["publishing", "published"]);
+
+    const response = await record(s, s.post.id, {
+      platform: "discord",
+      language: "es",
+      url: link,
+      publishedAt: "2026-11-10T12:00:00-03:00",
+    });
+    expect(response.status).toBe(200);
+    const body = postRecordResponseSchema.parse(await response.json());
+    expect(body.publication).toMatchObject({
+      status: "published",
+      dryRun: false,
+      externalUrl: link,
+    });
+    expect(body.superseded.map((p) => [p.id, p.status])).toEqual([[sim?.id, "unpublished"]]);
+
+    const again = await record(s, s.post.id, { platform: "discord", language: "es", url: link });
+    expect(again.status).toBe(409);
+    expect((await errorOf(again)).code).toBe("PUBLICATION_ALREADY_CONFIRMED");
+  });
+
+  it("rechaza un enlace que no es de la red (400) y lo ajeno es 404", async () => {
+    const s = await setup();
+    await s.broker(`/posts/${s.post.id}/draft`, { method: "POST", json: {} });
+    await s.finishDraft(s.post.id);
+    const bad = await record(s, s.post.id, {
+      platform: "discord",
+      language: "es",
+      url: "https://example.com/x",
+    });
+    expect(bad.status).toBe(400);
+    const foreign = await record(s, s.foreign.id, {
+      platform: "discord",
+      language: "es",
+      url: link,
+    });
+    expect(foreign.status).toBe(404);
   });
 });

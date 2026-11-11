@@ -23,6 +23,7 @@ import { PostMusic } from "../components/posts/PostMusic.js";
 import { PostPublications, PostPublishBar } from "../components/posts/PostPublishing.js";
 import { PostSummary } from "../components/posts/PostSummary.js";
 import { PostTexts } from "../components/posts/PostTexts.js";
+import { RecordExternal } from "../components/posts/RecordExternal.js";
 import { XLinkControl } from "../components/posts/XLinkControl.js";
 import { Alert } from "../components/ui/Alert.js";
 import { Button } from "../components/ui/Button.js";
@@ -491,6 +492,12 @@ export function PostDetailPage() {
               contents={contents}
               lockReason={archived ? "El post está archivado." : null}
             />
+
+            {!archived && item.status !== "idea" && (
+              <Card as="section" aria-label="Ya publicado" title="¿Ya lo publicaste afuera?">
+                <RecordExternal postId={item.id} contents={contents} lockReason={lockReason} />
+              </Card>
+            )}
 
             <Card as="section" aria-label="Publicaciones" title="Publicaciones">
               <PostPublications
