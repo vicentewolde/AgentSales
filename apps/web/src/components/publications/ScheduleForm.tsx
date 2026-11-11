@@ -48,7 +48,7 @@ export function ScheduleForm({
   submitLabel: string;
   /** Campos propios de quien lo usa (canales y espaciado del lote). */
   extra?: React.ReactNode;
-  onSubmit: (at: string) => void;
+  onSubmit: (at: string) => void | Promise<void>;
   onCancel: () => void;
 }) {
   const id = useId();

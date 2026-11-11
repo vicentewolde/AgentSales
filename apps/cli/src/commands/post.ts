@@ -1218,20 +1218,46 @@ export function runPostApprove(deps: PostDeps, id: string, options: PostApproveO
 
 // ── publish, schedule y archive ──────────────────────────────────────────
 
-export type PostPublishOptions = { platform?: string; yes?: boolean; wait?: boolean };
+export type PostPublishOptions = {
+  platform?: string;
+  /** `es`, `en` o `es,en` (repetible): sin él, un solo idioma por red. */
+  language?: string[];
+  yes?: boolean;
+  wait?: boolean;
+};
+
+/** `--language es,en` (repetible): los idiomas pedidos, sin repetir; `undefined` si no se pidió. */
+export function languagesOption(values: readonly string[] | undefined): Language[] | undefined {
+  if (values === undefined || values.length === 0) return undefined;
+  const found: Language[] = [];
+  for (const raw of values.flatMap((value) => value.split(","))) {
+    const text = raw.trim().toLowerCase();
+    const language = LANGUAGES.find((item) => item === text);
+    if (language === undefined) {
+      throw new CliError(
+        "LANGUAGE_INVALID",
+        `El idioma debe ser ${LANGUAGES.join(" o ")}: "${raw}"`,
+      );
+    }
+    if (!found.includes(language)) found.push(language);
+  }
+  return found;
+}
 
 /** Lo que se espera al publicar: las publicaciones que quedaron en curso. */
 type PublishWait = { status: string; publications: PublicationView[] };
 
 /**
- * `agentsales post publish <id> [--platform] [--yes] [--no-wait]`: publica una red del post (todos
- * sus idiomas) o, sin `--platform`, cada red con un texto aprobado. Con la API en vivo pregunta
+ * `agentsales post publish <id> [--platform] [--language] [--yes] [--no-wait]`: publica una red del
+ * post (un idioma; con `--language es,en`, los que pidas) o, sin `--platform`, cada red con un
+ * texto aprobado. Con la API en vivo pregunta
  * antes (salvo `--yes`). Espera a que cada una salga, falle, quede a mano o con resultado dudoso.
  */
 export function runPostPublish(deps: PostDeps, id: string, options: PostPublishOptions = {}) {
   const c = deps.colors;
   return guarded(deps, async () => {
     const postId = postIdOf(id);
+    const languages = languagesOption(options.language);
     let platforms: PostPlatform[];
     if (options.platform !== undefined) {
       platforms = [postPlatformOption(options.platform)];
@@ -1282,7 +1308,10 @@ export function runPostPublish(deps: PostDeps, id: string, options: PostPublishO
     for (const platform of platforms) {
       try {
         const result = await unwrap(
-          deps.client.posts[":id"].publish.$post({ param: { id: postId }, json: { platform } }),
+          deps.client.posts[":id"].publish.$post({
+            param: { id: postId },
+            json: { platform, ...(languages === undefined ? {} : { languages }) },
+          }),
           postPublishResponseSchema,
         );
         const started = [...result.started, ...result.requeued];
@@ -1370,7 +1399,15 @@ export function runPostPublish(deps: PostDeps, id: string, options: PostPublishO
   });
 }
 
-export type PostScheduleOptions = { at?: string; platform?: string[]; yes?: boolean };
+export type PostScheduleOptions = {
+  at?: string;
+  platform?: string[];
+  /** `es`, `en` o `es,en`: sin él, un solo idioma por red. */
+  language?: string[];
+  /** Minutos entre un idioma y el siguiente de una red (con dos idiomas a la vez). */
+  spacing?: string;
+  yes?: boolean;
+};
 
 /**
  * `agentsales post schedule <id> --at "AAAA-MM-DD HH:MM" [--platform …] [--yes]`: programa cada
@@ -1386,6 +1423,11 @@ export function runPostSchedule(deps: PostDeps, id: string, options: PostSchedul
     }
     const at = atOption(options.at);
     const platforms = options.platform?.map((option) => postPlatformOption(option));
+    const languages = languagesOption(options.language);
+    const spacing = options.spacing === undefined ? undefined : Number(options.spacing);
+    if (spacing !== undefined && (!Number.isInteger(spacing) || spacing < 0)) {
+      throw new CliError("SPACING_INVALID", `--spacing son minutos enteros: "${options.spacing}"`);
+    }
     const live = await confirmLive(deps, options.yes ?? false, async () => [
       await postBrokerId(deps.client, postId),
     ]);
@@ -1396,6 +1438,8 @@ export function runPostSchedule(deps: PostDeps, id: string, options: PostSchedul
         json: {
           at: at.toISOString(),
           ...(platforms === undefined ? {} : { platforms: [...new Set(platforms)] }),
+          ...(languages === undefined ? {} : { languages }),
+          ...(spacing === undefined ? {} : { spacingMinutes: spacing }),
         },
       }),
       postScheduleResponseSchema,
@@ -1407,12 +1451,23 @@ export function runPostSchedule(deps: PostDeps, id: string, options: PostSchedul
         row.platform === null ? "El post" : (PLATFORM_TEXT[row.platform] ?? row.platform);
       if (row.outcome === "scheduled") {
         const publications = row.publications ?? [];
-        const languages = publications.map((p) => p.language).join(", ");
         const mode =
           publications[0] === undefined ? "" : ` (${publicationModeText(publications[0].dryRun)})`;
-        deps.print(
-          `${c.green("✓")} ${name}${languages === "" ? "" : ` [${languages}]`}: programada para ${formatChileTime(row.at ?? at)}${mode}`,
+        const times = new Set(
+          publications.map((p) => p.scheduledAt?.getTime() ?? row.at?.getTime()),
         );
+        if (times.size <= 1) {
+          const shown = publications.map((p) => p.language).join(", ");
+          deps.print(
+            `${c.green("✓")} ${name}${shown === "" ? "" : ` [${shown}]`}: programada para ${formatChileTime(row.at ?? at)}${mode}`,
+          );
+        } else {
+          for (const p of publications) {
+            deps.print(
+              `${c.green("✓")} ${name} [${p.language}]: programada para ${formatChileTime(p.scheduledAt ?? row.at ?? at)}${mode}`,
+            );
+          }
+        }
       } else {
         deps.print(`${c.yellow("–")} ${name}: no se programó (${row.code}: ${row.message})`);
       }
@@ -1615,6 +1670,11 @@ export function register(program: Command, ctx: CliContext): void {
     .description("Publica el post ahora y espera (en vivo pide confirmación)")
     .argument("<id>", "id del post")
     .option("--platform <red>", `solo una red: ${networks} (sin ella, cada red con texto aprobado)`)
+    .option(
+      "--language <idioma>",
+      "es, en o es,en (sin él, un solo idioma por red: son el mismo post)",
+      collect,
+    )
     .option("--no-wait", "imprime los ids de las publicaciones y sale sin esperar")
     .option("--yes", "no pide confirmación con la API en vivo")
     .action((id: string, options: PostPublishOptions) =>
@@ -1630,6 +1690,12 @@ export function register(program: Command, ctx: CliContext): void {
       `solo esas redes: ${networks} (repetible o separado por comas)`,
       collect,
     )
+    .option(
+      "--language <idioma>",
+      "es, en o es,en (sin él, un solo idioma por red: son el mismo post)",
+      collect,
+    )
+    .option("--spacing <minutos>", "con dos idiomas a la vez: minutos entre uno y otro (mínimo 10)")
     .option("--yes", "no pide confirmación en vivo")
     .action((id: string, options: PostScheduleOptions) =>
       exitWith(() => runPostSchedule(deps(), id, options)),

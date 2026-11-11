@@ -297,9 +297,12 @@ export function usePublishPost(id: string) {
   const client = useApiClient();
   const refresh = useRefreshPost(id);
   return useMutation({
-    mutationFn: (platform: PostPlatform) =>
+    mutationFn: ({ platform, languages }: { platform: PostPlatform; languages?: Language[] }) =>
       unwrap(
-        client.posts[":id"].publish.$post({ param: { id }, json: { platform } }),
+        client.posts[":id"].publish.$post({
+          param: { id },
+          json: { platform, ...(languages === undefined ? {} : { languages }) },
+        }),
         postPublishResponseSchema,
       ),
     onSettled: refresh,
@@ -333,7 +336,14 @@ export function useSchedulePost(id: string) {
   const client = useApiClient();
   const refresh = useRefreshPost(id);
   return useMutation({
-    mutationFn: (body: { platforms?: PostPlatform[]; at: string }): Promise<PostScheduleResponse> =>
+    mutationFn: (body: {
+      platforms?: PostPlatform[];
+      /** Los idiomas de esas redes; sin ellos, uno solo por red (lo decide el servidor). */
+      languages?: Language[];
+      /** Minutos entre un idioma y otro de una red, si se marcan los dos. */
+      spacingMinutes?: number;
+      at: string;
+    }): Promise<PostScheduleResponse> =>
       unwrap(
         client.posts[":id"].schedule.$post({ param: { id }, json: body }),
         postScheduleResponseSchema,
