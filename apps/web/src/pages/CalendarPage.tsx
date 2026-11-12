@@ -2,17 +2,22 @@ import type { CalendarEntryView } from "@agentsales/api/contracts";
 import {
   chileDateOf,
   formatChileTime,
-  LANGUAGE_TEXT,
   PLATFORM_TEXT,
   type PublishMode,
   publicationFormatText,
 } from "@agentsales/core";
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
+import { CalendarChip, DayPanel, EntryTitle } from "../components/calendar/CalendarEntries.js";
 import {
+  applyEntryFilters,
   byChileDay,
   type CalendarView,
+  capDay,
+  DEFAULT_ENTRY_FILTERS,
   dayLabel,
+  type EntryFilters,
+  parseEntryFilters,
   periodLabel,
   rangeOfDays,
   shiftAnchor,
@@ -21,10 +26,7 @@ import {
   WEEKDAYS,
 } from "../components/calendar/calendar.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
-import { PublicationMode } from "../components/publications/PublicationMode.js";
-import { safeExternalUrl } from "../components/publications/publications.js";
 import { ScheduleForm } from "../components/publications/ScheduleForm.js";
-import { PublicationStatusBadge } from "../components/StatusBadge.js";
 import { Button } from "../components/ui/Button.js";
 import { PageHeader } from "../components/ui/PageHeader.js";
 import { useBrokerModeOf } from "../queries/brokers.js";
@@ -36,102 +38,19 @@ import { useBrokerFilter, useRole } from "../scope/broker-scope.js";
 // siempre en hora de Chile. Mover la fecha de una programada usa `POST /publications/:id/schedule`
 // (el caso de uso de F6) con el selector de programar, que en vivo pide confirmar.
 
-/** La hora de Chile de una entrada (`10:00`). */
-const timeOf = (entry: CalendarEntryView) => formatChileTime(entry.at).slice(11);
-
-function EntryTitle({ entry }: { entry: CalendarEntryView }) {
-  const to =
-    entry.postId !== null
-      ? `/contenido/${entry.postId}`
-      : entry.listingId !== null
-        ? `/propiedades/${entry.listingId}`
-        : null;
-  if (to === null) return <span className="font-semibold">{entry.title}</span>;
-  return (
-    <Link
-      to={to}
-      className="font-semibold text-fg underline-offset-2 hover:text-brand-700 hover:underline"
-    >
-      {entry.title}
-      {entry.postId !== null && <span className="font-normal text-fg-subtle"> (post)</span>}
-    </Link>
-  );
-}
-
-/** Una publicación en su día: hora, red y formato, estado, modo y título con enlace. */
-export function CalendarItem({
-  entry,
-  showBroker,
-  onMove,
-}: {
-  entry: CalendarEntryView;
-  showBroker: boolean;
-  onMove: (entry: CalendarEntryView) => void;
-}) {
-  const url = safeExternalUrl(entry.externalUrl);
-  return (
-    <li
-      className="rounded-md border border-line bg-surface p-2 text-xs"
-      aria-label={`${timeOf(entry)} ${PLATFORM_TEXT[entry.platform]} ${entry.title}`}
-    >
-      <p>
-        <span className="font-semibold">{timeOf(entry)}</span> · {PLATFORM_TEXT[entry.platform]}{" "}
-        {publicationFormatText(entry.platform, entry.format, entry.mediaCount)}
-        {entry.postId !== null && <> · {LANGUAGE_TEXT[entry.language]}</>}
-      </p>
-      <p className="mt-0.5 break-words">
-        <EntryTitle entry={entry} />
-      </p>
-      {showBroker && entry.brokerSlug !== null && (
-        <p className="text-fg-subtle">{entry.brokerSlug}</p>
-      )}
-      <p className="mt-1 flex flex-wrap items-center gap-1">
-        <PublicationStatusBadge status={entry.status} />
-        {entry.schedule === "overdue" && (
-          <span className="font-semibold text-warning-800">atrasada</span>
-        )}
-        {/* Programada o ya publicada: su modo está fijado (D4 del spec F9.5). */}
-        <PublicationMode
-          publication={{ dryRun: entry.dryRun, modeFixed: true }}
-          publishMode={undefined}
-        />
-      </p>
-      <p className="mt-1 flex flex-wrap gap-2">
-        {entry.kind === "scheduled" && (
-          <Button variant="link" onClick={() => onMove(entry)}>
-            Mover
-          </Button>
-        )}
-        {url !== null && (
-          <a
-            href={url}
-            target="_blank"
-            rel="noreferrer"
-            className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-900"
-          >
-            Ver
-          </a>
-        )}
-      </p>
-    </li>
-  );
-}
-
 /** La grilla de días (una semana o las semanas del mes), con lo de cada día. */
 export function CalendarGrid({
   view,
   anchor,
   today,
   entries,
-  showBroker,
-  onMove,
+  onOpenDay,
 }: {
   view: CalendarView;
   anchor: string;
   today: string;
   entries: readonly CalendarEntryView[];
-  showBroker: boolean;
-  onMove: (entry: CalendarEntryView) => void;
+  onOpenDay: (day: string, trigger: HTMLElement) => void;
 }) {
   const days = visibleDays(view, anchor);
   const byDay = byChileDay(entries);
@@ -148,14 +67,15 @@ export function CalendarGrid({
       <ol className="mt-1 grid grid-cols-1 gap-2 md:grid-cols-7">
         {days.map((day) => {
           const items = byDay.get(day) ?? [];
+          const { shown, more } = capDay(items);
           const outside = view === "mes" && !day.startsWith(month);
-          // En el teléfono, la vista mensual muestra solo los días con algo.
+          // En el teléfono, la vista mensual muestra solo los días con algo (una lista por día).
           const hideOnPhone = items.length === 0 ? "hidden md:block" : "";
           return (
             <li
               key={day}
               aria-label={dayLabel(day)}
-              className={`rounded-lg border p-1.5 ${view === "semana" ? "md:min-h-40" : "md:min-h-24"} ${
+              className={`min-w-0 rounded-lg border p-1.5 ${view === "semana" ? "md:min-h-56" : "md:min-h-36"} ${
                 day === today ? "border-info-500 bg-info-50" : "border-line bg-canvas"
               } ${outside ? "opacity-60" : ""} ${view === "mes" ? hideOnPhone : ""}`}
             >
@@ -167,14 +87,25 @@ export function CalendarGrid({
               </p>
               {items.length > 0 && (
                 <ul className="mt-1 space-y-1">
-                  {items.map((entry) => (
-                    <CalendarItem
+                  {shown.map((entry) => (
+                    <CalendarChip
                       key={entry.publicationId}
                       entry={entry}
-                      showBroker={showBroker}
-                      onMove={onMove}
+                      onOpen={(trigger) => onOpenDay(day, trigger)}
                     />
                   ))}
+                  {more > 0 && (
+                    <li>
+                      <button
+                        type="button"
+                        onClick={(event) => onOpenDay(day, event.currentTarget)}
+                        aria-label={`${more} más el ${dayLabel(day)}: ver todo el día`}
+                        className="w-full rounded-md border border-dashed border-line-strong px-1.5 py-1 text-left text-xs font-semibold text-brand-800 hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-700"
+                      >
+                        +{more} más
+                      </button>
+                    </li>
+                  )}
                 </ul>
               )}
             </li>
@@ -182,6 +113,58 @@ export function CalendarGrid({
         })}
       </ol>
     </div>
+  );
+}
+
+const FILTERS_KEY = "agentsales.calendar.filters";
+
+/** Los filtros del calendario, recordados en este navegador (si no se puede guardar, igual funcionan). */
+function useEntryFilters(): [EntryFilters, (next: EntryFilters) => void] {
+  const [filters, setFilters] = useState<EntryFilters>(() => {
+    try {
+      return parseEntryFilters(localStorage.getItem(FILTERS_KEY));
+    } catch {
+      return DEFAULT_ENTRY_FILTERS;
+    }
+  });
+  const update = (next: EntryFilters) => {
+    setFilters(next);
+    try {
+      localStorage.setItem(FILTERS_KEY, JSON.stringify(next));
+    } catch {
+      // Sin almacenamiento (ventana privada, datos bloqueados): la elección vale hasta recargar.
+    }
+  };
+  return [filters, update];
+}
+
+/** Un interruptor de filtro: dice qué agrega y cuántas hay. */
+export function FilterChip({
+  label,
+  count,
+  pressed,
+  onToggle,
+}: {
+  label: string;
+  count: number;
+  pressed: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={pressed}
+      onClick={onToggle}
+      className={`inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium pointer-coarse:min-h-11 ${
+        pressed
+          ? "border-brand-700 bg-brand-50 text-brand-900"
+          : "border-line-strong bg-surface text-fg-muted hover:border-brand-700"
+      }`}
+    >
+      <span aria-hidden="true">{pressed ? "✓" : "○"}</span>
+      {label}
+      <span className="text-xs text-fg-subtle">({count})</span>
+    </button>
   );
 }
 
@@ -246,8 +229,20 @@ export function CalendarPage() {
   const calendar = useCalendar(rangeOfDays(visibleDays(view, anchor)), broker);
   const [moving, setMoving] = useState<CalendarEntryView | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [filters, setFilters] = useEntryFilters();
+  const [openDay, setOpenDay] = useState<string | null>(null);
+  const opener = useRef<HTMLElement | null>(null);
+  const closeDay = () => {
+    setOpenDay(null);
+    opener.current?.focus();
+  };
+
+  const { shown, counts } = applyEntryFilters(calendar.data ?? [], filters);
+  const showBroker = role === "admin" && broker === undefined;
+  const hidden = (filters.retired ? 0 : counts.retired) + (filters.failed ? 0 : counts.failed);
 
   const go = (next: { vista?: CalendarView; dia?: string }) => {
+    setOpenDay(null);
     const search = new URLSearchParams(params);
     if (next.vista !== undefined) search.set("vista", next.vista);
     if (next.dia !== undefined) search.set("dia", next.dia);
@@ -340,20 +335,59 @@ export function CalendarPage() {
       {calendar.isPending && <p className="mt-2 text-sm text-fg-muted">Cargando el calendario…</p>}
       {calendar.data && (
         <>
-          {calendar.data.length === 0 && (
-            <p className="mt-2 text-sm text-fg-muted">
-              Nada programado ni publicado en estas fechas.
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <FilterChip
+              label="Retiradas y descartadas"
+              count={counts.retired}
+              pressed={filters.retired}
+              onToggle={() => setFilters({ ...filters, retired: !filters.retired })}
+            />
+            <FilterChip
+              label="Fallidas y dudosas"
+              count={counts.failed}
+              pressed={filters.failed}
+              onToggle={() => setFilters({ ...filters, failed: !filters.failed })}
+            />
+            <p role="status" className="text-sm text-fg-muted">
+              {hidden > 0
+                ? `${hidden === 1 ? "1 oculta" : `${hidden} ocultas`} por los filtros.`
+                : "Sin nada oculto."}
             </p>
+          </div>
+          <p className="mt-2 text-xs text-fg-subtle">
+            <span aria-hidden="true">✓</span> publicada · <span aria-hidden="true">◷</span>{" "}
+            programada · <span aria-hidden="true">!</span> atrasada o te toca ·{" "}
+            <span aria-hidden="true">✕</span> falló · <span aria-hidden="true">?</span> no se sabe
+            si salió · <span aria-hidden="true">⊘</span> retirada o descartada. Los borradores y las
+            ideas no se ven aquí: están en Contenido.
+          </p>
+          {shown.length === 0 && (
+            <p className="mt-2 text-sm text-fg-muted">
+              {calendar.data.length === 0
+                ? "Nada programado ni publicado en estas fechas."
+                : "Nada a la vista con estos filtros."}
+            </p>
+          )}
+          {openDay !== null && (
+            <DayPanel
+              day={openDay}
+              entries={byChileDay(shown).get(openDay) ?? []}
+              showBroker={showBroker}
+              onClose={closeDay}
+              onMove={(entry) => {
+                setNotice(null);
+                setMoving(entry);
+              }}
+            />
           )}
           <CalendarGrid
             view={view}
             anchor={anchor}
             today={today}
-            entries={calendar.data}
-            showBroker={role === "admin" && broker === undefined}
-            onMove={(entry) => {
-              setNotice(null);
-              setMoving(entry);
+            entries={shown}
+            onOpenDay={(day, trigger) => {
+              opener.current = trigger;
+              setOpenDay(day);
             }}
           />
         </>

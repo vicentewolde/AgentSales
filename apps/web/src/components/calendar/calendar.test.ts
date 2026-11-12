@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   addDays,
+  applyEntryFilters,
   byChileDay,
+  capDay,
+  DAY_ENTRY_LIMIT,
+  DEFAULT_ENTRY_FILTERS,
   dayLabel,
+  entryGroup,
+  parseEntryFilters,
   periodLabel,
   rangeOfDays,
   shiftAnchor,
@@ -101,5 +107,76 @@ describe("los títulos", () => {
       "Semana del 28 de diciembre de 2026 al 3 de enero de 2027",
     );
     expect(periodLabel("mes", "2026-10-20")).toBe("Octubre de 2026");
+  });
+});
+
+describe("qué se ve por defecto", () => {
+  const entries = (
+    [
+      "published",
+      "scheduled",
+      "unpublished",
+      "cancelled",
+      "failed",
+      "outcome_unknown",
+      "awaiting_manual_confirm",
+    ] as const
+  ).map((status) => ({ status }));
+
+  it("oculta lo retirado y descartado, y muestra lo vigente y lo que falló", () => {
+    const { shown, counts } = applyEntryFilters(entries, DEFAULT_ENTRY_FILTERS);
+    expect(shown.map((e) => e.status)).toEqual([
+      "published",
+      "scheduled",
+      "failed",
+      "outcome_unknown",
+      "awaiting_manual_confirm",
+    ]);
+    expect(counts).toEqual({ retired: 2, failed: 2 });
+  });
+
+  it("cada filtro agrega o quita su grupo", () => {
+    expect(applyEntryFilters(entries, { retired: true, failed: true }).shown).toHaveLength(7);
+    const noFailed = applyEntryFilters(entries, { retired: false, failed: false }).shown;
+    expect(noFailed.map((e) => e.status)).toEqual([
+      "published",
+      "scheduled",
+      "awaiting_manual_confirm",
+    ]);
+  });
+
+  it("agrupa cada estado", () => {
+    expect(entryGroup("unpublished")).toBe("retired");
+    expect(entryGroup("failed")).toBe("failed");
+    expect(entryGroup("scheduled")).toBe("current");
+  });
+
+  it("lee lo guardado y cae a lo por defecto si no sirve", () => {
+    expect(parseEntryFilters(null)).toEqual(DEFAULT_ENTRY_FILTERS);
+    expect(parseEntryFilters("no es json")).toEqual(DEFAULT_ENTRY_FILTERS);
+    expect(parseEntryFilters("3")).toEqual(DEFAULT_ENTRY_FILTERS);
+    expect(parseEntryFilters('{"retired":true}')).toEqual({ retired: true, failed: true });
+    expect(parseEntryFilters('{"retired":"si","failed":false}')).toEqual({
+      retired: false,
+      failed: false,
+    });
+  });
+});
+
+describe("el tope de entradas por día", () => {
+  const at = (hour: number) => ({ at: new Date(Date.UTC(2026, 9, 20, hour)) });
+
+  it("con pocas entradas muestra todas, por hora, y no hay «más»", () => {
+    const { shown, more } = capDay([at(15), at(9)]);
+    expect(shown.map((e) => e.at.getUTCHours())).toEqual([9, 15]);
+    expect(more).toBe(0);
+  });
+
+  it("con más que el tope muestra las primeras por hora y cuenta el resto", () => {
+    const many = [20, 10, 14, 9, 18, 11].map(at);
+    const { shown, more } = capDay(many);
+    expect(shown.map((e) => e.at.getUTCHours())).toEqual([9, 10, 11]);
+    expect(shown).toHaveLength(DAY_ENTRY_LIMIT);
+    expect(more).toBe(3);
   });
 });

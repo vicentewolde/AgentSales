@@ -453,6 +453,8 @@ Antes (jueves 29, el operador): desplegar; crear su corredor para propiedades y 
 - (respondidas en la entrevista del 2026-10-22: demo del operador desde el servidor el viernes 30, con publicaciones reales en sus cuentas; propiedades con un corredor nuevo suyo conectado a `@vicentewoldec` y una propiedad de ejemplo que borra después; posts con AgentPey; worker solo los días de demo; lo interno también antes de la demo; sin ensayo general)
 
 ## 10. Registro de cambios del spec
+
+- 2026-11-11: pulido del calendario del panel (sin tarea nueva, sin cambios de API). Por defecto solo lo vigente: se ocultan `unpublished` y `cancelled`; fallidas y dudosas se ven y se pueden ocultar; los filtros se recuerdan en `localStorage`. Con muchos posts: chips compactos (hora, red y estado con forma), tope de 3 por día con «+N más» y un detalle del día accesible. Los borradores e ideas no están en el calendario porque `calendarEntries` solo trae lo programado o con `publishedAt`; verlos aquí exigiría ampliar la API.
 | Fecha | Cambio |
 |---|---|
 | 2026-10-22 | Borrador tras la entrevista con el operador; alcance y nombre aprobados por él |
