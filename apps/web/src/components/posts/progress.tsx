@@ -32,18 +32,58 @@ export type PostProgress = {
   state: PostProgressState;
   /** La primera hora programada que viene, si hay. */
   nextAt: Date | null;
+  /** Cuándo salió lo último que salió de verdad (hora de `publishedAt`), si algo salió. */
+  publishedAt: Date | null;
 };
+
+/**
+ * Una publicación simulada que quedó reemplazada por la real (`superseded_by_record`) queda
+ * `unpublished` y en simulación: no es una retirada de verdad y no se muestra como tal.
+ */
+export const isSupersededSimulation = (pub: { status: string; dryRun: boolean }): boolean =>
+  pub.status === "unpublished" && pub.dryRun;
+
+/** Qué fecha se muestra de un post y cómo se llama, en palabras simples. */
+export type PostWhen = {
+  kind: "published" | "scheduled" | "planned";
+  at: Date;
+  label: string;
+};
+
+/**
+ * La fecha que importa de un post: si salió, cuándo salió; si está programado, la próxima hora
+ * programada; si no, la fecha planeada; `null` si no tiene ninguna.
+ */
+export function postWhen(plannedAt: Date | null, progress: PostProgress): PostWhen | null {
+  if (progress.state === "published" && progress.publishedAt !== null) {
+    return { kind: "published", at: progress.publishedAt, label: "Salió el" };
+  }
+  if (progress.nextAt !== null) {
+    return { kind: "scheduled", at: progress.nextAt, label: "Programado para el" };
+  }
+  if (progress.publishedAt !== null && plannedAt === null) {
+    return { kind: "published", at: progress.publishedAt, label: "Salió el" };
+  }
+  if (plannedAt !== null) return { kind: "planned", at: plannedAt, label: "Fecha planeada:" };
+  return null;
+}
 
 /** Lo que dejó de contar: una publicación cancelada o retirada ya no es parte del post. */
 const DEAD = new Set(["cancelled", "unpublished"]);
 
 export function postProgress(row: TrackingPostRow | undefined): PostProgress {
-  if (row === undefined) return { state: "none", nextAt: null };
+  if (row === undefined) return { state: "none", nextAt: null, publishedAt: null };
   const all = Object.values(row.cells)
     .flat()
     .filter((pub) => !DEAD.has(pub.status));
-  if (all.length === 0) return { state: "none", nextAt: null };
-  const published = all.filter((pub) => pub.status === "published").length;
+  if (all.length === 0) return { state: "none", nextAt: null, publishedAt: null };
+  const publishedPubs = all.filter((pub) => pub.status === "published");
+  const published = publishedPubs.length;
+  const publishedAt =
+    publishedPubs
+      .map((pub) => pub.publishedAt)
+      .filter((at): at is Date => at !== null)
+      .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
   const scheduled = all.filter((pub) => pub.status === "scheduled" || pub.status === "publishing");
   const nextAt =
     scheduled
@@ -62,7 +102,7 @@ export function postProgress(row: TrackingPostRow | undefined): PostProgress {
     if (all.some((pub) => pub.status === "approved")) return "approved";
     return "none";
   })();
-  return { state, nextAt };
+  return { state, nextAt, publishedAt };
 }
 
 /** El texto de cada estado, para una insignia. */

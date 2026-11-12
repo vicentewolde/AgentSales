@@ -13,6 +13,12 @@ export const SCHEDULE_MAX_AHEAD_MS = 60 * 24 * 60 * 60 * 1000;
  * del operador (respuesta del operador, spec F6 D2).
  */
 export const SCHEDULE_OVERDUE_MS = 12 * 60 * 60 * 1000;
+/**
+ * Lo mínimo que separa dos publicaciones de un mismo post en una misma red (`SCHEDULE_SAME_TIME`):
+ * los idiomas de un post son el mismo post dicho dos veces, y dos iguales a la misma hora no
+ * corresponden. Un espacio de este tamaño o más sí se acepta, a conciencia.
+ */
+export const SAME_NETWORK_MIN_GAP_MINUTES = 10;
 /** El espaciado máximo entre propiedades de un lote, en minutos (spec F6 §4.3). */
 export const MAX_SCHEDULE_SPACING_MINUTES = 240;
 

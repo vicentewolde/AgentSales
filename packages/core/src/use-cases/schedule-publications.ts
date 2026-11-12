@@ -1,5 +1,12 @@
-import { LISTING_PLATFORMS, type Platform, POST_PLATFORMS } from "../enums.js";
+import {
+  LANGUAGES,
+  type Language,
+  LISTING_PLATFORMS,
+  type Platform,
+  POST_PLATFORMS,
+} from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
+import { PLATFORM_TEXT } from "../labels.js";
 import {
   dateIn,
   MARKETPLACE_TIME_ZONE,
@@ -17,7 +24,11 @@ import {
   scheduledPayloadSchema,
 } from "../publication.js";
 import { outcomeUnknownPending } from "../publish/outcome.js";
-import { scheduleAt as checkScheduleAt, MAX_SCHEDULE_SPACING_MINUTES } from "../schedule.js";
+import {
+  scheduleAt as checkScheduleAt,
+  MAX_SCHEDULE_SPACING_MINUTES,
+  SAME_NETWORK_MIN_GAP_MINUTES,
+} from "../schedule.js";
 import { listingSubject, type PostSubject, postSubject } from "../subject.js";
 import { runOnSubject, type SubjectLocks } from "../subject-lock.js";
 import {
@@ -162,6 +173,13 @@ export async function schedulePublication(
       now,
       manualLimits: false,
     });
+    // Un post no sale dos veces a la vez en la misma red (sus idiomas son el mismo post).
+    await requireNoSameTimeClash(
+      locked.repos.publications,
+      publication.subject,
+      publication.platform,
+      [{ id: publication.id, at: when, language: publication.language }],
+    );
     return scheduleOne(locked.repos.publications, publication, {
       at: when,
       dryRun,
@@ -169,6 +187,52 @@ export async function schedulePublication(
       reason: "operator",
     });
   });
+}
+
+/**
+ * `SCHEDULE_SAME_TIME`: de un **post**, dos publicaciones programadas en la misma red a menos de
+ * `SAME_NETWORK_MIN_GAP_MINUTES` una de otra (las de `planned`, con la hora que van a tener, entre
+ * sí y contra las que ya están programadas). Un aviso no: su carrusel y su reel son formatos
+ * distintos. Revisa antes de escribir; no reintentable (409).
+ */
+async function requireNoSameTimeClash(
+  repos: Pick<LockedRepositories["publications"], "listBySubject">,
+  subject: Publication["subject"],
+  platform: Platform,
+  planned: readonly { id: string | null; at: Date; language?: Language }[],
+): Promise<void> {
+  if (subject.kind !== "post") return;
+  const gap = SAME_NETWORK_MIN_GAP_MINUTES * 60_000;
+  const clash = (a: Date, b: Date) => Math.abs(a.getTime() - b.getTime()) < gap;
+  const message = `Ya hay otro texto de este post programado en ${PLATFORM_TEXT[platform]} a la misma hora (o a menos de ${SAME_NETWORK_MIN_GAP_MINUTES} minutos). Son el mismo post en otro idioma: programa solo uno, o deja al menos ${SAME_NETWORK_MIN_GAP_MINUTES} minutos entre los dos.`;
+  for (const [index, one] of planned.entries()) {
+    for (const other of planned.slice(index + 1)) {
+      if (one.language !== other.language && clash(one.at, other.at)) {
+        throw new AppError("SCHEDULE_SAME_TIME", message, { details: { platform } });
+      }
+    }
+  }
+  const ids = new Set(planned.map((item) => item.id));
+  const existing = (await repos.listBySubject(subject)).filter(
+    (p) =>
+      p.platform === platform &&
+      p.status === "scheduled" &&
+      p.scheduledAt !== null &&
+      !ids.has(p.id),
+  );
+  for (const item of planned) {
+    const other = existing.find(
+      (p) =>
+        p.scheduledAt !== null &&
+        (item.language === undefined || p.language !== item.language) &&
+        clash(item.at, p.scheduledAt),
+    );
+    if (other !== undefined) {
+      throw new AppError("SCHEDULE_SAME_TIME", message, {
+        details: { platform, publicationId: other.id },
+      });
+    }
+  }
 }
 
 /** Lo que programar un canal hizo, dentro del candado. */
@@ -450,17 +514,36 @@ export async function schedulePost(
   {
     postId,
     platforms,
+    languages,
+    spacingMinutes = 0,
     at,
     dryRun,
     actor,
   }: {
     postId: string;
     platforms?: readonly Platform[];
+    /** Qué idiomas de cada red; sin ellos, uno solo (`defaultPostLanguages`). */
+    languages?: readonly Language[];
+    /**
+     * Minutos entre un idioma y el siguiente de una misma red (el primero sale a `at`). Con dos
+     * idiomas a conciencia: sin él, caen a la misma hora y se rechaza (`SCHEDULE_SAME_TIME`).
+     */
+    spacingMinutes?: number;
     at: Date;
     dryRun: boolean;
     actor: PublicationActor;
   },
 ): Promise<{ results: SchedulePostOutcome[] }> {
+  if (
+    !Number.isInteger(spacingMinutes) ||
+    spacingMinutes < 0 ||
+    spacingMinutes > MAX_SCHEDULE_SPACING_MINUTES
+  ) {
+    throw new AppError(
+      "SCHEDULE_BATCH_INVALID",
+      `El espacio entre idiomas va de 0 a ${MAX_SCHEDULE_SPACING_MINUTES} minutos`,
+    );
+  }
   const now = (deps.now ?? (() => new Date()))();
   const when = checkScheduleAt(at, now);
   const subject = postSubject(postId);
@@ -480,6 +563,8 @@ export async function schedulePost(
           at: when,
           dryRun,
           actor,
+          languages,
+          spacingMinutes,
         });
       });
       results.push({ platform, outcome: "scheduled", at: when, publications: scheduled });
@@ -523,12 +608,16 @@ async function schedulePostChannel(
     at,
     dryRun,
     actor,
+    languages,
+    spacingMinutes,
   }: {
     subject: PostSubject;
     platform: Platform;
     at: Date;
     dryRun: boolean;
     actor: PublicationActor;
+    languages: readonly Language[] | undefined;
+    spacingMinutes: number;
   },
 ): Promise<Publication[]> {
   const { post, opening, startable } = await preparePostChannelStart(
@@ -538,8 +627,24 @@ async function schedulePostChannel(
       dryRun,
       countInFlight: false,
       nothingMessage: "No hay nada que programar en esta red: todo está publicado o publicándose",
+      languages,
     },
   );
+  // Cada idioma, a su hora: el primero (en el orden de `LANGUAGES`) a `at`, el siguiente `spacing`
+  // minutos después. Todo se revisa antes de escribir.
+  const inPlan = [
+    ...startable.map((p) => p.language),
+    ...opening.toCreate.flatMap((item) => item.planned.map((p) => p.language)),
+  ];
+  const order = LANGUAGES.filter((language) => inPlan.includes(language));
+  const timeOf = (language: Language) =>
+    new Date(at.getTime() + order.indexOf(language) * spacingMinutes * 60_000);
+  await requireNoSameTimeClash(locked.publications, subject, platform, [
+    ...startable.map((p) => ({ id: p.id, at: timeOf(p.language), language: p.language })),
+    ...opening.toCreate.flatMap((item) =>
+      item.planned.map((p) => ({ id: null, at: timeOf(p.language), language: p.language })),
+    ),
+  ]);
   // Recién aquí se escribe.
   const created: Publication[] = [];
   for (const { content, planned } of opening.toCreate) {
@@ -550,7 +655,7 @@ async function schedulePostChannel(
     ids.add(
       (
         await scheduleOne(locked.publications, publication, {
-          at,
+          at: timeOf(publication.language),
           dryRun,
           actor,
           reason: "operator",

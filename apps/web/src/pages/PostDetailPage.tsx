@@ -142,7 +142,7 @@ function PostEditForm({ post, onClose }: { post: PostJson; onClose: () => void }
       </Field>
       <Field
         label="Fecha planeada (Chile)"
-        hint="Cuándo quieres que salga. Programar fija la hora real de cada red."
+        hint="Cuándo planeas que salga. Es una guía para ordenar tus posts: la hora real de cada red se fija al programar (queda como «programado para»)."
       >
         <Input
           name="plannedAt"
@@ -333,6 +333,12 @@ export function PostDetailPage() {
     !publications.some((pub) =>
       ["published", "scheduled", "publishing", "awaiting_manual_confirm"].includes(pub.status),
     );
+  // La hora real que ya quedó fijada en las redes (la próxima), aparte de la fecha planeada.
+  const nextScheduled =
+    publications
+      .filter((pub) => pub.status === "scheduled" && pub.scheduledAt !== null)
+      .map((pub) => pub.scheduledAt as Date)
+      .sort((x, y) => x.getTime() - y.getTime())[0] ?? null;
   const lockReason = archived
     ? "El post está archivado."
     : runActive
@@ -353,7 +359,21 @@ export function PostDetailPage() {
                 {" · "}
                 {item.plannedAt === null
                   ? "sin fecha planeada"
-                  : `planeado para el ${formatChileDayTime(item.plannedAt)} (hora de Chile)`}
+                  : `fecha planeada: ${formatChileDayTime(item.plannedAt)} (hora de Chile)`}
+                {!archived && !editing && (
+                  <>
+                    {" "}
+                    <button
+                      type="button"
+                      onClick={() => setEditing(true)}
+                      className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-900"
+                    >
+                      {item.plannedAt === null ? "Ponerle fecha" : "Cambiar la fecha"}
+                    </button>
+                  </>
+                )}
+                {nextScheduled !== null &&
+                  ` · programado para el ${formatChileDayTime(nextScheduled)} (hora de Chile)`}
                 {item.source === "ai" && " · propuesto por la IA"}
                 {" · "}
                 {item.platforms === null

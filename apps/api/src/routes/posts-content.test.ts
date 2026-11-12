@@ -304,6 +304,65 @@ describe("publicar y programar un post", () => {
     });
   });
 
+  it("dos idiomas de una red a la misma hora quedan saltados con SCHEDULE_SAME_TIME; con espacio se programan", async () => {
+    const s = await setup();
+    await s.broker(`/posts/${s.post.id}/draft`, { method: "POST", json: {} });
+    await s.finishDraft(s.post.id, [
+      { platform: "discord", language: "es" },
+      { platform: "discord", language: "en" },
+    ]);
+    for (const language of ["es", "en"]) {
+      await s.broker(`/posts/${s.post.id}/contents/discord/${language}/approve`, {
+        method: "POST",
+      });
+    }
+    const at = inHours(3);
+    const both = (extra: object) =>
+      s.broker(`/posts/${s.post.id}/schedule`, {
+        method: "POST",
+        json: { at, platforms: ["discord"], languages: ["es", "en"], ...extra },
+      });
+    // Los dos a la misma hora: la red lo rechaza como un solo pedido (la fila lleva el código).
+    const same = postScheduleResponseSchema.parse(await (await both({})).json());
+    expect(same.results[0]).toMatchObject({ outcome: "skipped", code: "SCHEDULE_SAME_TIME" });
+    const bad = await both({ spacingMinutes: 500 });
+    expect(bad.status).toBe(400);
+    const spaced = postScheduleResponseSchema.parse(
+      await (await both({ spacingMinutes: 15 })).json(),
+    );
+    expect(spaced.results[0]?.publications?.map((p) => p.scheduledAt)).toEqual([
+      new Date(at),
+      new Date(new Date(at).getTime() + 15 * 60_000),
+    ]);
+  });
+
+  it("reprogramar una publicación a menos de 10 minutos de la del otro idioma: 409 SCHEDULE_SAME_TIME", async () => {
+    const s = await setup();
+    await s.broker(`/posts/${s.post.id}/draft`, { method: "POST", json: {} });
+    await s.finishDraft(s.post.id, [
+      { platform: "discord", language: "es" },
+      { platform: "discord", language: "en" },
+    ]);
+    for (const language of ["es", "en"]) {
+      await s.broker(`/posts/${s.post.id}/contents/discord/${language}/approve`, {
+        method: "POST",
+      });
+    }
+    await s.broker(`/posts/${s.post.id}/schedule`, {
+      method: "POST",
+      json: { at: inHours(3), platforms: ["discord"] },
+    });
+    const [, en] = (await s.deps.publications.listBySubject({ kind: "post", id: s.post.id })).sort(
+      (a, b) => a.language.localeCompare(b.language) * -1,
+    );
+    const response = await s.broker(`/publications/${en?.id}/schedule`, {
+      method: "POST",
+      json: { at: inHours(3) },
+    });
+    expect(response.status).toBe(409);
+    expect(errorBodySchema.parse(await response.json()).error.code).toBe("SCHEDULE_SAME_TIME");
+  });
+
   it("con el servidor en live, programar y publicar usan el modo de la marca (ADR-0036): apagada o ajena, simulación; encendida y propia, de verdad", async () => {
     const at = inHours(3);
     const modeOf = async (prepare: (s: Awaited<ReturnType<typeof setup>>) => Promise<void>) => {

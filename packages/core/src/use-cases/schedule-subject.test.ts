@@ -211,7 +211,7 @@ describe("programar un post", () => {
     expect(t.current(xEn.id)?.status).toBe("approved");
   });
 
-  it("schedulePost programa cada red con texto aprobado, todos sus idiomas, en el candado del post", async () => {
+  it("schedulePost programa cada red con texto aprobado, un solo idioma por red, en el candado del post", async () => {
     const t = await twoLanguages();
 
     const { results } = await schedulePost(
@@ -226,13 +226,112 @@ describe("programar un post", () => {
           : result,
       ),
     ).toEqual([
-      { platform: "x", languages: ["es", "en"] },
+      { platform: "x", languages: ["es"] },
       { platform: "discord", languages: ["es"] },
     ]);
+    // El inglés de X queda aprobado, sin programar.
+    expect(t.current(t.publicationOf("x", "en").id)?.status).toBe("approved");
+    expect(t.publications.all().filter((p) => p.status === "scheduled")).toHaveLength(2);
     expect(
-      t.publications.all().every((p) => p.status === "scheduled" && p.scheduledAt?.getTime()),
+      t.publications
+        .all()
+        .filter((p) => p.status === "scheduled")
+        .every((p) => p.dryRun),
     ).toBe(true);
-    expect(t.publications.all().every((p) => p.dryRun)).toBe(true);
+  });
+
+  it("dos idiomas de una red a la misma hora se rechazan, sin programar ninguno", async () => {
+    const t = await twoLanguages();
+    const { results } = await schedulePost(
+      { ...t.deps, now: () => NOW },
+      {
+        postId: t.post.id,
+        platforms: ["x"],
+        languages: ["es", "en"],
+        at: AT,
+        dryRun: true,
+        actor: "operator",
+      },
+    );
+    expect(results).toMatchObject([
+      { platform: "x", outcome: "skipped", code: "SCHEDULE_SAME_TIME" },
+    ]);
+    expect(t.publications.all().some((p) => p.status === "scheduled")).toBe(false);
+  });
+
+  it("con un espacio de 15 minutos entre idiomas se programan los dos, cada uno a su hora", async () => {
+    const t = await twoLanguages();
+    const { results } = await schedulePost(
+      { ...t.deps, now: () => NOW },
+      {
+        postId: t.post.id,
+        platforms: ["x"],
+        languages: ["en", "es"],
+        spacingMinutes: 15,
+        at: AT,
+        dryRun: true,
+        actor: "operator",
+      },
+    );
+    expect(results).toHaveLength(1);
+    const x = t.publications.all().filter((p) => p.platform === "x");
+    expect(x.map((p) => [p.language, p.scheduledAt?.toISOString()])).toEqual([
+      ["es", "2026-10-20T16:00:00.000Z"],
+      ["en", "2026-10-20T16:15:00.000Z"],
+    ]);
+    // Un espacio menor al mínimo sigue rechazado.
+    await expect(
+      schedulePost(
+        { ...t.deps, now: () => NOW },
+        {
+          postId: t.post.id,
+          platforms: ["x"],
+          languages: ["es", "en"],
+          spacingMinutes: 5,
+          at: AT,
+          dryRun: true,
+          actor: "operator",
+        },
+      ).then((r) => r.results[0]),
+    ).resolves.toMatchObject({ code: "SCHEDULE_SAME_TIME" });
+  });
+
+  it("programar el otro idioma a la hora de uno ya programado se rechaza; a otra hora, no", async () => {
+    const t = await twoLanguages();
+    const es = t.publicationOf("x");
+    await schedule(t, es);
+    const en = t.publications.all().find((p) => p.platform === "x" && p.language === "en");
+    if (en === undefined) throw new Error("falta el texto en inglés");
+    expect(await codeOf(schedule(t, en))).toBe("SCHEDULE_SAME_TIME");
+    expect(await codeOf(schedule(t, en, new Date(AT.getTime() + 5 * 60_000)))).toBe(
+      "SCHEDULE_SAME_TIME",
+    );
+    await expect(schedule(t, en, new Date(AT.getTime() + 10 * 60_000))).resolves.toMatchObject({
+      status: "scheduled",
+    });
+    // Reprogramar el mismo no choca consigo mismo.
+    await expect(schedule(t, es, new Date(AT.getTime() + 3 * 3600_000))).resolves.toMatchObject({
+      status: "scheduled",
+    });
+  });
+
+  it("sin idiomas pedidos, con uno ya programado, el otro no se programa solo", async () => {
+    const t = await twoLanguages();
+    await schedule(t, t.publicationOf("x"));
+    const { results } = await schedulePost(
+      { ...t.deps, now: () => NOW },
+      {
+        postId: t.post.id,
+        platforms: ["x"],
+        at: new Date(AT.getTime() + 3600_000),
+        dryRun: true,
+        actor: "operator",
+      },
+    );
+    expect(results).toMatchObject([{ platform: "x", outcome: "scheduled" }]);
+    expect(
+      results[0]?.outcome === "scheduled" && results[0].publications.map((p) => p.language),
+    ).toEqual(["es"]);
   });
 
   it("schedulePost informa la red pedida que no se puede programar, sin cortar las demás", async () => {
@@ -363,7 +462,7 @@ describe("programar un post", () => {
     ]);
   });
 
-  it("publishPost publica la red con todos sus idiomas y encola después del candado", async () => {
+  it("publishPost publica la red con un idioma, o con los que se piden, y encola después del candado", async () => {
     const t = await twoLanguages();
 
     const result = await publishPost(t.deps, {
@@ -373,7 +472,7 @@ describe("programar un post", () => {
       actor: "operator",
     });
 
-    expect(result.started.map((p) => p.language)).toEqual(["es", "en"]);
+    expect(result.started.map((p) => p.language)).toEqual(["es"]);
     expect(result.started.every((p) => p.status === "publishing" && p.dryRun)).toBe(true);
     expect(t.queue.jobs.map((job) => job.data)).toEqual(
       result.started.map((p) => ({ publicationId: p.id })),
@@ -382,7 +481,17 @@ describe("programar un post", () => {
     // Otra vez: nada que iniciar, pero las que están en curso se reencolan.
     await expect(
       publishPost(t.deps, { postId: t.post.id, platform: "x", dryRun: true, actor: "operator" }),
-    ).resolves.toMatchObject({ started: [], requeued: [{}, {}] });
+    ).resolves.toMatchObject({ started: [], requeued: [{ language: "es" }] });
+    // El otro idioma sale solo si se pide a conciencia.
+    await expect(
+      publishPost(t.deps, {
+        postId: t.post.id,
+        platform: "x",
+        languages: ["en"],
+        dryRun: true,
+        actor: "operator",
+      }),
+    ).resolves.toMatchObject({ started: [{ language: "en" }] });
   });
 });
 

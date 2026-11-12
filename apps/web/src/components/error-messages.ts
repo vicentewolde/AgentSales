@@ -92,6 +92,8 @@ export const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   POST_NO_PLATFORMS:
     "La marca no tiene redes: conecta una cuenta o define la cadencia en su perfil.",
   POST_ARCHIVED: "El post está archivado: ya no se puede cambiar.",
+  SCHEDULE_SAME_TIME:
+    "Ya hay otro idioma de este post programado en esa red a la misma hora. Son el mismo post: programa solo uno, o deja al menos 10 minutos entre los dos.",
   POST_PLATFORM_EXCLUDED: "Esa red no está entre las del post: agrégala con «Editar el post».",
   PLAN_RUN_CONFLICT: "Ya hay un plan en preparación: espera a que termine.",
   // Conseguir imágenes para un post (F9.5-T25).

@@ -17,6 +17,8 @@ const INTERNAL_MESSAGE = "Error interno del servidor";
  * entre intentos de un job) son 500; `PUBLICATION_CONFLICT` es 409 por el spec F3 §4.8.
  */
 const CONFLICTS = new Set([
+  // Dos idiomas de un post programados en la misma red a la misma hora.
+  "SCHEDULE_SAME_TIME",
   // F10-T05: un estado al que el lead no puede pasar, o un lead ya borrado.
   "LEAD_TRANSITION_INVALID",
   "LEAD_ERASED",

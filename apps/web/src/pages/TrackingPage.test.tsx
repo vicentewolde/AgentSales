@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
-import type { AgendaResponse } from "@agentsales/api/contracts";
+import type { AgendaResponse, TrackingResponse } from "@agentsales/api/contracts";
 import { AGENDA_KIND_TEXT } from "@agentsales/core";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 import { publicationSetup } from "../../test/harness.js";
-import { Agenda, TrackingMatrix } from "./TrackingPage.js";
+import { Agenda, TrackingMatrix, TrackingPosts } from "./TrackingPage.js";
 
 // F6-T13 (spec F6 §4.8 a §4.10): Seguimiento, las acciones de la propiedad y `auto_publish` en el
 // panel, sobre la API en proceso.
@@ -267,5 +267,114 @@ describe("el banner con auto_publish en vivo", () => {
     expect(
       await screen.findByText(/No se pudo saber si algún corredor tiene publicación automática/),
     ).toBeTruthy();
+  });
+});
+
+describe("los posts en Seguimiento", () => {
+  type PostRow = TrackingResponse["posts"][number];
+  type Pub = PostRow["cells"]["x"][number];
+  const pub = (extra: Partial<Pub>): Pub => ({
+    id: crypto.randomUUID(),
+    format: "post",
+    language: "es",
+    status: "published",
+    dryRun: false,
+    modeFixed: true,
+    mediaCount: null,
+    externalUrl: null,
+    scheduledAt: null,
+    schedule: null,
+    expiry: null,
+    lastError: null,
+    errorAdvice: null,
+    manualTask: false,
+    publishedAt: null,
+    updatedAt: new Date(),
+    ...extra,
+  });
+  const post = (topic: string, cells: Partial<PostRow["cells"]>): PostRow => ({
+    post: {
+      id: topic,
+      brokerId: "b1",
+      topic,
+      status: "ready",
+      kind: "text",
+      plannedAt: null,
+    },
+    cells: { instagram: [], x: [], linkedin: [], discord: [], tiktok: [], ...cells },
+  });
+
+  it("muestra la fecha en que salió y el enlace seguro en pestaña nueva, y oculta lo simulado reemplazado", () => {
+    render(
+      <MemoryRouter>
+        <TrackingPosts
+          posts={[
+            post("Ganamos un Stellar Instawards", {
+              x: [
+                pub({
+                  status: "unpublished",
+                  dryRun: true,
+                  publishedAt: new Date("2026-11-01T15:00:00Z"),
+                }),
+                pub({
+                  externalUrl: "https://x.com/agentpey/status/1",
+                  publishedAt: new Date("2026-11-10T15:00:00Z"),
+                }),
+              ],
+            }),
+          ]}
+        />
+      </MemoryRouter>,
+    );
+    const link = screen.getByRole("link", { name: /Ver lo publicado en X/ });
+    expect(link.getAttribute("href")).toBe("https://x.com/agentpey/status/1");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toContain("noopener");
+    expect(screen.getAllByText(/Salió el/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/retirada/i)).toBeNull();
+  });
+
+  it("una retirada de verdad sí se ve, y sin enlace o con uno inseguro no hay vínculo", () => {
+    render(
+      <MemoryRouter>
+        <TrackingPosts
+          posts={[
+            post("Retirado", {
+              x: [
+                pub({ status: "unpublished", dryRun: false }),
+                pub({ externalUrl: "javascript:alert(1)" }),
+              ],
+            }),
+          ]}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(/retirada/i)).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /Ver lo publicado/ })).toBeNull();
+  });
+
+  it("una publicación cancelada no ocupa la celda", () => {
+    render(
+      <MemoryRouter>
+        <TrackingPosts posts={[post("Con cancelada", { x: [pub({ status: "cancelled" })] })]} />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText(/descartada|cancelada/i, { selector: "span" })).toBeNull();
+  });
+
+  it("ordena por la fecha que se ve: lo más nuevo primero", () => {
+    render(
+      <MemoryRouter>
+        <TrackingPosts
+          posts={[
+            post("Viejo", { x: [pub({ publishedAt: new Date("2026-10-01T15:00:00Z") })] }),
+            post("Nuevo", { x: [pub({ publishedAt: new Date("2026-11-09T15:00:00Z") })] }),
+          ]}
+        />
+      </MemoryRouter>,
+    );
+    const rows = screen.getAllByRole("rowheader").map((cell) => cell.textContent ?? "");
+    expect(rows[0]).toContain("Nuevo");
+    expect(rows[1]).toContain("Viejo");
   });
 });

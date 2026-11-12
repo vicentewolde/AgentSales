@@ -526,6 +526,9 @@ export function postRoutes(deps: PostRoutesDeps) {
           const result = await publishPost(deps, {
             postId: post.id,
             platform: c.req.valid("json").platform,
+            ...(c.req.valid("json").languages === undefined
+              ? {}
+              : { languages: c.req.valid("json").languages }),
             dryRun: isDryRun(await brokerMode(deps, post.brokerId)),
             actor: actorOf(c),
           });
@@ -570,13 +573,15 @@ export function postRoutes(deps: PostRoutesDeps) {
         validated("json", postScheduleBodySchema),
         async (c) => {
           const post = await ownPost(c, c.req.valid("param").id);
-          const { platforms, at } = c.req.valid("json");
+          const { platforms, languages, spacingMinutes, at } = c.req.valid("json");
           const { results } = await schedulePost(deps, {
             postId: post.id,
             at: new Date(at),
             dryRun: isDryRun(await brokerMode(deps, post.brokerId)),
             actor: actorOf(c),
             ...(platforms === undefined ? {} : { platforms }),
+            ...(languages === undefined ? {} : { languages }),
+            ...(spacingMinutes === undefined ? {} : { spacingMinutes }),
           });
           const body: PostScheduleResponse = {
             results: results.map((row) =>
