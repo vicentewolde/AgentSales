@@ -13,6 +13,7 @@ const reel: ContentMedia = {
   height: 1920,
   durationS: 9,
   url: "https://r2.test/reel.mp4",
+  downloadUrl: null,
 };
 
 const content = (overrides: Partial<ListingContentResponse> = {}): ListingContentResponse => ({

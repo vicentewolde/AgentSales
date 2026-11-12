@@ -191,6 +191,13 @@ describe("GET /listings/:id/publications", () => {
     for (const publication of publications) {
       expect(publication.media.length).toBe(publication.mediaIds.length);
       expect(publication.media.every((media) => media.url.startsWith("memory://"))).toBe(true);
+      // La vista no pide attachment; la descarga sí, con un nombre claro y su extensión.
+      expect(publication.media.every((media) => !media.url.includes("download="))).toBe(true);
+      publication.media.forEach((media, index) => {
+        expect(media.downloadUrl).toContain(
+          `download=agentsales-${t.listingId.replace(/[^A-Za-z0-9]/g, "").slice(0, 8)}-${index + 1}.`,
+        );
+      });
     }
     for (const publication of raw.publications) {
       expect(publication).not.toHaveProperty("progress");

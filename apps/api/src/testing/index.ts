@@ -341,7 +341,12 @@ export function testStorage(): InMemoryMediaStorage {
   const storage = createInMemoryMediaStorage({
     sha256: (bytes) => createHash("sha256").update(bytes).digest("hex"),
   });
-  storage.signedReadUrl = async (path) => `https://r2.test/${path}?firma`;
+  storage.signedReadUrl = async (path, _ttl, options) =>
+    `https://r2.test/${path}?firma${
+      options?.downloadName === undefined
+        ? ""
+        : `&descarga=${encodeURIComponent(options.downloadName)}`
+    }`;
   return storage;
 }
 

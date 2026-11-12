@@ -29,6 +29,7 @@ const media = (extra: Partial<ContentMedia>): ContentMedia => ({
   height: 1350,
   durationS: null,
   url: "https://r2.test/ig_4x5.jpg?firma",
+  downloadUrl: null,
   ...extra,
 });
 
@@ -67,9 +68,26 @@ describe("linkedinDownloads", () => {
       }),
     ]);
     expect(downloads).toEqual([
-      { id: "a", kind: "image", url: "https://r2.test/a.jpg?firma" },
-      { id: "v", kind: "video", url: "https://r2.test/reel.mp4?firma" },
+      {
+        id: "a",
+        kind: "image",
+        url: "https://r2.test/a.jpg?firma",
+        downloadUrl: "https://r2.test/a.jpg?firma",
+      },
+      {
+        id: "v",
+        kind: "video",
+        url: "https://r2.test/reel.mp4?firma",
+        downloadUrl: "https://r2.test/reel.mp4?firma",
+      },
     ]);
+    // Con URL de descarga, el enlace usa esa y la vista sigue con la normal.
+    expect(
+      linkedinDownloads([media({ id: "a", downloadUrl: "https://r2.test/a.jpg?descarga=x" })])[0],
+    ).toMatchObject({
+      url: "https://r2.test/ig_4x5.jpg?firma",
+      downloadUrl: "https://r2.test/a.jpg?descarga=x",
+    });
     expect(linkedinDownloads([])).toEqual([]);
   });
 });
@@ -147,9 +165,13 @@ describe("HandAssist · LinkedIn", () => {
     expect(await screen.findByText(/No se pudo copiar/)).toBeTruthy();
   });
 
-  it("con imágenes: «Descargar imágenes», la foto procesada arrastrable y un enlace que abre en otra pestaña", () => {
+  it("con imágenes: «Descargar imágenes», la foto procesada arrastrable y un enlace que baja el archivo sin abrir otra pestaña", () => {
     const downloads = linkedinDownloads([
-      media({ id: "a", url: "https://r2.test/a.jpg?firma" }),
+      media({
+        id: "a",
+        url: "https://r2.test/a.jpg?firma",
+        downloadUrl: "https://r2.test/a.jpg?firma&descarga=a-1.jpg",
+      }),
       media({ id: "b", url: "https://r2.test/b.jpg?firma" }),
     ]);
     render(
@@ -166,10 +188,12 @@ describe("HandAssist · LinkedIn", () => {
     expect(images[0]?.getAttribute("src")).toBe("https://r2.test/a.jpg?firma");
     expect(images[0]?.getAttribute("draggable")).toBe("true");
     const first = within(group).getByRole("link", { name: "Descargar imagen 1" });
-    expect(first.getAttribute("href")).toBe("https://r2.test/a.jpg?firma");
-    expect(first.getAttribute("target")).toBe("_blank");
-    expect(first.hasAttribute("download")).toBe(false);
-    expect(group.textContent).toContain("Guardar imagen como");
+    // El enlace usa la URL de descarga, baja el archivo y no abre otra pestaña.
+    expect(first.getAttribute("href")).toBe("https://r2.test/a.jpg?firma&descarga=a-1.jpg");
+    expect(first.hasAttribute("target")).toBe(false);
+    expect(first.hasAttribute("download")).toBe(true);
+    expect(group.textContent).not.toContain("Guardar imagen como");
+    expect(group.textContent).not.toContain("clic derecho");
     expect(within(group).getByRole("link", { name: "Descargar imagen 2" })).toBeTruthy();
   });
 

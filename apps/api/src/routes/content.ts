@@ -68,7 +68,7 @@ export function contentRunView(run: ContentRun): ContentRunView {
 /** Un medio de un canal con su URL firmada. Solo derivados y renders: nunca un original. */
 export const contentMedia =
   (storage: Pick<MediaStorage, "signedReadUrl">) =>
-  async (media: Media): Promise<ContentMedia> => {
+  async (media: Media, downloadName?: string): Promise<ContentMedia> => {
     if (media.variant === null) throw new AppError("INTERNAL_ERROR", "Un original en un canal");
     return {
       id: media.id,
@@ -78,8 +78,27 @@ export const contentMedia =
       height: media.height,
       durationS: media.durationS,
       url: await storage.signedReadUrl(media.storagePath),
+      downloadUrl:
+        downloadName === undefined
+          ? null
+          : await storage.signedReadUrl(media.storagePath, undefined, { downloadName }),
     };
   };
+
+const EXTENSIONS: Readonly<Record<string, string>> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "video/mp4": "mp4",
+  "video/quicktime": "mov",
+};
+
+/** `agentsales-<id corto>-<n>.<ext>`: el nombre con que se baja el medio `n` (desde 1) de una publicación. */
+export function downloadFileName(subjectId: string, position: number, mime: string): string {
+  const short = subjectId.replace(/[^A-Za-z0-9]/g, "").slice(0, 8) || "medio";
+  const ext = EXTENSIONS[mime] ?? (mime.split("/")[1] ?? "bin").replace(/[^a-z0-9]/gi, "");
+  return `agentsales-${short}-${position}.${ext}`;
+}
 
 /**
  * Pedir y mirar la preparación de contenido de un aviso (spec F2 §4.7): `POST` y `GET` bajo
@@ -107,8 +126,8 @@ export function listingContentRoutes(deps: ContentRoutesDeps) {
       const content = await getListingContent(deps, { listingId: c.req.valid("param").id });
       const body: ListingContentResponse = {
         contents: content.contents.map(contentView),
-        carousel: await Promise.all(content.carousel.map(signed)),
-        photos: await Promise.all(content.photos.map(signed)),
+        carousel: await Promise.all(content.carousel.map((item) => signed(item))),
+        photos: await Promise.all(content.photos.map((item) => signed(item))),
         reel: content.reel === null ? null : await signed(content.reel),
         reelFromPhotos: content.reelFromPhotos,
         latestRun: content.latestRun === null ? null : contentRunView(content.latestRun),

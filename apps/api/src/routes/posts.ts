@@ -91,7 +91,7 @@ import {
 } from "../contracts/index.js";
 import { brokerMode, isDryRun } from "../publish-modes.js";
 import { validated } from "../validation.js";
-import { contentMedia, contentRunView, contentView } from "./content.js";
+import { contentMedia, contentRunView, contentView, downloadFileName } from "./content.js";
 import { postCovers } from "./post-covers.js";
 import { actorOf, publicationView, skippedView } from "./publication-views.js";
 
@@ -233,13 +233,19 @@ export function postRoutes(deps: PostRoutesDeps) {
     const derived = new Map(
       (await deps.media.listBySubject(postSubject(postId)))
         .filter((item) => item.variant !== null)
-        .map((item) => [item.id, signed(item)]),
+        .map((item) => [item.id, item]),
     );
     return Promise.all(
       publications.map(async (publication) => ({
         ...publicationView(publication),
+        // Con el nombre de descarga (`downloadUrl`): el medio de una publicación pendiente se baja
+        // con un clic, sin pasar por «Guardar como…».
         media: pendingStatuses.has(publication.status)
-          ? await Promise.all(publication.mediaIds.flatMap((id) => derived.get(id) ?? []))
+          ? await Promise.all(
+              publication.mediaIds
+                .flatMap((id) => derived.get(id) ?? [])
+                .map((item, index) => signed(item, downloadFileName(postId, index + 1, item.mime))),
+            )
           : [],
       })),
     );

@@ -224,6 +224,17 @@ export function r2BucketOrigin(options: Pick<R2StorageOptions, "accountId" | "bu
   return `https://${options.bucket}.${options.accountId}.r2.cloudflarestorage.com`;
 }
 
+/**
+ * Un nombre de archivo seguro para `Content-Disposition`: solo ASCII sin comillas, barras ni
+ * caracteres de control (todo lo demás pasa a `_`), de hasta 120 caracteres.
+ */
+export function safeDownloadName(name: string): string {
+  return name
+    .replace(/[^A-Za-z0-9._-]+/g, "_")
+    .replace(/^[._]+/, "")
+    .slice(0, 120);
+}
+
 /** Adaptador de `MediaStorage` para Cloudflare R2 vía la API S3 (ADR-0007). */
 export function createR2Storage(options: R2StorageOptions): MediaStorage {
   const { bucket, signedUrlTtlSeconds } = options;
@@ -375,10 +386,22 @@ export function createR2Storage(options: R2StorageOptions): MediaStorage {
       });
     },
 
-    signedReadUrl(path, ttlSeconds = signedUrlTtlSeconds) {
-      return getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: path }), {
-        expiresIn: ttlSeconds,
-      });
+    signedReadUrl(path, ttlSeconds = signedUrlTtlSeconds, readOptions) {
+      // Con nombre, R2 responde con `Content-Disposition: attachment` y el navegador baja el
+      // archivo en vez de abrirlo (el `download` de un <a> no sirve en otro origen).
+      const filename =
+        readOptions?.downloadName === undefined ? "" : safeDownloadName(readOptions.downloadName);
+      return getSignedUrl(
+        client,
+        new GetObjectCommand({
+          Bucket: bucket,
+          Key: path,
+          ...(filename === ""
+            ? {}
+            : { ResponseContentDisposition: `attachment; filename="${filename}"` }),
+        }),
+        { expiresIn: ttlSeconds },
+      );
     },
 
     async signedUploadUrl(path, { contentType, contentLength, sha256, ttlSeconds }) {

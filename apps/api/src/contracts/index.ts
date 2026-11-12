@@ -433,6 +433,12 @@ export const contentMediaSchema = z.object({
   height: z.number().int().nullable(),
   durationS: z.number().nullable(),
   url: z.string(),
+  /**
+   * Solo en los medios de las publicaciones pendientes: la misma URL temporal, pero firmada para
+   * que el navegador baje el archivo con un nombre claro (`Content-Disposition: attachment`) en
+   * vez de abrirlo. `url` sigue sirviendo para mostrarlo. Nunca va a la CLI ni a los logs.
+   */
+  downloadUrl: z.string().nullable().default(null),
 });
 export type ContentMedia = z.infer<typeof contentMediaSchema>;
 

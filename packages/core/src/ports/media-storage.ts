@@ -25,6 +25,11 @@ export type ListedObject = {
   lastModified: Date;
 };
 
+export type SignedReadOptions = {
+  /** Nombre con el que el navegador guarda el archivo; el adaptador lo sanea. */
+  downloadName?: string;
+};
+
 export type SignedUploadOptions = {
   contentType: string;
   /** Tamaño exacto en bytes: la URL solo sirve para un cuerpo de ese largo. */
@@ -97,8 +102,13 @@ export interface MediaStorage {
   /** `null` si el objeto no existe. */
   head(path: string): Promise<StoredObjectInfo | null>;
   delete(path: string): Promise<void>;
-  /** URL de lectura temporal; sin `ttlSeconds` usa el TTL configurado del adaptador. */
-  signedReadUrl(path: string, ttlSeconds?: number): Promise<string>;
+  /**
+   * URL de lectura temporal; sin `ttlSeconds` usa el TTL configurado del adaptador. Con
+   * `downloadName`, la URL pide al almacenamiento responder con `Content-Disposition: attachment`
+   * y ese nombre de archivo (el navegador baja el archivo sin salir de la página, aun siendo otro
+   * origen); sin él, la URL sirve para mostrar el medio (`<img>`, `<video>`).
+   */
+  signedReadUrl(path: string, ttlSeconds?: number, options?: SignedReadOptions): Promise<string>;
   /**
    * URL temporal para subir un objeto con un `PUT` directo desde el panel o la CLI (spec F8 §4.4,
    * ADR-0025), firmada con su tipo, su tamaño y, si viene, su sha256. Firmar no habla con R2.

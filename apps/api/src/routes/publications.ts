@@ -60,7 +60,7 @@ import {
 import type { AppLogger } from "../logger.js";
 import { isDryRun, listingMode, publicationMode } from "../publish-modes.js";
 import { validated } from "../validation.js";
-import { contentMedia } from "./content.js";
+import { contentMedia, downloadFileName } from "./content.js";
 import {
   actorOf,
   eventViewWith,
@@ -177,7 +177,7 @@ export function listingPublicationRoutes(deps: PublicationRoutesDeps) {
       // en R2 y no son originales (una publicación fija derivados y renders), y solo para las
       // pendientes: en las demás, una corrida posterior pudo reemplazar la imagen en el mismo medio.
       const thumbnails = new Map(
-        media.filter((item) => item.variant !== null).map((item) => [item.id, signed(item)]),
+        media.filter((item) => item.variant !== null).map((item) => [item.id, item]),
       );
       const at = deps.now?.() ?? new Date();
       const body: ListingPublicationsResponse = {
@@ -186,7 +186,9 @@ export function listingPublicationRoutes(deps: PublicationRoutesDeps) {
             ...publicationViewAt(publication, at),
             media: pending.has(publication.status)
               ? await Promise.all(
-                  publication.mediaIds.flatMap((mediaId) => thumbnails.get(mediaId) ?? []),
+                  publication.mediaIds
+                    .flatMap((mediaId) => thumbnails.get(mediaId) ?? [])
+                    .map((item, index) => signed(item, downloadFileName(id, index + 1, item.mime))),
                 )
               : [],
           })),
