@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { createHash } from "node:crypto";
 import { UPLOAD_SHA256_UP_TO_BYTES } from "@agentsales/api/contracts";
-import { ALL_SCOPE } from "@agentsales/core";
+import { ALL_SCOPE, parseChileTime } from "@agentsales/core";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { brokerData, harness } from "../../test/harness.js";
@@ -101,6 +101,24 @@ describe("panel: Contenido", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Sí, descartar" }));
     await waitFor(async () => expect((await s.deps.posts.get(idea.id))?.status).toBe("archived"));
     expect(s.requests).toContain(`POST /posts/${idea.id}/discard`);
+  });
+
+  it("un post sin ninguna fecha dice «Sin fecha» y se le pone la fecha planeada ahí mismo, en hora de Chile", async () => {
+    const s = await setup();
+    s.renderApp("/contenido");
+    await waitFor(() => expect(topics().length).toBe(2));
+    const row = screen.getByText("Bastidores de la semana").closest("li") as HTMLElement;
+    expect(within(row).getByText("Sin fecha")).toBeTruthy();
+    fireEvent.click(within(row).getByRole("button", { name: "Ponerle fecha" }));
+    fireEvent.change(within(row).getByLabelText(/Fecha planeada/), {
+      target: { value: "2030-03-12T10:30" },
+    });
+    fireEvent.click(within(row).getByRole("button", { name: "Guardar fecha" }));
+    await waitFor(() => expect(screen.getByText(/Fecha planeada: .*12/)).toBeTruthy());
+    const saved = (await s.deps.posts.list({}, ALL_SCOPE)).find(
+      (post) => post.topic === "Bastidores de la semana",
+    );
+    expect(saved?.plannedAt).toEqual(parseChileTime("2030-03-12T10:30"));
   });
 
   it("con una marca elegida en el selector, solo sus posts (por su id)", async () => {
