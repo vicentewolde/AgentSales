@@ -1,4 +1,4 @@
-import type { Platform } from "../enums.js";
+import type { Language, Platform } from "../enums.js";
 import type { JobQueue } from "../ports/job-queue.js";
 import type { Publication, PublicationActor } from "../publication.js";
 import { listingSubject, postSubject, type Subject } from "../subject.js";
@@ -90,11 +90,25 @@ export function publishPost(
   {
     postId,
     platform,
+    languages,
     dryRun,
     actor,
-  }: { postId: string; platform: Platform; dryRun: boolean; actor: PublicationActor },
+  }: {
+    postId: string;
+    platform: Platform;
+    /** Qué idiomas de la red; sin ellos, uno solo (`defaultPostLanguages`). */
+    languages?: readonly Language[];
+    dryRun: boolean;
+    actor: PublicationActor;
+  },
 ): Promise<PublishListingResult> {
-  return publishSubject(deps, { subject: postSubject(postId), platform, dryRun, actor });
+  return publishSubject(deps, {
+    subject: postSubject(postId),
+    platform,
+    dryRun,
+    actor,
+    languages,
+  });
 }
 
 /** Publica un canal del sujeto (aviso o post) dentro de su candado y encola después. */
@@ -105,13 +119,20 @@ async function publishSubject(
     platform,
     dryRun,
     actor,
-  }: { subject: Subject; platform: Platform; dryRun: boolean; actor: PublicationActor },
+    languages,
+  }: {
+    subject: Subject;
+    platform: Platform;
+    dryRun: boolean;
+    actor: PublicationActor;
+    languages?: readonly Language[] | undefined;
+  },
 ): Promise<PublishListingResult> {
   const definitions = await subjectDefinitionsBeforeLock(deps, subject, platform);
   const result = await runOnSubject(deps, subject, (locked) =>
     locked.kind === "listing"
       ? publishListingChannel(deps, locked, { platform, dryRun, actor, definitions })
-      : publishPostChannel(locked, { platform, dryRun, actor }),
+      : publishPostChannel(locked, { platform, dryRun, actor, languages }),
   );
 
   // Ya confirmado: encolar todas, también las que ya estaban en curso (idempotente).
@@ -171,7 +192,12 @@ async function publishListingChannel(
 /** El canal de un post (una red, todos sus idiomas), dentro de su candado. */
 async function publishPostChannel(
   { subject, repos: locked }: Extract<LockedSubject, { kind: "post" }>,
-  { platform, dryRun, actor }: ChannelParams,
+  {
+    platform,
+    dryRun,
+    actor,
+    languages,
+  }: ChannelParams & { languages: readonly Language[] | undefined },
 ): Promise<PublishListingResult> {
   const { post, opening, startable, stranded, inFlight } = await preparePostChannelStart(
     locked,
@@ -180,6 +206,7 @@ async function publishPostChannel(
       dryRun,
       countInFlight: true,
       nothingMessage: "No hay nada que publicar en esta red: todo está publicado",
+      languages,
     },
   );
 

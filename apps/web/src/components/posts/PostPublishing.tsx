@@ -45,6 +45,16 @@ import {
   linkedinDownloads,
 } from "./linkedin.js";
 import { GET_IMAGE_ANCHOR, POST_MEDIA_ANCHOR } from "./media-anchor.js";
+import {
+  defaultChosen,
+  languagesByPlatform,
+  MIN_SPACING_MINUTES,
+  ONE_PER_NETWORK_TEXT,
+  type PublishRow,
+  platformsWithSeveral,
+  publishRows,
+  SUGGESTED_SPACING_MINUTES,
+} from "./publish-choice.js";
 
 /**
  * Las redes con al menos un texto aprobado, en el orden de los textos (el de la API). Con el post,
@@ -109,21 +119,79 @@ export function platformsMissingMedia(
 
 /** El resultado de programar, red por red: la hora o el motivo de lo que se saltó. */
 function ScheduleResults({ result }: { result: PostScheduleResponse }) {
+  const lines: { key: string; ok: boolean; text: string }[] = [];
+  result.results.forEach((row, index) => {
+    const name = row.platform === null ? "El post" : PLATFORM_TEXT[row.platform];
+    if (row.outcome !== "scheduled") {
+      lines.push({
+        key: `${index}`,
+        ok: false,
+        text: `${name}: ${row.message ?? "no se programó"}`,
+      });
+      return;
+    }
+    const publications = row.publications ?? [];
+    const times = new Set(publications.map((p) => p.scheduledAt?.getTime()));
+    if (publications.length > 1 && times.size > 1) {
+      for (const p of publications) {
+        lines.push({
+          key: p.id,
+          ok: true,
+          text: `${name} · ${LANGUAGE_TEXT[p.language]}: programado para el ${formatChileDayTime(p.scheduledAt ?? row.at ?? new Date())} (hora de Chile)`,
+        });
+      }
+      return;
+    }
+    lines.push({
+      key: `${index}`,
+      ok: true,
+      text: `${name}: programado para el ${row.at === undefined ? "" : formatChileDayTime(row.at)} (hora de Chile)`,
+    });
+  });
   return (
     <ul role="status" className="mt-2 space-y-1 text-sm">
-      {result.results.map((row, index) => (
-        <li
-          // biome-ignore lint/suspicious/noArrayIndexKey: el orden de la respuesta no cambia.
-          key={index}
-          className={row.outcome === "scheduled" ? "text-success-800" : "text-warning-800"}
-        >
-          {row.platform === null ? "El post" : PLATFORM_TEXT[row.platform]}:{" "}
-          {row.outcome === "scheduled"
-            ? `programado para el ${row.at === undefined ? "" : formatChileDayTime(row.at)} (hora de Chile)`
-            : (row.message ?? "no se programó")}
+      {lines.map((line) => (
+        <li key={line.key} className={line.ok ? "text-success-800" : "text-warning-800"}>
+          {line.text}
         </li>
       ))}
     </ul>
+  );
+}
+
+/** Una casilla por texto aprobado: «Instagram · español». */
+function TextRows({
+  rows,
+  picked,
+  onToggle,
+  idPrefix,
+  legend,
+}: {
+  rows: readonly PublishRow[];
+  picked: readonly string[];
+  onToggle: (contentId: string, on: boolean) => void;
+  idPrefix: string;
+  legend: string;
+}) {
+  return (
+    <fieldset className="flex flex-col gap-2">
+      <legend className="mb-1 font-medium text-fg">{legend}</legend>
+      {rows.map((row) => (
+        <label
+          key={row.contentId}
+          htmlFor={`${idPrefix}-${row.contentId}`}
+          className="flex items-center gap-2"
+        >
+          <input
+            id={`${idPrefix}-${row.contentId}`}
+            type="checkbox"
+            checked={picked.includes(row.contentId)}
+            onChange={(event) => onToggle(row.contentId, event.target.checked)}
+          />
+          {PLATFORM_TEXT[row.platform]} · {LANGUAGE_TEXT[row.language]}
+        </label>
+      ))}
+    </fieldset>
   );
 }
 
@@ -169,14 +237,29 @@ export function PostPublishBar({
     (platform) => !unconnected.includes(platform) && !noMedia.has(platform),
   );
   const [scheduling, setScheduling] = useState(false);
-  const [chosen, setChosen] = useState<PostPlatform[] | null>(null);
+  const [chosen, setChosen] = useState<string[] | null>(null);
+  const [spacing, setSpacing] = useState(SUGGESTED_SPACING_MINUTES);
+  const [scheduleResult, setScheduleResult] = useState<PostScheduleResponse | null>(null);
   const [published, setPublished] = useState<string | null>(null);
-  const selected = (chosen ?? ready).filter((platform) => ready.includes(platform));
   const unconnectedText = unconnected.map((platform) => PLATFORM_TEXT[platform]).join(", ");
   const toPublish = platformsToPublish(platforms, contents, publications);
   // Se programa lo que tiene algo por publicar y cuenta conectada.
   const schedulable = ready.filter((platform) => toPublish.includes(platform));
-  const toSchedule = selected.filter((platform) => schedulable.includes(platform));
+  // Un renglón por texto aprobado con algo por publicar. Por defecto sale UNO por red: los idiomas
+  // son el mismo post; el otro se marca a conciencia.
+  const rows = publishRows(ready, contents, publications);
+  const picked = (chosen ?? defaultChosen(rows, contents, publications)).filter((id) =>
+    rows.some((row) => row.contentId === id),
+  );
+  const toggle = (contentId: string, on: boolean) =>
+    setChosen(on ? [...picked, contentId] : picked.filter((id) => id !== contentId));
+  const languagesOf = languagesByPlatform(rows, picked);
+  const toSchedule = schedulable.filter((platform) => languagesOf.has(platform));
+  const several = platformsWithSeveral(rows, picked);
+  const multiLanguage = platforms.some(
+    (platform) => rows.filter((r) => r.platform === platform).length > 1,
+  );
+  const spacingTooShort = several.length > 0 && spacing < MIN_SPACING_MINUTES;
   if (platforms.length === 0) {
     return (
       <p className="text-sm text-fg-muted">
@@ -194,6 +277,24 @@ export function PostPublishBar({
           abajo.
         </p>
       )}
+      {multiLanguage && !scheduling && (
+        <div className="space-y-1 text-sm">
+          <TextRows
+            rows={rows.filter((row) => rows.filter((r) => r.platform === row.platform).length > 1)}
+            picked={picked}
+            onToggle={toggle}
+            idPrefix={`${ids}-publish`}
+            legend="Qué texto sale"
+          />
+          <p className="text-xs text-fg-subtle">{ONE_PER_NETWORK_TEXT}</p>
+          {several.length > 0 && (
+            <p className="text-warning-800">
+              Marcaste los dos idiomas de {several.map((p) => PLATFORM_TEXT[p]).join(", ")}: al
+              publicar saldrán los dos a la vez.
+            </p>
+          )}
+        </div>
+      )}
       <div className="flex flex-wrap gap-2">
         {toPublish.map((platform) => (
           <LiveConfirmButton
@@ -202,7 +303,10 @@ export function PostPublishBar({
             publishMode={publishMode}
             pending={publish.isPending}
             disabled={
-              lockReason !== null || unconnected.includes(platform) || noMedia.has(platform)
+              lockReason !== null ||
+              unconnected.includes(platform) ||
+              noMedia.has(platform) ||
+              !languagesOf.has(platform)
             }
             {...(lockReason !== null
               ? { title: lockReason }
@@ -210,18 +314,23 @@ export function PostPublishBar({
                 ? { title: `Sin cuenta conectada en ${PLATFORM_TEXT[platform]}` }
                 : noMedia.has(platform)
                   ? { title: noMedia.get(platform) ?? "" }
-                  : {})}
+                  : !languagesOf.has(platform)
+                    ? { title: "Marca el texto que quieres publicar" }
+                    : {})}
             onConfirm={() =>
-              publish.mutate(platform, {
-                onSuccess: (result) =>
-                  setPublished(
-                    `${PLATFORM_TEXT[platform]}: ${result.started.length + result.requeued.length} publicación(es) en curso${
-                      result.skipped.length > 0
-                        ? ` (${result.skipped.length} ya tenía una activa de otro texto)`
-                        : ""
-                    }.`,
-                  ),
-              })
+              publish.mutate(
+                { platform, languages: languagesOf.get(platform) ?? [] },
+                {
+                  onSuccess: (result) =>
+                    setPublished(
+                      `${PLATFORM_TEXT[platform]}: ${result.started.length + result.requeued.length} publicación(es) en curso${
+                        result.skipped.length > 0
+                          ? ` (${result.skipped.length} ya tenía una activa de otro texto)`
+                          : ""
+                      }.`,
+                    ),
+                },
+              )
             }
           />
         ))}
@@ -245,8 +354,8 @@ export function PostPublishBar({
         )}
       </div>
       <p className="text-xs text-fg-subtle">
-        Cada red se programa por separado: elige solo X para hoy y, otro día, vuelve a «Programar…»
-        con Instagram.
+        Cada botón publica los textos marcados de esa red. «Programar…» deja elegir varias redes a
+        la vez; cada una sale con sus textos marcados.
       </p>
       {noMedia.size > 0 && (
         <p className="text-sm text-warning-800">
@@ -283,42 +392,73 @@ export function PostPublishBar({
           pending={schedule.isPending}
           submitLabel="Programar"
           extra={
-            <fieldset className="flex flex-wrap gap-x-5 gap-y-2">
-              <legend className="mb-2 font-medium text-fg">Redes</legend>
-              {schedulable.map((platform) => (
-                <label
-                  key={platform}
-                  htmlFor={`${ids}-${platform}`}
-                  className="flex items-center gap-2"
+            <div className="space-y-2">
+              <TextRows
+                rows={rows.filter((row) => schedulable.includes(row.platform))}
+                picked={picked}
+                onToggle={toggle}
+                idPrefix={`${ids}-schedule`}
+                legend="Textos a programar"
+              />
+              {multiLanguage && <p className="text-xs text-fg-subtle">{ONE_PER_NETWORK_TEXT}</p>}
+              {several.length > 0 && (
+                <div
+                  role="alert"
+                  className="rounded-lg border border-warning-200 bg-warning-50 p-3"
                 >
-                  <input
-                    id={`${ids}-${platform}`}
-                    type="checkbox"
-                    checked={selected.includes(platform)}
-                    onChange={(event) =>
-                      setChosen(
-                        event.target.checked
-                          ? [...selected, platform]
-                          : selected.filter((item) => item !== platform),
-                      )
-                    }
-                  />
-                  {PLATFORM_TEXT[platform]}
-                </label>
-              ))}
-            </fieldset>
+                  <p className="font-medium text-warning-800">
+                    Marcaste los dos idiomas de {several.map((p) => PLATFORM_TEXT[p]).join(", ")}: a
+                    la misma hora saldrían dos iguales. Deja un espacio entre uno y otro.
+                  </p>
+                  <label className="mt-2 flex flex-wrap items-center gap-2 text-fg">
+                    Minutos entre uno y otro
+                    <Input
+                      type="number"
+                      width="auto"
+                      min={MIN_SPACING_MINUTES}
+                      max={240}
+                      value={spacing}
+                      onChange={(event) => setSpacing(Number(event.target.value))}
+                      className="w-24"
+                    />
+                  </label>
+                  {spacingTooShort && (
+                    <p className="mt-1 text-danger-700">
+                      Deja al menos {MIN_SPACING_MINUTES} minutos entre los dos.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
           }
-          onSubmit={(at) => {
-            if (toSchedule.length === 0) return;
-            schedule.mutate(
-              { platforms: toSchedule, at },
-              { onSuccess: () => setScheduling(false) },
-            );
+          onSubmit={async (at) => {
+            if (toSchedule.length === 0 || spacingTooShort) return;
+            setScheduleResult(null);
+            const all: PostScheduleResponse["results"] = [];
+            // Una red por pedido: cada una lleva sus propios idiomas.
+            for (const platform of toSchedule) {
+              const languages = languagesOf.get(platform) ?? [];
+              try {
+                const done = await schedule.mutateAsync({
+                  platforms: [platform],
+                  languages,
+                  at,
+                  ...(languages.length > 1 ? { spacingMinutes: spacing } : {}),
+                });
+                all.push(...done.results);
+              } catch {
+                // El error queda en `schedule.error`; lo ya programado se muestra abajo.
+                setScheduleResult({ results: all });
+                return;
+              }
+            }
+            setScheduleResult({ results: all });
+            setScheduling(false);
           }}
           onCancel={() => setScheduling(false)}
         />
       )}
-      {schedule.data && <ScheduleResults result={schedule.data} />}
+      {scheduleResult && <ScheduleResults result={scheduleResult} />}
       {schedule.error && <ErrorAlert error={schedule.error} />}
     </div>
   );

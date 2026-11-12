@@ -249,7 +249,10 @@ describe("panel: detalle de un post", () => {
     });
     await s.open();
     fireEvent.click(await screen.findByRole("button", { name: "Programar…" }));
-    expect(screen.getByRole("checkbox", { name: "Discord" })).toHaveProperty("checked", true);
+    expect(screen.getByRole("checkbox", { name: "Discord · español" })).toHaveProperty(
+      "checked",
+      true,
+    );
     // En 10 días, en punto (programar llega hasta 60 días adelante).
     const at = new Date(Date.now() + 10 * 86_400_000);
     at.setUTCMinutes(0, 0, 0);
@@ -265,6 +268,72 @@ describe("panel: detalle de un post", () => {
     ).toBeTruthy();
     const list = screen.getByRole("region", { name: "Publicaciones" });
     expect(await within(list).findByText("programada")).toBeTruthy();
+  });
+
+  it("«Usar este mismo texto en el otro idioma» copia el texto y los hashtags como borrador, sin guardar ni aprobar", async () => {
+    const s = await setup();
+    await s.draft([
+      { platform: "x", language: "es", body: "Hola" },
+      { platform: "x", language: "en", body: "Hello" },
+    ]);
+    await s.open();
+    fireEvent.click(screen.getByRole("button", { name: "Editar" }));
+    const form = screen.getByRole("form", { name: "Editar el texto de X · español" });
+    fireEvent.click(
+      within(form).getByRole("button", { name: "Usar este mismo texto en el otro idioma" }),
+    );
+    expect((within(form).getByLabelText("Texto") as HTMLTextAreaElement).value).toBe("Hello");
+    expect(within(form).getByRole("button", { name: "Guardar" })).toHaveProperty("disabled", false);
+    expect(s.requests.filter((request) => request.startsWith("PATCH"))).toEqual([]);
+    expect(s.requests.some((request) => request.includes("/approve"))).toBe(false);
+  });
+
+  it("con dos idiomas aprobados en una red, programar marca solo el primero; el otro, a conciencia y con espacio", async () => {
+    const s = await setup();
+    await s.draft([
+      { platform: "discord", language: "es" },
+      { platform: "discord", language: "en" },
+    ]);
+    for (const language of ["es", "en"] as const) {
+      await s.client.posts[":id"].contents[":platform"][":language"].approve.$post({
+        param: { id: s.post.id, platform: "discord", language },
+      });
+    }
+    await s.open();
+    fireEvent.click(await screen.findByRole("button", { name: "Programar…" }));
+    const es = screen.getByRole("checkbox", { name: "Discord · español" });
+    const en = screen.getByRole("checkbox", { name: "Discord · inglés" });
+    expect(es).toHaveProperty("checked", true);
+    expect(en).toHaveProperty("checked", false);
+    expect(screen.getByText(/Son el mismo post en dos idiomas: sale uno/)).toBeTruthy();
+    expect(screen.queryByText(/Minutos entre uno y otro/)).toBeNull();
+
+    // A conciencia: el otro idioma también, con el aviso y un espacio.
+    fireEvent.click(en);
+    expect(screen.getByText(/saldrían dos iguales/)).toBeTruthy();
+    const minutes = screen.getByLabelText(/Minutos entre uno y otro/);
+    fireEvent.change(minutes, { target: { value: "3" } });
+    expect(screen.getByText(/Deja al menos 10 minutos/)).toBeTruthy();
+    fireEvent.change(minutes, { target: { value: "20" } });
+
+    const at = new Date(Date.now() + 10 * 86_400_000);
+    at.setUTCMinutes(0, 0, 0);
+    fireEvent.change(screen.getByLabelText("Fecha y hora (Chile)"), {
+      target: { value: chileInputValue(at) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Programar" }));
+    await waitFor(() => expect(s.requests).toContain(`POST /posts/${s.post.id}/schedule`));
+    const later = new Date(at.getTime() + 20 * 60_000);
+    expect(
+      await screen.findByText(
+        `Discord · español: programado para el ${formatChileDayTime(at)} (hora de Chile)`,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        `Discord · inglés: programado para el ${formatChileDayTime(later)} (hora de Chile)`,
+      ),
+    ).toBeTruthy();
   });
 
   it("resuelve una publicación con resultado dudoso: «Sí, salió» la deja publicada", async () => {
