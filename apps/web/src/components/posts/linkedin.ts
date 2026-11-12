@@ -45,6 +45,12 @@ export type LinkedInDownload = {
   kind: "image" | "video";
   /** La URL temporal del medio ya procesado que lleva la publicación (`ig_4x5` o `ig_reel`). */
   url: string;
+  /**
+   * La misma URL firmada para bajar el archivo con un nombre claro (`Content-Disposition:
+   * attachment`): el clic lo descarga sin salir de la página. Sin ella (un servidor anterior), la
+   * `url` normal.
+   */
+  downloadUrl: string;
 };
 
 /**
@@ -56,6 +62,7 @@ export function linkedinDownloads(media: readonly ContentMedia[]): LinkedInDownl
     id: item.id,
     kind: item.mime.startsWith("video/") ? "video" : "image",
     url: item.url,
+    downloadUrl: item.downloadUrl ?? item.url,
   }));
 }
 

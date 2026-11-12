@@ -435,8 +435,12 @@ export function createInMemoryMediaStorage(
     async delete(path) {
       objects.delete(path);
     },
-    async signedReadUrl(path, ttlSeconds = 3600) {
-      return `memory://${path}?ttl=${ttlSeconds}`;
+    async signedReadUrl(path, ttlSeconds = 3600, options) {
+      const download =
+        options?.downloadName === undefined
+          ? ""
+          : `&download=${encodeURIComponent(options.downloadName)}`;
+      return `memory://${path}?ttl=${ttlSeconds}${download}`;
     },
     async signedUploadUrl(path, { contentType, contentLength, sha256, ttlSeconds }) {
       nextUpload += 1;

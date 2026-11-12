@@ -84,9 +84,9 @@ export function HandOpenControl({
 
 /**
  * Los medios de la publicación para bajarlos y ponerlos a mano en la red. Las fotos se pueden
- * arrastrar (la imagen es la misma que se enviaría); el video, solo abrir y guardar. Los enlaces
- * abren en otra pestaña (R2 es otro origen: `download` no descarga): ahí, clic derecho y «Guardar
- * imagen como…» (en el teléfono, mantener apretada la imagen).
+ * arrastrar (la imagen es la misma que se enviaría). Cada enlace baja el archivo de inmediato: la URL
+ * de descarga lleva `Content-Disposition: attachment` desde R2 (el `download` de un <a> no sirve en
+ * otro origen), así que no se abre otra pestaña. La vista previa usa la URL normal.
  */
 function HandDownloads({
   platform,
@@ -106,8 +106,8 @@ function HandDownloads({
           {" "}
           · {label} no {video ? "lo trae solo" : "las trae solas"}:{" "}
           {video
-            ? "ábrelo, guárdalo y súbelo al editor"
-            : "arrastra la foto al editor, o ábrela y guárdala con clic derecho → «Guardar imagen como…» (en el teléfono, mantén apretada la imagen)"}
+            ? "descárgalo y súbelo al editor"
+            : "descárgalas y súbelas al editor, o arrastra la foto"}
         </span>
       </p>
       <ul className="mt-1.5 flex flex-wrap gap-3">
@@ -122,9 +122,8 @@ function HandDownloads({
               />
             )}
             <a
-              href={item.url}
-              target="_blank"
-              rel="noreferrer noopener"
+              href={item.downloadUrl}
+              download
               className="text-xs font-semibold text-brand-800 underline underline-offset-2"
             >
               {item.kind === "video"

@@ -588,6 +588,33 @@ describe("signedReadUrl", () => {
     );
   });
 
+  it("con downloadName firma Content-Disposition: attachment con el nombre saneado", async () => {
+    const url = new URL(
+      await storage.signedReadUrl("a.jpg", undefined, { downloadName: "agentsales-ab12-1.jpg" }),
+    );
+
+    expect(url.searchParams.get("response-content-disposition")).toBe(
+      'attachment; filename="agentsales-ab12-1.jpg"',
+    );
+    expect(url.searchParams.get("X-Amz-SignedHeaders")).toBeTruthy();
+  });
+
+  it("sanea el nombre: sin comillas, barras ni caracteres raros", async () => {
+    const url = new URL(
+      await storage.signedReadUrl("a.jpg", 60, { downloadName: '../ñ"x\\y\r\nz.png' }),
+    );
+
+    expect(url.searchParams.get("response-content-disposition")).toBe(
+      'attachment; filename="x_y_z.png"',
+    );
+  });
+
+  it("sin downloadName la URL no pide attachment (vista previa)", async () => {
+    const url = new URL(await storage.signedReadUrl("a.jpg"));
+
+    expect(url.searchParams.has("response-content-disposition")).toBe(false);
+  });
+
   it("no expone el secreto en la URL", async () => {
     const url = await storage.signedReadUrl("a.jpg");
 
