@@ -109,11 +109,14 @@ function XLinkNote({ platform, text }: { platform: PostPlatform; text: string })
 function Editor({
   postId,
   content,
+  other,
   onClose,
   onDraft,
 }: {
   postId: string;
   content: PostContentView;
+  /** El texto de la misma red en el otro idioma, si hay: se puede copiar aquí como borrador. */
+  other?: PostContentView | undefined;
   onClose: () => void;
   onDraft: (draft: PreviewText | null) => void;
 }) {
@@ -183,6 +186,25 @@ function Editor({
         hashtags={hashtags}
         onAdd={(tag) => changeHashtags(`${hashtags.trim()} ${tag}`.trim())}
       />
+      {other !== undefined && other.body.trim() !== "" && (
+        <div className="space-y-1">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              setBody(other.body);
+              setHashtags(other.hashtags.join(" "));
+              onDraft(draftOf({ body: other.body, hashtags: other.hashtags.join(" ") }));
+            }}
+          >
+            Usar este mismo texto en el otro idioma
+          </Button>
+          <p className="text-xs text-fg-subtle">
+            Trae aquí el texto y los hashtags de {tabName(other)} (por ejemplo, un texto con los dos
+            idiomas). Queda como borrador editado y sin aprobar hasta que lo guardes y lo apruebes.
+          </p>
+        </div>
+      )}
       <PostCounter platform={platform} body={body} hashtags={tags} id={`${ids}-counter`} />
       <XLinkNote platform={platform} text={body} />
       {blank && (
@@ -209,6 +231,7 @@ function TextTab({
   media,
   publications,
   lockReason,
+  other,
 }: {
   postId: string;
   /**
@@ -217,6 +240,8 @@ function TextTab({
    */
   post: PostTextsPost;
   content: PostContentView;
+  /** El texto de la misma red en el otro idioma (para copiarlo al editar). */
+  other?: PostContentView | undefined;
   media: readonly PostMediaItem[];
   publications: readonly PublicationView[];
   lockReason: string | null;
@@ -292,6 +317,7 @@ function TextTab({
         <Editor
           postId={postId}
           content={content}
+          other={other}
           onClose={() => setEditing(false)}
           onDraft={setDraft}
         />
@@ -430,6 +456,10 @@ export function PostTexts({
           postId={postId}
           post={post}
           content={current}
+          other={texts.find(
+            (content) =>
+              content.platform === current.platform && content.language !== current.language,
+          )}
           media={media}
           publications={publications}
           lockReason={lockReason}

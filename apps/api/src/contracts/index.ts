@@ -1910,7 +1910,13 @@ export type PostContentParam = z.infer<typeof postContentParamSchema>;
  * `POST /posts/:id/publish`: una red del post (todos sus idiomas); el modo lo pone la API
  * (`PUBLISH_MODE`), nunca el cuerpo. Sin `--platform`, la CLI publica una red tras otra.
  */
-export const postPublishBodySchema = z.object({ platform: z.enum(POST_PLATFORMS) }).strict();
+export const postPublishBodySchema = z
+  .object({
+    platform: z.enum(POST_PLATFORMS),
+    /** Qué idiomas de la red; sin ellos, uno solo (los idiomas son el mismo post). */
+    languages: z.array(z.enum(LANGUAGES)).min(1).max(LANGUAGES.length).optional(),
+  })
+  .strict();
 export type PostPublishBody = z.infer<typeof postPublishBodySchema>;
 
 /** Lo que hizo publicar una red del post: lo mismo que publicar un canal de un aviso. */
@@ -1950,6 +1956,10 @@ export type PostRecordResponse = z.infer<typeof postRecordResponseSchema>;
 export const postScheduleBodySchema = z
   .object({
     platforms: z.array(z.enum(POST_PLATFORMS)).min(1).optional(),
+    /** Qué idiomas de cada red; sin ellos, uno solo (los idiomas son el mismo post). */
+    languages: z.array(z.enum(LANGUAGES)).min(1).max(LANGUAGES.length).optional(),
+    /** Minutos entre un idioma y el siguiente de una red (0 a 240); sin él, a la misma hora. */
+    spacingMinutes: z.number().int().min(0).max(240).optional(),
     at: scheduleAtSchema,
   })
   .strict();

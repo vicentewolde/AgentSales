@@ -684,6 +684,7 @@ describe("ajustes de la revisión", () => {
     expect(
       await runPostPublish(s.deps({ sleep: publishing.sleep, now: publishing.now }), post.id, {
         platform: "discord",
+        language: ["es,en"],
       }),
     ).toBe(0);
     expect(s.h.text()).toContain("Publicando en Discord: 1 publicación(es)");
@@ -881,6 +882,39 @@ describe("errores con su consejo y permisos", () => {
     expect(await runPostList(broker)).toBe(0);
     expect(s.h.text()).toContain("El mío");
     expect(s.h.text()).not.toContain("De otra marca");
+  });
+
+  it("schedule con dos idiomas aprobados: sin --language programa uno; con ambos, pide espacio", async () => {
+    const s = await setup();
+    expect(await runPostCreate(s.deps(), "Bilingüe", { broker: "agentpey" })).toBe(0);
+    const post = await s.created();
+    s.setDraft({
+      texts: [
+        { platform: "discord", language: "es" },
+        { platform: "discord", language: "en" },
+      ],
+    });
+    expect(await runPostDraft(s.deps(), post.id)).toBe(0);
+    expect(await runPostApprove(s.deps(), post.id, {})).toBe(0);
+
+    const at = inHours(3);
+    // A la misma hora los dos: el servidor lo rechaza con un código claro.
+    expect(await runPostSchedule(s.deps(), post.id, { at, language: ["es,en"] })).toBe(1);
+    expect(s.h.text()).toContain("SCHEDULE_SAME_TIME");
+    expect(s.publicationsOf(post.id).some((p) => p.status === "scheduled")).toBe(false);
+
+    expect(await runPostSchedule(s.deps(), post.id, { at, language: ["xx"] })).toBe(1);
+    expect(s.h.errors()).toContain("LANGUAGE_INVALID");
+
+    // Sin --language, uno solo.
+    s.h.out.length = 0;
+    expect(await runPostSchedule(s.deps(), post.id, { at })).toBe(0);
+    expect(s.h.text()).toContain(`Discord [es]: programada para ${at}`);
+    expect(s.publicationsOf(post.id).filter((p) => p.status === "scheduled")).toHaveLength(1);
+
+    // El otro, a conciencia y a otra hora.
+    expect(await runPostSchedule(s.deps(), post.id, { at: inHours(5), language: ["en"] })).toBe(0);
+    expect(s.publicationsOf(post.id).filter((p) => p.status === "scheduled")).toHaveLength(2);
   });
 
   it("en vivo, programar y publicar preguntan; si no, no cambia nada", async () => {

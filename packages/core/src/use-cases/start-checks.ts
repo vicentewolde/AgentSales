@@ -1,5 +1,5 @@
 import type { Content } from "../content.js";
-import type { Platform } from "../enums.js";
+import { LANGUAGES, type Language, type Platform } from "../enums.js";
 import { AppError } from "../errors.js";
 import type { FieldDefinition } from "../field-definition.js";
 import type { Listing } from "../listing.js";
@@ -304,20 +304,35 @@ export type PostChannelStart = {
 export async function preparePostChannelStart(
   locked: PostLockedRepositories,
   { subject, platform }: { subject: PostSubject; platform: Platform },
-  options: Pick<StartCheckOptions, "dryRun"> & { countInFlight: boolean; nothingMessage: string },
+  options: Pick<StartCheckOptions, "dryRun"> & {
+    countInFlight: boolean;
+    nothingMessage: string;
+    /** Los idiomas a publicar; sin ellos, uno solo (`defaultPostLanguages`). */
+    languages?: readonly Language[] | undefined;
+  },
 ): Promise<PostChannelStart> {
   const post = await locked.posts.get(subject.id);
   if (post === null) throw postNotFound(subject.id);
   if (!canDraftPost(post.status)) throw postNotReady(post);
   await requireNoActiveRun(locked, subject);
-  const approved = (await locked.contents.listCurrent(subject)).filter(
+  const approvedAll = (await locked.contents.listCurrent(subject)).filter(
     (content) => content.platform === platform && content.status === "approved",
   );
-  if (approved.length === 0) {
+  if (approvedAll.length === 0) {
     throw new AppError(
       "CONTENT_NOT_APPROVED",
       "El post no tiene un texto aprobado en esta red: apruébalo antes de publicar",
       { details: { postId: post.id, platform } },
+    );
+  }
+  const channelAll = await channelPublications(locked, subject, platform);
+  const languages = options.languages ?? defaultPostLanguages(approvedAll, channelAll);
+  const approved = approvedAll.filter((content) => languages.includes(content.language));
+  if (approved.length === 0) {
+    throw new AppError(
+      "CONTENT_NOT_APPROVED",
+      "El post no tiene un texto aprobado en esta red y ese idioma: apruébalo antes de publicar",
+      { details: { postId: post.id, platform, languages: [...languages] } },
     );
   }
   // Las redes del post (F9-T20/T21): un texto aprobado de una red que el operador le quitó no se
@@ -342,7 +357,7 @@ export async function preparePostChannelStart(
     opening.skipped.push(...planned.skipped);
   }
   const toCreate = opening.toCreate.reduce((sum, item) => sum + item.planned.length, 0);
-  const channel = await channelPublications(locked, subject, platform);
+  const channel = channelAll.filter((publication) => languages.includes(publication.language));
   const pending = channel.filter((publication) => STARTABLE_STATUSES.includes(publication.status));
   const startable = pending.filter((p) => connected.has(p.platformAccountId));
   const stranded = pending.filter((p) => !connected.has(p.platformAccountId));
@@ -378,4 +393,34 @@ export async function preparePostChannelStart(
     );
   }
   return { post, opening, startable, stranded, inFlight };
+}
+
+/** Estados de una publicación que ya salió o está saliendo: ese idioma ya tiene su turno. */
+const TAKEN_STATUSES: readonly Publication["status"][] = [
+  "published",
+  "scheduled",
+  "publishing",
+  "awaiting_manual_confirm",
+  "outcome_unknown",
+];
+
+/**
+ * Los idiomas que se publican cuando el pedido no dice cuáles (la CLI, la API sin `languages`, la
+ * aprobación de la semana): **uno solo** por red, porque los idiomas de un post son el mismo post
+ * dicho dos veces y no deben salir a la vez. Es el primero con texto aprobado (en el orden de
+ * `LANGUAGES`). Si ya hay un idioma publicado, programado o saliendo en la red, son esos mismos
+ * (reintentarlos o reencolarlos), y el otro solo sale si se pide a conciencia.
+ */
+export function defaultPostLanguages(
+  approved: readonly Pick<Content, "language">[],
+  channel: readonly Pick<Publication, "language" | "status">[],
+): Language[] {
+  const present = LANGUAGES.filter((language) =>
+    approved.some((content) => content.language === language),
+  );
+  const taken = present.filter((language) =>
+    channel.some((p) => p.language === language && TAKEN_STATUSES.includes(p.status)),
+  );
+  if (taken.length > 0) return taken;
+  return present.slice(0, 1);
 }
