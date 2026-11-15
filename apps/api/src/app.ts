@@ -30,6 +30,7 @@ import {
   type PlanRunRepository,
   type Platform,
   type PlatformAccountRepository,
+  type PostCardTextRepository,
   type PostImageRunRepository,
   type PostImageSourcesConfig,
   type PostLock,
@@ -67,6 +68,7 @@ import { musicRoutes } from "./routes/music.js";
 import { type OAuthDeps, oauthRoutes } from "./routes/oauth.js";
 import { type LinkedInOAuthDeps, linkedinOAuthRoutes } from "./routes/oauth-linkedin.js";
 import { planRoutes } from "./routes/plans.js";
+import { postCardTextRoutes } from "./routes/post-card-texts.js";
 import { postRoutes } from "./routes/posts.js";
 import {
   listingPublicationRoutes,
@@ -110,11 +112,12 @@ export type AppDeps = {
   /**
    * Las URLs de lectura temporales de los medios (fotos, renders y reel); desde F7-T14, subir el
    * logo de un corredor, y desde F8 (spec §4.4, ADR-0025) firmar las subidas directas de una carga,
-   * revisar que llegaron y borrarlas; desde F9.5-T19, ver si una pista de música está en R2.
+   * revisar que llegaron y borrarlas; desde F9.5-T19, ver si una pista de música está en R2;
+   * desde F9.7 (B7), leer las láminas de un carrusel para su PDF de LinkedIn.
    */
   storage: Pick<
     MediaStorage,
-    "signedReadUrl" | "put" | "signedUploadUrl" | "list" | "delete" | "head"
+    "signedReadUrl" | "put" | "signedUploadUrl" | "list" | "delete" | "head" | "get"
   >;
   /** El logo de un corredor con sharp (`@agentsales/media/logo`; F7-T14). */
   logos: LogoNormalizer;
@@ -182,6 +185,8 @@ export type AppDeps = {
   /** F9.7 B4: el estilo de las imágenes de la marca, el tema de cada post y su lámina de muestra. */
   cardStyles: CardStyleRepository;
   cardStylePreview: CardStylePreviewer;
+  /** F9.7 B5: los textos de las láminas de cada post. */
+  cardTexts: PostCardTextRepository;
   /**
    * Los planes de ideas (F9-T21, ADR-0030): pedirlos (`content.plan` los corre en el worker), listar
    * los de una marca y ver uno con sus ideas.
@@ -459,6 +464,7 @@ export function createApp(input: AppDeps) {
     .route("/leads", leadRoutes(deps))
     .route("/webhooks", leadWebhookRoutes(deps))
     .route("/posts", postRoutes(deps))
+    .route("/posts", postCardTextRoutes(deps))
     .route("/plans", planRoutes(deps))
     .route("/music", musicRoutes(deps))
     .route("/schedule", scheduleRoutes(publicationDeps))

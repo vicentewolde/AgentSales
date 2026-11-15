@@ -103,6 +103,7 @@ export {
   createInMemoryPlatformCatalogRepository,
   type InMemoryPlatformCatalogRepository,
 } from "./platform-catalog.js";
+export { createInMemoryPostCardTextRepository } from "./post-card-texts.js";
 export {
   createFakeCardRenderer,
   createFakeImageGenerator,

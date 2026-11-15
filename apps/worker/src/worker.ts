@@ -23,6 +23,7 @@ import {
 import {
   createBrandKnowledgeRepository,
   createBrokerRepository,
+  createCardStyleRepository,
   createContentRepository,
   createContentRunRepository,
   createDb,
@@ -38,6 +39,7 @@ import {
   createPlanRunRepository,
   createPlatformAccountRepository,
   createPlatformCatalogRepository,
+  createPostCardTextRepository,
   createPostImageRunRepository,
   createPostLock,
   createPostRepository,
@@ -282,6 +284,9 @@ const editorialProfiles = editorialProfilesWithKnowledge(
   brandKnowledge,
 );
 const knowledgeProposals = createKnowledgeProposalRepository(database.db);
+// F9.7 B4 a B6: el estilo de las imágenes y los textos de las láminas.
+const cardStyles = createCardStyleRepository(database.db);
+const cardTexts = createPostCardTextRepository(database.db);
 const marketplaceWindows = createMarketplaceWindows({
   publications,
   confirm: (publicationId, url) =>
@@ -481,6 +486,8 @@ const jobs = buildJobs({
       // El idioma de las tarjetas: la revisión de cada texto cuenta las imágenes de su idioma.
       postImageRuns,
       postLock,
+      // F9.7 B5: los textos de las láminas de un post de imagen o carrusel.
+      cardTexts,
       // Con `fake`, el borrador de ejemplo de un post (no el de un aviso).
       llm: createLlmProvider(socialLlmProviderOptions(env, process.env)),
       apiLlm,
@@ -532,6 +539,9 @@ const jobs = buildJobs({
       // Se arma más abajo (`jobQueueFromBoss`); los handlers corren después de arrancar.
       queue: { enqueue: (name, data, options) => queue.enqueue(name, data, options) },
       cards: createCardRenderer(),
+      // F9.7 B4 a B6: las láminas con el estilo de la marca y sus textos.
+      cardStyles,
+      cardTexts,
       stock: env.PIXABAY_API_KEY ? createPixabayStock({ apiKey: env.PIXABAY_API_KEY }) : null,
       ai: env.GEMINI_API_KEY
         ? {

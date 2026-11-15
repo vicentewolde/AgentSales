@@ -5,6 +5,7 @@ import type {
   StockPhotoView,
 } from "@agentsales/api/contracts";
 import {
+  type CardComposition,
   formatUsd,
   LANGUAGE_TEXT,
   type Language,
@@ -273,6 +274,8 @@ function CardsTab({
   const dialog = useRef<HTMLDivElement>(null);
   // Por defecto se quitan las tarjetas anteriores: lo normal es rehacerlas, no sumarlas.
   const [replace, setReplace] = useState(true);
+  // F9.7 B6: con el estilo de la marca, la composición de las láminas.
+  const [composition, setComposition] = useState<CardComposition>("announce");
   const [confirmRemove, setConfirmRemove] = useState<"language" | "all" | null>(null);
   // Lo que se rehace: las de ese idioma y las de un pedido anterior al idioma (de idioma desconocido).
   const unknown = cards?.unknown ?? 0;
@@ -294,6 +297,7 @@ function CardsTab({
       ...(first === undefined ? {} : { language: first }),
       ...(rest.length > 0 ? { thenLanguages: rest } : {}),
       ...(anyExisting && replace ? { replaceCards: true } : {}),
+      composition,
     });
   };
   return (
@@ -306,6 +310,19 @@ function CardsTab({
             : "Una tarjeta con el título del texto sobre tus colores y tu logo. Sin costo."}{" "}
         {several && "Cada texto se publica con las tarjetas de su idioma: haz las de cada idioma."}
       </p>
+      <Field
+        label="Composición (con el estilo de la marca)"
+        hint="Solo si la marca tiene «Estilo de imágenes» en Mi marca; si no, salen como siempre."
+      >
+        <Select
+          width="auto"
+          value={composition}
+          onChange={(event) => setComposition(event.target.value as CardComposition)}
+        >
+          <option value="announce">Anuncio: logo, objeto central y titular</option>
+          <option value="explain">Explicar: titular y tarjetas en grilla</option>
+        </Select>
+      </Field>
       {choose && (
         <Field label="Idioma de las tarjetas">
           <Select

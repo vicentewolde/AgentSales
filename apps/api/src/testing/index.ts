@@ -40,6 +40,7 @@ import {
   createInMemoryMetaDeletionRepository,
   createInMemoryPlanRunRepository,
   createInMemoryPlatformAccountRepository,
+  createInMemoryPostCardTextRepository,
   createInMemoryPostImageRunRepository,
   createInMemoryPostLock,
   createInMemoryPostRepository,
@@ -537,6 +538,7 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     brandKnowledge,
     knowledgeProposals: createInMemoryKnowledgeProposalRepository(),
     cardStyles: createInMemoryCardStyleRepository(),
+    cardTexts: createInMemoryPostCardTextRepository(),
     // Un PNG de 1×1: las pruebas no dibujan (eso lo prueba `@agentsales/media`).
     cardStylePreview: async () => TEST_PNG,
     platformAccounts: createInMemoryPlatformAccountRepository({ nextId: randomUUID }),

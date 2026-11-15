@@ -161,6 +161,8 @@ const CONFLICTS = new Set([
   "KNOWLEDGE_TOO_MANY_UPDATES",
   "KNOWLEDGE_UPDATE_ARCHIVED",
   "KNOWLEDGE_PROPOSAL_RESOLVED",
+  // F9.7 B7: el PDF para LinkedIn de un post sin imágenes JPEG de ese idioma.
+  "POST_PDF_NO_IMAGES",
 ]);
 
 /**

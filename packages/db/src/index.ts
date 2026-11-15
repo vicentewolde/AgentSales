@@ -37,6 +37,7 @@ export { createMetaDeletionRepository } from "./repositories/meta-deletion-reque
 export { createPlanRunRepository } from "./repositories/plan-runs.js";
 export { createPlatformAccountRepository } from "./repositories/platform-accounts.js";
 export { createPlatformCatalogRepository } from "./repositories/platform-catalog.js";
+export { createPostCardTextRepository } from "./repositories/post-card-texts.js";
 export { createPostImageRunRepository } from "./repositories/post-image-runs.js";
 export { createPostRepository, createPostUploadRepository } from "./repositories/posts.js";
 export { createPublicationRepository } from "./repositories/publications.js";

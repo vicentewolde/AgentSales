@@ -118,6 +118,10 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "GET /brokers/:id/card-style": "session",
   "PUT /brokers/:id/card-style": "session",
   "POST /brokers/:id/card-style/preview": "session",
+  // F9.7 B5: los textos de las láminas de un post (`posts.manage` en core; lo ajeno 404).
+  "GET /posts/:id/card-texts": "session",
+  "PUT /posts/:id/card-texts/:language": "session",
+  "GET /posts/:id/linkedin-pdf": "session",
   // F9-T10: los posts y sus medios, con `posts.manage` revisado en core; un corredor ve y gestiona
   // solo los de su marca (lo ajeno es 404: `ownedBy` y core), el administrador todos.
   "GET /posts": "session",

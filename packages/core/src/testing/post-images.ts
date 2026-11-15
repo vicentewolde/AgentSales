@@ -170,17 +170,33 @@ export const fakeJpeg = (text: string): Uint8Array =>
   Uint8Array.from([0xff, 0xd8, 0xff, ...encoder.encode(text)]);
 
 /** Tarjetas falsas: un «JPEG» con el papel, la proporción y el texto; guarda cada llamada. */
-export function createFakeCardRenderer(): CardRenderer & {
-  calls: { card: CardSpec; format: PostImageFormat; brandName: string; logo: boolean }[];
-} {
-  const calls: { card: CardSpec; format: PostImageFormat; brandName: string; logo: boolean }[] = [];
+type FakeCardCall = {
+  card: CardSpec;
+  format: PostImageFormat;
+  brandName: string;
+  logo: boolean;
+  /** F9.7: el tema y la composición con el estilo de la marca; `null` sin estilo. */
+  styled?: { theme: number; composition: string } | null;
+};
+
+export function createFakeCardRenderer(): CardRenderer & { calls: FakeCardCall[] } {
+  const calls: FakeCardCall[] = [];
   return {
     version: "fake-1",
     calls,
     async render(card, { format, brand }) {
-      calls.push({ card, format, brandName: brand.brandName, logo: brand.logo !== null });
+      calls.push({
+        card,
+        format,
+        brandName: brand.brandName,
+        logo: brand.logo !== null,
+        ...(brand.style == null
+          ? {}
+          : { styled: { theme: brand.style.theme, composition: brand.style.composition } }),
+      });
       const text = `card:${format}:${card.role}:${card.position}/${card.total}:${card.text}`;
-      const [width, height] = format === "4:5" ? [1080, 1350] : [1080, 1920];
+      const [width, height] =
+        format === "4:5" ? [1080, 1350] : format === "1:1" ? [1080, 1080] : [1080, 1920];
       return {
         bytes: fakeJpeg(text),
         width: width ?? 1080,

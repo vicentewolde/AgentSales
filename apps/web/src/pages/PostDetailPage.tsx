@@ -32,6 +32,7 @@ import { ErrorAlert } from "../components/ErrorAlert.js";
 import { useBrandPlatforms } from "../components/posts/brand-platforms.js";
 import { LiveConfirmButton } from "../components/posts/LiveConfirm.js";
 import { POST_KIND_LABEL, PostStatusBadge } from "../components/posts/labels.js";
+import { PostCardTexts } from "../components/posts/PostCardTexts.js";
 import {
   PostLanguagesField,
   PostLanguagesNotice,
@@ -929,6 +930,12 @@ export function PostDetailPage() {
               media={media}
               lockReason={archived ? "El post está archivado." : null}
               waiting={uploadsInReview}
+            />
+            {/* F9.7 B5 y B7: los textos de las láminas y el PDF para LinkedIn. */}
+            <PostCardTexts
+              postId={item.id}
+              kind={item.kind}
+              lockReason={archived ? "El post está archivado." : null}
             />
             <PostMusic
               post={item}

@@ -2,13 +2,16 @@ import {
   BRAND_KNOWLEDGE_LIMITS,
   CARD_COMPOSITIONS,
   CARD_STYLE_MAX_THEMES,
+  CONTENT_CHECK_SEVERITY_LEVELS,
   cardStyleSchema,
   KNOWLEDGE_PROPOSAL_KINDS,
   knowledgeExampleSchema,
   knowledgeProposalSchema,
   knowledgeRunSchema,
   knowledgeUpdateSchema,
+  LANGUAGES,
   POST_IMAGE_FORMATS,
+  postCardTextSchema,
 } from "@agentsales/core";
 import { z } from "zod";
 
@@ -163,3 +166,43 @@ export const cardStylePreviewBodySchema = z
   })
   .strict();
 export type CardStylePreviewBody = z.infer<typeof cardStylePreviewBodySchema>;
+
+// ── Textos de las láminas de un post (F9.7 B5) ───────────────────────────
+
+export const postCardTextsResponseSchema = z.object({
+  postId: z.string(),
+  languages: z.array(z.enum(LANGUAGES)),
+  texts: z.array(
+    postCardTextSchema.extend({
+      updatedAt: z.coerce.date(),
+      checks: z.array(
+        z.object({
+          code: z.string(),
+          severity: z.enum(CONTENT_CHECK_SEVERITY_LEVELS),
+          message: z.string(),
+        }),
+      ),
+    }),
+  ),
+});
+export type PostCardTextsResponse = z.infer<typeof postCardTextsResponseSchema>;
+
+export const postCardTextsParamSchema = z.object({ id: z.uuid(), language: z.enum(LANGUAGES) });
+export const postCardTextsBodySchema = z
+  .object({
+    texts: z
+      .array(
+        z
+          .object({
+            headline: z.string().max(400),
+            subtitle: z.string().max(800).nullable().optional(),
+          })
+          .strict(),
+      )
+      .max(20),
+  })
+  .strict();
+export type PostCardTextsBody = z.infer<typeof postCardTextsBodySchema>;
+
+/** `GET /posts/:id/linkedin-pdf?language=es` (F9.7 B7): por defecto, español. */
+export const postLinkedInPdfQuerySchema = z.object({ language: z.enum(LANGUAGES).default("es") });

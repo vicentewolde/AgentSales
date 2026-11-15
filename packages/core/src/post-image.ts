@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CARD_COMPOSITIONS } from "./card-style.js";
 import { contentRunErrorSchema } from "./content.js";
 import { LANGUAGES } from "./enums.js";
 import { AppError } from "./errors.js";
@@ -67,6 +68,11 @@ export const postImageRequestSchema = z.discriminatedUnion("source", [
      * bien, el worker pide el siguiente (un post tiene un solo pedido activo a la vez).
      */
     thenLanguages: z.array(z.enum(LANGUAGES)).max(LANGUAGES.length).optional(),
+    /**
+     * F9.7 B6: la composición de las láminas con el estilo de la marca («Anuncio» o «Explicar»);
+     * sin estilo no se usa. Por defecto, «Anuncio».
+     */
+    composition: z.enum(CARD_COMPOSITIONS).optional(),
   }),
   /**
    * Una foto de la biblioteca: su id (el worker la vuelve a pedir a Pixabay con ese id, nunca con

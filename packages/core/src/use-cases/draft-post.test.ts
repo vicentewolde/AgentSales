@@ -22,6 +22,7 @@ import {
   createInMemoryLlmProvider,
   createInMemoryMediaRepository,
   createInMemoryPlatformAccountRepository,
+  createInMemoryPostCardTextRepository,
   createInMemoryPostLock,
   createInMemoryPostRepository,
   createInMemoryPostUploadRepository,
@@ -923,6 +924,39 @@ describe("draftPost · corridas acotadas (agregar una red, rehacer un texto)", (
       ["linkedin", liText.body],
     ]);
     expect(after[1]?.id).toBe(liText.id);
+  });
+
+  it("F9.7 B5: en un carrusel guarda los textos de las láminas, sin pisar los que revisó el operador", async () => {
+    const slides = [
+      { language: "es", role: "cover", headline: "Cómo publico", subtitle: "En LinkedIn y X" },
+      { language: "es", role: "point", headline: "Primero", subtitle: "" },
+    ];
+    const t = await setup({
+      kind: "carousel",
+      platforms: ["linkedin"],
+      llm: [
+        { data: { ...answer([{ platform: "linkedin", language: "es" }]), slides } },
+        { data: { ...answer([{ platform: "linkedin", language: "es" }]), slides } },
+      ],
+    });
+    const cardTexts = createInMemoryPostCardTextRepository();
+    const deps = { ...t.deps, cardTexts };
+    const first = await t.request();
+    await draftPost(deps, { contentRunId: first.run.id, isLastAttempt: false });
+    expect(t.llm.requests[0]?.prompt).toContain('"laminas_pedidas"');
+    expect((await cardTexts.list(t.post.id)).map((text) => [text.role, text.headline])).toEqual([
+      ["cover", "Cómo publico"],
+      ["point", "Primero"],
+    ]);
+    await cardTexts.replace(t.post.id, "es", [{ role: "cover", headline: "Mía", subtitle: "" }], {
+      fromAi: false,
+    });
+    const second = await t.request(true);
+    const result = await draftPost(deps, { contentRunId: second.run.id, isLastAttempt: false });
+    expect((await cardTexts.list(t.post.id)).map((text) => text.headline)).toEqual(["Mía"]);
+    expect(result.outcome === "succeeded" && result.report.warnings.join(" ")).toContain(
+      "ya las revisaste",
+    );
   });
 
   it("F9.7: el conocimiento de la marca llega a rehacer un texto, y su novedad es fuente de hechos", async () => {

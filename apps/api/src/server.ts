@@ -52,6 +52,7 @@ import {
   createPlanRunRepository,
   createPlatformAccountRepository,
   createPlatformCatalogRepository,
+  createPostCardTextRepository,
   createPostImageRunRepository,
   createPostLock,
   createPostRepository,
@@ -240,6 +241,7 @@ const app = createApp({
   brandKnowledge,
   knowledgeProposals: createKnowledgeProposalRepository(database.db),
   cardStyles: createCardStyleRepository(database.db),
+  cardTexts: createPostCardTextRepository(database.db),
   // La lámina de muestra del estilo (F9.7 B4): sharp, sin navegador.
   cardStylePreview: async ({ style, brandName, detail, theme, composition, format }) =>
     (
