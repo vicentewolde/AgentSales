@@ -1,6 +1,6 @@
 {
-  "id": "5c5b62c9-dce4-477a-bc6d-2a6a86dfa40c",
-  "prevId": "013bbbfe-a891-4d74-bad7-5a5d5f3ffeea",
+  "id": "f51e5443-39cc-4a1e-8efc-aa03317f0a48",
+  "prevId": "be462b2f-e8e7-43e1-941c-28e904871785",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -245,6 +245,12 @@
         "auto_publish_done_at": {
           "name": "auto_publish_done_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scope": {
+          "name": "scope",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },

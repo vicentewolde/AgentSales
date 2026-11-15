@@ -6,11 +6,12 @@ import {
   type PostPlatform,
   type PostStatus,
 } from "../enums.js";
-import { AppError } from "../errors.js";
+import { AppError, isAppError } from "../errors.js";
 import { PLATFORM_TEXT, POST_KIND_TEXT } from "../labels.js";
 import { checkMusicTrackId } from "../music/catalog.js";
 import { assertCan, scopeOf } from "../permissions.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
+import type { ContentRepository } from "../ports/content-repository.js";
 import type { EditorialProfileRepository } from "../ports/editorial-profile-repository.js";
 import type { JobQueue } from "../ports/job-queue.js";
 import type { PostLock } from "../ports/post-lock.js";
@@ -18,8 +19,10 @@ import type { PostChanges, PostFilters, PostRepository } from "../ports/post-rep
 import type { Post } from "../post.js";
 import { PENDING_PUBLICATION_STATUSES } from "../publication-state.js";
 import { normalizePostLanguages } from "../social/post-languages.js";
+import { addedPlatformsToDraft } from "../social/post-networks.js";
 import { postSubject } from "../subject.js";
 import type { User } from "../user.js";
+import { type RequestContentRunDeps, requestContentRun } from "./request-content-run.js";
 
 // Los posts manuales (spec F9 §4.2 y §4.10, F9-T10): crear, listar, ver, editar y archivar. Un post
 // cuelga de cualquier corredor o marca (ADR-0029, punto 1). El alcance va siempre por `scopeOf`,
@@ -334,6 +337,62 @@ export async function updatePost(
     await deps.queue.enqueue("post.media", { postId }, { singletonKey: postId });
   }
   return updated;
+}
+
+export type EditPostDeps = UpdatePostDeps &
+  RequestContentRunDeps & { contents: Pick<ContentRepository, "listCurrent"> };
+
+/**
+ * Las redes que la IA empezó a redactar al guardar (o por qué no pudo): con `contentRunId` va la
+ * corrida (se sigue en el detalle del post); con `error`, el motivo (por ejemplo, el tope de IA del
+ * mes), y el panel ofrece «Redactar solo …».
+ */
+export type PostDrafting = {
+  platforms: PostPlatform[];
+  contentRunId: string | null;
+  error: { code: string; message: string } | null;
+};
+
+/**
+ * Edita un post (`updatePost`) y, si con la edición se le **agregó** una red a un post ya redactado
+ * (`addedPlatformsToDraft`), pide a la IA solo los textos de esas redes (en sus idiomas, corrida con
+ * alcance `missing`): los demás textos (editados, aprobados o no) no se tocan. El pedido va
+ * **después** de confirmar la edición, como `post.media` al cambiar la música. Si el pedido no se
+ * puede (el tope de IA, la cola), la edición queda igual y `drafting.error` dice por qué.
+ */
+export async function editPost(
+  deps: EditPostDeps,
+  actor: Actor,
+  postId: string,
+  input: UpdatePostInput,
+): Promise<{ post: Post; drafting: PostDrafting | null }> {
+  const before = input.platforms === undefined ? null : await deps.posts.get(postId);
+  const post = await updatePost(deps, actor, postId, input);
+  if (before === null) return { post, drafting: null };
+  const added = addedPlatformsToDraft({
+    before: before.platforms,
+    post,
+    contents: await deps.contents.listCurrent(postSubject(post.id)),
+  });
+  if (added.length === 0) return { post, drafting: null };
+  try {
+    const { run } = await requestContentRun(deps, {
+      postId: post.id,
+      scope: { platforms: added, language: null, mode: "missing", guidance: null },
+    });
+    return { post, drafting: { platforms: added, contentRunId: run.id, error: null } };
+  } catch (error) {
+    // La edición ya quedó: un pedido que no se pudo no la deshace (el panel ofrece repetirlo).
+    if (!isAppError(error)) throw error;
+    return {
+      post,
+      drafting: {
+        platforms: added,
+        contentRunId: null,
+        error: { code: error.code, message: error.message },
+      },
+    };
+  }
 }
 
 /**

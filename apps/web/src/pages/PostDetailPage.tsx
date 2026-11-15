@@ -1,22 +1,36 @@
-import type { ContentRunView, PostJson } from "@agentsales/api/contracts";
+import type {
+  ContentRunView,
+  PostDetailResponse,
+  PostDraftingView,
+  PostJson,
+  PostResponse,
+  PostScheduleResponse,
+} from "@agentsales/api/contracts";
 import {
   chileInputValue,
   formatChileDayTime,
   isAppError,
   isTerminalContentRun,
+  LANGUAGE_TEXT,
+  PENDING_PUBLICATION_STATUSES,
   PLATFORM_TEXT,
   type Platform,
   POST_KINDS,
   POST_PLATFORMS,
   type PostKind,
   type PostPlatform,
+  PUBLICATION_STATUS_TEXT,
+  type PublishMode,
   parseChileTime,
+  postKindIssues,
   postNetworkGaps,
+  rescheduleSuggestion,
 } from "@agentsales/core";
 import { type FormEvent, useState } from "react";
 import { Link, useParams } from "react-router";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { useBrandPlatforms } from "../components/posts/brand-platforms.js";
+import { LiveConfirmButton } from "../components/posts/LiveConfirm.js";
 import { POST_KIND_LABEL, PostStatusBadge } from "../components/posts/labels.js";
 import {
   PostLanguagesField,
@@ -44,12 +58,43 @@ import {
   useArchivePost,
   useEditorialProfile,
   usePost,
+  usePostPublicationAction,
   useRequestPostDraft,
+  useSchedulePost,
   useUpdatePost,
 } from "../queries/posts.js";
 
+/** Las redes, en palabras: «LinkedIn» o «X y LinkedIn». */
+const networkNames = (platforms: readonly Platform[]) => {
+  const names = platforms.map((platform) => PLATFORM_TEXT[platform]);
+  return names.length <= 1
+    ? (names[0] ?? "")
+    : `${names.slice(0, -1).join(", ")} y ${names[names.length - 1]}`;
+};
+
+/** De qué textos es una corrida acotada: «LinkedIn» o «X · español». */
+function scopeText(scope: NonNullable<ContentRunView["scope"]>): string {
+  const names = networkNames(scope.platforms);
+  return scope.language === null ? names : `${names} · ${LANGUAGE_TEXT[scope.language]}`;
+}
+
 /** En qué va la corrida de textos, en palabras. */
 function runText(run: ContentRunView): string {
+  const scope = run.scope;
+  if (scope !== null) {
+    const what = scopeText(scope);
+    switch (run.status) {
+      case "queued":
+      case "running":
+        return scope.mode === "missing"
+          ? `Redactando el texto de ${what}…`
+          : `Rehaciendo el texto de ${what}…`;
+      case "succeeded":
+        return `Texto de ${what} redactado el ${formatChileDayTime(run.finishedAt ?? run.createdAt)}.`;
+      default:
+        return `La redacción del texto de ${what} falló${run.error === null ? "" : `: ${run.error.message}`}`;
+    }
+  }
   switch (run.status) {
     case "queued":
       return "Textos pedidos: en cola…";
@@ -62,13 +107,138 @@ function runText(run: ContentRunView): string {
   }
 }
 
-/** Editar el tema, el brief, el tipo, la línea editorial y la fecha planeada. */
-function PostEditForm({ post, onClose }: { post: PostJson; onClose: () => void }) {
+/** Las publicaciones que el panel puede cancelar al quitar una red (las demás se resuelven antes). */
+const CANCELLABLE = new Set(["approved", "scheduled", "failed"]);
+
+/**
+ * Quitar una red del post (F9-T21): si tiene publicaciones pendientes, se avisa antes de guardar
+ * cuáles lo impiden y se ofrece cancelarlas ahí mismo, con confirmación. Las que se están
+ * publicando, esperan tu clic o tienen resultado dudoso se resuelven primero en «Publicaciones».
+ */
+function PendingRemoval({
+  postId,
+  blocking,
+}: {
+  postId: string;
+  blocking: PostDetailResponse["publications"];
+}) {
+  const action = usePostPublicationAction(postId);
+  const [confirming, setConfirming] = useState(false);
+  const cancellable = blocking.filter((publication) => CANCELLABLE.has(publication.status));
+  const stuck = blocking.filter((publication) => !CANCELLABLE.has(publication.status));
+  const cancelAll = async () => {
+    try {
+      for (const publication of cancellable) {
+        await action.mutateAsync({ kind: "cancel", id: publication.id });
+      }
+      setConfirming(false);
+    } catch {
+      // El error queda en `action.error`.
+    }
+  };
+  const names = networkNames([...new Set(blocking.map((publication) => publication.platform))]);
+  return (
+    <div
+      role="status"
+      className="rounded-lg border border-warning-200 bg-warning-50 p-3 text-sm md:col-span-2"
+    >
+      <p className="font-medium text-warning-800">
+        Para quitar {names} del post, primero hay que cancelar sus publicaciones pendientes:
+      </p>
+      <ul className="mt-1 list-disc pl-5 text-fg">
+        {blocking.map((publication) => (
+          <li key={publication.id}>
+            {PLATFORM_TEXT[publication.platform]} · {LANGUAGE_TEXT[publication.language]}:{" "}
+            {PUBLICATION_STATUS_TEXT[publication.status]}
+            {publication.scheduledAt !== null &&
+              ` para el ${formatChileDayTime(publication.scheduledAt)}`}
+          </li>
+        ))}
+      </ul>
+      {stuck.length > 0 && (
+        <p className="mt-2 text-warning-800">
+          {stuck.length === 1
+            ? "Una se está publicando, espera tu clic o tiene resultado dudoso"
+            : `${stuck.length} se están publicando, esperan tu clic o tienen resultado dudoso`}
+          : resuélvela{stuck.length === 1 ? "" : "s"} primero en «Publicaciones».
+        </p>
+      )}
+      {cancellable.length > 0 &&
+        (confirming ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="text-fg">
+              ¿Cancelar{" "}
+              {cancellable.length === 1
+                ? "esa publicación"
+                : `esas ${cancellable.length} publicaciones`}
+              ? No se publicarán.
+            </span>
+            <Button
+              variant="danger"
+              size="sm"
+              loading={action.isPending}
+              onClick={() => void cancelAll()}
+            >
+              Sí, cancelarlas
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
+              No
+            </Button>
+          </div>
+        ) : (
+          <Button
+            variant="secondary"
+            size="sm"
+            className="mt-2"
+            onClick={() => setConfirming(true)}
+          >
+            {cancellable.length === 1 ? "Cancelarla" : `Cancelar las ${cancellable.length}`}
+          </Button>
+        ))}
+      {action.error && <ErrorAlert error={action.error} />}
+    </div>
+  );
+}
+
+/**
+ * Editar el tema, el brief, el tipo, la línea editorial, la fecha planeada y las redes. Al guardar,
+ * `onSaved` recibe lo guardado (con lo que la IA empezó a redactar, si se agregó una red).
+ */
+function PostEditForm({
+  post,
+  contents,
+  publications,
+  onClose,
+  onSaved,
+}: {
+  post: PostJson;
+  contents: readonly { platform: Platform }[];
+  publications: PostDetailResponse["publications"];
+  onClose: () => void;
+  onSaved: (saved: PostResponse) => void;
+}) {
   const update = useUpdatePost(post.id);
   const profile = useEditorialProfile(post.brokerId);
   // Solo las redes de la marca (y las que el post ya tenga), como en el plan.
   const brandNetworks = useBrandPlatforms(post.brokerId);
   const [problem, setProblem] = useState<string | null>(null);
+  const [checked, setChecked] = useState<PostPlatform[]>(post.platforms ?? []);
+  // Las redes que tenía (todas las de la marca, con las que tienen texto, si no tenía lista) y las
+  // que se le quitan al guardar (ninguna si queda sin marcar: todas las de la marca).
+  const before =
+    post.platforms ??
+    POST_PLATFORMS.filter(
+      (platform) =>
+        brandNetworks.includes(platform) ||
+        contents.some((content) => content.platform === platform),
+    );
+  const removed =
+    checked.length === 0 ? [] : before.filter((platform) => !checked.includes(platform));
+  const blocking = publications.filter(
+    (publication) =>
+      (PENDING_PUBLICATION_STATUSES as readonly string[]).includes(publication.status) &&
+      (removed as readonly string[]).includes(publication.platform),
+  );
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -82,10 +252,7 @@ function PostEditForm({ post, onClose }: { post: PostJson; onClose: () => void }
         return;
       }
     }
-    const platforms = form
-      .getAll("platforms")
-      .map(String)
-      .flatMap((value) => POST_PLATFORMS.filter((platform) => platform === value));
+    const platforms = POST_PLATFORMS.filter((platform) => checked.includes(platform));
     setProblem(null);
     update.mutate(
       {
@@ -101,7 +268,12 @@ function PostEditForm({ post, onClose }: { post: PostJson; onClose: () => void }
         platforms: platforms.length === 0 ? null : platforms,
         languages: postLanguagesValue(form, profile.data?.languages),
       },
-      { onSuccess: onClose },
+      {
+        onSuccess: (saved) => {
+          onSaved(saved);
+          onClose();
+        },
+      },
     );
   };
   const pillars = profile.data?.pillars ?? [];
@@ -167,7 +339,14 @@ function PostEditForm({ post, onClose }: { post: PostJson; onClose: () => void }
                 type="checkbox"
                 name="platforms"
                 value={platform}
-                defaultChecked={post.platforms?.includes(platform) ?? false}
+                checked={checked.includes(platform)}
+                onChange={(event) =>
+                  setChecked((current) =>
+                    event.target.checked
+                      ? [...current, platform]
+                      : current.filter((item) => item !== platform),
+                  )
+                }
               />
               {PLATFORM_TEXT[platform]}
             </label>
@@ -175,8 +354,18 @@ function PostEditForm({ post, onClose }: { post: PostJson; onClose: () => void }
         </div>
       </fieldset>
       <PostLanguagesField post={post} brandLanguages={profile.data?.languages} />
+      {blocking.length > 0 && <PendingRemoval postId={post.id} blocking={blocking} />}
       <div className="flex gap-2 md:col-span-2">
-        <Button type="submit" loading={update.isPending}>
+        <Button
+          type="submit"
+          loading={update.isPending}
+          disabled={blocking.length > 0}
+          title={
+            blocking.length > 0
+              ? "Primero cancela o resuelve las publicaciones pendientes de la red que quitas"
+              : undefined
+          }
+        >
           {update.isPending ? "Guardando…" : "Guardar"}
         </Button>
         <Button variant="secondary" onClick={onClose}>
@@ -220,7 +409,8 @@ function DraftBox({
           : null;
   return (
     <div className="rounded-lg border border-line bg-canvas p-4 text-sm">
-      {run !== null && (
+      {/* Una red agregada que se está redactando lo dice su propio aviso (`PostNetworksNotice`). */}
+      {run !== null && !(running && run.scope?.mode === "missing") && (
         <p
           role="status"
           className={cx(
@@ -261,51 +451,246 @@ function DraftBox({
 }
 
 /**
- * Las redes del post y sus textos (F9-T21): las agregadas al post que todavía no tienen texto
- * (ofrece redactar) y los textos de redes que le quitaron (no se publican ni se programan; no se
- * borran). Nada si el post tiene todas las redes de la marca (`platforms = null`).
+ * Las redes del post y sus textos (F9-T21; F9.6): una red agregada a un post ya redactado se
+ * redacta sola al guardar («Redactando el texto de LinkedIn…»); si falta su texto (falló, o no se
+ * pudo pedir), «Redactar solo LinkedIn» pide solo ese, sin tocar los demás. Los textos de las redes
+ * quitadas van plegados en «Redes quitadas» (en los textos). Nada si el post tiene todas las redes
+ * de la marca (`platforms = null`).
  */
 function PostNetworksNotice({
   post,
   contents,
   run,
+  drafting,
 }: {
   post: PostJson;
   contents: readonly { platform: Platform }[];
   run: ContentRunView | null;
+  /** Lo que la IA empezó a redactar al guardar la última edición (o por qué no pudo). */
+  drafting: PostDraftingView | null;
 }) {
   const draft = useRequestPostDraft(post.id);
   if (post.status === "idea" || post.status === "archived") return null;
-  const { missing, excluded } = postNetworkGaps({ post, contents, latestRun: run });
-  if (missing.length === 0 && excluded.length === 0) return null;
-  const names = (platforms: readonly PostPlatform[]) =>
-    platforms.map((platform) => PLATFORM_TEXT[platform]).join(", ");
+  const running = run !== null && !isTerminalContentRun(run.status);
+  // Una corrida de todo el post en curso: lo dice el cuadro de pedir textos.
+  if (running && run.scope === null) return null;
+  const { missing } = postNetworkGaps({ post, contents, latestRun: running ? null : run });
+  if (running && run.scope !== null && run.scope.mode === "missing") {
+    return (
+      <Alert role="status" tone="info">
+        <p className="flex items-center gap-2">
+          <Spinner />
+          Redactando el texto de {scopeText(run.scope)}… Los demás textos no cambian.
+        </p>
+      </Alert>
+    );
+  }
+  if (missing.length === 0 || running) return null;
+  const failedHere =
+    run?.status === "failed" &&
+    run.scope !== null &&
+    run.scope.platforms.some((platform) => (missing as readonly string[]).includes(platform));
+  const notAsked =
+    drafting?.error !== null &&
+    drafting?.error !== undefined &&
+    drafting.platforms.some((platform) => missing.includes(platform));
   return (
     <Alert role="status" tone="warning">
-      {missing.length > 0 && (
-        <div>
-          <p>Falta el texto de {names(missing)}: la agregaste al post después de redactar.</p>
-          <Button
-            size="sm"
-            className="mt-2"
-            loading={draft.isPending}
-            onClick={() => draft.mutate(false)}
-          >
-            Redactar los textos de nuevo
-          </Button>
-          <p className="mt-1 text-xs">
-            La IA vuelve a redactar las redes del post; si editaste o aprobaste alguno, usa «Pedir
-            textos nuevos a la IA» con «Reemplazar también».
-          </p>
-          {draft.error && <ErrorAlert error={draft.error} />}
-        </div>
+      <p>
+        {failedHere
+          ? `No se pudo redactar el texto de ${networkNames(missing)}${run?.error ? `: ${run.error.message}` : "."}`
+          : notAsked
+            ? `No se pidió el texto de ${networkNames(missing)}: ${drafting?.error?.message ?? ""}`
+            : `Falta el texto de ${networkNames(missing)}: la agregaste al post después de redactar.`}
+      </p>
+      <Button
+        size="sm"
+        className="mt-2"
+        loading={draft.isPending}
+        onClick={() => draft.mutate({ platforms: missing, onlyMissing: true })}
+      >
+        Redactar solo {networkNames(missing)}
+      </Button>
+      <p className="mt-1 text-xs">La IA redacta solo lo que falta: los demás textos no cambian.</p>
+      {draft.error && <ErrorAlert error={draft.error} />}
+    </Alert>
+  );
+}
+
+/**
+ * El tipo del post (texto, imagen, carrusel o video) contra sus medios y sus redes, arriba: lo que
+ * falta («Falta la imagen») y las redes que no sirven para ese tipo (`kindProblem`).
+ */
+function PostKindNotice({
+  post,
+  contents,
+  media,
+}: {
+  post: PostJson;
+  contents: readonly { platform: Platform }[];
+  media: PostDetailResponse["media"];
+}) {
+  if (post.status === "archived") return null;
+  const { media: missing, unfit } = postKindIssues({
+    post,
+    contents,
+    images: media.filter((item) => item.kind === "image").length,
+    videos: media.filter((item) => item.kind === "video").length,
+  });
+  if (missing === null && unfit.length === 0) return null;
+  return (
+    <Alert
+      role="status"
+      tone="warning"
+      className="mb-6"
+      title={`Post de tipo «${POST_KIND_LABEL[post.kind].toLowerCase()}»`}
+    >
+      <ul className="list-disc space-y-1 pl-5">
+        {missing !== null && <li>{missing} Súbelo o consíguelo en «Medios».</li>}
+        {unfit.map(({ platform, message }) => (
+          <li key={platform}>
+            {message}: {PLATFORM_TEXT[platform]} no sirve para este tipo. Cambia el tipo o quita la
+            red con «Editar el post».
+          </li>
+        ))}
+      </ul>
+    </Alert>
+  );
+}
+
+/**
+ * El tema o el brief cambiaron después de redactar: ofrece pedir textos nuevos (con la opción de
+ * reemplazar los editados o aprobados). Nada se rehace solo.
+ */
+function SourceChangedNotice({
+  post,
+  changed,
+  run,
+  hasTexts,
+}: {
+  post: PostJson;
+  changed: PostDetailResponse["sourceChanged"];
+  run: ContentRunView | null;
+  hasTexts: boolean;
+}) {
+  const draft = useRequestPostDraft(post.id);
+  const [replace, setReplace] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const running = run !== null && !isTerminalContentRun(run.status);
+  if (!hasTexts || dismissed || running || (!changed.topic && !changed.brief)) return null;
+  if (post.status === "idea" || post.status === "archived") return null;
+  const what =
+    changed.topic && changed.brief ? "el tema y el brief" : changed.topic ? "el tema" : "el brief";
+  return (
+    <Alert role="status" tone="warning">
+      <p className="font-medium">
+        Cambiaste {what} después de redactar: ¿pedir textos nuevos a la IA?
+      </p>
+      <p className="mt-1 text-xs">Los textos de ahora siguen igual hasta que pidas otros.</p>
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        <Button size="sm" loading={draft.isPending} onClick={() => draft.mutate(replace)}>
+          Pedir textos nuevos a la IA
+        </Button>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={replace}
+            onChange={(event) => setReplace(event.target.checked)}
+          />
+          Reemplazar también los textos editados o aprobados
+        </label>
+        <Button variant="ghost" size="sm" onClick={() => setDismissed(true)}>
+          Dejarlos así
+        </Button>
+      </div>
+      {draft.error && <ErrorAlert error={draft.error} />}
+    </Alert>
+  );
+}
+
+/**
+ * Cambió la fecha planificada y el post tiene publicaciones programadas: «¿moverlas a la hora
+ * nueva?» (`rescheduleSuggestion`). Nunca se mueven solas; moverlas programa de nuevo cada red
+ * (`POST /posts/:id/schedule`), conservando el espacio entre idiomas, y en vivo pide confirmar.
+ */
+function RescheduleNotice({
+  postId,
+  publications,
+  at,
+  publishMode,
+  onDone,
+}: {
+  postId: string;
+  publications: PostDetailResponse["publications"];
+  at: Date;
+  publishMode: PublishMode | undefined;
+  onDone: () => void;
+}) {
+  const schedule = useSchedulePost(postId);
+  const [skipped, setSkipped] = useState<string[]>([]);
+  const suggestion = rescheduleSuggestion(publications, at);
+  if (suggestion === null) return null;
+  const when = suggestion.times.map((time) => formatChileDayTime(time)).join(" y ");
+  const target = formatChileDayTime(at);
+  const move = async () => {
+    const problems: string[] = [];
+    try {
+      for (const item of suggestion.moves) {
+        const done: PostScheduleResponse = await schedule.mutateAsync({
+          platforms: [item.platform],
+          languages: item.languages,
+          at: at.toISOString(),
+          ...(item.languages.length > 1 ? { spacingMinutes: item.spacingMinutes } : {}),
+        });
+        for (const row of done.results) {
+          if (row.outcome === "skipped") {
+            problems.push(
+              `${row.platform === null ? "El post" : PLATFORM_TEXT[row.platform]}: ${row.message}`,
+            );
+          }
+        }
+      }
+    } catch {
+      // El error queda en `schedule.error`.
+      return;
+    }
+    setSkipped(problems);
+    if (problems.length === 0) onDone();
+  };
+  return (
+    <Alert role="status" tone="warning" className="mb-6">
+      <p className="font-medium">
+        Este post tiene{" "}
+        {suggestion.count === 1
+          ? "1 publicación programada"
+          : `${suggestion.count} publicaciones programadas`}{" "}
+        para el {when}: ¿moverla{suggestion.count === 1 ? "" : "s"} al {target}?
+      </p>
+      <p className="mt-1 text-xs">
+        No se mueven solas. Cada red sale a la hora nueva y su otro idioma conserva el espacio que
+        tenía.
+      </p>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <LiveConfirmButton
+          label={`Moverla${suggestion.count === 1 ? "" : "s"} al ${target}`}
+          publishMode={publishMode}
+          pending={schedule.isPending}
+          liveMessage="La marca está en vivo: a la hora nueva se publican de verdad."
+          confirmLabel="Sí, moverlas"
+          onConfirm={() => void move()}
+        />
+        <Button variant="ghost" size="sm" onClick={onDone}>
+          Dejarlas como están
+        </Button>
+      </div>
+      {skipped.length > 0 && (
+        <ul className="mt-2 list-disc pl-5 text-danger-700">
+          {skipped.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
       )}
-      {excluded.length > 0 && (
-        <p className={missing.length > 0 ? "mt-2" : ""}>
-          Los textos de {names(excluded)} no se publican ni se programan: esa red ya no está entre
-          las del post.
-        </p>
-      )}
+      {schedule.error && <ErrorAlert error={schedule.error} />}
     </Alert>
   );
 }
@@ -323,10 +708,21 @@ export function PostDetailPage() {
   const profile = useEditorialProfile(post.data?.post.brokerId);
   const [editing, setEditing] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
+  // Tras guardar: la fecha nueva (para sugerir mover lo programado) y lo que la IA empezó a redactar.
+  const [moveTo, setMoveTo] = useState<Date | null>(null);
+  const [drafting, setDrafting] = useState<PostDraftingView | null>(null);
 
   if (post.error) return <ErrorAlert error={post.error} onRetry={() => void post.refetch()} />;
   if (post.data === undefined) return <Loading />;
-  const { post: item, media, contents, latestRun, publications, uploadsInReview } = post.data;
+  const {
+    post: item,
+    media,
+    contents,
+    latestRun,
+    publications,
+    uploadsInReview,
+    sourceChanged,
+  } = post.data;
   const { languages, hiddenTexts } = post.data;
   const archived = item.status === "archived";
   const publishMode = modeOf(item.brokerId);
@@ -465,9 +861,31 @@ export function PostDetailPage() {
             />
           </div>
         )}
+        {moveTo !== null && !archived && (
+          <RescheduleNotice
+            postId={item.id}
+            publications={publications}
+            at={moveTo}
+            publishMode={publishMode}
+            onDone={() => setMoveTo(null)}
+          />
+        )}
+        {!editing && item.status !== "idea" && (
+          <PostKindNotice post={item} contents={contents} media={media} />
+        )}
         {editing && (
           <Card title="Editar el post" className="mb-6">
-            <PostEditForm post={item} onClose={() => setEditing(false)} />
+            <PostEditForm
+              post={item}
+              contents={contents}
+              publications={publications}
+              onClose={() => setEditing(false)}
+              onSaved={(saved) => {
+                setDrafting(saved.drafting);
+                const at = saved.post.plannedAt;
+                setMoveTo(at !== null && at.getTime() !== item.plannedAt?.getTime() ? at : null);
+              }}
+            />
           </Card>
         )}
         {archive.error && <ErrorAlert error={archive.error} />}
@@ -477,7 +895,18 @@ export function PostDetailPage() {
             <Card as="section" aria-label="Textos" title="Textos por red">
               <div className="space-y-4">
                 <DraftBox post={item} run={latestRun} hasTexts={contents.length > 0} />
-                <PostNetworksNotice post={item} contents={contents} run={latestRun} />
+                <SourceChangedNotice
+                  post={item}
+                  changed={sourceChanged}
+                  run={latestRun}
+                  hasTexts={contents.length > 0}
+                />
+                <PostNetworksNotice
+                  post={item}
+                  contents={contents}
+                  run={latestRun}
+                  drafting={drafting}
+                />
                 <PostLanguagesNotice
                   languages={languages}
                   hiddenTexts={hiddenTexts}

@@ -42,6 +42,7 @@ import {
   runResolvePublication,
   runRetryPublication,
 } from "./publications.js";
+import { atOption } from "./schedule.js";
 
 // F9-T12 (spec F9 §4.10): `agentsales post …` y `publications resolve|retry|confirm` contra la API
 // real en proceso, con R2 y el worker de mentira (nada llama a una red ni a la IA).
@@ -794,6 +795,63 @@ describe("errores con su consejo y permisos", () => {
     expect(await runPostEdit(s.deps(), post.id, { platforms: "portal" })).toBe(1);
     expect(await runPostEdit(s.deps(), post.id, { date: "mañana" })).toBe(1);
     expect(s.h.errors()).toContain("--date");
+  });
+
+  it("edit --platforms agrega una red y la IA redacta solo esa; draft --platform rehace un texto con --guidance", async () => {
+    const s = await setup();
+    expect(await runPostCreate(s.deps(), "Una red más", { broker: "agentpey" })).toBe(0);
+    const post = await s.created();
+    expect(await runPostDraft(s.deps(), post.id)).toBe(0);
+    // De todas las redes a solo Discord: no se agrega nada.
+    expect(await runPostEdit(s.deps(), post.id, { platforms: "discord" })).toBe(0);
+    expect(s.h.text()).not.toContain("La IA redacta");
+    s.h.out.length = 0;
+    expect(await runPostEdit(s.deps(), post.id, { platforms: "discord,x" })).toBe(0);
+    expect(s.h.text()).toContain("La IA redacta el texto de X (los demás textos no cambian)");
+    const added = await s.h.contentRuns.latest({ kind: "post", id: post.id });
+    expect(added?.scope).toMatchObject({ platforms: ["x"], mode: "missing" });
+    await s.clock.sleep(0);
+
+    s.setDraft({ texts: [{ platform: "discord", language: "es", body: "Más corto." }] });
+    expect(
+      await runPostDraft(s.deps(), post.id, {
+        platform: "discord",
+        language: "es",
+        guidance: "más corto",
+      }),
+    ).toBe(0);
+    expect((await s.h.contentRuns.latest({ kind: "post", id: post.id }))?.scope).toEqual({
+      platforms: ["discord"],
+      language: "es",
+      mode: "replace",
+      guidance: "más corto",
+    });
+
+    // Las opciones de un texto sin la red, o una indicación larga, se explican sin llamar.
+    expect(await runPostDraft(s.deps(), post.id, { guidance: "corto" })).toBe(1);
+    expect(s.h.errors()).toContain("PLATFORM_REQUIRED");
+    expect(
+      await runPostDraft(s.deps(), post.id, { platform: "discord", guidance: "a".repeat(301) }),
+    ).toBe(1);
+    expect(s.h.errors()).toContain("GUIDANCE_TOO_LONG");
+  });
+
+  it("edit --date con publicaciones programadas sugiere moverlas con el comando, sin moverlas", async () => {
+    const s = await setup();
+    const { post, publication } = await approvedPost(s);
+    const at = inHours(3);
+    expect(await runPostSchedule(s.deps(), post.id, { at })).toBe(0);
+    s.h.out.length = 0;
+    const later = inHours(30);
+    expect(await runPostEdit(s.deps(), post.id, { date: later })).toBe(0);
+    expect(s.h.text()).toContain(`programada(s) para ${at} (Chile): ¿moverlas a ${later}?`);
+    expect(s.h.text()).toContain(
+      `agentsales post schedule ${post.id} --at "${later}" --platform discord`,
+    );
+    // No se movió: sigue a la hora de antes.
+    expect(s.publicationsOf(post.id).find((p) => p.id === publication.id)?.scheduledAt).toEqual(
+      atOption(at),
+    );
   });
 
   it("--music (F9.5-T19): elige y quita la música de los videos; una pista que no existe no llama", async () => {

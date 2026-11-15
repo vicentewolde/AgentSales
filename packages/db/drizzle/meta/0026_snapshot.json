@@ -1,5 +1,5 @@
 {
-  "id": "013bbbfe-a891-4d74-bad7-5a5d5f3ffeea",
+  "id": "be462b2f-e8e7-43e1-941c-28e904871785",
   "prevId": "ab0b37c5-e99c-486c-952b-880a6029a1ce",
   "version": "7",
   "dialect": "postgresql",
@@ -245,6 +245,12 @@
         "auto_publish_done_at": {
           "name": "auto_publish_done_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scope": {
+          "name": "scope",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
@@ -2909,12 +2915,6 @@
         "music_track_id": {
           "name": "music_track_id",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "languages": {
-          "name": "languages",
-          "type": "text[]",
           "primaryKey": false,
           "notNull": false
         },

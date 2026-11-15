@@ -1,14 +1,19 @@
 import type { AbortSignalLike } from "../abort.js";
 import { settlePostStatus } from "../content/locked-content.js";
 import { contentRunErrorOf } from "../content/run-error.js";
-import type { ContentRun, ContentRunReport } from "../content.js";
+import type { Content, ContentRun, ContentRunReport, ContentRunScope } from "../content.js";
 import { editorialProfileView } from "../editorial-profile.js";
 import { isTerminalContentRun, type PostStatus } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
+import { PLATFORM_TEXT } from "../labels.js";
 import { assertLlmBudget, llmProviderFor } from "../llm-budget.js";
 import { llmCallCost } from "../llm-usage.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
-import type { ContentRunRepository, NewContent } from "../ports/content-repository.js";
+import type {
+  ContentRepository,
+  ContentRunRepository,
+  NewContent,
+} from "../ports/content-repository.js";
 import type { EditorialProfileRepository } from "../ports/editorial-profile-repository.js";
 import type { LLMProvider } from "../ports/llm-provider.js";
 import type { MediaRepository } from "../ports/media-repository.js";
@@ -16,18 +21,20 @@ import type { PlatformAccountRepository } from "../ports/platform-account-reposi
 import type { PostImageRunRepository } from "../ports/post-image-run-repository.js";
 import type { PostLock } from "../ports/post-lock.js";
 import type { PostRepository } from "../ports/post-repository.js";
-import { canDraftPost, postNotReady } from "../post.js";
+import { canDraftPost, type Post, postNotReady } from "../post.js";
 import { loadCardLanguages } from "../post-card-languages.js";
 import { buildSocialBrief, postPlatforms, socialTargets } from "../social/brief.js";
 import { buildPostCheckContext } from "../social/check.js";
 import { draftPostTexts } from "../social/draft-texts.js";
 import { kindProblem } from "../social/networks.js";
-import { postLanguages } from "../social/post-languages.js";
+import { postLanguageExcluded, postLanguages } from "../social/post-languages.js";
 import { SOCIAL_PROMPT_VERSION } from "../social/prompt.js";
 import { postSubject } from "../subject.js";
 
 export type DraftPostDeps = {
   contentRuns: ContentRunRepository;
+  /** Los textos vigentes: una corrida acotada crea solo los que faltan o rehace uno (con el actual). */
+  contents: Pick<ContentRepository, "listCurrent">;
   posts: Pick<PostRepository, "get">;
   brokers: Pick<BrokerRepository, "findById">;
   editorialProfiles: Pick<EditorialProfileRepository, "get">;
@@ -88,6 +95,12 @@ const normalized = (error: unknown): AppError =>
  * 3. En el candado del post, guarda los textos en `draft` con el paso a `succeeded` y deja el
  *    estado del post al día (`settlePostStatus`): si la corrida reemplazó textos aprobados (pedida
  *    con `replaceEdits`), el post vuelve a `draft` salvo que le quede otro texto vigente aprobado.
+ * Una corrida con alcance (`run.scope`) redacta solo sus redes (y su idioma): con `missing`, solo
+ * los textos que todavía no existen (si no falta ninguno, termina sin llamar a la IA); con
+ * `replace`, rehace los pedidos, y si es uno solo, la IA ve el texto actual y la indicación del
+ * operador (guía de forma y tono, nunca fuente de hechos). Los demás textos no se tocan: los nuevos
+ * pasan a ser los vigentes de su red e idioma y el resto sigue igual. El reporte guarda la huella
+ * del tema y del brief (`postSource`), para avisar si cambian después.
  * Como `prepareContent`: una corrida terminal no se toca (`skipped`); un error no reintentable, o
  * el del último intento, deja la corrida en `failed`, salvo que el worker se esté apagando
  * (`signal`): entonces relanza como reintentable sin tocarla. Una corrida de aviso aquí es
@@ -116,7 +129,13 @@ export async function draftPost(
   try {
     if (signal?.aborted) throw aborted();
     if (!(await deps.contentRuns.setStage(run.id, "texts"))) throw new RunClosed();
-    const contents = await texts(deps, { runId: run.id, postId, report, signal });
+    const contents = await texts(deps, {
+      runId: run.id,
+      postId,
+      scope: run.scope,
+      report,
+      signal,
+    });
     if (signal?.aborted) throw aborted();
     const saved = await deps.postLock.run(postId, async (repos) => {
       if (!(await repos.contentRuns.markSucceeded(run.id, { report, contents }))) return null;
@@ -149,6 +168,7 @@ async function texts(
   state: {
     runId: string;
     postId: string;
+    scope: ContentRunScope | null;
     report: ContentRunReport;
     signal: AbortSignalLike | undefined;
   },
@@ -193,8 +213,39 @@ async function texts(
       { details: { postId: post.id, kind: post.kind } },
     );
   }
-  // Los idiomas del post (los suyos o los de la marca): un idioma quitado no se redacta.
-  const targets = socialTargets(platforms, postLanguages(post, profile.languages));
+  state.report.postSource = postSourceHashes(post);
+  const { scope } = state;
+  const scoped =
+    scope === null
+      ? platforms
+      : platforms.filter((platform) => (scope.platforms as readonly string[]).includes(platform));
+  if (scoped.length === 0 && scope !== null) {
+    throw new AppError(
+      "POST_NO_PLATFORMS",
+      `${scope.platforms.map((platform) => PLATFORM_TEXT[platform]).join(", ")} no sirve para este post: revisa sus redes, su tipo o las cuentas de la marca`,
+      { details: { postId: post.id, kind: post.kind } },
+    );
+  }
+  const current = scope === null ? [] : await deps.contents.listCurrent(postSubject(post.id));
+  // Los idiomas del post (los suyos o los de la marca, 2026-11-15): un idioma quitado no se redacta,
+  // tampoco en una redacción acotada («Rehacer este texto», una red agregada).
+  const allowed = postLanguages(post, profile.languages);
+  const asked = scope?.language ?? null;
+  if (asked !== null && !allowed.includes(asked)) throw postLanguageExcluded(post.id, asked);
+  const languages = asked === null ? allowed : [asked];
+  const targets = socialTargets(scoped, languages).filter(
+    (target) =>
+      scope?.mode !== "missing" ||
+      !current.some(
+        (content) => content.platform === target.platform && content.language === target.language,
+      ),
+  );
+  // Ya no falta ninguno (otro pedido los redactó): nada que pedir a la IA.
+  if (targets.length === 0) return [];
+  const previous =
+    scope?.mode === "replace" && targets.length === 1
+      ? currentTextOf(current, targets[0] as { platform: string; language: string })
+      : null;
   const ctx = buildPostCheckContext({
     post,
     profile,
@@ -202,7 +253,11 @@ async function texts(
     media: await deps.media.listBySubject(postSubject(post.id)),
     cards: await loadCardLanguages(deps.postImageRuns, post.id),
   });
-  const brief = buildSocialBrief({ post, profile, broker, targets });
+  const brief = {
+    ...buildSocialBrief({ post, profile, broker, targets }),
+    guidance: scope?.guidance ?? null,
+    currentText: previous,
+  };
 
   const now = deps.now ?? Date.now;
   const clock = deps.clock ?? (() => new Date());
@@ -248,4 +303,44 @@ async function texts(
     promptVersion: SOCIAL_PROMPT_VERSION,
     rawOutput: result.draft,
   }));
+}
+
+/** El texto actual de esa red e idioma (cuerpo y hashtags), para rehacerlo; `null` si no hay. */
+function currentTextOf(
+  current: readonly Content[],
+  target: { platform: string; language: string },
+): { body: string; hashtags: string[] } | null {
+  const found = current.find(
+    (content) => content.platform === target.platform && content.language === target.language,
+  );
+  return found === undefined ? null : { body: found.body, hashtags: [...found.hashtags] };
+}
+
+/**
+ * Una huella corta de un texto (cyrb53, 53 bits en hexadecimal): solo para saber si cambió, no es
+ * criptográfica (core no usa `node:crypto`). No guarda el texto.
+ */
+function fingerprint(text: string): string {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ code, 2654435761);
+    h2 = Math.imul(h2 ^ code, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16);
+}
+
+/**
+ * La huella del tema y del brief de un post (`fingerprint`, sin el texto): la guarda cada corrida en su
+ * reporte (`postSource`) y `getPostContent` la compara con la del post para avisar si cambiaron
+ * después de redactar.
+ */
+export function postSourceHashes(post: Pick<Post, "topic" | "brief">): {
+  topic: string;
+  brief: string;
+} {
+  return { topic: fingerprint(post.topic.trim()), brief: fingerprint((post.brief ?? "").trim()) };
 }

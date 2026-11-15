@@ -12,6 +12,7 @@ import {
   postDetailResponseSchema,
   postPublishResponseSchema,
   postRecordResponseSchema,
+  postResponseSchema,
   postScheduleResponseSchema,
   publicationConfirmResponseSchema,
 } from "../contracts/index.js";
@@ -493,6 +494,55 @@ describe("publicar y programar un post", () => {
       }),
     ]);
     expect((await s.deps.publications.get(publication.id))?.status).toBe("approved");
+  });
+
+  it("agregar una red a un post redactado pide solo su texto; rehacer uno va con su indicación", async () => {
+    const s = await setup();
+    await s.deps.posts.update(s.post.id, { platforms: ["discord"] });
+    await s.broker(`/posts/${s.post.id}/draft`, { method: "POST", json: {} });
+    await s.finishDraft(s.post.id);
+
+    const added = await s.broker(`/posts/${s.post.id}`, {
+      method: "PATCH",
+      json: { platforms: ["discord", "x"] },
+    });
+    expect(added.status).toBe(200);
+    const { drafting } = postResponseSchema.parse(await added.json());
+    expect(drafting).toMatchObject({ platforms: ["x"], error: null });
+    const run = await s.deps.contentRuns.get(drafting?.contentRunId ?? "");
+    expect(run?.scope).toEqual({
+      platforms: ["x"],
+      language: null,
+      mode: "missing",
+      guidance: null,
+    });
+    // El detalle muestra la corrida con su alcance (para «Redactando el texto de X…»).
+    const detail = postDetailResponseSchema.parse(
+      await (await s.broker(`/posts/${s.post.id}`)).json(),
+    );
+    expect(detail.latestRun?.scope?.platforms).toEqual(["x"]);
+    expect(detail.sourceChanged).toEqual({ topic: false, brief: false });
+    await s.deps.contentRuns.markFailed(run?.id ?? "", { code: "X", message: "x" });
+
+    // Sin la red, un idioma o una indicación es 400.
+    const loose = await s.broker(`/posts/${s.post.id}/draft`, {
+      method: "POST",
+      json: { language: "es", guidance: "más corto" },
+    });
+    expect(loose.status).toBe(400);
+    expect((await errorOf(loose)).code).toBe("CONTENT_RUN_INVALID");
+    const redo = await s.broker(`/posts/${s.post.id}/draft`, {
+      method: "POST",
+      json: { platforms: ["discord"], language: "es", guidance: "más corto" },
+    });
+    expect(redo.status).toBe(202);
+    const { contentRun } = contentRunRequestResponseSchema.parse(await redo.json());
+    expect(contentRun.scope).toEqual({
+      platforms: ["discord"],
+      language: "es",
+      mode: "replace",
+      guidance: "más corto",
+    });
   });
 
   it("publicar una red la pasa a publishing y encola publication.publish", async () => {

@@ -23,6 +23,7 @@ import {
   publicationResponseSchema,
 } from "@agentsales/api/contracts";
 import {
+  CONTENT_RUN_GUIDANCE_MAX,
   CONTENT_STATUS_TEXT,
   contentRunProgressText,
   formatChileTime,
@@ -48,6 +49,7 @@ import {
   postPublishesOn,
   publicationFormatText,
   publicationModeText,
+  rescheduleSuggestion,
   X_LINK_POST_COST_USD,
   X_POST_COST_USD,
   xPostHasLink,
@@ -786,7 +788,53 @@ export function runPostUpload(
 
 // ── draft ────────────────────────────────────────────────────────────────
 
-export type PostDraftOptions = { replaceEdits?: boolean; wait?: boolean };
+export type PostDraftOptions = {
+  replaceEdits?: boolean;
+  wait?: boolean;
+  /** Solo esa red (F9.6): rehace su texto, o con `missing` redacta solo el que falta. */
+  platform?: string;
+  /** Solo ese idioma de la red. */
+  language?: string;
+  /** «¿Qué cambiar?» al rehacer un texto (hasta 300 caracteres): guía la forma, nunca los hechos. */
+  guidance?: string;
+  /** Solo los textos que faltan de esa red (no toca los que ya existen). */
+  missing?: boolean;
+};
+
+/** El cuerpo de `POST /posts/:id/draft` según las opciones de `post draft`. */
+function draftBodyOf(options: PostDraftOptions) {
+  if (options.platform === undefined) {
+    if (
+      options.language !== undefined ||
+      options.guidance !== undefined ||
+      options.missing === true
+    ) {
+      throw new CliError(
+        "PLATFORM_REQUIRED",
+        "--language, --guidance y --missing van con --platform (la red del texto)",
+        `Redes: ${POST_PLATFORM_OPTION_NAMES.join(", ")}`,
+      );
+    }
+    return options.replaceEdits ? { replaceEdits: true } : {};
+  }
+  const guidance = options.guidance?.trim();
+  if (guidance !== undefined && [...guidance].length > CONTENT_RUN_GUIDANCE_MAX) {
+    throw new CliError(
+      "GUIDANCE_TOO_LONG",
+      `--guidance pasa de ${CONTENT_RUN_GUIDANCE_MAX} caracteres: di en pocas palabras qué cambiar (por ejemplo, "más corto")`,
+    );
+  }
+  if (guidance !== undefined && options.missing === true) {
+    throw new CliError("GUIDANCE_INVALID", "--guidance es para rehacer un texto, no con --missing");
+  }
+  return {
+    platforms: [postPlatformOption(options.platform)],
+    ...(options.language === undefined ? {} : { language: languageOption(options.language) }),
+    ...(guidance === undefined || guidance === "" ? {} : { guidance }),
+    ...(options.missing === true ? { onlyMissing: true } : {}),
+    ...(options.replaceEdits ? { replaceEdits: true } : {}),
+  };
+}
 
 /** Resumen de una corrida de textos de un post. */
 function renderDraftRun(run: ContentRunView, c: Colors, postId: string): string {
@@ -809,7 +857,10 @@ function renderDraftRun(run: ContentRunView, c: Colors, postId: string): string 
 /**
  * `agentsales post draft <id> [--replace-edits] [--no-wait]` (spec F9 §4.9): pide a la IA un texto
  * por red e idioma y espera la corrida como `prepare` (`RUN_WAIT`). Al final, la revisión de cada
- * texto. Sale con 1 si la corrida falló.
+ * texto. Sale con 1 si la corrida falló. Con `--platform` (y `--language`), solo ese texto: lo
+ * rehace con la indicación de `--guidance`, o con `--missing` redacta solo el que falta; los demás
+ * textos no se tocan. Un texto editado a mano o aprobado se rehace con `--replace-edits` (uno
+ * aprobado, después de quitarle la aprobación: `post approve --undo`).
  */
 export function runPostDraft(deps: PostDeps, id: string, options: PostDraftOptions = {}) {
   const c = deps.colors;
@@ -818,7 +869,7 @@ export function runPostDraft(deps: PostDeps, id: string, options: PostDraftOptio
     const { contentRun, reused } = await unwrap(
       deps.client.posts[":id"].draft.$post({
         param: { id: postId },
-        json: options.replaceEdits ? { replaceEdits: true } : {},
+        json: draftBodyOf(options),
       }),
       contentRunRequestResponseSchema,
     ).catch((error: unknown) => {
@@ -996,6 +1047,63 @@ function postChangesOf(options: PostEditOptions) {
   return Object.keys(changes).length === 0 ? null : changes;
 }
 
+/** Las redes que la IA empezó a redactar al guardar (una red agregada), o por qué no pudo. */
+function printDrafting(
+  deps: PostDeps,
+  postId: string,
+  drafting: NonNullable<z.infer<typeof postResponseSchema>["drafting"]>,
+) {
+  const c = deps.colors;
+  const names = drafting.platforms.map((platform) => PLATFORM_TEXT[platform] ?? platform);
+  if (drafting.error === null) {
+    deps.print(
+      `${c.green("✓")} La IA redacta el texto de ${names.join(", ")} (los demás textos no cambian)`,
+    );
+    deps.print(c.dim(`→ Míralo en un momento con ${show(postId)}`));
+    return;
+  }
+  deps.printError(
+    c.yellow(`No se pidió el texto de ${names.join(", ")}: ${drafting.error.message}`),
+  );
+  for (const platform of drafting.platforms) {
+    deps.printError(
+      c.dim(
+        `→ Cuando se pueda: agentsales post draft ${postId} --platform ${platformShortName(platform)} --missing`,
+      ),
+    );
+  }
+}
+
+/**
+ * La fecha planificada cambió y el post tiene publicaciones programadas: sugiere moverlas a la hora
+ * nueva con el comando de cada red (`rescheduleSuggestion`). Nunca las mueve sola.
+ */
+function printRescheduleSuggestion(
+  deps: PostDeps,
+  postId: string,
+  publications: PostDetailResponse["publications"],
+  at: Date,
+) {
+  const suggestion = rescheduleSuggestion(publications, at);
+  if (suggestion === null) return;
+  const c = deps.colors;
+  const when = suggestion.times.map((time) => formatChileTime(time)).join(" y ");
+  deps.print(
+    c.yellow(
+      `Este post tiene ${suggestion.count} publicación(es) programada(s) para ${when} (Chile): ¿moverlas a ${formatChileTime(at)}? No se mueven solas:`,
+    ),
+  );
+  for (const move of suggestion.moves) {
+    const languages = move.languages.length > 1 ? ` --language ${move.languages.join(",")}` : "";
+    const spacing = move.languages.length > 1 ? ` --spacing ${move.spacingMinutes}` : "";
+    deps.print(
+      c.dim(
+        `→ agentsales post schedule ${postId} --at "${formatChileTime(at)}" --platform ${platformShortName(move.platform)}${languages}${spacing}`,
+      ),
+    );
+  }
+}
+
 /** `--date "AAAA-MM-DD HH:MM"` en hora de Chile. */
 function dateOption(text: string): Date {
   try {
@@ -1031,7 +1139,12 @@ export function runPostEdit(deps: PostDeps, id: string, options: PostEditOptions
       options.file !== undefined ||
       options.hashtags !== undefined;
     if (changes !== null) {
-      const { post } = await unwrap(
+      // Con la fecha nueva, lo programado antes (para sugerir moverlo; nunca se mueve solo).
+      const before =
+        changes.plannedAt === undefined || changes.plannedAt === null
+          ? null
+          : await fetchPost(deps.client, postId).catch(() => null);
+      const { post, drafting } = await unwrap(
         deps.client.posts[":id"].$patch({ param: { id: postId }, json: changes }),
         postResponseSchema,
       ).catch((error: unknown) => {
@@ -1064,6 +1177,10 @@ export function runPostEdit(deps: PostDeps, id: string, options: PostEditOptions
             ]),
       ];
       deps.print(`${c.green("✓")} Post ${post.id} actualizado (${summary.join(" · ")})`);
+      if (drafting !== null) printDrafting(deps, post.id, drafting);
+      if (before !== null && post.plannedAt !== null) {
+        printRescheduleSuggestion(deps, post.id, before.publications, post.plannedAt);
+      }
       if (!editsText) {
         deps.print(
           c.dim(
@@ -1679,9 +1796,16 @@ export function register(program: Command, ctx: CliContext): void {
   registerPostMedia(post, ctx);
   post
     .command("draft")
-    .description("Pide a la IA un texto por red e idioma y espera")
+    .description("Pide a la IA un texto por red e idioma (o rehace uno con --platform) y espera")
     .argument("<id>", "id del post")
     .option("--replace-edits", "reemplaza también los textos editados a mano o aprobados")
+    .option("--platform <red>", `solo el texto de esa red: ${networks} (los demás no se tocan)`)
+    .option("--language <idioma>", "con --platform, solo ese idioma: es o en")
+    .option(
+      "--guidance <texto>",
+      `con --platform, qué cambiar al rehacerlo (hasta ${CONTENT_RUN_GUIDANCE_MAX} caracteres, p. ej. "más corto"): guía la forma, no los hechos`,
+    )
+    .option("--missing", "con --platform, solo los textos que faltan de esa red")
     .option("--no-wait", "imprime el id de la corrida y sale sin esperar")
     .action((id: string, options: PostDraftOptions) =>
       exitWith(() => runPostDraft(deps(), id, options)),
