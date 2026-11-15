@@ -1,5 +1,6 @@
 import {
   AppError,
+  type BrandKnowledgeRepository,
   type Broker,
   type BrokerPurgeRepository,
   type BrokerRepository,
@@ -11,6 +12,7 @@ import {
   type ImageAiPricing,
   type ImportRunRepository,
   type JobQueue,
+  type KnowledgeProposalRepository,
   type LeadRepository,
   type LeadWebhookKeyRepository,
   type LeadWebhookSecretDeps,
@@ -49,6 +51,7 @@ import { type RequestContext, withEventUser, withPostEventUser } from "./request
 import { requestLogger } from "./request-logger.js";
 import { type AccountRoutesDeps, accountRoutes } from "./routes/accounts.js";
 import { authRoutes } from "./routes/auth.js";
+import { brandKnowledgeRoutes } from "./routes/brand-knowledge.js";
 import { brandWeekRoutes } from "./routes/brand-week.js";
 import { brokerRoutes } from "./routes/brokers.js";
 import { contentRoutes, contentRunRoutes, listingContentRoutes } from "./routes/content.js";
@@ -165,8 +168,14 @@ export type AppDeps = {
   imageSources: PostImageSourcesConfig;
   /** El precio y el tope de la IA de imágenes (para `GET /usage`, aunque falte la clave). */
   imageAiPricing: ImageAiPricing;
-  /** El perfil editorial de cada corredor o marca (F9-T09): lo lee la IA de los posts. */
+  /**
+   * El perfil editorial de cada corredor o marca (F9-T09): lo lee la IA de los posts. Desde F9.7
+   * (ADR-0043), envuelto con `editorialProfilesWithKnowledge`: al leerlo trae el conocimiento.
+   */
   editorialProfiles: EditorialProfileRepository;
+  /** F9.7 (ADR-0043): el conocimiento de la marca y las lecturas de «Actualizar desde un texto». */
+  brandKnowledge: BrandKnowledgeRepository;
+  knowledgeProposals: KnowledgeProposalRepository;
   /**
    * Los planes de ideas (F9-T21, ADR-0030): pedirlos (`content.plan` los corre en el worker), listar
    * los de una marca y ver uno con sus ideas.
@@ -436,6 +445,8 @@ export function createApp(input: AppDeps) {
     .route("/brokers", editorialProfileRoutes(deps))
     // F9.5-T27: aprobar la semana y la lista para publicar a diario de una marca.
     .route("/brokers", brandWeekRoutes({ ...deps, ...workerDetails }))
+    // F9.7 (ADR-0043): el conocimiento de la marca y sus propuestas.
+    .route("/brokers", brandKnowledgeRoutes(deps))
     // F10: los leads de un corredor, un lead por id y el webhook público de ManyChat.
     .route("/brokers", brokerLeadRoutes(deps))
     .route("/leads", leadRoutes(deps))

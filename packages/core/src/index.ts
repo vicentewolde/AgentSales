@@ -13,6 +13,8 @@ export {
   type ListingField,
   listingFields,
 } from "./attributes.js";
+// ── F9.7 parte B: conocimiento y estilo de la marca (ADR-0043) ───────────
+export * from "./brand-knowledge.js";
 export {
   assertAutoPublishAllowed,
   assertBrokerHoldsListings,
@@ -546,6 +548,7 @@ export {
   portalReadiness,
 } from "./portal/readiness.js";
 export type { PasswordHasher, SecretTokens, TotpProvider } from "./ports/auth.js";
+export type * from "./ports/brand-knowledge-repository.js";
 export type {
   BrokerPurgeBlocker,
   BrokerPurgeCounts,
@@ -967,6 +970,7 @@ export {
   scheduleState,
 } from "./schedule.js";
 export * from "./social/index.js";
+export * from "./social/knowledge-prompt.js";
 export * from "./subject.js";
 export {
   type LockedSubject,
@@ -1092,6 +1096,7 @@ export {
   autoPublishListing,
   connectedPlatforms,
 } from "./use-cases/auto-publish-listing.js";
+export * from "./use-cases/brand-knowledge.js";
 export {
   type CancelPublicationDeps,
   cancelPublication,
@@ -1216,6 +1221,7 @@ export {
   ingestMedia,
   listingMediaPath,
 } from "./use-cases/ingest-media.js";
+export * from "./use-cases/knowledge-proposals.js";
 export { setListingMusic } from "./use-cases/listing-music.js";
 export {
   getMetaDeletionRequest,

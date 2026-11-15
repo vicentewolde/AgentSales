@@ -24,10 +24,12 @@ import {
 import {
   ALL_SCOPE,
   brokersNeedingApiKey,
+  editorialProfilesWithKnowledge,
   liveEnabledBrokers,
   WORKER_HEARTBEAT_LOOKBACK,
 } from "@agentsales/core";
 import {
+  createBrandKnowledgeRepository,
   createBrokerPurgeRepository,
   createBrokerRepository,
   createContentRepository,
@@ -37,6 +39,7 @@ import {
   createFieldDefinitionRepository,
   createImportRunRepository,
   createInvitationRepository,
+  createKnowledgeProposalRepository,
   createLeadRepository,
   createLeadWebhookKeyRepository,
   createListingLock,
@@ -146,6 +149,8 @@ const imageAiPricing = {
   monthlyCapUsd: env.IMAGE_AI_MONTHLY_CAP_USD,
 };
 const users = createUserRepository(database.db);
+// F9.7 (ADR-0043): el conocimiento de la marca (lo envuelve el perfil editorial, abajo).
+const brandKnowledge = createBrandKnowledgeRepository(database.db);
 const workerHeartbeats = createWorkerHeartbeatRepository(database.db);
 const backupStatus = backupStatusReader(
   env.BACKUP_TARGET === "r2"
@@ -225,7 +230,13 @@ const app = createApp({
   },
   postLock: createPostLock(database.db, { secretBox }),
   postUploads: createPostUploadRepository(database.db),
-  editorialProfiles: createEditorialProfileRepository(database.db),
+  // F9.7 (ADR-0043): el perfil trae el conocimiento de la marca al leerlo (lo ve la IA y la revisión).
+  editorialProfiles: editorialProfilesWithKnowledge(
+    createEditorialProfileRepository(database.db),
+    brandKnowledge,
+  ),
+  brandKnowledge,
+  knowledgeProposals: createKnowledgeProposalRepository(database.db),
   // Los planes de ideas (F9-T21): la API los pide y lee; el worker los corre (`content.plan`).
   planRuns: createPlanRunRepository(database.db),
   // Conseguir imágenes para un post (F9.5-T25): la API busca en la biblioteca y pide; el worker

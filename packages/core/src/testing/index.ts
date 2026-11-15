@@ -9,6 +9,12 @@ export {
   fakeTotpCode,
   fakeTotpStep,
 } from "./auth.js";
+// F9.7 parte B (ADR-0043).
+export {
+  createInMemoryBrandKnowledgeRepository,
+  createInMemoryKnowledgeProposalRepository,
+  type InMemoryKnowledgeProposalRepository,
+} from "./brand-knowledge.js";
 export {
   createFakeBrokerPurgeRepository,
   type FakeBrokerPurgeData,

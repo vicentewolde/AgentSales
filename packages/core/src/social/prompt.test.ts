@@ -91,6 +91,9 @@ describe("buildSocialBrief", () => {
       xLinks: ["agentpey.com/redes"],
       // F9.5-T23: ningún hecho dice que la marca es un equipo.
       speaksAsTeam: false,
+      // F9.7: sin conocimiento de la marca; un post de imagen pide la portada en cada idioma.
+      knowledge: null,
+      slides: { languages: ["es", "en"], maxPoints: 0 },
     });
   });
 
@@ -162,7 +165,7 @@ describe("buildSocialPrompt", () => {
   });
 
   it("tiene versión propia, distinta de la de avisos", () => {
-    expect(SOCIAL_PROMPT_VERSION).toBe("social-post-v4");
+    expect(SOCIAL_PROMPT_VERSION).toBe("social-post-v5");
     // v2 (F9.5-T05): el estilo de una persona, sin muletillas de IA y con hashtags medidos.
     expect(SOCIAL_SYSTEM_PROMPT).toContain("Sin clichés de marketing ni muletillas");
     expect(SOCIAL_SYSTEM_PROMPT).toContain("Instagram y TikTok: de 3 a 5");

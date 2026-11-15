@@ -2434,3 +2434,4 @@ export type LeadWebhookSecretResponse = z.infer<typeof leadWebhookSecretResponse
 
 /** Lo que recibe ManyChat: solo si se guardó y si ya existía, nunca datos personales. */
 export const leadWebhookResponseSchema = z.object({ ok: z.literal(true), created: z.boolean() });
+export * from "./brand.js";

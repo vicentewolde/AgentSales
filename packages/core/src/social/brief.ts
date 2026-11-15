@@ -1,8 +1,10 @@
+import type { BrandKnowledgeContext } from "../brand-knowledge.js";
 import type { Broker } from "../broker.js";
 import type { EditorialProfileView } from "../editorial-profile.js";
 import { isPostPlatform, type Language, POST_PLATFORMS, type PostPlatform } from "../enums.js";
 import type { PlatformAccount } from "../platform-account.js";
 import type { Post } from "../post.js";
+import { cardImageLimit, POST_CARDS } from "../post-cards.js";
 import { linkKey, linksIn } from "./networks.js";
 import { profileSpeaksAsTeam } from "./voice.js";
 
@@ -84,6 +86,17 @@ export type SocialBrief = {
   guidance?: string | null;
   /** Al rehacer un solo texto: el texto actual, como referencia de forma (no es fuente de hechos). */
   currentText?: { body: string; hashtags: string[] } | null;
+  /**
+   * El conocimiento de la marca (spec F9.7 B3, ADR-0043): postura, tono y forma de contar, ejemplos
+   * (guía de forma, nunca de hechos) y novedades (fuente de hechos). `null` si la marca no tiene.
+   */
+  knowledge: BrandKnowledgeContext | null;
+  /**
+   * Los textos de las láminas que se piden (spec F9.7 B5): en un post de imagen o carrusel, los
+   * idiomas de los textos pedidos y cuántos puntos caben (0 en una imagen: solo la portada). `null`
+   * en un post de texto o de video.
+   */
+  slides: { languages: Language[]; maxPoints: number } | null;
 };
 
 /** Hashtags sin repetir (sin mirar mayúsculas), en el orden en que llegan. */
@@ -137,5 +150,25 @@ export function buildSocialBrief(params: {
     // F9-T16: sin la marca del operador, la IA no pone enlaces en X (costarían US$0,20).
     xLinks: post.xLinkAllowed ? xLinksOf(post) : [],
     speaksAsTeam: profileSpeaksAsTeam(profile),
+    knowledge: profile.knowledge ?? null,
+    slides: slidesFor(post.kind, params.targets),
   };
+}
+
+/**
+ * Las láminas que se piden con los textos (B5): un post de imagen lleva la portada; un carrusel,
+ * la portada y un punto por lámina sin pasar el tope de la red más estricta (portada y cierre
+ * aparte). Un post de texto o de video, ninguna.
+ */
+export function slidesFor(
+  kind: Post["kind"],
+  targets: readonly SocialTarget[],
+): SocialBrief["slides"] {
+  if (kind !== "image" && kind !== "carousel") return null;
+  const languages = [...new Set(targets.map((target) => target.language))];
+  if (languages.length === 0) return null;
+  if (kind === "image") return { languages, maxPoints: 0 };
+  const platforms = [...new Set(targets.map((target) => target.platform))];
+  const limit = cardImageLimit(kind, platforms);
+  return { languages, maxPoints: Math.max(0, Math.min(POST_CARDS.maxPoints, limit.max - 2)) };
 }

@@ -15,11 +15,13 @@ import {
 import {
   type AutoPublishDeps,
   confirmManualPublication,
+  editorialProfilesWithKnowledge,
   enqueueLiveSyncs,
   isTerminalImportRun,
   type RunImportDeps,
 } from "@agentsales/core";
 import {
+  createBrandKnowledgeRepository,
   createBrokerRepository,
   createContentRepository,
   createContentRunRepository,
@@ -27,6 +29,7 @@ import {
   createEditorialProfileRepository,
   createFieldDefinitionRepository,
   createImportRunRepository,
+  createKnowledgeProposalRepository,
   createListingLock,
   createListingRepository,
   createLoginChallengeRepository,
@@ -88,6 +91,7 @@ import { registerJobs } from "./jobs/registry.js";
 import { enqueueTokensRefresh } from "./jobs/tokens-refresh.js";
 import {
   apiLlmOptions,
+  knowledgeLlmProviderOptions,
   llmProviderOptions,
   planLlmProviderOptions,
   socialLlmProviderOptions,
@@ -270,6 +274,14 @@ const postLock = createPostLock(database.db, { secretBox });
 const planRuns = createPlanRunRepository(database.db);
 // Los pedidos de imágenes de los posts (F9.5-T25): el job y el arranque (abandonados y en cola).
 const postImageRuns = createPostImageRunRepository(database.db);
+// F9.7 (ADR-0043): el conocimiento de la marca viaja con su perfil editorial (redactar, revisar y
+// el plan lo ven igual), y las lecturas de «Actualizar desde un texto».
+const brandKnowledge = createBrandKnowledgeRepository(database.db);
+const editorialProfiles = editorialProfilesWithKnowledge(
+  createEditorialProfileRepository(database.db),
+  brandKnowledge,
+);
+const knowledgeProposals = createKnowledgeProposalRepository(database.db);
 const marketplaceWindows = createMarketplaceWindows({
   publications,
   confirm: (publicationId, url) =>
@@ -463,7 +475,7 @@ const jobs = buildJobs({
       contents: createContentRepository(database.db),
       posts,
       brokers: repositories.brokers,
-      editorialProfiles: createEditorialProfileRepository(database.db),
+      editorialProfiles,
       platformAccounts,
       media: repositories.media,
       // El idioma de las tarjetas: la revisión de cada texto cuenta las imágenes de su idioma.
@@ -482,12 +494,26 @@ const jobs = buildJobs({
       planRuns,
       posts,
       brokers: repositories.brokers,
-      editorialProfiles: createEditorialProfileRepository(database.db),
+      editorialProfiles,
       contentRuns,
       // Con `fake`, un plan de ejemplo armado con lo que pide el prompt.
       llm: createLlmProvider(planLlmProviderOptions(env, process.env)),
       apiLlm,
       newId: randomUUID,
+    },
+    signal: jobsAbort.signal,
+  },
+  // «Actualizar desde un texto» (F9.7 B2, ADR-0043): la IA de la marca propone novedades y hechos.
+  brandPropose: {
+    shared: {
+      knowledgeProposals,
+      brokers: repositories.brokers,
+      editorialProfiles,
+      brandKnowledge,
+      contentRuns,
+      // Con `fake`, una novedad y un hecho de ejemplo.
+      llm: createLlmProvider(knowledgeLlmProviderOptions(env, process.env)),
+      apiLlm,
     },
     signal: jobsAbort.signal,
   },
@@ -499,7 +525,7 @@ const jobs = buildJobs({
       posts,
       brokers: repositories.brokers,
       contents: createContentRepository(database.db),
-      editorialProfiles: createEditorialProfileRepository(database.db),
+      editorialProfiles,
       media: repositories.media,
       storage,
       postLock,

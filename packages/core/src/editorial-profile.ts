@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { type BrandKnowledgeContext, brandKnowledgeContextSchema } from "./brand-knowledge.js";
 import { DEFAULT_LANGUAGE, LANGUAGES, type Language, POST_PLATFORMS } from "./enums.js";
 import { AppError } from "./errors.js";
 import { hasHiddenChars } from "./hidden-chars.js";
@@ -95,13 +96,21 @@ export const editorialProfileSchema = z.object({
   cadence: editorialCadenceSchema,
   /** Se suman a `brokers.fixed_hashtags`. */
   defaultHashtags: z.array(z.string()),
+  /**
+   * El conocimiento de la marca como lo ve la IA (spec F9.7 B3, ADR-0043 punto 3): lo agrega
+   * `editorialProfilesWithKnowledge` al leer; no es una columna del perfil. Sin él, `undefined`.
+   */
+  knowledge: brandKnowledgeContextSchema.nullable().optional(),
   createdAt: z.date(),
   updatedAt: z.date(),
 });
 export type EditorialProfile = z.infer<typeof editorialProfileSchema>;
 
-/** Lo que se guarda de un perfil (todo menos el corredor y las fechas). */
-export type EditorialProfileData = Omit<EditorialProfile, "brokerId" | "createdAt" | "updatedAt">;
+/** Lo que se guarda de un perfil (todo menos el corredor, las fechas y el conocimiento). */
+export type EditorialProfileData = Omit<
+  EditorialProfile,
+  "brokerId" | "createdAt" | "updatedAt" | "knowledge"
+>;
 
 /**
  * El perfil de un corredor como lo entregan la API y la CLI: el guardado o, si todavía no tiene,
@@ -110,6 +119,8 @@ export type EditorialProfileData = Omit<EditorialProfile, "brokerId" | "createdA
 export type EditorialProfileView = EditorialProfileData & {
   brokerId: string;
   updatedAt: Date | null;
+  /** El conocimiento que ve la IA (ADR-0043), si se leyó con `editorialProfilesWithKnowledge`. */
+  knowledge?: BrandKnowledgeContext | null;
 };
 
 /** El perfil vacío: en español, sin líneas, hechos ni cadencia. Lo que tiene una marca nueva. */

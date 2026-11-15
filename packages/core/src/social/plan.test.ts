@@ -356,7 +356,7 @@ describe("lo que ve la IA", () => {
   });
 
   it("la versión del plan es propia, distinta de la de los textos", () => {
-    expect(PLAN_PROMPT_VERSION).toBe("social-plan-v3");
+    expect(PLAN_PROMPT_VERSION).toBe("social-plan-v4");
     expect(PLAN_PROMPT_VERSION).not.toBe(SOCIAL_PROMPT_VERSION);
   });
 

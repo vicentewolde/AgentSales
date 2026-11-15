@@ -153,6 +153,12 @@ const CONFLICTS = new Set([
   "POST_CARDS_IN_USE",
   // ADR-0042: cambiar el idioma de una foto de un post con publicaciones que ya fijaron sus medios.
   "POST_MEDIA_IN_USE",
+  // F9.7 (ADR-0043): otra lectura de texto en curso, el tope de novedades activas, editar una
+  // novedad archivada o resolver una propuesta ya resuelta.
+  "KNOWLEDGE_RUN_CONFLICT",
+  "KNOWLEDGE_TOO_MANY_UPDATES",
+  "KNOWLEDGE_UPDATE_ARCHIVED",
+  "KNOWLEDGE_PROPOSAL_RESOLVED",
 ]);
 
 /**

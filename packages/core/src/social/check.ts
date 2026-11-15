@@ -1,3 +1,4 @@
+import { knowledgeSources } from "../brand-knowledge.js";
 import type { Broker } from "../broker.js";
 import { aiTellMessage, findAiTells } from "../content/ai-tells.js";
 import {
@@ -94,12 +95,17 @@ export type PostCheckContext = {
  * y el tema del operador) y la de las ideas de un plan (F9-T20), que no tienen brief.
  */
 export function profileSources(
-  profile: Pick<EditorialProfileView, "facts" | "audience" | "pillars" | "defaultHashtags">,
+  profile: Pick<EditorialProfileView, "facts" | "audience" | "pillars" | "defaultHashtags"> & {
+    knowledge?: EditorialProfileView["knowledge"];
+  },
   broker: Pick<Broker, "brandName" | "fixedHashtags">,
 ): string {
   return [
     broker.brandName,
     ...profile.facts,
+    // Las novedades de la marca son fuente de hechos; los ejemplos, la postura y el tono no (D1 de
+    // F9.7, ADR-0043).
+    ...knowledgeSources(profile.knowledge),
     profile.audience ?? "",
     ...profile.pillars.flatMap((pillar) => [pillar.name, pillar.description]),
     ...profile.defaultHashtags,
@@ -119,7 +125,7 @@ export function buildPostCheckContext(params: {
   post: Pick<Post, "kind" | "topic" | "brief" | "briefOrigin" | "source" | "xLinkAllowed">;
   profile: Pick<
     EditorialProfileView,
-    "facts" | "audience" | "pillars" | "defaultHashtags" | "avoid"
+    "facts" | "audience" | "pillars" | "defaultHashtags" | "avoid" | "knowledge"
   >;
   broker: Pick<Broker, "brandName" | "fixedHashtags">;
   media: readonly (Pick<Media, "role" | "kind"> &

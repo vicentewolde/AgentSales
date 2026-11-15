@@ -102,6 +102,18 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "GET /brokers/:id/week": "session",
   "POST /brokers/:id/week/approve": "session",
   "GET /brokers/:id/daily-readiness": "session",
+  // F9.7 (ADR-0043): el conocimiento de la marca (leer `broker.view`, cambiar `brand.edit`, en core).
+  "GET /brokers/:id/knowledge": "session",
+  "PUT /brokers/:id/knowledge": "session",
+  "GET /brokers/:id/knowledge/updates": "session",
+  "POST /brokers/:id/knowledge/updates": "session",
+  "PATCH /brokers/:id/knowledge/updates/:updateId": "session",
+  "DELETE /brokers/:id/knowledge/updates/:updateId": "session",
+  "GET /brokers/:id/knowledge/proposals": "session",
+  "POST /brokers/:id/knowledge/proposals": "session",
+  "GET /brokers/:id/knowledge/runs/:runId": "session",
+  "POST /brokers/:id/knowledge/proposals/:proposalId/accept": "session",
+  "POST /brokers/:id/knowledge/proposals/:proposalId/discard": "session",
   // F9-T10: los posts y sus medios, con `posts.manage` revisado en core; un corredor ve y gestiona
   // solo los de su marca (lo ajeno es 404: `ownedBy` y core), el administrador todos.
   "GET /posts": "session",

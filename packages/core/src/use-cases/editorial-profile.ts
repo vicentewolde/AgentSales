@@ -51,7 +51,12 @@ export async function getEditorialProfile(
   brokerId: string,
 ): Promise<EditorialProfileView> {
   await brokerFor(deps.brokers, actor, brokerId, "broker.view");
-  return editorialProfileView(brokerId, await deps.editorialProfiles.get(brokerId));
+  // El conocimiento (ADR-0043) tiene sus propias rutas: aquí solo el perfil.
+  const { knowledge: _knowledge, ...profile } = editorialProfileView(
+    brokerId,
+    await deps.editorialProfiles.get(brokerId),
+  );
+  return profile;
 }
 
 /**
@@ -72,5 +77,9 @@ export async function saveEditorialProfile(
 ): Promise<EditorialProfileView> {
   await brokerFor(deps.brokers, actor, brokerId, "brand.edit");
   const data = normalizeEditorialProfile(input);
-  return editorialProfileView(brokerId, await deps.editorialProfiles.upsert(brokerId, data));
+  const { knowledge: _knowledge, ...profile } = editorialProfileView(
+    brokerId,
+    await deps.editorialProfiles.upsert(brokerId, data),
+  );
+  return profile;
 }

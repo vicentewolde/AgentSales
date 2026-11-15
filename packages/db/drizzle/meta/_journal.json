@@ -190,6 +190,13 @@
       "when": 1794767035583,
       "tag": "0026_f96_alcance_de_la_corrida",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1794769239239,
+      "tag": "0028_f97_marca",
+      "breakpoints": true
     }
   ]
 }

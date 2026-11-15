@@ -36,7 +36,7 @@ export async function draftPostTexts(
   const { data, ...rest } = await generateValidated(deps, {
     buildPrompt: (issues) => buildSocialPrompt(params.brief, issues),
     jsonSchema: SOCIAL_DRAFT_JSON_SCHEMA,
-    validate: (raw) => validateSocialDraft(raw, params.brief.targets),
+    validate: (raw) => validateSocialDraft(raw, params.brief.targets, params.brief.slides),
     ...(params.signal === undefined ? {} : { signal: params.signal }),
   });
   return {

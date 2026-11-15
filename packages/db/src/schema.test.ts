@@ -77,6 +77,13 @@ const EXPECTED_ENUMS: Record<string, readonly string[]> = {
 };
 
 const EXPECTED_TABLES = [
+  // F9.7 (0026, ADR-0043): el conocimiento y el estilo de la marca.
+  "brand_card_styles",
+  "brand_knowledge",
+  "brand_knowledge_examples",
+  "brand_knowledge_proposals",
+  "brand_knowledge_runs",
+  "brand_knowledge_updates",
   "brokers",
   "content_runs",
   "contents",
@@ -101,6 +108,8 @@ const EXPECTED_TABLES = [
   "plan_runs",
   "platform_accounts",
   "platform_catalog",
+  // F9.7 (0026): los textos de las láminas de un post.
+  "post_card_texts",
   // F9.5-T25 (0021): los pedidos de imágenes de un post (tarjetas, biblioteca e IA).
   "post_image_runs",
   "post_uploads",

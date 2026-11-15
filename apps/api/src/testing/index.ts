@@ -8,6 +8,7 @@ import {
   AppError,
   type DiscordWebhooks,
   discordWebhookParts,
+  editorialProfilesWithKnowledge,
   type InstagramAuth,
   type LinkedInAuth,
   type MercadoLibreAuth,
@@ -21,12 +22,14 @@ import {
   createFakeSecretBox,
   createFakeSecretTokens,
   createFakeTotpProvider,
+  createInMemoryBrandKnowledgeRepository,
   createInMemoryBrokerRepository,
   createInMemoryContentRepositories,
   createInMemoryEditorialProfileRepository,
   createInMemoryFieldDefinitionRepository,
   createInMemoryImportRunRepository,
   createInMemoryJobQueue,
+  createInMemoryKnowledgeProposalRepository,
   createInMemoryLeadRepository,
   createInMemoryLeadWebhookKeyRepository,
   createInMemoryListingLock,
@@ -461,6 +464,7 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
   const brokers = overrides.brokers ?? createInMemoryBrokerRepository([], { nextId: randomUUID });
   // Las subidas de posts: la app las lee y el candado del post las cambia (los mismos datos).
   const postUploads = createInMemoryPostUploadRepository();
+  const brandKnowledge = overrides.brandKnowledge ?? createInMemoryBrandKnowledgeRepository();
   const deps: Omit<AppDeps, "lock" | "postLock"> & {
     lock?: AppDeps["lock"];
     postLock?: AppDeps["postLock"];
@@ -516,7 +520,13 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     postImageRuns: createInMemoryPostImageRunRepository(),
     imageSources: { stock: null, ai: null },
     imageAiPricing: { priceUsd: 0.034, monthlyCapUsd: 2 },
-    editorialProfiles: createInMemoryEditorialProfileRepository(),
+    // F9.7 (ADR-0043): el perfil con el conocimiento, como en el servidor.
+    editorialProfiles: editorialProfilesWithKnowledge(
+      createInMemoryEditorialProfileRepository(),
+      brandKnowledge,
+    ),
+    brandKnowledge,
+    knowledgeProposals: createInMemoryKnowledgeProposalRepository(),
     platformAccounts: createInMemoryPlatformAccountRepository({ nextId: randomUUID }),
     publications,
     instagram: { auth: fakeInstagramAuth(), oauthConfigured: true, secureCookie: false },
