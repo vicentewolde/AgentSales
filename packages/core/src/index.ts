@@ -996,9 +996,11 @@ export {
 export {
   CALENDAR_ENTRY_KINDS,
   CALENDAR_MAX_RANGE_MS,
+  type CalendarDraft,
   type CalendarEntry,
   type CalendarEntryKind,
   type CalendarInput,
+  calendarDrafts,
   calendarEntries,
 } from "./tracking/calendar.js";
 export { isManualTask, manualTasksOf } from "./tracking/manual-tasks.js";

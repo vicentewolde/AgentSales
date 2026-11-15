@@ -564,6 +564,36 @@ describe("trackingPostRow", () => {
     expect(row.cells.instagram).toEqual([]);
     expect(row.cells.tiktok).toEqual([]);
   });
+
+  it("una red que el post no tiene solo muestra lo publicado, y no entra a la agenda (2026-11-15)", () => {
+    const post = {
+      id: "p1",
+      brokerId: "b1",
+      topic: "Bastidores",
+      status: "ready" as const,
+      kind: "image" as const,
+      plannedAt: null,
+      platforms: ["x" as const],
+    };
+    const publications = [
+      postPublication("p1", { platform: "x", status: "failed" }),
+      postPublication("p1", { platform: "linkedin", status: "failed" }),
+      postPublication("p1", { platform: "discord", status: "published" }),
+    ];
+    const row = trackingPostRow(post, publications, NOW);
+    expect(row.cells.x.map((p) => p.status)).toEqual(["failed"]);
+    expect(row.cells.linkedin).toEqual([]);
+    expect(row.cells.discord.map((p) => p.status)).toEqual(["published"]);
+    const items = agendaItems({
+      listings: [],
+      posts: [post],
+      publications,
+      autoPublishBrokerIds: new Set(),
+      pendingReviews: [],
+      now: NOW,
+    });
+    expect(items.map((item) => item.platform)).toEqual(["x"]);
+  });
 });
 
 describe("pendingReviewsOf", () => {

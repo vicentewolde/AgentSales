@@ -8,7 +8,7 @@ import {
   type PublishMode,
   publishListing,
 } from "@agentsales/core";
-import { createPublicationScenario } from "@agentsales/core/testing";
+import { createInMemoryPostRepository, createPublicationScenario } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
 import {
   agendaResponseSchema,
@@ -33,6 +33,7 @@ async function setup(
     publishMode?: PublishMode;
     platform?: "instagram" | "portal_inmobiliario";
     now?: () => Date;
+    posts?: ReturnType<typeof createInMemoryPostRepository>;
   } = {},
 ) {
   const t = await createPublicationScenario({
@@ -54,6 +55,7 @@ async function setup(
       queue: t.deps.queue,
       publishMode: options.publishMode ?? "dry-run",
       ...(options.now === undefined ? {} : { now: options.now }),
+      ...(options.posts === undefined ? {} : { posts: options.posts }),
       healthDetails: {
         backupStatus: async () => null,
       },
@@ -373,6 +375,39 @@ describe("GET /calendar (F9-T18)", () => {
     expect(moved.status).toBe(200);
     expect(await day("2026-10-16", "2026-10-17")).toEqual([]);
     expect((await day("2026-10-17", "2026-10-18")).map((e) => e.publicationId)).toEqual([id]);
+  });
+
+  it("trae los borradores: posts con fecha planeada y nada programado ni publicado (2026-11-15)", async () => {
+    const posts = createInMemoryPostRepository();
+    const { t, app, brokerSlug } = await setup({ posts });
+    const listing = await t.listings.get(t.listingId);
+    const brokerId = listing?.brokerId ?? "";
+    const draft = await posts.create({
+      brokerId,
+      topic: "Borrador del jueves",
+      kind: "text",
+      plannedAt: new Date("2026-10-16T13:00:00.000Z"),
+    });
+    await posts.create({
+      brokerId,
+      topic: "Una idea",
+      kind: "text",
+      status: "idea",
+      plannedAt: new Date("2026-10-16T14:00:00.000Z"),
+    });
+    const response = await app.request(`/calendar?${range("2026-10-16", "2026-10-17")}`);
+    expect(response.status).toBe(200);
+    const body = calendarResponseSchema.parse(await response.json());
+    expect(body.drafts).toEqual([
+      {
+        postId: draft.id,
+        title: "Borrador del jueves",
+        brokerId,
+        brokerSlug: await brokerSlug(),
+        at: new Date("2026-10-16T13:00:00.000Z"),
+        approved: false,
+      },
+    ]);
   });
 
   it("el día del cambio de hora (6 de septiembre) empieza a la 01:00 y guarda lo de esa madrugada", async () => {

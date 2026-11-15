@@ -1276,8 +1276,26 @@ export const calendarEntrySchema = z.object({
   brokerSlug: z.string().nullable(),
   externalUrl: z.string().nullable(),
 });
-export const calendarResponseSchema = z.object({ entries: z.array(calendarEntrySchema) });
+/**
+ * Un borrador en el calendario (2026-11-15): un post en borrador o listo con su fecha planeada y
+ * nada programado ni publicado (`calendarDrafts`). Se ve distinto y lleva a su página.
+ */
+export const calendarDraftSchema = z.object({
+  postId: z.string(),
+  title: z.string(),
+  brokerId: z.string(),
+  brokerSlug: z.string().nullable(),
+  at: z.coerce.date(),
+  /** Ya tiene una publicación aprobada, sin hora. */
+  approved: z.boolean(),
+});
+export const calendarResponseSchema = z.object({
+  entries: z.array(calendarEntrySchema),
+  /** Un servidor anterior no los manda: se leen vacíos. */
+  drafts: z.array(calendarDraftSchema).default([]),
+});
 export type CalendarEntryView = z.infer<typeof calendarEntrySchema>;
+export type CalendarDraftView = z.infer<typeof calendarDraftSchema>;
 export type CalendarResponse = z.infer<typeof calendarResponseSchema>;
 
 /** `GET /usage?month=AAAA-MM` (spec F7 §4.7): por defecto, el mes de hoy en Chile. */
@@ -1640,6 +1658,11 @@ export const updatePostBodySchema = z
      * post de video: en otro, `POST_INVALID` (400).
      */
     musicTrackId: musicTrackIdSchema.nullable().optional(),
+    /**
+     * Los idiomas del post («Idiomas de este post», 2026-11-15): `null` = los de la marca. Un idioma
+     * quitado no se redacta y sus textos sin aprobar se ocultan (no se borran).
+     */
+    languages: z.array(z.enum(LANGUAGES)).min(1).max(LANGUAGES.length).nullable().optional(),
   })
   .strict();
 export type UpdatePostBody = z.infer<typeof updatePostBodySchema>;
@@ -1718,6 +1741,13 @@ export const postDetailResponseSchema = z.object({
    * todavía no son medios. Un servidor anterior no lo manda: se lee 0.
    */
   uploadsInReview: z.number().int().nonnegative().default(0),
+  /**
+   * Los idiomas en que escribe el post (los suyos o los de la marca, el principal primero; 2026-11-15).
+   * Un texto aprobado de otro idioma se muestra con una nota. Un servidor anterior no lo manda: `null`.
+   */
+  languages: z.array(z.enum(LANGUAGES)).nullable().default(null),
+  /** Los textos sin aprobar de un idioma quitado, que no van en `contents` (vuelven con el idioma). */
+  hiddenTexts: z.number().int().nonnegative().default(0),
 });
 export type PostDetailResponse = z.infer<typeof postDetailResponseSchema>;
 

@@ -311,6 +311,8 @@ describe("publicar y programar un post", () => {
       { platform: "discord", language: "es" },
       { platform: "discord", language: "en" },
     ]);
+    // Un post en los dos idiomas (la marca, sin perfil, escribe solo en español).
+    await s.deps.posts.update(s.post.id, { languages: ["es", "en"] });
     for (const language of ["es", "en"]) {
       await s.broker(`/posts/${s.post.id}/contents/discord/${language}/approve`, {
         method: "POST",
@@ -343,6 +345,8 @@ describe("publicar y programar un post", () => {
       { platform: "discord", language: "es" },
       { platform: "discord", language: "en" },
     ]);
+    // Un post en los dos idiomas (la marca, sin perfil, escribe solo en español).
+    await s.deps.posts.update(s.post.id, { languages: ["es", "en"] });
     for (const language of ["es", "en"]) {
       await s.broker(`/posts/${s.post.id}/contents/discord/${language}/approve`, {
         method: "POST",

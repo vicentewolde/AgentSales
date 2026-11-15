@@ -143,6 +143,8 @@ const CONFLICTS = new Set([
   "PLAN_RUN_CONFLICT",
   // F9-T21: aprobar, publicar o programar una red que no está entre las del post (se agrega al post).
   "POST_PLATFORM_EXCLUDED",
+  // 2026-11-15: aprobar el texto de un idioma que no está entre los del post ni los de la marca.
+  "POST_LANGUAGE_EXCLUDED",
   // F9.5-T25 (ADR-0038): pedir imágenes para un post de solo texto, con otro pedido en curso, con la
   // IA en el tope del mes o el video de las tarjetas sin texto redactado.
   "POST_IMAGE_NOT_NEEDED",

@@ -141,11 +141,19 @@ export {
   planSlots,
 } from "./plan-slots.js";
 export {
+  normalizePostLanguages,
+  postLanguageExcluded,
+  postLanguages,
+  postTextVisible,
+  postWritesIn,
+} from "./post-languages.js";
+export {
   ideaNeedsDraft,
   type PostNetworkGaps,
   postNetworkGaps,
   postPlatformExcluded,
   postPublishesOn,
+  postShowsPublication,
   requirePostPlatform,
 } from "./post-networks.js";
 export { buildSocialPrompt, SOCIAL_PROMPT_VERSION, SOCIAL_SYSTEM_PROMPT } from "./prompt.js";

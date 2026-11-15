@@ -375,39 +375,53 @@ export function ProfileForm({
   return (
     <form aria-label="Perfil editorial" className="mt-2 space-y-6" onSubmit={submit}>
       <fieldset>
-        <legend className="text-sm font-medium text-fg">Idiomas</legend>
-        <div className="mt-1 flex flex-wrap items-center gap-3 text-sm">
-          <label htmlFor={`${ids}-primary`}>Principal</label>
-          <Select
-            width="auto"
-            id={`${ids}-primary`}
-            value={draft.primary}
-            onChange={(event) => set("primary", event.target.value as Language)}
-          >
-            {LANGUAGES.map((language) => (
-              <option key={language} value={language}>
-                {LANGUAGE_TEXT[language]}
-              </option>
-            ))}
-          </Select>
-          <label htmlFor={`${ids}-second`}>Segundo idioma</label>
-          <Select
-            width="auto"
-            id={`${ids}-second`}
-            value={draft.second}
-            onChange={(event) => set("second", event.target.value as Language | "")}
-          >
-            <option value="">ninguno</option>
-            {LANGUAGES.map((language) => (
-              <option key={language} value={language}>
-                {LANGUAGE_TEXT[language]}
-              </option>
-            ))}
-          </Select>
+        <legend className="text-sm font-medium text-fg">Idiomas de los posts</legend>
+        <div className="mt-1 flex flex-wrap items-center gap-4 text-sm">
+          {LANGUAGES.map((language) => {
+            const on = draft.primary === language || draft.second === language;
+            const only = on && draft.second === "";
+            return (
+              <label key={language} className="inline-flex items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  checked={on}
+                  // Al menos uno: el último marcado no se quita.
+                  disabled={only}
+                  onChange={() => setDraft((current) => toggleLanguage(current, language))}
+                />
+                {LANGUAGE_NAME[language]}
+              </label>
+            );
+          })}
+          {draft.second !== "" && (
+            <>
+              <label htmlFor={`${ids}-primary`}>Principal</label>
+              <Select
+                width="auto"
+                id={`${ids}-primary`}
+                value={draft.primary}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    primary: event.target.value as Language,
+                    second: current.primary,
+                  }))
+                }
+              >
+                {[draft.primary, draft.second].map((language) => (
+                  <option key={language} value={language}>
+                    {LANGUAGE_NAME[language as Language]}
+                  </option>
+                ))}
+              </Select>
+            </>
+          )}
         </div>
         <Help>
-          Con dos idiomas, cada red tiene un texto por idioma, que se publican por separado (y la IA
-          cuesta el doble).
+          La IA redacta un texto por red en cada idioma marcado, que se publican por separado (con
+          dos, la IA cuesta el doble). Si quitas un idioma, no se redacta más y sus textos sin
+          aprobar se ocultan (no se borran: vuelven si lo marcas de nuevo); cada post puede tener
+          los suyos en «Idiomas de este post».
         </Help>
         <FieldErrors issues={issues} prefix="languages" />
       </fieldset>
@@ -696,6 +710,18 @@ export function ProfileForm({
  * La sección Perfil editorial (Mi marca y la página de cada corredor): idiomas, público, temas,
  * hechos, cosas que evitar, cadencia por red y hashtags.
  */
+/** El nombre del idioma con mayúscula, para las casillas. */
+const LANGUAGE_NAME: Readonly<Record<Language, string>> = { es: "Español", en: "Inglés" };
+
+/** Marca o quita un idioma de la marca: siempre queda al menos uno (el principal). */
+export function toggleLanguage(draft: Draft, language: Language): Draft {
+  if (draft.primary === language) {
+    return draft.second === "" ? draft : { ...draft, primary: draft.second, second: "" };
+  }
+  if (draft.second === language) return { ...draft, second: "" };
+  return { ...draft, second: language };
+}
+
 export function EditorialProfileSection({ brokerId }: { brokerId: string }) {
   const profile = useEditorialProfile(brokerId);
   return (

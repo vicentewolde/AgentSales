@@ -22,6 +22,7 @@ import { buildSocialBrief, postPlatforms, socialTargets } from "../social/brief.
 import { buildPostCheckContext } from "../social/check.js";
 import { draftPostTexts } from "../social/draft-texts.js";
 import { kindProblem } from "../social/networks.js";
+import { postLanguages } from "../social/post-languages.js";
 import { SOCIAL_PROMPT_VERSION } from "../social/prompt.js";
 import { postSubject } from "../subject.js";
 
@@ -192,7 +193,8 @@ async function texts(
       { details: { postId: post.id, kind: post.kind } },
     );
   }
-  const targets = socialTargets(platforms, profile.languages);
+  // Los idiomas del post (los suyos o los de la marca): un idioma quitado no se redacta.
+  const targets = socialTargets(platforms, postLanguages(post, profile.languages));
   const ctx = buildPostCheckContext({
     post,
     profile,

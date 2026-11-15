@@ -35,6 +35,8 @@ export type NewPost = {
   xLinkAllowed?: boolean;
   /** Las redes del post (F9-T20); por defecto `null` = todas las de la marca. */
   platforms?: readonly PostPlatform[] | null;
+  /** Los idiomas del post; por defecto `null` = los de la marca. */
+  languages?: readonly Language[] | null;
 };
 
 /** Lo que se puede cambiar de un post; `undefined` = no tocar, `null` borra. */
@@ -52,6 +54,8 @@ export type PostChanges = {
   platforms?: PostPlatform[] | null;
   /** La música de sus videos (F9.5-T19); `null` = sin música. */
   musicTrackId?: string | null;
+  /** Los idiomas del post (2026-11-15); `null` = los de la marca. */
+  languages?: Language[] | null;
 };
 
 /**
@@ -89,6 +93,9 @@ export function pickPostChanges(changes: PostChanges): PostChanges {
     picked.platforms = changes.platforms === null ? null : [...changes.platforms];
   }
   if (changes.musicTrackId !== undefined) picked.musicTrackId = changes.musicTrackId;
+  if (changes.languages !== undefined) {
+    picked.languages = changes.languages === null ? null : [...changes.languages];
+  }
   return picked;
 }
 

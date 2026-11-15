@@ -18,6 +18,11 @@ import { Link, useParams } from "react-router";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { useBrandPlatforms } from "../components/posts/brand-platforms.js";
 import { POST_KIND_LABEL, PostStatusBadge } from "../components/posts/labels.js";
+import {
+  PostLanguagesField,
+  PostLanguagesNotice,
+  postLanguagesValue,
+} from "../components/posts/PostLanguages.js";
 import { PostMedia } from "../components/posts/PostMedia.js";
 import { PostMusic } from "../components/posts/PostMusic.js";
 import { PostPublications, PostPublishBar } from "../components/posts/PostPublishing.js";
@@ -94,6 +99,7 @@ function PostEditForm({ post, onClose }: { post: PostJson; onClose: () => void }
         plannedAt,
         // F9-T21: sin marcar ninguna, todas las redes de la marca.
         platforms: platforms.length === 0 ? null : platforms,
+        languages: postLanguagesValue(form, profile.data?.languages),
       },
       { onSuccess: onClose },
     );
@@ -168,6 +174,7 @@ function PostEditForm({ post, onClose }: { post: PostJson; onClose: () => void }
           ))}
         </div>
       </fieldset>
+      <PostLanguagesField post={post} brandLanguages={profile.data?.languages} />
       <div className="flex gap-2 md:col-span-2">
         <Button type="submit" loading={update.isPending}>
           {update.isPending ? "Guardando…" : "Guardar"}
@@ -320,6 +327,7 @@ export function PostDetailPage() {
   if (post.error) return <ErrorAlert error={post.error} onRetry={() => void post.refetch()} />;
   if (post.data === undefined) return <Loading />;
   const { post: item, media, contents, latestRun, publications, uploadsInReview } = post.data;
+  const { languages, hiddenTexts } = post.data;
   const archived = item.status === "archived";
   const publishMode = modeOf(item.brokerId);
   const pillarName =
@@ -470,6 +478,11 @@ export function PostDetailPage() {
               <div className="space-y-4">
                 <DraftBox post={item} run={latestRun} hasTexts={contents.length > 0} />
                 <PostNetworksNotice post={item} contents={contents} run={latestRun} />
+                <PostLanguagesNotice
+                  languages={languages}
+                  hiddenTexts={hiddenTexts}
+                  contents={contents}
+                />
                 <PostTexts
                   postId={item.id}
                   post={item}

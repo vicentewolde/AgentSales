@@ -1,5 +1,6 @@
 import { inScope } from "../access.js";
 import { chileDateOf, chileDateStart, formatChileTime } from "../chile-time.js";
+import { editorialProfileView } from "../editorial-profile.js";
 import {
   isPostPlatform,
   LANGUAGES,
@@ -11,11 +12,13 @@ import { AppError, isAppError } from "../errors.js";
 import { assertCan, scopeOf } from "../permissions.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { ContentRepository } from "../ports/content-repository.js";
+import type { EditorialProfileRepository } from "../ports/editorial-profile-repository.js";
 import type { PostRepository } from "../ports/post-repository.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
 import { canDraftPost, type Post } from "../post.js";
 import type { Publication, PublicationActor } from "../publication.js";
 import { addDays, weekOf } from "../social/plan-slots.js";
+import { postLanguages } from "../social/post-languages.js";
 import { postPublishesOn } from "../social/post-networks.js";
 import { postSubject } from "../subject.js";
 import type { SubjectLocks } from "../subject-lock.js";
@@ -242,6 +245,8 @@ export type ApprovePostWeekDeps = ApproveContentDeps &
     brokers: Pick<BrokerRepository, "findById">;
     posts: Pick<PostRepository, "get" | "list">;
     contents: Pick<ContentRepository, "get" | "listCurrent">;
+    /** Los idiomas de la marca: los textos de un idioma quitado no se aprueban (2026-11-15). */
+    editorialProfiles: Pick<EditorialProfileRepository, "get">;
     /** Lo que ya hizo el operador en cada red (programar, desprogramar, reintentar): no se pisa. */
     publications: Pick<PublicationRepository, "listBySubject" | "listEvents">;
     now?: () => Date;
@@ -333,8 +338,13 @@ export async function approvePostWeek(
   await requireBrand(deps, actor, brokerId);
   const fixed = { ...deps, now: () => now };
   const { accepted, ideas } = await weekPosts(deps, actor, brokerId, range);
+  const brandLanguages = editorialProfileView(
+    brokerId,
+    await deps.editorialProfiles.get(brokerId),
+  ).languages;
   const posts: WeekPostResult[] = [];
   for (const post of accepted) {
+    const languages = postLanguages(post, brandLanguages);
     const { plannedAt } = post;
     const result: WeekPostResult = {
       postId: post.id,
@@ -349,7 +359,11 @@ export async function approvePostWeek(
     // En el orden de las redes y de los idiomas, como los muestra el post.
     const texts = (await deps.contents.listCurrent(postSubject(post.id)))
       .filter(
-        (content) => isPostPlatform(content.platform) && postPublishesOn(post, content.platform),
+        (content) =>
+          isPostPlatform(content.platform) &&
+          postPublishesOn(post, content.platform) &&
+          // Solo los idiomas del post: el texto de un idioma quitado no se aprueba ni bloquea.
+          languages.includes(content.language),
       )
       .sort(
         (a, b) =>

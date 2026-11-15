@@ -4,6 +4,7 @@ import type { EditorialProfileData } from "@agentsales/core";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { brokerData, harness } from "../../../test/harness.js";
+import { toggleLanguage } from "./EditorialProfileForm.js";
 import {
   addHour,
   draftOf,
@@ -414,5 +415,26 @@ describe("perfil editorial en el panel (F9.5-T17)", () => {
         { key: "propiedades-disponibles", name: "Departamentos en arriendo" },
       ]),
     );
+  });
+});
+
+describe("toggleLanguage (Idiomas de los posts, 2026-11-15)", () => {
+  it("marca y quita idiomas; siempre queda uno, y quitar el principal deja el otro", () => {
+    const base = draftOf({
+      brokerId: "b",
+      languages: ["es"],
+      audience: null,
+      pillars: [],
+      facts: [],
+      avoid: [],
+      cadence: {},
+      defaultHashtags: [],
+    } as unknown as EditorialProfileJson);
+    const both = toggleLanguage(base, "en");
+    expect([both.primary, both.second]).toEqual(["es", "en"]);
+    const onlyEn = toggleLanguage(both, "es");
+    expect([onlyEn.primary, onlyEn.second]).toEqual(["en", ""]);
+    expect(toggleLanguage(onlyEn, "en")).toBe(onlyEn);
+    expect(profileBody(toggleLanguage(both, "en")).body.languages).toEqual(["es"]);
   });
 });

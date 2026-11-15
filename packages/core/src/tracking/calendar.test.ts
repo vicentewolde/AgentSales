@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { chileDateOf, chileDateStart } from "../chile-time.js";
 import type { Publication } from "../publication.js";
-import { calendarEntries } from "./calendar.js";
+import { calendarDrafts, calendarEntries } from "./calendar.js";
 
 // F9-T18: el calendario del panel, puro (lo programado y lo publicado de avisos y posts).
 
@@ -149,5 +149,44 @@ describe("los días de Chile del calendario", () => {
     // 2026-04-05: se atrasa de 00:00 a 23:00 del 4; el día 5 empieza a las 00:00 de invierno.
     expect(chileDateStart("2026-04-05").toISOString()).toBe("2026-04-05T04:00:00.000Z");
     expect(() => chileDateStart("2026-4-5")).toThrow(RangeError);
+  });
+});
+
+describe("calendarDrafts (2026-11-15)", () => {
+  const draftPost = (
+    id: string,
+    extra: { status?: "idea" | "draft" | "ready" | "archived"; at?: Date | null } = {},
+  ) => ({
+    id,
+    brokerId: "b1",
+    topic: `Tema ${id}`,
+    status: extra.status ?? "draft",
+    plannedAt: extra.at === undefined ? hours(5) : extra.at,
+  });
+
+  it("los posts en borrador o listos con fecha en el rango y nada programado ni publicado", () => {
+    const drafts = calendarDrafts({
+      posts: [
+        draftPost("a", { at: hours(30) }),
+        draftPost("b", { status: "ready" }),
+        draftPost("idea", { status: "idea" }),
+        draftPost("sin-fecha", { at: null }),
+        draftPost("fuera", { at: hours(24 * 30) }),
+        draftPost("programado"),
+        draftPost("cancelado"),
+      ],
+      publications: [
+        postPublication("b", { status: "approved" }),
+        postPublication("programado", { status: "scheduled", scheduledAt: hours(5) }),
+        postPublication("cancelado", { status: "cancelled" }),
+      ],
+      from: hours(-24),
+      to: hours(24 * 7),
+    });
+    expect(drafts.map((draft) => [draft.postId, draft.approved])).toEqual([
+      ["b", true],
+      ["cancelado", false],
+      ["a", false],
+    ]);
   });
 });

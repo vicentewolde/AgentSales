@@ -336,6 +336,32 @@ const DATE_ABBREVIATIONS: ReadonlySet<string> = new Set([
  * siglas comunes. Plegadas (sin tildes, en minúsculas). Las abreviaturas de fechas van aparte
  * (`DATE_ABBREVIATIONS`): solo valen junto a una fecha.
  */
+/** Gentilicios comunes en inglés (en minúsculas y sin tildes, como `foldText`). */
+const ENGLISH_DEMONYMS = [
+  "chilean",
+  "chileans",
+  "latin",
+  "latino",
+  "latinos",
+  "latina",
+  "latinas",
+  "latam",
+  "hispanic",
+  "american",
+  "americans",
+  "european",
+  "europeans",
+  "argentine",
+  "argentinian",
+  "peruvian",
+  "mexican",
+  "colombian",
+  "brazilian",
+  "uruguayan",
+  "bolivian",
+  "venezuelan",
+] as const;
+
 const COMMON_CAPITALIZED: ReadonlySet<string> = new Set([
   "instagram",
   "linkedin",
@@ -361,7 +387,44 @@ const COMMON_CAPITALIZED: ReadonlySet<string> = new Set([
   ...DATE_NAMES,
   "english",
   "spanish",
+  // Gentilicios en inglés (2026-11-15): en español van en minúscula (chileno, latino) y no se
+  // revisan; en inglés llevan mayúscula y no son nombres inventados.
+  ...ENGLISH_DEMONYMS,
 ]);
+
+/**
+ * Formas de una palabra con mayúscula que se aceptan si su base es conocida (2026-11-15): el plural
+ * («AIs», «CEOs», «Pilots») y el gentilicio en inglés («Chilean» de «Chile» o «chileno»). Devuelve
+ * las bases a buscar en las fuentes y en `COMMON_CAPITALIZED`.
+ */
+function knownBases(folded: string): string[] {
+  const bases: string[] = [];
+  if (folded.length > 2 && folded.endsWith("s")) bases.push(folded.slice(0, -1));
+  if (folded.length > 3 && folded.endsWith("es")) bases.push(folded.slice(0, -2));
+  const singular = folded.endsWith("s") ? folded.slice(0, -1) : folded;
+  for (const suffix of ["ian", "ean", "an", "ese", "ish"]) {
+    if (singular.length - suffix.length < 3 || !singular.endsWith(suffix)) continue;
+    const stem = singular.slice(0, -suffix.length);
+    // «Chile» + «an», «México» + «an» (mexic-o), «Colombia» + «n», y el gentilicio en español.
+    const kept = suffix === "ean" ? [stem, `${stem}e`] : [stem];
+    for (const base of kept) {
+      bases.push(base, `${base}a`, `${base}o`, `${base}e`);
+      for (const ending of ["no", "na", "ano", "ana", "ense", "eno", "ena"]) {
+        bases.push(`${base}${ending}`, `${base}${ending}s`);
+      }
+    }
+  }
+  return bases;
+}
+
+/** Si una palabra con mayúscula es conocida: está en las fuentes, es común o deriva de una de ellas. */
+function isKnownCapitalized(word: string, sourceWords: ReadonlySet<string>): boolean {
+  const folded = foldText(word);
+  if (sourceWords.has(folded) || COMMON_CAPITALIZED.has(folded)) return true;
+  // La sigla en plural: «AIs», «APIs», «CEOs».
+  if (/^[\p{Lu}\p{N}]{2,6}s$/u.test(word)) return true;
+  return knownBases(folded).some((base) => sourceWords.has(base) || COMMON_CAPITALIZED.has(base));
+}
 
 /** Lo que puede separar las partes de una fecha: espacios, punto, coma, guiones y barra. */
 const DATE_GLUE = /^[\s.,\-–—/]+$/u;
@@ -480,13 +543,11 @@ function unknownNames(text: string, sourceWords: ReadonlySet<string>): string[] 
         const before = sentence.slice(0, start).trimEnd();
         const opener = first || OPENERS.has(before.at(-1) ?? "");
         first = false;
-        const folded = foldText(word);
         const unknown =
           !opener &&
           hasUppercase(word) &&
           !isShoutOrAcronym(word) &&
-          !sourceWords.has(folded) &&
-          !COMMON_CAPITALIZED.has(folded);
+          !isKnownCapitalized(word, sourceWords);
         if (!unknown) {
           if (run !== null) names.push(run.text);
           run = null;

@@ -674,6 +674,8 @@ describe("ajustes de la revisión", () => {
         { platform: "discord", language: "en" },
       ],
     });
+    // Un post en los dos idiomas (la marca de prueba escribe solo en español).
+    await s.h.posts.update(post.id, { languages: ["es", "en"] });
     expect(await runPostDraft(s.deps(), post.id, { replaceEdits: true })).toBe(0);
     await runPostApprove(s.deps(), post.id, {});
     const publishing = fakeClock(async () => {
@@ -737,6 +739,21 @@ describe("errores con su consejo y permisos", () => {
     expect(s.h.errors()).toContain("CONTENT_NOT_APPROVED");
     expect(await runPostApprove(s.deps(), post.id, { platform: "portal" })).toBe(1);
     expect(s.h.errors()).toContain("--platform debe ser instagram, x, linkedin, discord, tiktok");
+  });
+
+  it("los idiomas del post (2026-11-15): edit --languages los fija, post show los dice y marca vuelve a los de la marca", async () => {
+    const s = await setup();
+    const { post } = await approvedPost(s);
+    expect(await runPostEdit(s.deps(), post.id, { languages: "en,es" })).toBe(0);
+    expect(s.h.text()).toContain("idiomas: español y inglés");
+    expect((await s.h.posts.get(post.id))?.languages).toEqual(["es", "en"]);
+    s.h.out.length = 0;
+    expect(await runPostShow(s.deps(), post.id)).toBe(0);
+    expect(s.h.text()).toContain("Idiomas: español y inglés (de este post)");
+    expect(await runPostEdit(s.deps(), post.id, { languages: "marca" })).toBe(0);
+    expect((await s.h.posts.get(post.id))?.languages).toBeNull();
+    expect(await runPostEdit(s.deps(), post.id, { languages: "fr" })).toBe(1);
+    expect(s.h.errors()).toContain("LANGUAGE_INVALID");
   });
 
   it("las redes del post (F9-T21): edit las cambia y publicar sin --platform usa solo esas", async () => {
@@ -894,6 +911,8 @@ describe("errores con su consejo y permisos", () => {
         { platform: "discord", language: "en" },
       ],
     });
+    // Un post en los dos idiomas (la marca de prueba escribe solo en español).
+    await s.h.posts.update(post.id, { languages: ["es", "en"] });
     expect(await runPostDraft(s.deps(), post.id)).toBe(0);
     expect(await runPostApprove(s.deps(), post.id, {})).toBe(0);
 

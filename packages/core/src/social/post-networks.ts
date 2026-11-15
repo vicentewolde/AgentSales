@@ -23,6 +23,22 @@ export function postPublishesOn(post: Pick<Post, "platforms">, platform: Platfor
 }
 
 /**
+ * Si una publicación del post se muestra en Seguimiento y en la agenda: la de una de sus redes, o
+ * una que ya salió (`published`) en una red que después se le quitó. Una red no marcada nunca
+ * muestra borradores, errores ni alertas (2026-11-15). Sin `platforms` (`undefined`), todas.
+ */
+export function postShowsPublication(
+  post: { platforms?: Post["platforms"] | undefined },
+  publication: { platform: Platform; status: string },
+): boolean {
+  return (
+    post.platforms === undefined ||
+    postPublishesOn({ platforms: post.platforms }, publication.platform) ||
+    publication.status === "published"
+  );
+}
+
+/**
  * `POST_PLATFORM_EXCLUDED` (409): la red no está entre las del post. Sus textos no se borran, pero
  * no se aprueban, publican ni programan hasta que la red vuelva al post.
  */

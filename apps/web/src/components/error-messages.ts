@@ -95,6 +95,8 @@ export const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   SCHEDULE_SAME_TIME:
     "Ya hay otro idioma de este post programado en esa red a la misma hora. Son el mismo post: programa solo uno, o deja al menos 10 minutos entre los dos.",
   POST_PLATFORM_EXCLUDED: "Esa red no está entre las del post: agrégala con «Editar el post».",
+  POST_LANGUAGE_EXCLUDED:
+    "Ese idioma no está entre los del post: agrégalo en «Idiomas de este post» (o en Mi marca).",
   PLAN_RUN_CONFLICT: "Ya hay un plan en preparación: espera a que termine.",
   // Conseguir imágenes para un post (F9.5-T25).
   POST_IMAGE_NOT_NEEDED: "Este post es de solo texto: no necesita imágenes.",

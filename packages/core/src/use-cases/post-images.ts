@@ -1,5 +1,5 @@
 import { editorialProfileView } from "../editorial-profile.js";
-import { LANGUAGES, type Language } from "../enums.js";
+import type { Language } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
 import {
   assertImageAiBudget,
@@ -35,6 +35,7 @@ import {
   postImageSourceNotConfigured,
   postImageSuggestions,
 } from "../post-image.js";
+import { postLanguages } from "../social/post-languages.js";
 import { postSubject } from "../subject.js";
 import type { User } from "../user.js";
 import {
@@ -125,15 +126,15 @@ async function usablePost(deps: Pick<PostImageDeps, "posts">, actor: Actor, post
   return post as Post & { kind: Exclude<Post["kind"], "text"> };
 }
 
-/** El idioma principal de la marca: el primero de su perfil editorial. */
+/** El idioma principal del post: el primero de los suyos o de los de la marca (`postLanguages`). */
 async function primaryLanguage(
   deps: Pick<PostImageDeps, "editorialProfiles">,
-  brokerId: string,
+  post: Pick<Post, "brokerId" | "languages">,
 ): Promise<Language | undefined> {
-  const [primary] = editorialProfileView(
-    brokerId,
-    await deps.editorialProfiles.get(brokerId),
-  ).languages;
+  const [primary] = postLanguages(
+    post,
+    editorialProfileView(post.brokerId, await deps.editorialProfiles.get(post.brokerId)).languages,
+  );
   return primary;
 }
 
@@ -148,15 +149,9 @@ async function cardsInfo(deps: PostImageDeps, post: Post): Promise<PostImageOpti
   if (broker === null) return null;
   const profile = editorialProfileView(broker.id, await deps.editorialProfiles.get(broker.id));
   const contents = await deps.contents.listCurrent(postSubject(post.id));
-  // Los de la marca, con el principal primero, y después los de los textos que ya tiene el post.
-  const languages = [
-    ...profile.languages,
-    ...LANGUAGES.filter(
-      (language) =>
-        !profile.languages.includes(language) &&
-        contents.some((item) => item.language === language),
-    ),
-  ];
+  // Los idiomas del post (los suyos o los de la marca), con el principal primero: un idioma quitado
+  // no pide tarjetas (2026-11-15).
+  const languages = postLanguages(post, profile.languages);
   const entries: NonNullable<PostImageOptions["cards"]>["languages"] = [];
   for (const language of languages) {
     const existing = counts.byLanguage[language] ?? 0;
@@ -355,7 +350,7 @@ export async function requestPostImage(
   // guardado, y de ahí las toma la publicación de cada texto.
   const language =
     request.source === "card"
-      ? (request.language ?? (await primaryLanguage(deps, post.brokerId)))
+      ? (request.language ?? (await primaryLanguage(deps, post)))
       : undefined;
   const normalized: PostImageRequest =
     request.source !== "card"

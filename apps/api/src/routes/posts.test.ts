@@ -201,6 +201,29 @@ describe("/posts: crear, listar, ver, editar y archivar", () => {
     expect(error.message).toContain("La música es solo para los posts de video");
   });
 
+  it("los idiomas del post (2026-11-15): se fijan, null vuelve a los de la marca, vacío es 400; el detalle los dice", async () => {
+    const s = await setup();
+    const post = await s.deps.posts.create({ brokerId: s.mine.id, topic: "Guía", kind: "text" });
+    const fixed = await s.broker(`/posts/${post.id}`, {
+      method: "PATCH",
+      json: { languages: ["en", "es"] },
+    });
+    expect(fixed.status).toBe(200);
+    expect(postResponseSchema.parse(await fixed.json()).post.languages).toEqual(["es", "en"]);
+    const detail = postDetailResponseSchema.parse(
+      await (await s.broker(`/posts/${post.id}`)).json(),
+    );
+    expect(detail.languages).toEqual(["es", "en"]);
+    expect(detail.hiddenTexts).toBe(0);
+    const brand = await s.broker(`/posts/${post.id}`, {
+      method: "PATCH",
+      json: { languages: null },
+    });
+    expect(postResponseSchema.parse(await brand.json()).post.languages).toBeNull();
+    const empty = await s.broker(`/posts/${post.id}`, { method: "PATCH", json: { languages: [] } });
+    expect(empty.status).toBe(400);
+  });
+
   it("validación: un campo desconocido o un tema vacío son 400", async () => {
     const s = await setup();
     const unknown = await s.broker("/posts", {

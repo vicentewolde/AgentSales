@@ -470,6 +470,11 @@ export const posts = pgTable(
     platforms: text("platforms").array(),
     /** La música de sus videos (F9.5-T19), como `listings.music_track_id`; `null` = sin música. */
     musicTrackId: text("music_track_id"),
+    /**
+     * Los idiomas del post (2026-11-15, «Idiomas de este post»): `null` = los de la marca
+     * (`editorial_profiles.languages`). Texto validado con `LANGUAGES` de core, como `platforms`.
+     */
+    languages: text("languages").array(),
     ...timestamps,
   },
   (t) => [

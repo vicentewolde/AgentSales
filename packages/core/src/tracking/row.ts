@@ -20,6 +20,7 @@ import {
 } from "../publication.js";
 import { publicationErrorAdvice } from "../publish/error-advice.js";
 import { type ScheduleState, scheduleState } from "../schedule.js";
+import { postShowsPublication } from "../social/post-networks.js";
 import { listingSubject, postSubject, type Subject, sameSubject } from "../subject.js";
 import { isManualTask } from "./manual-tasks.js";
 
@@ -189,10 +190,17 @@ export function trackingRow(
  * más reciente de cada formato e idioma. Las de otro post (o de un aviso) se ignoran.
  */
 export function trackingPostRow(
-  post: TrackingPostRow["post"],
+  post: TrackingPostRow["post"] & { platforms?: Post["platforms"] | undefined },
   publications: readonly Publication[],
   now: Date,
 ): TrackingPostRow {
+  // Una red que el post no tiene no muestra borradores ni errores; lo que ya salió, sí.
+  const shown = publications.filter(
+    (publication) =>
+      publication.subject.kind !== "post" ||
+      publication.subject.id !== post.id ||
+      postShowsPublication(post, publication),
+  );
   return {
     post: {
       id: post.id,
@@ -202,6 +210,6 @@ export function trackingPostRow(
       kind: post.kind,
       plannedAt: post.plannedAt,
     },
-    cells: cellsOf(POST_PLATFORMS, postSubject(post.id), null, publications, now),
+    cells: cellsOf(POST_PLATFORMS, postSubject(post.id), null, shown, now),
   };
 }

@@ -17,6 +17,7 @@ import type { PostLock } from "../ports/post-lock.js";
 import type { PostChanges, PostFilters, PostRepository } from "../ports/post-repository.js";
 import type { Post } from "../post.js";
 import { PENDING_PUBLICATION_STATUSES } from "../publication-state.js";
+import { normalizePostLanguages } from "../social/post-languages.js";
 import { postSubject } from "../subject.js";
 import type { User } from "../user.js";
 
@@ -229,6 +230,11 @@ export type UpdatePostInput = {
    * `POST_INVALID` (400). Cambiarla encola `post.media`, que rehace los videos.
    */
   musicTrackId?: string | null | undefined;
+  /**
+   * Los idiomas del post («Idiomas de este post», 2026-11-15): `null` = los de la marca. Una lista
+   * vacía o con algo que no es un idioma es `POST_INVALID` (`normalizePostLanguages`).
+   */
+  languages?: readonly string[] | null | undefined;
 };
 
 /** Las redes de un post: de `POST_PLATFORMS`, sin repetir y en su orden; `null` = todas. */
@@ -276,6 +282,7 @@ export async function updatePost(
   if (input.kind !== undefined) changes.kind = input.kind;
   if (input.xLinkAllowed !== undefined) changes.xLinkAllowed = input.xLinkAllowed;
   if (input.platforms !== undefined) changes.platforms = normalizePlatforms(input.platforms);
+  if (input.languages !== undefined) changes.languages = normalizePostLanguages(input.languages);
   if (input.plannedAt !== undefined) changes.plannedAt = checkDate(input.plannedAt) ?? null;
   if (input.pillar !== undefined) {
     changes.pillar =

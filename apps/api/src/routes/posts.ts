@@ -292,11 +292,8 @@ export function postRoutes(deps: PostRoutesDeps) {
       })
       .get("/:id", validated("param", idParamSchema), async (c) => {
         const { id } = c.req.valid("param");
-        const { post, contents, latestRun, publications } = await getPostContent(
-          deps,
-          requireAuth(c).user,
-          id,
-        );
+        const { post, contents, latestRun, publications, languages, hiddenTexts } =
+          await getPostContent(deps, requireAuth(c).user, id);
         const body: PostDetailResponse = {
           post,
           media: await mediaOf(id),
@@ -306,6 +303,8 @@ export function postRoutes(deps: PostRoutesDeps) {
           uploadsInReview: (await deps.postUploads.listByPost(id)).filter(
             (upload) => upload.status === "uploaded",
           ).length,
+          languages,
+          hiddenTexts,
         };
         return c.json(body, 200);
       })

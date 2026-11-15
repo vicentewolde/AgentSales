@@ -116,7 +116,11 @@ export function buildSocialBrief(params: {
   return {
     brandName: broker.brandName,
     tone: broker.tone,
-    languages: [...profile.languages],
+    // Los idiomas que se redactan (los del post, `postLanguages`); sin destinos, los de la marca.
+    languages:
+      params.targets.length > 0
+        ? [...new Set(params.targets.map((target) => target.language))]
+        : [...profile.languages],
     targets: params.targets.map((target) => ({ ...target })),
     audience: profile.audience,
     pillar: pillar === null ? null : { name: pillar.name, description: pillar.description },
