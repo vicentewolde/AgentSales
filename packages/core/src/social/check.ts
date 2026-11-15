@@ -38,6 +38,12 @@ import {
   X_MAX_IMAGES,
   X_POST_COST_USD,
 } from "./networks.js";
+import {
+  ALWAYS_HASHTAG_PLATFORMS,
+  type HashtagPolicy,
+  hashtagPolicy,
+  hashtagsOutsideList,
+} from "./post-hashtags.js";
 
 // La revisión de los textos de un post (spec F9 §4.4, ADR-0030 punto 7): una función pura que
 // corre sobre el texto final, también después de una edición manual, y no se guarda (se calcula
@@ -85,6 +91,11 @@ export type PostCheckContext = {
    */
   xLinkAllowed: boolean;
   avoid: string[];
+  /**
+   * Los hashtags que siempre van y si la IA puede agregar otros (2026-11-15, `hashtagPolicy`); sin
+   * ella, no se revisan.
+   */
+  hashtags?: HashtagPolicy;
 };
 
 /**
@@ -120,7 +131,7 @@ export function buildPostCheckContext(params: {
   profile: Pick<
     EditorialProfileView,
     "facts" | "audience" | "pillars" | "defaultHashtags" | "avoid"
-  >;
+  > & { aiHashtags?: boolean | null };
   broker: Pick<Broker, "brandName" | "fixedHashtags">;
   media: readonly (Pick<Media, "role" | "kind"> &
     Partial<Pick<Media, "id" | "sortOrder" | "parentMediaId" | "language">>)[];
@@ -178,6 +189,7 @@ export function buildPostCheckContext(params: {
     xLinks: xLinksOf(post),
     xLinkAllowed: post.xLinkAllowed,
     avoid: [...profile.avoid],
+    hashtags: hashtagPolicy(profile, broker),
   };
 }
 
@@ -765,7 +777,28 @@ export function checkPostContent(
   const name = PLATFORM_NAME[platform];
 
   const { length, max } = postTextLength(platform, text);
-  if (length > max) add("TOO_LONG", tooLongMessage(platform, length, max));
+  if (length > max) {
+    // Los hashtags que siempre van cuentan: si no caben, se dice (el texto nunca se corta solo).
+    const always =
+      ctx.hashtags !== undefined && ALWAYS_HASHTAG_PLATFORMS.includes(platform)
+        ? ctx.hashtags.always
+        : [];
+    add(
+      "TOO_LONG",
+      always.length === 0
+        ? tooLongMessage(platform, length, max)
+        : `${tooLongMessage(platform, length, max)}, contando los hashtags que siempre van (${always.join(" ")}): acorta el texto o quita alguno en Mi marca`,
+    );
+  }
+  if (ctx.hashtags !== undefined) {
+    const outside = hashtagsOutsideList(text.hashtags, ctx.hashtags);
+    if (outside.length > 0) {
+      add(
+        "HASHTAG_NOT_IN_LIST",
+        `${outside.join(" ")} no ${outside.length === 1 ? "está" : "están"} entre los hashtags que siempre van, y la IA no puede agregar otros: ${outside.length === 1 ? "quítalo" : "quítalos"}, o permite otros hashtags en Mi marca`,
+      );
+    }
+  }
 
   if (platform === "instagram") {
     const count = text.hashtags.length + (text.body.match(HASHTAG_IN_TEXT) ?? []).length;

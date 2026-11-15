@@ -22,6 +22,8 @@ const PROFILE = {
   ],
   avoid: ["gratis", "garantizado"],
   defaultHashtags: ["#corretaje"],
+  // La IA puede agregar otros hashtags: la regla de los que siempre van se prueba aparte.
+  aiHashtags: true,
 };
 
 type PostFields = Pick<

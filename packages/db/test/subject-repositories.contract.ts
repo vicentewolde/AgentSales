@@ -1159,6 +1159,10 @@ export function subjectRepositoriesContract(
         );
         expect(replaced).toMatchObject({ languages: ["en"], facts: [] });
         expect(replaced.createdAt).toEqual(created.createdAt);
+        // «¿La IA puede agregar otros hashtags?» (2026-11-15): null por defecto, y se guarda.
+        expect(created.aiHashtags).toBeNull();
+        const strict = await repos.editorialProfiles.upsert(owner, profile({ aiHashtags: false }));
+        expect(strict.aiHashtags).toBe(false);
         // El de otra marca no cambió (no existe).
         expect(await repos.editorialProfiles.get(other)).toBeNull();
       });

@@ -360,6 +360,7 @@ export function createInMemoryEditorialProfileRepository(): EditorialProfileRepo
         avoid: [...data.avoid],
         cadence: structuredCopy(data.cadence),
         defaultHashtags: [...data.defaultHashtags],
+        aiHashtags: data.aiHashtags ?? null,
         createdAt: current?.createdAt ?? now,
         updatedAt: current === undefined ? now : later(current.updatedAt),
       };

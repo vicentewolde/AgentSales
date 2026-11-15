@@ -55,6 +55,8 @@ export const CONTENT_CHECK_SEVERITIES = {
   LINK_COST: "warning",
   AVOID_TERM: "warning",
   MEDIA_UNUSED: "warning",
+  // 2026-11-15 (hashtags que siempre van): uno fuera de la lista cuando la IA no puede agregar otros.
+  HASHTAG_NOT_IN_LIST: "warning",
 } as const satisfies Record<string, (typeof CONTENT_CHECK_SEVERITY_LEVELS)[number]>;
 export type ContentCheckCode = keyof typeof CONTENT_CHECK_SEVERITIES;
 export type ContentCheckSeverity = (typeof CONTENT_CHECK_SEVERITY_LEVELS)[number];

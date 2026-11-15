@@ -42,10 +42,12 @@ const FULL: EditorialProfileData = {
     linkedin: { postsPerWeek: 1, days: ["tue"], hours: ["09:00"], languageGapHours: 12 },
   },
   defaultHashtags: ["#propiedades", "#nunoa"],
+  aiHashtags: null,
 };
 
 const json = (data: EditorialProfileData): EditorialProfileJson => ({
   ...data,
+  aiHashtags: data.aiHashtags ?? null,
   brokerId: "b1",
   updatedAt: null,
 });
@@ -436,5 +438,20 @@ describe("toggleLanguage (Idiomas de los posts, 2026-11-15)", () => {
     expect([onlyEn.primary, onlyEn.second]).toEqual(["en", ""]);
     expect(toggleLanguage(onlyEn, "en")).toBe(onlyEn);
     expect(profileBody(toggleLanguage(both, "en")).body.languages).toEqual(["es"]);
+  });
+});
+
+describe("hashtags que siempre van (2026-11-15)", () => {
+  it("con hashtags, la IA no agrega otros por defecto; elegir «Sí» se guarda", async () => {
+    const s = await setup(FULL);
+    expect(within(s.form).getByLabelText("Hashtags que siempre van")).toBeTruthy();
+    const no = within(s.form).getByRole("radio", { name: "No, solo los que siempre van" });
+    expect((no as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(
+      within(s.form).getByRole("radio", { name: "Sí, puede agregar otros que calcen con el tema" }),
+    );
+    fireEvent.click(within(s.form).getByRole("button", { name: "Guardar el perfil" }));
+    expect(await within(s.form).findByText("Perfil guardado.")).toBeTruthy();
+    expect((await saved(s)).aiHashtags).toBe(true);
   });
 });

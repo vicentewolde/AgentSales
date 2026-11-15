@@ -123,7 +123,8 @@ async function setup(options: Setup = {}) {
       language: text.language,
       title: null,
       body: `Texto en ${text.language} para ${text.platform}`,
-      hashtags: ["#agentpey"],
+      // Los fijos de la marca (como los deja la corrida, que siempre los pone).
+      hashtags: ["#InventadaPropiedades"],
       llmProvider: "fake",
       llmModel: "fake",
       promptVersion: "social-v1",

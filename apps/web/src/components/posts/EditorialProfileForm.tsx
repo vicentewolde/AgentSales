@@ -13,6 +13,7 @@ import {
 } from "@agentsales/core";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
 import { ApiError } from "../../api/client.js";
+import { useBrokerDetail } from "../../queries/brokers.js";
 import { useEditorialProfile, useSaveEditorialProfile } from "../../queries/posts.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 import { Button } from "../ui/Button.js";
@@ -361,6 +362,9 @@ export function ProfileForm({
         })),
     });
   };
+  // Los hashtags fijos de la marca (en «Marca»): también van siempre y cuentan para el valor por
+  // defecto de «¿La IA puede agregar otros hashtags?».
+  const fixedHashtags = useBrokerDetail(brokerId).data?.broker.fixedHashtags ?? [];
   const otherIssues = issues.filter(
     (issue) =>
       !["languages", "audience", "pillars", "facts", "avoid", "cadence", "defaultHashtags"].some(
@@ -668,7 +672,7 @@ export function ProfileForm({
 
       <div>
         <label className="block text-sm font-medium text-fg">
-          Hashtags de la marca
+          Hashtags que siempre van
           <Input
             value={draft.hashtags}
             onChange={(event) => set("hashtags", event.target.value)}
@@ -676,9 +680,44 @@ export function ProfileForm({
             className="mt-1"
           />
         </label>
-        <Help>Se suman a los hashtags fijos de la marca.</Help>
+        <Help>
+          Van al final de cada texto en Instagram, X, LinkedIn y TikTok (no en Discord), los ponga o
+          no la IA. Si no caben en X, la revisión te avisa: el texto no se corta solo.
+        </Help>
+        <FixedHashtagsNote fixed={fixedHashtags} />
         <FieldErrors issues={issues} prefix="defaultHashtags" />
       </div>
+
+      <fieldset>
+        <legend className="text-sm font-medium text-fg">
+          ¿La IA puede agregar otros hashtags?
+        </legend>
+        <div className="mt-1 flex flex-wrap gap-x-5 gap-y-2 text-sm">
+          {(
+            [
+              [false, "No, solo los que siempre van"],
+              [true, "Sí, puede agregar otros que calcen con el tema"],
+            ] as const
+          ).map(([value, label]) => (
+            <label key={String(value)} className="inline-flex items-center gap-1.5">
+              <input
+                type="radio"
+                name={`${ids}-ai-hashtags`}
+                checked={
+                  (draft.aiHashtags ??
+                    (draft.hashtags.trim() === "" && fixedHashtags.length === 0)) === value
+                }
+                onChange={() => setDraft((current) => ({ ...current, aiHashtags: value }))}
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+        <Help>
+          Por defecto, no cuando hay hashtags que siempre van. Con «No», la IA no inventa hashtags y
+          la revisión marca los que estén fuera de la lista.
+        </Help>
+      </fieldset>
 
       <div className="flex items-center gap-3">
         <Button type="submit" disabled={save.isPending}>
@@ -706,10 +745,16 @@ export function ProfileForm({
   );
 }
 
-/**
- * La sección Perfil editorial (Mi marca y la página de cada corredor): idiomas, público, temas,
- * hechos, cosas que evitar, cadencia por red y hashtags.
- */
+/** Los hashtags fijos de la marca (se editan en «Marca»): también van siempre. */
+function FixedHashtagsNote({ fixed }: { fixed: readonly string[] }) {
+  if (fixed.length === 0) return null;
+  return (
+    <p className="mt-1 text-xs text-fg-muted">
+      También van siempre los hashtags fijos de la marca: {fixed.join(" ")} (se cambian en «Marca»).
+    </p>
+  );
+}
+
 /** El nombre del idioma con mayúscula, para las casillas. */
 const LANGUAGE_NAME: Readonly<Record<Language, string>> = { es: "Español", en: "Inglés" };
 
@@ -722,6 +767,10 @@ export function toggleLanguage(draft: Draft, language: Language): Draft {
   return { ...draft, second: language };
 }
 
+/**
+ * La sección Perfil editorial (Mi marca y la página de cada corredor): idiomas, público, temas,
+ * hechos, cosas que evitar, cadencia por red y hashtags.
+ */
 export function EditorialProfileSection({ brokerId }: { brokerId: string }) {
   const profile = useEditorialProfile(brokerId);
   return (

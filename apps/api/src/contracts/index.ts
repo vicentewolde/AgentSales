@@ -1562,6 +1562,11 @@ export const editorialProfileBodySchema = z
       )
       .refine((cadence) => Object.keys(cadence).length <= 20, { message: "Demasiadas redes" }),
     defaultHashtags: profileList(EDITORIAL_LIMITS.hashtags, EDITORIAL_LIMITS.hashtag),
+    /**
+     * «¿La IA puede agregar otros hashtags?» (2026-11-15): `null` o sin el campo, por defecto (no
+     * si hay hashtags que siempre van; sí si no hay ninguno).
+     */
+    aiHashtags: z.boolean().nullable().optional(),
   })
   .strict();
 export type EditorialProfileBody = z.infer<typeof editorialProfileBodySchema>;

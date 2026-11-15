@@ -503,8 +503,13 @@ export const editorialProfiles = pgTable("editorial_profiles", {
   avoid: text("avoid").array().notNull().default(sql`'{}'::text[]`),
   /** Posts por semana en cada red, días y horas preferidos y horas entre idiomas. */
   cadence: jsonb("cadence").notNull().default({}),
-  /** Se suman a `brokers.fixed_hashtags`. */
+  /** «Hashtags que siempre van»: se suman a `brokers.fixed_hashtags` en cada texto de post. */
   defaultHashtags: text("default_hashtags").array().notNull().default(sql`'{}'::text[]`),
+  /**
+   * «¿La IA puede agregar otros hashtags?» (2026-11-15): `null` = por defecto (no si hay hashtags
+   * que siempre van; sí si no hay ninguno).
+   */
+  aiHashtags: boolean("ai_hashtags"),
   ...timestamps,
 });
 

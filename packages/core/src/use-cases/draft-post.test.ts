@@ -232,7 +232,9 @@ describe("draftPost", () => {
     ]);
     expect(texts[0]).toMatchObject({
       title: null,
-      hashtags: ["#AgentPey"],
+      // 2026-11-15: los hashtags que siempre van (los fijos de la marca) al final; la marca no deja
+      // que la IA agregue otros (#AgentPey), así que se quitan.
+      hashtags: ["#InventadaPropiedades", "#propiedades"],
       llmProvider: "claude-cli",
       llmModel: "claude-sonnet-5-5",
       promptVersion: SOCIAL_PROMPT_VERSION,

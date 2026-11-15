@@ -93,15 +93,34 @@ export const editorialProfileSchema = z.object({
   avoid: z.array(z.string()),
   /** Posts por semana en cada red, días y horas preferidos y horas entre idiomas. */
   cadence: editorialCadenceSchema,
-  /** Se suman a `brokers.fixed_hashtags`. */
+  /**
+   * «Hashtags que siempre van» (2026-11-15): se suman a `brokers.fixed_hashtags` y van al final de
+   * cada texto de post en Instagram, X, LinkedIn y TikTok (no en Discord), los ponga o no la IA.
+   */
   defaultHashtags: z.array(z.string()),
+  /**
+   * «¿La IA puede agregar otros hashtags?» (2026-11-15): `true` sí, `false` no (solo los que siempre
+   * van), `null` por defecto: no si hay hashtags que siempre van, sí si no hay ninguno
+   * (`aiMayAddHashtags`). Opcional al leer: un perfil anterior a la columna cuenta como `null`.
+   */
+  aiHashtags: z
+    .boolean()
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
   createdAt: z.date(),
   updatedAt: z.date(),
 });
 export type EditorialProfile = z.infer<typeof editorialProfileSchema>;
 
 /** Lo que se guarda de un perfil (todo menos el corredor y las fechas). */
-export type EditorialProfileData = Omit<EditorialProfile, "brokerId" | "createdAt" | "updatedAt">;
+export type EditorialProfileData = Omit<
+  EditorialProfile,
+  "brokerId" | "createdAt" | "updatedAt" | "aiHashtags"
+> & {
+  /** Sin el campo, `null` (el valor por defecto, `aiMayAddHashtags`). */
+  aiHashtags?: boolean | null | undefined;
+};
 
 /**
  * El perfil de un corredor como lo entregan la API y la CLI: el guardado o, si todavía no tiene,
@@ -110,10 +129,11 @@ export type EditorialProfileData = Omit<EditorialProfile, "brokerId" | "createdA
 export type EditorialProfileView = EditorialProfileData & {
   brokerId: string;
   updatedAt: Date | null;
+  aiHashtags: boolean | null;
 };
 
 /** El perfil vacío: en español, sin líneas, hechos ni cadencia. Lo que tiene una marca nueva. */
-export function emptyEditorialProfileData(): EditorialProfileData {
+export function emptyEditorialProfileData(): EditorialProfileData & { aiHashtags: boolean | null } {
   return {
     languages: [DEFAULT_LANGUAGE],
     audience: null,
@@ -122,6 +142,7 @@ export function emptyEditorialProfileData(): EditorialProfileData {
     avoid: [],
     cadence: {},
     defaultHashtags: [],
+    aiHashtags: null,
   };
 }
 
@@ -132,7 +153,7 @@ export function editorialProfileView(
 ): EditorialProfileView {
   if (profile === null) return { brokerId, ...emptyEditorialProfileData(), updatedAt: null };
   const { createdAt: _created, ...rest } = profile;
-  return rest;
+  return { ...rest, aiHashtags: rest.aiHashtags ?? null };
 }
 
 /** Lo que llega de la API o la CLI, sin normalizar: el perfil completo (`PUT` lo reemplaza). */
@@ -147,6 +168,8 @@ export type EditorialProfileInput = {
     { postsPerWeek: number; days?: string[]; hours?: string[]; languageGapHours?: number }
   >;
   defaultHashtags: string[];
+  /** «¿La IA puede agregar otros hashtags?»; sin él (o `null`), el valor por defecto. */
+  aiHashtags?: boolean | null | undefined;
 };
 
 /** Un campo del perfil que no sirve, con su motivo (la forma de los `issues` de la API). */
@@ -165,7 +188,8 @@ const FIELD_LABELS: Record<keyof EditorialProfileInput, string> = {
   facts: "Hechos",
   avoid: "Cosas que evitar",
   cadence: "Cadencia",
-  defaultHashtags: "Hashtags",
+  defaultHashtags: "Hashtags que siempre van",
+  aiHashtags: "Otros hashtags de la IA",
 };
 
 // Los textos del perfil viajan al prompt de la IA (ADR-0030) y no deben esconder saltos ni texto
@@ -384,5 +408,14 @@ export function normalizeEditorialProfile(input: EditorialProfileInput): Editori
       { details: { issues } },
     );
   }
-  return { languages, audience, pillars, facts, avoid, cadence, defaultHashtags };
+  return {
+    languages,
+    audience,
+    pillars,
+    facts,
+    avoid,
+    cadence,
+    defaultHashtags,
+    aiHashtags: input.aiHashtags ?? null,
+  };
 }

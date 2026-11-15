@@ -190,6 +190,13 @@
       "when": 1794766983163,
       "tag": "0026_idiomas_del_post",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1794768281466,
+      "tag": "0027_hashtags_de_la_marca",
+      "breakpoints": true
     }
   ]
 }
