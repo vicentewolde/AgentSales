@@ -24,6 +24,8 @@ import type { Command } from "commander";
 import { type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith } from "../context.js";
 import { CliError, guarded, type Io } from "../output.js";
+import { registerKnowledge } from "./brand-knowledge.js";
+import { registerStyle } from "./brand-style.js";
 import { brandWeekCommands } from "./brand-week.js";
 import { brokerSlugOf, fetchBrokers } from "./shared.js";
 
@@ -470,4 +472,7 @@ export function register(program: Command, ctx: CliContext): void {
     .option("--broker <slug>", "la marca (si tienes más de una)")
     .option("--json", "salida en JSON")
     .action(brandWeekCommands.ready(ctx));
+  // F9.7 (ADR-0043): el conocimiento de la marca y sus propuestas.
+  registerKnowledge(brand, ctx);
+  registerStyle(brand, ctx);
 }

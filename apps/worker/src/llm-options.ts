@@ -1,5 +1,10 @@
 import type { Env } from "@agentsales/config";
-import { SAMPLE_CONTENT_DRAFT, SAMPLE_SOCIAL_DRAFT, samplePlanResponse } from "@agentsales/core";
+import {
+  SAMPLE_CONTENT_DRAFT,
+  SAMPLE_KNOWLEDGE_RESPONSE,
+  SAMPLE_SOCIAL_DRAFT,
+  samplePlanResponse,
+} from "@agentsales/core";
 import type { LlmProviderOptions } from "@agentsales/llm";
 
 /**
@@ -82,5 +87,18 @@ export function planLlmProviderOptions(
 ): LlmProviderOptions {
   return env.LLM_PROVIDER === "fake"
     ? { provider: "fake", data: null, respond: ({ prompt }) => samplePlanResponse(prompt) }
+    : llmProviderOptions(env, baseEnv);
+}
+
+/**
+ * Las opciones del proveedor para «Actualizar desde un texto» (`brand.propose`, F9.7 B2): las mismas
+ * que `llmProviderOptions`, salvo con `fake`, que devuelve `SAMPLE_KNOWLEDGE_RESPONSE`.
+ */
+export function knowledgeLlmProviderOptions(
+  env: LlmEnv,
+  baseEnv: Readonly<Record<string, string | undefined>>,
+): LlmProviderOptions {
+  return env.LLM_PROVIDER === "fake"
+    ? { provider: "fake", data: SAMPLE_KNOWLEDGE_RESPONSE }
     : llmProviderOptions(env, baseEnv);
 }

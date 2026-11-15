@@ -10,6 +10,12 @@ import { count, eq, inArray, or, type SQL } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { withDbErrors } from "../errors.js";
 import {
+  brandCardStyles,
+  brandKnowledge,
+  brandKnowledgeExamples,
+  brandKnowledgeProposals,
+  brandKnowledgeRuns,
+  brandKnowledgeUpdates,
   brokers,
   contentRuns,
   contents,
@@ -25,6 +31,7 @@ import {
   media,
   planRuns,
   platformAccounts,
+  postCardTexts,
   postImageRuns,
   posts,
   postUploads,
@@ -271,6 +278,14 @@ export function createBrokerPurgeRepository(db: SchemaDatabase): BrokerPurgeRepo
               .where(eq(postImageRuns.brokerId, brokerId))
               .returning({ id: postImageRuns.id }),
           );
+          // F9.7 (ADR-0043): los textos de las láminas cuelgan de los posts.
+          note(
+            "post_card_texts",
+            await tx
+              .delete(postCardTexts)
+              .where(inArray(postCardTexts.postId, own.postIds))
+              .returning({ postId: postCardTexts.postId }),
+          );
           const deletedPosts = await tx
             .delete(posts)
             .where(eq(posts.brokerId, brokerId))
@@ -289,6 +304,49 @@ export function createBrokerPurgeRepository(db: SchemaDatabase): BrokerPurgeRepo
               .delete(editorialProfiles)
               .where(eq(editorialProfiles.brokerId, brokerId))
               .returning({ brokerId: editorialProfiles.brokerId }),
+          );
+          // 4b. El conocimiento y el estilo de la marca (F9.7, ADR-0043).
+          note(
+            "brand_knowledge_proposals",
+            await tx
+              .delete(brandKnowledgeProposals)
+              .where(eq(brandKnowledgeProposals.brokerId, brokerId))
+              .returning({ id: brandKnowledgeProposals.id }),
+          );
+          note(
+            "brand_knowledge_runs",
+            await tx
+              .delete(brandKnowledgeRuns)
+              .where(eq(brandKnowledgeRuns.brokerId, brokerId))
+              .returning({ id: brandKnowledgeRuns.id }),
+          );
+          note(
+            "brand_knowledge_updates",
+            await tx
+              .delete(brandKnowledgeUpdates)
+              .where(eq(brandKnowledgeUpdates.brokerId, brokerId))
+              .returning({ id: brandKnowledgeUpdates.id }),
+          );
+          note(
+            "brand_knowledge_examples",
+            await tx
+              .delete(brandKnowledgeExamples)
+              .where(eq(brandKnowledgeExamples.brokerId, brokerId))
+              .returning({ id: brandKnowledgeExamples.id }),
+          );
+          note(
+            "brand_knowledge",
+            await tx
+              .delete(brandKnowledge)
+              .where(eq(brandKnowledge.brokerId, brokerId))
+              .returning({ brokerId: brandKnowledge.brokerId }),
+          );
+          note(
+            "brand_card_styles",
+            await tx
+              .delete(brandCardStyles)
+              .where(eq(brandCardStyles.brokerId, brokerId))
+              .returning({ brokerId: brandCardStyles.brokerId }),
           );
           // 5b. Los leads con sus eventos (F10): datos personales de terceros, antes de las propiedades.
           note(

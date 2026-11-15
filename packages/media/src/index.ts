@@ -21,6 +21,7 @@ export {
   createHtmlRenderer,
   type HtmlRendererOptions,
 } from "./render.js";
+export { renderStyledCard, type StyledCardResult } from "./styled-cards.js";
 
 export type MediaProcessorOptions = {
   /** `FFMPEG_PATH`: el ejecutable de ffmpeg (8.1 o más nuevo). */

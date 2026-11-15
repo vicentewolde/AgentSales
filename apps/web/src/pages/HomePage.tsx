@@ -23,6 +23,7 @@ import {
   type RecentPublication,
   recentPublications,
 } from "../components/agenda/agenda.js";
+import { DidItGoOut } from "../components/agenda/DidItGoOut.js";
 import { daySummary, greetingLine, todayText } from "../components/agenda/today.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { HandTask } from "../components/posts/HandTask.js";
@@ -166,6 +167,8 @@ function TodoEntry({
             </span>
           )}
         </div>
+        {/* F9.7 B10: «¿Salió?», con «Ya lo publiqué» y «No salió». */}
+        {item.kind === "did_it_go_out" && <DidItGoOut item={item} />}
         {handTask !== null && (
           <HandTask
             platform={handTask.platform}

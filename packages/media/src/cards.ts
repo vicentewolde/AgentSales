@@ -10,6 +10,7 @@ import {
 } from "@agentsales/core";
 import sharp from "sharp";
 import { throwIfAborted } from "./run.js";
+import { renderStyledCard } from "./styled-cards.js";
 
 // Las tarjetas de la marca de un post (F9.5-T25, ADR-0038 §1.1): el texto del post sobre los
 // colores y el logo de la marca, dibujado con sharp sin red ni navegador. Las formas (fondo con
@@ -19,7 +20,7 @@ import { throwIfAborted } from "./run.js";
 // (`USE_FONT_FILE`): el tamaño y el corte de líneas pueden variar un poco.
 
 /** Versión del dibujo: cambiarla cambia los bytes (y el sha256) de las tarjetas. */
-export const CARD_RENDER_VERSION = "2";
+export const CARD_RENDER_VERSION = "3";
 
 /** Inter en los pesos que usan las tarjetas (latín básico: ñ, tildes y ü). */
 const fontFile = (weight: Weight) =>
@@ -658,13 +659,21 @@ export function createCardRenderer(): CardRenderer {
       throwIfAborted(signal);
       const size = POST_IMAGE_SIZES[format];
       try {
-        const palette = paletteOf(brand.primaryColor, brand.secondaryColor);
-        const background = await backgroundOf(card, size, palette);
-        const layers = await layersOf(card, brand, size, format, palette);
+        let image: Buffer;
+        if (brand.style != null) {
+          // F9.7 B6 (ADR-0043): con el estilo de la marca, sus composiciones y su tema.
+          image = (await renderStyledCard(card, brand, brand.style, format)).png;
+        } else {
+          // Sin estilo, el dibujo de siempre; el cuadrado (1:1) se arma como el 4:5.
+          const legacy: Format = format === "9:16" ? "9:16" : "4:5";
+          const palette = paletteOf(brand.primaryColor, brand.secondaryColor);
+          const background = await backgroundOf(card, size, palette);
+          const layers = await layersOf(card, brand, size, legacy, palette);
+          image = await sharp(background).composite(layers).png().toBuffer();
+        }
         throwIfAborted(signal);
         const bytes = new Uint8Array(
-          await sharp(background)
-            .composite(layers)
+          await sharp(image)
             .flatten({ background: "#000000" })
             .jpeg({ quality: 92, mozjpeg: true, chromaSubsampling: "4:4:4" })
             .toBuffer(),

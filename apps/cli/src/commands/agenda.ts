@@ -42,6 +42,12 @@ function publicationCommands(item: Item): string[] | null {
         ...(item.platform === "linkedin" ? [`agentsales publications confirm ${id} --no-url`] : []),
         `agentsales publications not-published ${id}`,
       ];
+    case "record":
+      // F9.7 B10: una aprobada o programada a mano cuya hora pasó: registrar que salió, o cancelarla.
+      return [
+        `pbpaste | agentsales publications record ${item.postId ?? "<post>"} --platform ${item.platform === null ? "<red>" : platformShortName(item.platform)} --language ${item.language ?? "es"} --url-stdin`,
+        `agentsales publications cancel ${id}`,
+      ];
     default:
       return null;
   }

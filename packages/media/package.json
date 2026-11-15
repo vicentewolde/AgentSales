@@ -18,15 +18,22 @@
       "@agentsales/source": "./src/logo.ts",
       "types": "./dist/src/logo.d.ts",
       "default": "./dist/src/logo.js"
+    },
+    "./cards": {
+      "@agentsales/source": "./src/cards-entry.ts",
+      "types": "./dist/src/cards-entry.d.ts",
+      "default": "./dist/src/cards-entry.js"
     }
   },
   "scripts": {
     "build": "tsc -b",
-    "render:samples": "NODE_OPTIONS=--conditions=@agentsales/source tsx test/render-samples.ts"
+    "render:samples": "NODE_OPTIONS=--conditions=@agentsales/source tsx test/render-samples.ts",
+    "render:styled": "NODE_OPTIONS=--conditions=@agentsales/source tsx test/render-styled-samples.ts"
   },
   "dependencies": {
     "@agentsales/core": "workspace:*",
     "@fontsource/inter": "5.3.0",
+    "@fontsource/inter-tight": "5.3.0",
     "playwright": "1.63.0",
     "sharp": "0.35.5",
     "zod": "4.6.5"

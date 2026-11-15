@@ -228,12 +228,80 @@ const CON_PEDIDO: SocialEvalProfile = {
   guidance: "Cuenta que Inmobiliaria Los Cerezos nos eligió y que arrendamos 340 departamentos",
 };
 
+/**
+ * Con conocimiento de la marca (F9.7 B3, ADR-0043): postura, forma de contar, un ejemplo con una
+ * cifra y un cliente **falsos** (guía de forma, nunca de hechos: si un texto los afirma, la revisión
+ * los marca) y dos novedades recientes (fuente de hechos: el plan debería apoyarse en una). Sirve
+ * para medir el costo del prompt con el conocimiento (D5: no más de un 30 % sobre `dos-idiomas`).
+ */
+const CON_CONOCIMIENTO: SocialEvalProfile = {
+  name: "con-conocimiento",
+  description:
+    "Con postura, forma, un ejemplo con datos falsos y dos novedades: usar las novedades, no el ejemplo",
+  broker: { brandName: "Brújula Pagos", tone: null, fixedHashtags: [] },
+  profile: {
+    brokerId: "eval-con-conocimiento",
+    languages: ["es"],
+    audience: "Personas que prueban agentes de IA que compran por ellas",
+    pillars: [
+      {
+        key: "producto",
+        name: "Cómo funciona",
+        description: "Límites, recibos y control de lo que compra un agente",
+        weight: 2,
+      },
+      {
+        key: "bitacora",
+        name: "Bitácora",
+        description: "Lo que pasa cada semana en el proyecto",
+        weight: 1,
+      },
+    ],
+    facts: ["Brújula Pagos pone límites de gasto a los agentes de IA."],
+    avoid: ["prometer rentabilidad"],
+    cadence: {
+      linkedin: cadence(2, ["tue", "thu"], ["09:00"]),
+      x: cadence(3, ["mon", "wed", "fri"], ["12:00"]),
+    },
+    defaultHashtags: ["#agentes"],
+    aiHashtags: null,
+    updatedAt: null,
+    knowledge: {
+      stance: "Los agentes pueden comprar por ti sin que pierdas el control.",
+      tone: "Un relato con una escena concreta, como un newsletter; nada de post de venta.",
+      examples: [
+        {
+          text: "El martes, Ana le pidió a su agente que comprara 3 pasajes. Acme Viajes respondió en 40 segundos y el agente se detuvo en el límite que ella fijó.",
+          note: "Abre con una escena y cierra con el control",
+        },
+      ],
+      updates: [
+        {
+          date: new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10),
+          project: "Brújula en testnet",
+          text: "La primera compra de prueba con límite quedó registrada con su recibo.",
+        },
+        {
+          date: new Date(Date.now() - 10 * 86_400_000).toISOString().slice(0, 10),
+          project: "Piloto con comercios",
+          text: "Un comercio de Santiago aceptó probar los pagos de agentes.",
+        },
+      ],
+    },
+  },
+  platforms: ["linkedin", "x"],
+  days: 14,
+  count: 4,
+  history: { recentTopics: [], discardedTopics: [] },
+};
+
 /** Los perfiles de prueba, en el orden en que se evalúan. */
 export const SOCIAL_EVAL_PROFILES: readonly SocialEvalProfile[] = [
   SIN_HECHOS,
   DOS_IDIOMAS,
   CON_HISTORIAL,
   CON_PEDIDO,
+  CON_CONOCIMIENTO,
 ];
 
 /** El perfil con dos idiomas: el de la medición del costo (`docs/integraciones/anthropic-api.md`). */

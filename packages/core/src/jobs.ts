@@ -20,6 +20,7 @@ export const JOB_NAMES = [
   "post.media",
   "content.plan",
   "post.image",
+  "brand.propose",
 ] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
@@ -103,6 +104,11 @@ export const JOB_PAYLOADS = {
    * atiende `runPostImage`.
    */
   "post.image": z.object({ postImageRunId: z.uuid() }),
+  /**
+   * «Actualizar desde un texto largo» (spec F9.7 B2, ADR-0043): la corrida guarda el texto; el job
+   * lleva su id. Lo encola `requestKnowledgeProposals`; lo atiende `runKnowledgeProposals`.
+   */
+  "brand.propose": z.object({ knowledgeRunId: z.uuid() }),
 } as const satisfies Record<JobName, z.ZodType>;
 
 export type JobPayload<N extends JobName> = z.infer<(typeof JOB_PAYLOADS)[N]>;

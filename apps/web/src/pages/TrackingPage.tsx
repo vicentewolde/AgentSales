@@ -22,6 +22,7 @@ import {
   agendaItemWhen,
   isHandTask,
 } from "../components/agenda/agenda.js";
+import { DidItGoOut } from "../components/agenda/DidItGoOut.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { errorLineText } from "../components/error-messages.js";
 import { HandTask } from "../components/posts/HandTask.js";
@@ -113,6 +114,8 @@ function AgendaEntry({
       {item.action !== "none" && (
         <span className="block text-xs text-fg-muted">{AGENDA_ACTION_TEXT[item.action]}</span>
       )}
+      {/* F9.7 B10: «¿Salió?», con «Ya lo publiqué» y «No salió». */}
+      {item.kind === "did_it_go_out" && <DidItGoOut item={item} />}
       {/* A mano (LinkedIn, X o Instagram): «<Red>: publica a mano» con el botón de un clic. */}
       {isHandTask(item) && (
         <div className="mt-1">

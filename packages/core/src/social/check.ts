@@ -1,3 +1,4 @@
+import { knowledgeSources } from "../brand-knowledge.js";
 import type { Broker } from "../broker.js";
 import { aiTellMessage, findAiTells } from "../content/ai-tells.js";
 import {
@@ -44,6 +45,7 @@ import {
   hashtagPolicy,
   hashtagsOutsideList,
 } from "./post-hashtags.js";
+import { misspellings } from "./spelling.js";
 
 // La revisión de los textos de un post (spec F9 §4.4, ADR-0030 punto 7): una función pura que
 // corre sobre el texto final, también después de una edición manual, y no se guarda (se calcula
@@ -105,12 +107,17 @@ export type PostCheckContext = {
  * y el tema del operador) y la de las ideas de un plan (F9-T20), que no tienen brief.
  */
 export function profileSources(
-  profile: Pick<EditorialProfileView, "facts" | "audience" | "pillars" | "defaultHashtags">,
+  profile: Pick<EditorialProfileView, "facts" | "audience" | "pillars" | "defaultHashtags"> & {
+    knowledge?: EditorialProfileView["knowledge"];
+  },
   broker: Pick<Broker, "brandName" | "fixedHashtags">,
 ): string {
   return [
     broker.brandName,
     ...profile.facts,
+    // Las novedades de la marca son fuente de hechos; los ejemplos, la postura y el tono no (D1 de
+    // F9.7, ADR-0043).
+    ...knowledgeSources(profile.knowledge),
     profile.audience ?? "",
     ...profile.pillars.flatMap((pillar) => [pillar.name, pillar.description]),
     ...profile.defaultHashtags,
@@ -130,7 +137,7 @@ export function buildPostCheckContext(params: {
   post: Pick<Post, "kind" | "topic" | "brief" | "briefOrigin" | "source" | "xLinkAllowed">;
   profile: Pick<
     EditorialProfileView,
-    "facts" | "audience" | "pillars" | "defaultHashtags" | "avoid"
+    "facts" | "audience" | "pillars" | "defaultHashtags" | "avoid" | "knowledge"
   > & { aiHashtags?: boolean | null };
   broker: Pick<Broker, "brandName" | "fixedHashtags">;
   media: readonly (Pick<Media, "role" | "kind"> &
@@ -893,6 +900,17 @@ export function checkPostContent(
       "u",
     );
     if (pattern.test(folded)) add("AVOID_TERM", `Usa «${term}», que el perfil pide evitar`);
+  }
+
+  // F9.7 B8: la ortografía (aviso), sobre todo de lo que el operador editó a mano.
+  if (text.language !== undefined) {
+    const wrong = misspellings(text.body, text.language);
+    if (wrong.length > 0) {
+      add(
+        "SPELLING",
+        `Revisa la ortografía: ${wrong.map((item) => `«${item.word}» → «${item.suggestion}»`).join(", ")}`,
+      );
+    }
   }
 
   const tells = findAiTells(text.body);

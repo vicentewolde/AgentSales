@@ -1,11 +1,11 @@
 import type { Broker } from "../broker.js";
 import type { Content } from "../content.js";
-import type { Platform, PublicationFormat } from "../enums.js";
+import type { Language, Platform, PublicationFormat } from "../enums.js";
 import type { BackupStatus } from "../health.js";
 import { isBackupStale } from "../health.js";
 import type { Listing } from "../listing.js";
 import { requiresManualConfirm } from "../marketplace/limits.js";
-import type { PlatformAccount } from "../platform-account.js";
+import { isManualAccount, type PlatformAccount } from "../platform-account.js";
 import { portalExpiry } from "../portal/expiry.js";
 import type { Post } from "../post.js";
 import { hasStartedLive, type Publication, publicationModeFixed } from "../publication.js";
@@ -33,6 +33,9 @@ import { accountTokenExpiry } from "./token-expiry.js";
  *   estado del worker (`AgendaInput.worker`);
  * - `overdue`: programada que no salió (más de 12 h de atraso);
  * - `your_turn`: recordatorio de Marketplace con la hora vencida ("te toca");
+ * - `did_it_go_out` («¿Salió?», F9.7 B10): una publicación de un post en una cuenta **a mano**
+ *   (aprobada, programada o lista para publicar a mano) cuya hora pasó hace más de 12 h: el operador
+ *   dice «Ya lo publiqué» (con o sin enlace) o «No salió». Nunca lo ya confirmado ni las redes por API;
  * - `outcome_unknown`: el intento se cortó después de enviar y no se sabe si salió (F9, ADR-0029
  *   punto 8); el operador la resuelve ("salió" o "no salió");
  * - `stuck`: `publishing` sin cambios desde hace más de 70 min;
@@ -58,6 +61,7 @@ export const AGENDA_KINDS = [
   "worker_off",
   "overdue",
   "your_turn",
+  "did_it_go_out",
   "outcome_unknown",
   "stuck",
   "failed",
@@ -85,6 +89,11 @@ export const AGENDA_ACTIONS = [
   "resolve",
   /** Una publicación a mano lista: publicarla en la red y confirmar con el enlace. */
   "confirm",
+  /**
+   * `did_it_go_out` de una aprobada o programada (todavía sin pasar a «publicar a mano»): registrar
+   * con su enlace que salió (`post record`), o cancelarla si no salió.
+   */
+  "record",
   /** `token_expiring`: volver a conectar la cuenta. */
   "reconnect",
   /** `worker_off` sin horario: el worker debe estar encendido; hay que encenderlo. */
@@ -116,6 +125,8 @@ export type AgendaItem = {
   platform: Platform | null;
   format: PublicationFormat | null;
   publicationId: string | null;
+  /** El idioma del texto de la publicación (F9.7 B10, para «Ya lo publiqué»); `null` si no es una. */
+  language: Language | null;
   /** La hora que importa: la programada, la del último cambio, la del vencimiento o del respaldo. */
   at: Date | null;
   /** Si es en simulación (`null` si no es una publicación). */
@@ -172,7 +183,8 @@ export type PendingReview = { listingId: string; platform: Platform };
 export type AgendaAccount = Pick<
   PlatformAccount,
   "id" | "brokerId" | "platform" | "displayName" | "status" | "tokenExpiresAt" | "meta"
-> & { brokerSlug?: string | null };
+> &
+  Partial<Pick<PlatformAccount, "externalAccountId">> & { brokerSlug?: string | null };
 
 export type AgendaInput = {
   listings: readonly Pick<Listing, "id" | "brokerId" | "externalRef" | "status">[];
@@ -180,6 +192,8 @@ export type AgendaInput = {
   posts?: readonly (Pick<Post, "id" | "brokerId" | "topic"> & {
     /** Sus redes: lo de una red que el post no tiene no entra a la agenda (2026-11-15). */
     platforms?: Post["platforms"] | undefined;
+    /** F9.7 B10: la fecha pensada, para «¿Salió?» de una aprobada a mano. */
+    plannedAt?: Post["plannedAt"] | undefined;
   })[];
   /** Las publicaciones de esas propiedades y posts (`listForTracking`). */
   publications: readonly Publication[];
@@ -215,6 +229,7 @@ const NOT_A_PUBLICATION = {
   brokerSlug: null,
   format: null,
   publicationId: null,
+  language: null,
   dryRun: null,
   modeFixed: true,
   mediaCount: null,
@@ -269,6 +284,7 @@ export function agendaItems(input: AgendaInput): AgendaItem[] {
       platform: publication.platform,
       format: publication.format,
       publicationId: publication.id,
+      language: publication.language,
       at: kindOf.at,
       dryRun: publication.dryRun,
       modeFixed: publicationModeFixed({
@@ -343,6 +359,8 @@ export function agendaItems(input: AgendaInput): AgendaItem[] {
 type AgendaOwner = {
   listingId: string | null;
   postId: string | null;
+  /** La fecha pensada del post (para «¿Salió?» de una aprobada); `null` en un aviso. */
+  plannedAt: Date | null;
   brokerId: string;
   externalRef: string | null;
   title: string;
@@ -352,7 +370,10 @@ type AgendaOwner = {
 function ownerOf(
   publication: Publication,
   listings: ReadonlyMap<string, Pick<Listing, "id" | "brokerId" | "externalRef" | "status">>,
-  posts: ReadonlyMap<string, Pick<Post, "id" | "brokerId" | "topic">>,
+  posts: ReadonlyMap<
+    string,
+    Pick<Post, "id" | "brokerId" | "topic"> & Partial<Pick<Post, "plannedAt">>
+  >,
 ): AgendaOwner | null {
   const { subject } = publication;
   if (subject.kind === "post") {
@@ -362,6 +383,7 @@ function ownerOf(
       : {
           listingId: null,
           postId: post.id,
+          plannedAt: post.plannedAt ?? null,
           brokerId: post.brokerId,
           externalRef: null,
           title: post.topic,
@@ -374,6 +396,7 @@ function ownerOf(
     : {
         listingId: listing.id,
         postId: null,
+        plannedAt: null,
         brokerId: listing.brokerId,
         externalRef: listing.externalRef,
         title: listing.externalRef,
@@ -412,6 +435,38 @@ function waitsForWorker(
   );
 }
 
+/** «¿Salió?» después de 12 h (F9.7 B10). */
+export const DID_IT_GO_OUT_AFTER_MS = 12 * 60 * 60 * 1000;
+
+/**
+ * «¿Salió?» (F9.7 B10): una publicación de un post en una cuenta a mano cuya hora pasó hace más de
+ * 12 h y que nadie confirmó. Lista para publicar a mano: «Ya lo publiqué» la confirma; aprobada o
+ * programada: «Ya lo publiqué» la registra con su enlace (`record`). Sin las cuentas, nada.
+ */
+function didItGoOut(
+  publication: Publication,
+  owner: AgendaOwner,
+  input: AgendaInput,
+): { kind: AgendaKind; action: AgendaAction; at: Date | null } | null {
+  if (owner.postId === null) return null;
+  const account = (input.accounts ?? []).find((item) => item.id === publication.platformAccountId);
+  if (account === undefined || !isManualAccount(account)) return null;
+  const at =
+    publication.status === "awaiting_manual_confirm"
+      ? manualReadyAt(publication)
+      : publication.status === "scheduled"
+        ? publication.scheduledAt
+        : publication.status === "approved"
+          ? owner.plannedAt
+          : null;
+  if (at === null || input.now.getTime() - at.getTime() <= DID_IT_GO_OUT_AFTER_MS) return null;
+  return {
+    kind: "did_it_go_out",
+    action: publication.status === "awaiting_manual_confirm" ? "confirm" : "record",
+    at,
+  };
+}
+
 function kindForPublication(
   publication: Publication,
   owner: AgendaOwner,
@@ -425,6 +480,8 @@ function kindForPublication(
   extra?: Partial<Pick<AgendaItem, "code" | "advice" | "daysLeft" | "expired">>;
 } | null {
   const { now } = input;
+  const late = didItGoOut(publication, owner, input);
+  if (late !== null) return late;
   switch (publication.status) {
     case "scheduled": {
       const state = scheduleState(publication, now);

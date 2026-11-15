@@ -18,6 +18,7 @@ import type { EditorialProfileRepository } from "../ports/editorial-profile-repo
 import type { LLMProvider } from "../ports/llm-provider.js";
 import type { MediaRepository } from "../ports/media-repository.js";
 import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
+import type { PostCardTextRepository } from "../ports/post-card-text-repository.js";
 import type { PostImageRunRepository } from "../ports/post-image-run-repository.js";
 import type { PostLock } from "../ports/post-lock.js";
 import type { PostRepository } from "../ports/post-repository.js";
@@ -44,6 +45,11 @@ export type DraftPostDeps = {
   postImageRuns?: Pick<PostImageRunRepository, "listByPost">;
   /** Para guardar los textos y dejar el estado del post al día en una sola transacción. */
   postLock: PostLock;
+  /**
+   * F9.7 B5: los textos de las láminas de un post de imagen o carrusel (los de la IA no pisan los
+   * que el operador ya revisó). Sin él, la IA no los escribe.
+   */
+  cardTexts?: Pick<PostCardTextRepository, "replace">;
   /** El proveedor del operador (`LLM_PROVIDER`): el de sus marcas propias (spec F7 §4.7). */
   llm: LLMProvider;
   /** La API de Anthropic para las marcas que no son del operador; `null` sin la clave. */
@@ -253,8 +259,12 @@ async function texts(
     media: await deps.media.listBySubject(postSubject(post.id)),
     cards: await loadCardLanguages(deps.postImageRuns, post.id),
   });
+  const base = buildSocialBrief({ post, profile, broker, targets });
   const brief = {
-    ...buildSocialBrief({ post, profile, broker, targets }),
+    ...base,
+    // F9.7 B5: las láminas se piden solo en la redacción completa (no al rehacer un texto o agregar
+    // una red) y si hay dónde guardarlas.
+    slides: scope === null && deps.cardTexts !== undefined ? base.slides : null,
     guidance: scope?.guidance ?? null,
     currentText: previous,
   };
@@ -287,6 +297,23 @@ async function texts(
     durationMs: Math.max(0, Math.round(now() - started)),
   };
   state.report.warnings.push(...result.draft.warnings);
+  if (brief.slides !== null && deps.cardTexts !== undefined) {
+    for (const language of brief.slides.languages) {
+      const slides = (result.draft.slides ?? []).filter((slide) => slide.language === language);
+      if (slides.length === 0) continue;
+      const kept = await deps.cardTexts.replace(
+        post.id,
+        language,
+        slides.map(({ role, headline, subtitle }) => ({ role, headline, subtitle })),
+        { fromAi: true },
+      );
+      if (!kept) {
+        state.report.warnings.push(
+          `Las láminas en ${language} ya las revisaste: no se cambiaron (edítalas en el post si quieres otras)`,
+        );
+      }
+    }
+  }
   state.report.postChecks = result.texts.map(({ platform, language, checks }) => ({
     platform,
     language,

@@ -1220,6 +1220,8 @@ export const agendaItemSchema = z.object({
   platform: z.enum(PLATFORMS).nullable(),
   format: z.enum(PUBLICATION_FORMATS).nullable(),
   publicationId: z.string().nullable(),
+  /** F9.7 B10: el idioma del texto de la publicación; `null` si no es una o de un servidor anterior. */
+  language: z.enum(LANGUAGES).nullable().default(null),
   at: z.coerce.date().nullable(),
   dryRun: z.boolean().nullable(),
   /** Como en el seguimiento: si el modo ya está fijado (D4 del spec F9.5); `true` si no es una publicación. */
@@ -2469,3 +2471,4 @@ export type LeadWebhookSecretResponse = z.infer<typeof leadWebhookSecretResponse
 
 /** Lo que recibe ManyChat: solo si se guardó y si ya existía, nunca datos personales. */
 export const leadWebhookResponseSchema = z.object({ ok: z.literal(true), created: z.boolean() });
+export * from "./brand.js";

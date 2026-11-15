@@ -17,8 +17,13 @@ export { type Pingable, type PingOptions, pingDatabase, readServerVersion } from
 export { createListingLock } from "./listing-lock.js";
 export { MIGRATIONS_FOLDER } from "./migrations.js";
 export { createPostLock } from "./post-lock.js";
+export {
+  createBrandKnowledgeRepository,
+  createKnowledgeProposalRepository,
+} from "./repositories/brand-knowledge.js";
 export { createBrokerPurgeRepository } from "./repositories/broker-purge.js";
 export { createBrokerRepository } from "./repositories/brokers.js";
+export { createCardStyleRepository } from "./repositories/card-styles.js";
 export { createContentRunRepository } from "./repositories/content-runs.js";
 export { createContentRepository } from "./repositories/contents.js";
 export { createEditorialProfileRepository } from "./repositories/editorial-profiles.js";
@@ -32,6 +37,7 @@ export { createMetaDeletionRepository } from "./repositories/meta-deletion-reque
 export { createPlanRunRepository } from "./repositories/plan-runs.js";
 export { createPlatformAccountRepository } from "./repositories/platform-accounts.js";
 export { createPlatformCatalogRepository } from "./repositories/platform-catalog.js";
+export { createPostCardTextRepository } from "./repositories/post-card-texts.js";
 export { createPostImageRunRepository } from "./repositories/post-image-runs.js";
 export { createPostRepository, createPostUploadRepository } from "./repositories/posts.js";
 export { createPublicationRepository } from "./repositories/publications.js";

@@ -9,11 +9,21 @@ export {
   fakeTotpCode,
   fakeTotpStep,
 } from "./auth.js";
+// F9.7 parte B (ADR-0043).
+export {
+  createInMemoryBrandKnowledgeRepository,
+  createInMemoryKnowledgeProposalRepository,
+  type InMemoryKnowledgeProposalRepository,
+} from "./brand-knowledge.js";
 export {
   createFakeBrokerPurgeRepository,
   type FakeBrokerPurgeData,
   type FakeBrokerPurgeRepository,
 } from "./broker-purge.js";
+export {
+  createInMemoryCardStyleRepository,
+  type InMemoryCardStyleRepository,
+} from "./card-styles.js";
 export {
   createInMemoryContentRepositories,
   type InMemoryContentRepositories,
@@ -93,6 +103,7 @@ export {
   createInMemoryPlatformCatalogRepository,
   type InMemoryPlatformCatalogRepository,
 } from "./platform-catalog.js";
+export { createInMemoryPostCardTextRepository } from "./post-card-texts.js";
 export {
   createFakeCardRenderer,
   createFakeImageGenerator,

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { type BrandKnowledgeContext, brandKnowledgeContextSchema } from "./brand-knowledge.js";
 import { DEFAULT_LANGUAGE, LANGUAGES, type Language, POST_PLATFORMS } from "./enums.js";
 import { AppError } from "./errors.js";
 import { hasHiddenChars } from "./hidden-chars.js";
@@ -99,6 +100,11 @@ export const editorialProfileSchema = z.object({
    */
   defaultHashtags: z.array(z.string()),
   /**
+   * El conocimiento de la marca como lo ve la IA (spec F9.7 B3, ADR-0043 punto 3): lo agrega
+   * `editorialProfilesWithKnowledge` al leer; no es una columna del perfil. Sin él, `undefined`.
+   */
+  knowledge: brandKnowledgeContextSchema.nullable().optional(),
+  /**
    * «¿La IA puede agregar otros hashtags?» (2026-11-15): `true` sí, `false` no (solo los que siempre
    * van), `null` por defecto: no si hay hashtags que siempre van, sí si no hay ninguno
    * (`aiMayAddHashtags`). Opcional al leer: un perfil anterior a la columna cuenta como `null`.
@@ -113,10 +119,10 @@ export const editorialProfileSchema = z.object({
 });
 export type EditorialProfile = z.infer<typeof editorialProfileSchema>;
 
-/** Lo que se guarda de un perfil (todo menos el corredor y las fechas). */
+/** Lo que se guarda de un perfil (todo menos el corredor, las fechas y el conocimiento). */
 export type EditorialProfileData = Omit<
   EditorialProfile,
-  "brokerId" | "createdAt" | "updatedAt" | "aiHashtags"
+  "brokerId" | "createdAt" | "updatedAt" | "aiHashtags" | "knowledge"
 > & {
   /** Sin el campo, `null` (el valor por defecto, `aiMayAddHashtags`). */
   aiHashtags?: boolean | null | undefined;
@@ -130,6 +136,8 @@ export type EditorialProfileView = EditorialProfileData & {
   brokerId: string;
   updatedAt: Date | null;
   aiHashtags: boolean | null;
+  /** El conocimiento que ve la IA (ADR-0043), si se leyó con `editorialProfilesWithKnowledge`. */
+  knowledge?: BrandKnowledgeContext | null;
 };
 
 /** El perfil vacío: en español, sin líneas, hechos ni cadencia. Lo que tiene una marca nueva. */

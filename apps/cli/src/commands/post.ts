@@ -70,6 +70,7 @@ import {
 import { brandOf } from "./brand.js";
 import { brandWeekCommands } from "./brand-week.js";
 import { paintContentRunStatus, renderChecks } from "./content-view.js";
+import { registerPostCards } from "./post-cards.js";
 import { registerPostMedia } from "./post-media.js";
 import { paintPublicationStatus } from "./publication-view.js";
 import { atOption, collect, confirmLive } from "./schedule.js";
@@ -1794,6 +1795,8 @@ export function register(program: Command, ctx: CliContext): void {
     );
   // F9.5-T25: conseguir imágenes (tarjetas, biblioteca o IA).
   registerPostMedia(post, ctx);
+  // F9.7 B5 y B7: los textos de las láminas y el PDF para LinkedIn.
+  registerPostCards(post, ctx);
   post
     .command("draft")
     .description("Pide a la IA un texto por red e idioma (o rehace uno con --platform) y espera")
