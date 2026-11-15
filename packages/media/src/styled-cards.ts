@@ -385,16 +385,18 @@ async function gridCard(
   style: CardStyle,
   background: string,
   size: Size,
-  pad: number,
+  top: number,
   titleSize: number,
+  left: number,
 ): Promise<Buffer> {
+  // El contenido va centrado en el alto de la tarjeta (`top`), a la izquierda (`left`).
   return sharp(await roundedRect(size, style.cardRadius, background))
     .composite([
-      { input: content.label.input, top: pad, left: pad },
+      { input: content.label.input, top, left },
       {
         input: content.title.input,
-        top: pad + content.label.height + Math.round(titleSize * 0.3),
-        left: pad,
+        top: top + content.label.height + Math.round(titleSize * 0.3),
+        left,
       },
     ])
     .png()
@@ -556,14 +558,11 @@ async function explainLayers(
       : theme.card;
   const widthOf = (row: (typeof rows)[number]) =>
     row.wide ? inner : Math.floor((inner - gap) / 2);
-  // Todas las tarjetas con el mismo tamaño de letra: el mayor con que la grilla cabe.
-  const start = card.role === "point" ? (short ? 50 : 60) : short ? 36 : 42;
-  let measured: { contents: CardContent[]; height: number }[] = [];
-  let titleSize = start;
-  let pad = 40;
-  for (;;) {
-    pad = Math.round(Math.max(26, titleSize * 0.95));
-    measured = [];
+  // Todas las tarjetas con el mismo tamaño de letra. Primero se achica hasta que la grilla cabe;
+  // si sobra alto (un solo punto o pocos), se agranda hasta un tope para llenar mejor el lienzo.
+  const measureAt = async (titleSize: number) => {
+    const pad = Math.round(Math.max(26, titleSize * 0.95));
+    const rowsMeasured: { contents: CardContent[]; height: number }[] = [];
     for (const [index, row] of rows.entries()) {
       const contents: CardContent[] = [];
       for (const item of row.items) {
@@ -571,33 +570,49 @@ async function explainLayers(
           await cardContent(item, style, colorsOf(index), widthOf(row), titleSize, pad),
         );
       }
-      measured.push({ contents, height: Math.max(...contents.map((content) => content.height)) });
+      rowsMeasured.push({
+        contents,
+        height: Math.max(...contents.map((content) => content.height)),
+      });
     }
-    const total = measured.reduce((sum, row) => sum + row.height, 0) + gap * (rows.length - 1);
-    if (total <= available || titleSize <= 24) {
-      fits &&= total <= available;
-      break;
-    }
-    titleSize = Math.floor(titleSize * 0.9);
+    const total = rowsMeasured.reduce((sum, row) => sum + row.height, 0) + gap * (rows.length - 1);
+    return { titleSize, pad, rows: rowsMeasured, total };
+  };
+  const start = card.role === "point" ? (short ? 50 : 60) : short ? 36 : 42;
+  const tall = format === "9:16";
+  const largest = card.role === "point" ? (short ? 72 : 92) : short ? 46 : tall ? 70 : 60;
+  let measured = await measureAt(start);
+  while (measured.total > available && measured.titleSize > 24) {
+    measured = await measureAt(Math.floor(measured.titleSize * 0.9));
   }
-  // En un punto (una sola tarjeta), la tarjeta va al centro del espacio que queda.
-  if (card.role === "point") {
-    const total = measured.reduce((sum, row) => sum + row.height, 0);
-    y += Math.max(0, Math.round((available - total) * 0.4));
+  fits &&= measured.total <= available;
+  // Agrandar mientras quepa con aire (el 85 % del espacio libre), hasta el tope.
+  while (measured.total <= available && measured.titleSize < largest) {
+    const bigger = await measureAt(Math.min(largest, Math.round(measured.titleSize * 1.12)));
+    if (bigger.total > available * 0.85) break;
+    measured = bigger;
   }
+  const { titleSize, pad } = measured;
+  // Lo que sobra: una parte alarga las tarjetas (repartida entre las filas) y el resto queda
+  // alrededor, con el grupo un poco arriba del centro del espacio entre el titular y el pie.
+  const spare = Math.max(0, available - measured.total);
+  const grow = Math.round((spare * (rows.length === 1 ? 0.5 : 0.45)) / rows.length);
+  const groupHeight = measured.total + grow * rows.length;
+  y += Math.max(0, Math.round((available - groupHeight) * 0.45));
   for (const [index, row] of rows.entries()) {
-    const height = measured[index]?.height ?? 0;
+    const measuredRow = measured.rows[index];
+    const height = (measuredRow?.height ?? 0) + grow;
     let x = m.side;
-    for (const [at, content] of (measured[index]?.contents ?? []).entries()) {
-      void at;
+    for (const content of measuredRow?.contents ?? []) {
       const width = widthOf(row);
       const input = await gridCard(
         content,
         style,
         colorsOf(index).background,
         { width, height },
-        pad,
+        pad + Math.round((height - content.height) / 2),
         titleSize,
+        pad,
       );
       layers.push({ input, top: y, left: x });
       x += width + gap;

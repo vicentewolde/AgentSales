@@ -106,6 +106,23 @@ describe("renderStyledCard", () => {
     expect((dark[0] ?? 255) < 20).toBe(true);
   });
 
+  it("«Explicar» con un solo punto llena el lienzo: la tarjeta baja hasta cerca del pie", async () => {
+    const point = {
+      ...(cards[1] as CardSpec),
+      subtitle: "Un contrato hace cumplir cuánto gasta tu agente.",
+    };
+    const { png } = await renderStyledCard(
+      point,
+      BRAND,
+      { style, theme: 0, composition: "explain" },
+      "4:5",
+    );
+    const jpeg = new Uint8Array(await sharp(png).jpeg().toBuffer());
+    // El borde derecho de la tarjeta héroe (#1062f0) a 3/4 del alto: ya no queda vacío abajo.
+    const [r, g, b] = await pixel(jpeg, 975, 1000);
+    expect((b ?? 0) > 200 && (r ?? 255) < 60 && (g ?? 0) > 70).toBe(true);
+  });
+
   it("el renderer usa el estilo si viene y es determinista", async () => {
     const renderer = createCardRenderer();
     const options = {
