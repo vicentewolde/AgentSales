@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { isAppError } from "../errors.js";
 import {
+  addedPlatformsToDraft,
   ideaNeedsDraft,
+  postKindIssues,
   postNetworkGaps,
   postPublishesOn,
   requirePostPlatform,
+  rescheduleSuggestion,
 } from "./post-networks.js";
 
 // F9-T21: la regla de las redes de un post (`posts.platforms`) y lo que muestran la CLI y el panel.
@@ -118,5 +121,139 @@ describe("ideaNeedsDraft", () => {
     expect(ideaNeedsDraft(idea(run("succeeded"), { texts: 2 }))).toBe(false);
     expect(ideaNeedsDraft(idea(null, { status: "idea" }))).toBe(false);
     expect(ideaNeedsDraft(idea(null, { status: "archived" }))).toBe(false);
+  });
+});
+
+describe("addedPlatformsToDraft (la red agregada a un post ya redactado)", () => {
+  const post = (
+    platforms: ("x" | "linkedin" | "instagram")[] | null,
+    status = "draft" as const,
+  ) => ({
+    platforms,
+    kind: "text" as const,
+    status,
+  });
+  it("solo las redes nuevas, sin texto y que sirven al tipo", () => {
+    expect(
+      addedPlatformsToDraft({
+        before: ["x"],
+        post: post(["x", "linkedin", "instagram"]),
+        contents: texts("x"),
+      }),
+    ).toEqual(["linkedin"]);
+  });
+  it("nada sin textos, en una idea, con todas las redes o si la red ya tenía texto", () => {
+    expect(
+      addedPlatformsToDraft({ before: ["x"], post: post(["x", "linkedin"]), contents: [] }),
+    ).toEqual([]);
+    expect(
+      addedPlatformsToDraft({
+        before: ["x"],
+        post: { ...post(["x", "linkedin"]), status: "idea" },
+        contents: texts("x"),
+      }),
+    ).toEqual([]);
+    expect(
+      addedPlatformsToDraft({ before: ["x"], post: post(null), contents: texts("x") }),
+    ).toEqual([]);
+    expect(
+      addedPlatformsToDraft({ before: null, post: post(["x", "linkedin"]), contents: texts("x") }),
+    ).toEqual([]);
+    expect(
+      addedPlatformsToDraft({
+        before: ["x"],
+        post: post(["x", "linkedin"]),
+        contents: texts("x", "linkedin"),
+      }),
+    ).toEqual([]);
+  });
+});
+
+describe("postKindIssues (el tipo del post contra sus medios y redes)", () => {
+  it("dice qué falta y qué redes no sirven", () => {
+    expect(
+      postKindIssues({
+        post: { kind: "text", platforms: ["x", "instagram"] },
+        contents: [],
+        images: 0,
+        videos: 0,
+      }),
+    ).toEqual({
+      media: null,
+      unfit: [{ platform: "instagram", message: "Instagram necesita una imagen o un video" }],
+    });
+    expect(
+      postKindIssues({
+        post: { kind: "image", platforms: null },
+        contents: [],
+        images: 0,
+        videos: 0,
+      }).media,
+    ).toMatch(/^Falta la imagen/);
+    expect(
+      postKindIssues({
+        post: { kind: "video", platforms: null },
+        contents: [],
+        images: 2,
+        videos: 0,
+      }).media,
+    ).toMatch(/^Falta el video/);
+    expect(
+      postKindIssues({
+        post: { kind: "carousel", platforms: null },
+        contents: [],
+        images: 1,
+        videos: 0,
+      }).media,
+    ).toMatch(/otra imagen/);
+  });
+  it("con todas las redes de la marca, mira las que tienen texto", () => {
+    expect(
+      postKindIssues({
+        post: { kind: "image", platforms: null },
+        contents: [{ platform: "tiktok" }, { platform: "x" }],
+        images: 1,
+        videos: 0,
+      }).unfit,
+    ).toEqual([{ platform: "tiktok", message: "TikTok publica solo video" }]);
+  });
+});
+
+describe("rescheduleSuggestion (mover lo programado a la fecha nueva)", () => {
+  const at = (iso: string) => new Date(iso);
+  const pub = (
+    platform: "x" | "linkedin",
+    language: "es" | "en",
+    scheduledAt: string | null,
+    status: "scheduled" | "approved" = "scheduled",
+  ) => ({ platform, language, status, scheduledAt: scheduledAt === null ? null : at(scheduledAt) });
+
+  it("cada red con sus idiomas y el mismo espacio entre ellos", () => {
+    const suggestion = rescheduleSuggestion(
+      [
+        pub("x", "en", "2026-11-20T13:30:00Z"),
+        pub("x", "es", "2026-11-20T13:00:00Z"),
+        pub("linkedin", "es", "2026-11-20T13:00:00Z"),
+        pub("linkedin", "en", null, "approved"),
+      ],
+      at("2026-11-21T15:00:00Z"),
+    );
+    expect(suggestion).toEqual({
+      count: 3,
+      times: [at("2026-11-20T13:00:00Z"), at("2026-11-20T13:30:00Z")],
+      moves: [
+        { platform: "x", languages: ["es", "en"], spacingMinutes: 30 },
+        { platform: "linkedin", languages: ["es"], spacingMinutes: 0 },
+      ],
+    });
+  });
+
+  it("nada si no hay programadas o ya están a esa hora", () => {
+    expect(
+      rescheduleSuggestion([pub("x", "es", null, "approved")], at("2026-11-21T15:00:00Z")),
+    ).toBeNull();
+    expect(
+      rescheduleSuggestion([pub("x", "es", "2026-11-21T15:00:00Z")], at("2026-11-21T15:00:00Z")),
+    ).toBeNull();
   });
 });

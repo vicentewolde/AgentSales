@@ -22,6 +22,7 @@ import type { Publication } from "../publication.js";
 import { buildPostCheckContext, checkPostContent } from "../social/check.js";
 import { postSubject } from "../subject.js";
 import type { User } from "../user.js";
+import { postSourceHashes } from "./draft-post.js";
 import { assertPostAccess } from "./posts.js";
 
 // Leer los textos de un post con su revisión, y encontrar el texto vigente de una red e idioma
@@ -36,7 +37,8 @@ export type GetPostContentDeps = {
   editorialProfiles: Pick<EditorialProfileRepository, "get">;
   media: Pick<MediaRepository, "listBySubject">;
   contents: Pick<ContentRepository, "listCurrent">;
-  contentRuns: Pick<ContentRunRepository, "latest">;
+  /** Con `get`, también si el tema o el brief cambiaron después de redactar (`sourceChanged`). */
+  contentRuns: Pick<ContentRunRepository, "latest"> & Partial<Pick<ContentRunRepository, "get">>;
   publications: Pick<PublicationRepository, "listBySubject">;
   /** El idioma de las tarjetas, para contar las imágenes de cada texto (sin él, no se separan). */
   postImageRuns?: Pick<PostImageRunRepository, "listByPost">;
@@ -53,6 +55,12 @@ export type PostContent = {
   latestRun: ContentRun | null;
   /** Todas las publicaciones del post, de todas sus redes e idiomas (las más nuevas primero). */
   publications: Publication[];
+  /**
+   * Si el tema o el brief del post cambiaron después de redactar alguno de sus textos vigentes
+   * (la huella `postSource` de la corrida que lo redactó no calza con la del post). Los textos de
+   * corridas anteriores a la huella no cuentan.
+   */
+  sourceChanged: { topic: boolean; brief: boolean };
 };
 
 const order = (content: Pick<Content, "platform" | "language">) =>
@@ -104,10 +112,29 @@ export async function getPostContent(
     post,
     contents,
     latestRun,
+    sourceChanged: await sourceChangedOf(deps.contentRuns, post, current),
     publications: [...publications].sort(
       (a, b) => b.createdAt.getTime() - a.createdAt.getTime() || a.id.localeCompare(b.id),
     ),
   };
+}
+
+/** Compara la huella de cada corrida que redactó un texto vigente con la del post ahora. */
+async function sourceChangedOf(
+  runs: GetPostContentDeps["contentRuns"],
+  post: Post,
+  current: readonly Content[],
+): Promise<{ topic: boolean; brief: boolean }> {
+  const changed = { topic: false, brief: false };
+  if (runs.get === undefined || current.length === 0) return changed;
+  const now = postSourceHashes(post);
+  for (const runId of new Set(current.map((content) => content.contentRunId))) {
+    const source = (await runs.get(runId))?.report?.postSource;
+    if (source === undefined) continue;
+    if (source.topic !== now.topic) changed.topic = true;
+    if (source.brief !== now.brief) changed.brief = true;
+  }
+  return changed;
 }
 
 /**

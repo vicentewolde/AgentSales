@@ -45,6 +45,7 @@ function toContentRun(row: typeof contentRuns.$inferSelect): ContentRun {
     finishedAt: row.finishedAt,
     createdAt: row.createdAt,
     llmUsage: row.llmUsage,
+    scope: row.scope,
   });
   if (!parsed.success) {
     throw new AppError(
@@ -78,6 +79,7 @@ export function createContentRunRepository(db: SchemaDatabase): ContentRunReposi
             .values({
               ...(subject.kind === "listing" ? { listingId: subject.id } : { postId: subject.id }),
               texts: run.texts,
+              ...(run.scope === undefined || run.scope === null ? {} : { scope: run.scope }),
             })
             .returning();
           if (row === undefined) {

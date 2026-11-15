@@ -183,6 +183,13 @@
       "when": 1794375871031,
       "tag": "0025_f96_idioma_de_cada_imagen",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1794767035583,
+      "tag": "0026_f96_alcance_de_la_corrida",
+      "breakpoints": true
     }
   ]
 }

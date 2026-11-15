@@ -80,6 +80,7 @@ async function setup(
   const deps = {
     shared: {
       contentRuns,
+      contents,
       posts,
       brokers,
       editorialProfiles,

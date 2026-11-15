@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ALL_SCOPE } from "../access.js";
+import type { ContentRunScope } from "../content.js";
 import { editorialProfileView } from "../editorial-profile.js";
 import type { Language, Platform, PostKind, PostPlatform, PostStatus } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
@@ -29,7 +30,12 @@ import {
 } from "../testing/index.js";
 import { approveContent } from "./approve-content.js";
 import { type DraftPostDeps, draftPost } from "./draft-post.js";
+import { editContent } from "./edit-content.js";
+import { getPostContent } from "./get-post-content.js";
+import { editPost, updatePost } from "./posts.js";
 import { requestContentRun } from "./request-content-run.js";
+
+const ADMIN = { id: "admin-1", role: "admin" as const, brokerId: null };
 
 // La corrida de textos de un post (job `post.draft`, F9-T11): con proveedores guionados, nunca la
 // IA real.
@@ -149,6 +155,7 @@ async function setup(options: Setup = {}) {
   const apiLlm = usesApi ? createInMemoryLlmProvider(options.apiLlm ?? [], "anthropic-api") : null;
   const deps: DraftPostDeps = {
     contentRuns,
+    contents,
     posts,
     brokers,
     editorialProfiles,
@@ -160,11 +167,25 @@ async function setup(options: Setup = {}) {
     clock: () => new Date("2026-10-20T15:00:00Z"),
   };
   const queue = createInMemoryJobQueue();
-  const request = (replaceEdits = false) =>
-    requestContentRun(
-      { lock, postLock, contentRuns, queue, now: () => new Date("2026-10-20T15:00:00Z") },
-      { postId: post.id, replaceEdits },
-    );
+  const requestDeps = {
+    lock,
+    postLock,
+    contentRuns,
+    queue,
+    now: () => new Date("2026-10-20T15:00:00Z"),
+  };
+  const request = (replaceEdits = false, scope: ContentRunScope | null = null) =>
+    requestContentRun(requestDeps, { postId: post.id, replaceEdits, scope });
+  // Editar el post como el panel (`PATCH /posts/:id`): la edición y, si se agregó una red, su texto.
+  const editDeps = {
+    ...requestDeps,
+    posts,
+    editorialProfiles,
+    contents,
+    brokers,
+    media,
+    publications,
+  };
   const current = () => contents.listCurrent(postSubject(post.id));
   const approveDeps = {
     contents,
@@ -188,6 +209,9 @@ async function setup(options: Setup = {}) {
     approveDeps,
     postLock,
     editorialProfiles,
+    editDeps,
+    contents,
+    publications,
   };
 }
 
@@ -701,5 +725,237 @@ describe("draftPost · un post sin medios todavía (F9.5-T21)", () => {
       "instagram",
       "linkedin",
     ]);
+  });
+});
+
+describe("draftPost · corridas acotadas (agregar una red, rehacer un texto)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-20T15:00:00Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const x = [{ platform: "x" as const, language: "es" as const }];
+  const linkedin = [{ platform: "linkedin" as const, language: "es" as const }];
+
+  it("agregar una red a un post redactado redacta solo esa, sin tocar el texto aprobado", async () => {
+    const t = await setup({
+      platforms: ["x"],
+      llm: [{ data: answer(x) }, { data: answer(linkedin) }],
+    });
+    const first = await t.request();
+    await draftPost(t.deps, { contentRunId: first.run.id, isLastAttempt: false });
+    const [xText] = await t.current();
+    if (xText === undefined) throw new Error("sin texto");
+    // Aprobado y con su publicación abierta (la cuenta de X está conectada).
+    await approveContent(t.approveDeps, { contentId: xText.id, actor: "operator" });
+    expect(t.publications.all().map((p) => p.status)).toEqual(["approved"]);
+
+    const { post, drafting } = await editPost(t.editDeps, ADMIN, t.post.id, {
+      platforms: ["x", "linkedin"],
+    });
+
+    expect(post.platforms).toEqual(["x", "linkedin"]);
+    expect(drafting).toMatchObject({ platforms: ["linkedin"], error: null });
+    const run = await t.contentRuns.get(drafting?.contentRunId ?? "");
+    expect(run?.scope).toEqual({
+      platforms: ["linkedin"],
+      language: null,
+      mode: "missing",
+      guidance: null,
+    });
+    expect(t.queue.jobs.at(-1)).toMatchObject({
+      name: "post.draft",
+      data: { contentRunId: run?.id },
+    });
+
+    const result = await draftPost(t.deps, { contentRunId: run?.id ?? "", isLastAttempt: false });
+
+    expect(result).toMatchObject({ outcome: "succeeded", postStatus: "ready" });
+    expect((await t.current()).map((item) => [item.platform, item.status, item.id])).toEqual([
+      ["x", "approved", xText.id],
+      ["linkedin", "draft", expect.any(String)],
+    ]);
+    // La IA solo vio la red que faltaba.
+    const prompt = t.llm.requests[1]?.prompt ?? "";
+    expect(prompt).toContain('"platform": "linkedin"');
+    expect(prompt).not.toContain('"platform": "x"');
+    expect(t.publications.all().map((p) => p.status)).toEqual(["approved"]);
+  });
+
+  it("sin nada que falte, la corrida acotada termina sin llamar a la IA", async () => {
+    const t = await setup({ platforms: ["x"], llm: [{ data: answer(x) }] });
+    const first = await t.request();
+    await draftPost(t.deps, { contentRunId: first.run.id, isLastAttempt: false });
+    const scoped = await t.request(false, {
+      platforms: ["x"],
+      language: null,
+      mode: "missing",
+      guidance: null,
+    });
+    const result = await draftPost(t.deps, { contentRunId: scoped.run.id, isLastAttempt: false });
+    expect(result).toMatchObject({ outcome: "succeeded" });
+    expect(t.llm.requests).toHaveLength(1);
+  });
+
+  it("editPost no redacta en un post sin textos, en una idea ni una red que no sirve al tipo", async () => {
+    const t = await setup({ platforms: ["x"], accounts: ["x", "linkedin", "instagram"] });
+    // Sin textos todavía: sigue el flujo normal (pedir los textos).
+    expect(
+      (await editPost(t.editDeps, ADMIN, t.post.id, { platforms: ["x", "linkedin"] })).drafting,
+    ).toBeNull();
+    expect(t.queue.jobs).toEqual([]);
+
+    const idea = await setup({ platforms: ["x"], status: "idea" });
+    expect(
+      (await editPost(idea.editDeps, ADMIN, idea.post.id, { platforms: ["x", "linkedin"] }))
+        .drafting,
+    ).toBeNull();
+  });
+
+  it("Instagram agregado a un post de solo texto no se redacta", async () => {
+    const t = await setup({
+      platforms: ["x"],
+      accounts: ["x", "instagram"],
+      llm: [{ data: answer(x) }],
+    });
+    const first = await t.request();
+    await draftPost(t.deps, { contentRunId: first.run.id, isLastAttempt: false });
+    const { drafting } = await editPost(t.editDeps, ADMIN, t.post.id, {
+      platforms: ["x", "instagram"],
+    });
+    expect(drafting).toBeNull();
+  });
+
+  it("con el tope del mes alcanzado, la edición queda y drafting dice por qué no redactó", async () => {
+    const t = await setup({
+      platforms: ["x"],
+      capUsd: 0.01,
+      apiLlm: [{ data: answer(x), model: "claude-sonnet-5-5", usage: SPEND }],
+    });
+    const first = await t.request();
+    await draftPost(t.deps, { contentRunId: first.run.id, isLastAttempt: false });
+
+    const { post, drafting } = await editPost(t.editDeps, ADMIN, t.post.id, {
+      platforms: ["x", "linkedin"],
+    });
+
+    expect(post.platforms).toEqual(["x", "linkedin"]);
+    expect(drafting).toMatchObject({
+      platforms: ["linkedin"],
+      contentRunId: null,
+      error: { code: "LLM_BUDGET_EXCEEDED" },
+    });
+  });
+
+  it("rehacer un texto: solo ese, con la indicación y el texto actual, y pide confirmar si estaba editado", async () => {
+    const t = await setup({
+      platforms: ["x", "linkedin"],
+      llm: [
+        {
+          data: answer([
+            { platform: "x", language: "es" },
+            { platform: "linkedin", language: "es" },
+          ]),
+        },
+        { data: answer([{ platform: "x", language: "es", body: "Más corto." }]) },
+      ],
+    });
+    const first = await t.request();
+    await draftPost(t.deps, { contentRunId: first.run.id, isLastAttempt: false });
+    const [xText, liText] = await t.current();
+    if (xText === undefined || liText === undefined) throw new Error("sin textos");
+    await editContent(
+      { ...t.approveDeps },
+      { contentId: xText.id, edit: { body: "Mi versión del texto de X." } },
+    );
+    const scope: ContentRunScope = {
+      platforms: ["x"],
+      language: "es",
+      mode: "replace",
+      guidance: "  más corto  ",
+    };
+
+    // Editado a mano: sin confirmar (replaceEdits) no se reemplaza.
+    expect(codeOf(await caught(t.request(false, scope)))).toBe("CONTENT_EDITED");
+    const { run } = await t.request(true, scope);
+    expect(run.scope?.guidance).toBe("más corto");
+    await draftPost(t.deps, { contentRunId: run.id, isLastAttempt: false });
+
+    const prompt = t.llm.requests[1]?.prompt ?? "";
+    expect(prompt).toContain('"indicacion_del_operador": "más corto"');
+    expect(prompt).toContain("Mi versión del texto de X.");
+    expect(prompt).not.toContain('"platform": "linkedin"');
+    const after = await t.current();
+    expect(after.map((item) => [item.platform, item.body])).toEqual([
+      ["x", "Más corto."],
+      ["linkedin", liText.body],
+    ]);
+    expect(after[1]?.id).toBe(liText.id);
+  });
+
+  it("rehacer un texto con su publicación pendiente es PUBLICATION_PENDING; otra red no estorba", async () => {
+    const t = await setup({
+      platforms: ["x", "linkedin"],
+      llm: [
+        {
+          data: answer([
+            { platform: "x", language: "es" },
+            { platform: "linkedin", language: "es" },
+          ]),
+        },
+      ],
+    });
+    const first = await t.request();
+    await draftPost(t.deps, { contentRunId: first.run.id, isLastAttempt: false });
+    const [xText] = await t.current();
+    if (xText === undefined) throw new Error("sin texto");
+    await approveContent(t.approveDeps, { contentId: xText.id, actor: "operator" });
+    const redo = (platform: "x" | "linkedin") =>
+      t.request(true, { platforms: [platform], language: "es", mode: "replace", guidance: null });
+    expect(codeOf(await caught(redo("x")))).toBe("PUBLICATION_PENDING");
+    await expect(redo("linkedin")).resolves.toMatchObject({ reused: false });
+  });
+
+  it("la indicación es solo para rehacer, y una de más de 300 caracteres es CONTENT_RUN_INVALID", async () => {
+    const t = await setup({ platforms: ["x"] });
+    expect(
+      codeOf(
+        await caught(
+          t.request(false, {
+            platforms: ["x"],
+            language: null,
+            mode: "missing",
+            guidance: "corto",
+          }),
+        ),
+      ),
+    ).toBe("CONTENT_RUN_INVALID");
+    expect(
+      codeOf(
+        await caught(
+          t.request(false, {
+            platforms: ["x"],
+            language: "es",
+            mode: "replace",
+            guidance: "a".repeat(301),
+          }),
+        ),
+      ),
+    ).toBe("CONTENT_RUN_INVALID");
+  });
+
+  it("avisa si el tema o el brief cambiaron después de redactar", async () => {
+    const t = await setup({ platforms: ["x"], llm: [{ data: answer(x) }] });
+    const first = await t.request();
+    await draftPost(t.deps, { contentRunId: first.run.id, isLastAttempt: false });
+    const read = async () => (await getPostContent(t.editDeps, ADMIN, t.post.id)).sourceChanged;
+    expect(await read()).toEqual({ topic: false, brief: false });
+    await updatePost(t.editDeps, ADMIN, t.post.id, { topic: "Otro tema" });
+    expect(await read()).toEqual({ topic: true, brief: false });
+    await updatePost(t.editDeps, ADMIN, t.post.id, { brief: "Otro brief" });
+    expect(await read()).toEqual({ topic: true, brief: true });
   });
 });

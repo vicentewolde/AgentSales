@@ -1,4 +1,10 @@
-import type { ContentRun } from "../content.js";
+import {
+  CONTENT_RUN_GUIDANCE_MAX,
+  type ContentRun,
+  type ContentRunScope,
+  contentRunScopeSchema,
+} from "../content.js";
+import { POST_PLATFORMS } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
 import { LISTING_NOT_PREPARABLE_TEXT } from "../labels.js";
 import { canPrepareContent } from "../listing.js";
@@ -34,6 +40,13 @@ export type RequestContentRunParams = SubjectInput & {
   texts?: boolean;
   /** Con `texts`, reemplazar también los textos editados a mano. */
   replaceEdits?: boolean;
+  /**
+   * Solo posts: el alcance (`ContentRunScope`). `missing` solo crea los textos que faltan (no mira
+   * publicaciones pendientes ni textos editados: no reemplaza nada); `replace` rehace los textos
+   * pedidos y revisa solo los suyos (publicaciones pendientes de esa red e idioma, y editados o
+   * aprobados salvo `replaceEdits`). Sin alcance, todo el post.
+   */
+  scope?: ContentRunScope | null;
 };
 
 export type RequestContentRunResult = {
@@ -84,7 +97,7 @@ export const enqueueRunOf = (queue: JobQueue, run: Pick<ContentRun, "id" | "subj
  */
 export async function requestContentRun(
   deps: RequestContentRunDeps,
-  { texts = true, replaceEdits = false, ...input }: RequestContentRunParams,
+  { texts = true, replaceEdits = false, scope: rawScope = null, ...input }: RequestContentRunParams,
 ): Promise<RequestContentRunResult> {
   const subject = subjectOfInput(input);
   if (subject.kind === "post" && !texts) {
@@ -92,6 +105,18 @@ export async function requestContentRun(
       details: { postId: subject.id },
     });
   }
+  if (subject.kind === "listing" && rawScope !== null) {
+    throw new AppError("CONTENT_RUN_INVALID", "Solo un post pide textos de unas redes", {
+      details: { listingId: subject.id },
+    });
+  }
+  const scope = rawScope === null ? null : checkScope(rawScope);
+  /** Si la corrida toca ese texto (red e idioma): todos sin alcance; con `missing`, ninguno existente. */
+  const touches = (item: { platform: string; language?: string }) =>
+    scope === null ||
+    (scope.mode === "replace" &&
+      (scope.platforms as readonly string[]).includes(item.platform) &&
+      (scope.language === null || item.language === scope.language));
   const result = await runOnSubject(deps, subject, async (locked) => {
     // Lo propio de cada sujeto: si puede preparar contenido, y de qué corredor es el gasto.
     const brokerId = await preparableBrokerOf(locked);
@@ -99,11 +124,12 @@ export async function requestContentRun(
     const active = await locked.repos.contentRuns.findActive(subject);
     if (active !== null) return { run: active, reused: true };
 
-    await assertNothingPending(locked.repos, subject);
+    await assertNothingPending(locked.repos, subject, touches);
 
     if (texts && !replaceEdits) {
       const reviewed = (await locked.repos.contents.listCurrent(subject)).filter(
-        (content) => content.status === "edited" || content.status === "approved",
+        (content) =>
+          (content.status === "edited" || content.status === "approved") && touches(content),
       );
       if (reviewed.length > 0) {
         throw new AppError(
@@ -124,7 +150,7 @@ export async function requestContentRun(
     const run = await locked.repos.contentRuns.create(
       subject.kind === "listing"
         ? { listingId: subject.id, texts }
-        : { postId: subject.id, texts: true },
+        : { postId: subject.id, texts: true, scope },
     );
     return { run, reused: false };
   });
@@ -192,9 +218,12 @@ async function preparableBrokerOf(locked: LockedSubject): Promise<string> {
 async function assertNothingPending(
   repos: SubjectLockedRepositories,
   subject: Subject,
+  touches: (item: { platform: string; language?: string }) => boolean,
 ): Promise<void> {
-  const pending = (await repos.publications.listBySubject(subject)).filter((publication) =>
-    (PENDING_PUBLICATION_STATUSES as readonly string[]).includes(publication.status),
+  const pending = (await repos.publications.listBySubject(subject)).filter(
+    (publication) =>
+      (PENDING_PUBLICATION_STATUSES as readonly string[]).includes(publication.status) &&
+      touches(publication),
   );
   if (pending.length > 0) {
     throw new AppError(
@@ -208,4 +237,33 @@ async function assertNothingPending(
       },
     );
   }
+}
+
+/**
+ * El alcance de una corrida de post, validado: redes de posts sin repetir (en su orden), la
+ * indicación sin espacios de sobra (vacía = ninguna) y solo al rehacer (`replace`). Otra cosa es
+ * `CONTENT_RUN_INVALID` (400).
+ */
+export function checkScope(scope: ContentRunScope): ContentRunScope {
+  const guidance = scope.guidance?.trim() ?? "";
+  const parsed = contentRunScopeSchema.safeParse({
+    ...scope,
+    platforms: POST_PLATFORMS.filter((platform) =>
+      (scope.platforms as readonly string[]).includes(platform),
+    ),
+    guidance: guidance === "" ? null : guidance,
+  });
+  if (!parsed.success || parsed.data.platforms.length !== new Set(scope.platforms).size) {
+    throw new AppError(
+      "CONTENT_RUN_INVALID",
+      `Pide al menos una red de posts, y una indicación de hasta ${CONTENT_RUN_GUIDANCE_MAX} caracteres`,
+    );
+  }
+  if (parsed.data.guidance !== null && parsed.data.mode !== "replace") {
+    throw new AppError(
+      "CONTENT_RUN_INVALID",
+      "La indicación «¿Qué cambiar?» es para rehacer un texto, no para redactar los que faltan",
+    );
+  }
+  return parsed.data;
 }

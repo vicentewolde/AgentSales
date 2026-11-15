@@ -214,6 +214,22 @@ export function subjectRepositoriesContract(
     });
 
     describe("corridas y textos de un post", () => {
+      it("guarda el alcance de una corrida acotada y lo devuelve igual; sin él, null", async () => {
+        const post = await newPost();
+        const scope = {
+          platforms: ["linkedin" as const],
+          language: "es" as const,
+          mode: "replace" as const,
+          guidance: "más corto",
+        };
+        const run = await repos.contentRuns.create({ postId: post.id, texts: true, scope });
+        expect(run.scope).toEqual(scope);
+        expect((await repos.contentRuns.get(run.id))?.scope).toEqual(scope);
+        await repos.contentRuns.markFailed(run.id, { code: "X", message: "x" });
+        const plain = await repos.contentRuns.create({ postId: post.id, texts: true });
+        expect(plain.scope).toBeNull();
+      });
+
       it("una corrida por post a la vez (CONTENT_RUN_CONFLICT, reintentable), aparte de las de avisos", async () => {
         const post = await newPost();
         const run = await repos.contentRuns.create({ postId: post.id, texts: true });

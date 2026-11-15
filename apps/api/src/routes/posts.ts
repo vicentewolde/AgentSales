@@ -1,4 +1,5 @@
 import {
+  AppError,
   acceptIdea,
   approveContent,
   archivePost,
@@ -12,6 +13,7 @@ import {
   type EditContentDeps,
   type EditorialProfileRepository,
   editContent,
+  editPost,
   getPostContent,
   getPostImageOptions,
   getPostImageRun,
@@ -45,7 +47,6 @@ import {
   searchStockPhotos,
   setPostMediaLanguage,
   unapproveContent,
-  updatePost,
 } from "@agentsales/core";
 import { type Context, Hono } from "hono";
 import { type AppEnv, requireAuth } from "../auth.js";
@@ -112,7 +113,7 @@ export type PostRoutesDeps = EditContentDeps &
      * La última corrida de textos y marcar `failed` una que no se pudo encolar (F9-T12); el tope de
      * IA del mes antes de aceptar una idea (`sumLlmCost`, F9-T21).
      */
-    contentRuns: Pick<ContentRunRepository, "latest" | "markFailed" | "sumLlmCost">;
+    contentRuns: Pick<ContentRunRepository, "latest" | "markFailed" | "sumLlmCost" | "get">;
     /** Las publicaciones del post, solo para leer (los cambios van en el candado). */
     publications: Pick<PublicationRepository, "listBySubject">;
     /** Firmar las subidas, revisar que llegaron y las URLs de lectura (ADR-0025). */
@@ -287,12 +288,12 @@ export function postRoutes(deps: PostRoutesDeps) {
       .post("/", validated("json", createPostBodySchema), async (c) => {
         const input = c.req.valid("json");
         const post = await createPost(deps, requireAuth(c).user, input);
-        const body: PostResponse = { post };
+        const body: PostResponse = { post, drafting: null };
         return c.json(body, 201);
       })
       .get("/:id", validated("param", idParamSchema), async (c) => {
         const { id } = c.req.valid("param");
-        const { post, contents, latestRun, publications } = await getPostContent(
+        const { post, contents, latestRun, publications, sourceChanged } = await getPostContent(
           deps,
           requireAuth(c).user,
           id,
@@ -306,6 +307,7 @@ export function postRoutes(deps: PostRoutesDeps) {
           uploadsInReview: (await deps.postUploads.listByPost(id)).filter(
             (upload) => upload.status === "uploaded",
           ).length,
+          sourceChanged,
         };
         return c.json(body, 200);
       })
@@ -315,14 +317,20 @@ export function postRoutes(deps: PostRoutesDeps) {
         validated("json", updatePostBodySchema),
         async (c) => {
           const input = c.req.valid("json");
-          const post = await updatePost(deps, requireAuth(c).user, c.req.valid("param").id, input);
-          const body: PostResponse = { post };
+          // Una red agregada a un post ya redactado: la IA redacta solo esa, después de guardar.
+          const { post, drafting } = await editPost(
+            deps,
+            requireAuth(c).user,
+            c.req.valid("param").id,
+            input,
+          );
+          const body: PostResponse = { post, drafting };
           return c.json(body, 200);
         },
       )
       .post("/:id/archive", validated("param", idParamSchema), async (c) => {
         const post = await archivePost(deps, requireAuth(c).user, c.req.valid("param").id);
-        const body: PostResponse = { post };
+        const body: PostResponse = { post, drafting: null };
         return c.json(body, 200);
       })
       // F9-T21 (ADR-0030 punto 3): aceptar una idea la pasa a `draft` y pide sus textos
@@ -338,7 +346,7 @@ export function postRoutes(deps: PostRoutesDeps) {
       })
       .post("/:id/discard", validated("param", idParamSchema), async (c) => {
         const post = await discardIdea(deps, requireAuth(c).user, c.req.valid("param").id);
-        const body: PostResponse = { post };
+        const body: PostResponse = { post, drafting: null };
         return c.json(body, 200);
       })
       .post(
@@ -468,10 +476,27 @@ export function postRoutes(deps: PostRoutesDeps) {
         validated("json", postDraftBodySchema),
         async (c) => {
           const post = await ownPost(c, c.req.valid("param").id);
-          const { replaceEdits } = c.req.valid("json");
+          const { replaceEdits, platforms, language, guidance, onlyMissing } = c.req.valid("json");
+          if (platforms === undefined && (language !== undefined || guidance !== undefined)) {
+            throw new AppError(
+              "CONTENT_RUN_INVALID",
+              "Para un idioma o una indicación, di también la red (platforms)",
+            );
+          }
+          // Con redes: solo esos textos (los que faltan, o rehacerlos con la indicación).
+          const scope =
+            platforms === undefined
+              ? null
+              : {
+                  platforms,
+                  language: language ?? null,
+                  mode: onlyMissing === true ? ("missing" as const) : ("replace" as const),
+                  guidance: guidance ?? null,
+                };
           const { run, reused } = await requestContentRun(deps, {
             postId: post.id,
             ...(replaceEdits === undefined ? {} : { replaceEdits }),
+            scope,
           });
           const body: ContentRunRequestResponse = { contentRun: contentRunView(run), reused };
           return c.json(body, 202);

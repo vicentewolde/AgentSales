@@ -499,6 +499,7 @@ describe("runPlan con el plan de ejemplo (fake)", () => {
     const drafted = await draftPost(
       {
         contentRuns: t.contentRuns,
+        contents: t.contents,
         posts: t.posts,
         brokers: t.brokers,
         editorialProfiles: t.editorialProfiles,
@@ -839,6 +840,7 @@ describe("las redes de una idea aceptada (decisión del operador, F9-T20)", () =
     await draftPost(
       {
         contentRuns: t.contentRuns,
+        contents: t.contents,
         posts: t.posts,
         brokers: t.brokers,
         editorialProfiles: t.editorialProfiles,
