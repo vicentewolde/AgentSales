@@ -761,6 +761,11 @@ export const contentRuns = pgTable(
      * (se intentó, no aplicaba o se retomó al arrancar). `null` en una terminada: quedó cortado.
      */
     autoPublishDoneAt: timestamp("auto_publish_done_at", { withTimezone: true }),
+    /**
+     * `contentRunScopeSchema` (core): el alcance de una corrida de post (solo unas redes, un idioma,
+     * solo lo que falta o rehacer con una indicación); `null` = todo el post.
+     */
+    scope: jsonb("scope"),
     ...timestamps,
   },
   (t) => [

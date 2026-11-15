@@ -77,6 +77,13 @@ export type SocialBrief = {
    * eso, los textos no hablan de «nosotros».
    */
   speaksAsTeam: boolean;
+  /**
+   * Al rehacer un texto: lo que el operador quiere cambiar («más corto», «sin hashtags»). Es una
+   * guía de forma y tono, **nunca** una fuente de hechos (la revisión no la cuenta como fuente).
+   */
+  guidance?: string | null;
+  /** Al rehacer un solo texto: el texto actual, como referencia de forma (no es fuente de hechos). */
+  currentText?: { body: string; hashtags: string[] } | null;
 };
 
 /** Hashtags sin repetir (sin mirar mayúsculas), en el orden en que llegan. */

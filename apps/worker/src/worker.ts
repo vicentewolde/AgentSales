@@ -459,6 +459,8 @@ const jobs = buildJobs({
   postDraft: {
     shared: {
       contentRuns,
+      // Los textos vigentes: una corrida acotada solo crea los que faltan o rehace uno.
+      contents: createContentRepository(database.db),
       posts,
       brokers: repositories.brokers,
       editorialProfiles: createEditorialProfileRepository(database.db),

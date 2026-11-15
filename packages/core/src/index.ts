@@ -67,14 +67,19 @@ export {
 } from "./content/locked-content.js";
 export {
   CONTENT_REEL_OUTCOMES,
+  CONTENT_RUN_GUIDANCE_MAX,
+  CONTENT_RUN_SCOPE_MODES,
   type Content,
   type ContentReelOutcome,
   type ContentRun,
   type ContentRunError,
   type ContentRunReport,
+  type ContentRunScope,
+  type ContentRunScopeMode,
   contentRunErrorSchema,
   contentRunReportSchema,
   contentRunSchema,
+  contentRunScopeSchema,
   contentSchema,
 } from "./content.js";
 export {
@@ -1155,6 +1160,7 @@ export {
   type DraftPostParams,
   type DraftPostResult,
   draftPost,
+  postSourceHashes,
 } from "./use-cases/draft-post.js";
 export {
   type ContentEdit,
@@ -1285,10 +1291,13 @@ export {
   type CreatePostDeps,
   type CreatePostInput,
   createPost,
+  type EditPostDeps,
+  editPost,
   getPost,
   type ListPostsFilters,
   listPosts,
   POST_LIMITS,
+  type PostDrafting,
   type UpdatePostDeps,
   type UpdatePostInput,
   updatePost,

@@ -1,0 +1,1 @@
+ALTER TABLE "content_runs" ADD COLUMN "scope" jsonb;

@@ -141,11 +141,17 @@ export {
   planSlots,
 } from "./plan-slots.js";
 export {
+  addedPlatformsToDraft,
   ideaNeedsDraft,
+  type PostKindIssues,
   type PostNetworkGaps,
+  postKindIssues,
   postNetworkGaps,
   postPlatformExcluded,
   postPublishesOn,
+  type RescheduleMove,
+  type RescheduleSuggestion,
   requirePostPlatform,
+  rescheduleSuggestion,
 } from "./post-networks.js";
 export { buildSocialPrompt, SOCIAL_PROMPT_VERSION, SOCIAL_SYSTEM_PROMPT } from "./prompt.js";

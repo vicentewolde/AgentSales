@@ -13,6 +13,7 @@ import {
   CLOSE_REASONS,
   CONTENT_CHECK_CODES,
   CONTENT_CHECK_SEVERITY_LEVELS,
+  CONTENT_RUN_GUIDANCE_MAX,
   CONTENT_STATUSES,
   contentRunReportSchema,
   contentRunSchema,
@@ -1697,8 +1698,25 @@ export const postPublicationSchema = publicationViewSchema.extend({
 });
 export type PostPublicationView = z.infer<typeof postPublicationSchema>;
 
-/** `POST /posts`, `PATCH /posts/:id` y `POST /posts/:id/archive`. */
-export const postResponseSchema = z.object({ post: postJsonSchema });
+/**
+ * Lo que la IA empezó a redactar al guardar la edición (una red agregada a un post ya redactado), o
+ * por qué no pudo (`error`, por ejemplo el tope de IA del mes).
+ */
+export const postDraftingSchema = z.object({
+  platforms: z.array(z.enum(POST_PLATFORMS)),
+  contentRunId: z.string().nullable(),
+  error: z.object({ code: z.string(), message: z.string() }).nullable(),
+});
+export type PostDraftingView = z.infer<typeof postDraftingSchema>;
+
+/**
+ * `POST /posts`, `PATCH /posts/:id` y `POST /posts/:id/archive`. `drafting` solo en `PATCH`: si al
+ * guardar se le agregó una red, lo que la IA empezó a redactar (o por qué no); si no, `null`.
+ */
+export const postResponseSchema = z.object({
+  post: postJsonSchema,
+  drafting: postDraftingSchema.nullable().default(null),
+});
 export type PostResponse = z.infer<typeof postResponseSchema>;
 
 /**
@@ -1718,6 +1736,13 @@ export const postDetailResponseSchema = z.object({
    * todavía no son medios. Un servidor anterior no lo manda: se lee 0.
    */
   uploadsInReview: z.number().int().nonnegative().default(0),
+  /**
+   * Si el tema o el brief cambiaron después de redactar alguno de los textos vigentes: el panel
+   * ofrece pedir textos nuevos (nunca los rehace solo). Un servidor anterior no lo manda: no cambió.
+   */
+  sourceChanged: z
+    .object({ topic: z.boolean(), brief: z.boolean() })
+    .default({ topic: false, brief: false }),
 });
 export type PostDetailResponse = z.infer<typeof postDetailResponseSchema>;
 
@@ -1900,8 +1925,24 @@ export type PostImageStockResponse = z.infer<typeof postImageStockResponseSchema
 
 // ── Textos, aprobación, publicar y programar un post (F9-T12, spec F9 §4.10) ──
 
-/** `POST /posts/:id/draft`: pide los textos; `replaceEdits` reemplaza también los editados o aprobados. */
-export const postDraftBodySchema = z.object({ replaceEdits: z.boolean().optional() }).strict();
+/**
+ * `POST /posts/:id/draft`: pide los textos; `replaceEdits` reemplaza también los editados o
+ * aprobados. Con `platforms`, solo esas redes (y con `language`, solo ese idioma): `onlyMissing`
+ * redacta solo los textos que faltan («Redactar solo LinkedIn»); sin él, los rehace. `guidance`
+ * («¿Qué cambiar?», hasta 300 caracteres) es para rehacer: guía la forma y el tono, nunca los hechos.
+ */
+export const postDraftBodySchema = z
+  .object({
+    replaceEdits: z.boolean().optional(),
+    platforms: z.array(z.enum(POST_PLATFORMS)).min(1).max(POST_PLATFORMS.length).optional(),
+    language: z.enum(LANGUAGES).optional(),
+    guidance: z
+      .string()
+      .max(CONTENT_RUN_GUIDANCE_MAX + 50)
+      .optional(),
+    onlyMissing: z.boolean().optional(),
+  })
+  .strict();
 export type PostDraftBody = z.infer<typeof postDraftBodySchema>;
 
 /** `/posts/:id/contents/:platform/:language`: el texto vigente de una red (de posts) e idioma. */
