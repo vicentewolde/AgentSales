@@ -112,8 +112,11 @@ export function PostMedia({
   lockReason,
   waiting,
   kind,
+  platforms,
 }: {
   postId: string;
+  /** Las redes del post (null: las de la marca): X o LinkedIn sugieren la imagen cuadrada. */
+  platforms?: PostJson["platforms"];
   /** El tipo del post: «Conseguir imagen» (F9.5-T25) no aparece en uno de solo texto. */
   kind?: PostJson["kind"];
   media: readonly PostMediaItem[];
@@ -282,7 +285,12 @@ export function PostMedia({
           {...(failed === null ? {} : { onRetry: () => void upload(failed) })}
         />
       )}
-      {kind !== undefined && <GetImagePanel post={{ id: postId, kind }} lockReason={lockReason} />}
+      {kind !== undefined && (
+        <GetImagePanel
+          post={{ id: postId, kind, platforms: platforms ?? null }}
+          lockReason={lockReason}
+        />
+      )}
     </Card>
   );
 }

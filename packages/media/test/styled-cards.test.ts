@@ -136,6 +136,149 @@ describe("renderStyledCard", () => {
   });
 });
 
+const IAS = "Las IAs casi no recomiendan tiendas pequeñas";
+const IAS_SUBTITLE =
+  "En 116 respuestas, 5 tiendas chilenas aparecieron solo en 19 (16%). Es una muestra.";
+
+/** Cuántos píxeles claros (texto) hay en cada fila de una franja de la lámina. */
+async function inkRows(png: Buffer, from: number, to: number, x0 = 0, x1 = 1080) {
+  const { data, info } = await sharp(png).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const rows: number[] = [];
+  for (let y = from; y < to; y++) {
+    let count = 0;
+    for (let x = x0; x < x1; x++) {
+      const i = (y * info.width + x) * 3;
+      const luma = 0.299 * (data[i] ?? 0) + 0.587 * (data[i + 1] ?? 0) + 0.114 * (data[i + 2] ?? 0);
+      if (luma > 110) count++;
+    }
+    rows.push(count);
+  }
+  return rows;
+}
+
+describe("titular sin subtítulo y con el interlineado parejo", () => {
+  const cover = (subtitle: string | null): CardSpec => ({
+    role: "cover",
+    text: IAS,
+    subtitle,
+    detail: "@agentpeyai",
+    position: 1,
+    total: 1,
+  });
+
+  it("las líneas del titular están a la misma distancia aunque la última lleve degradado", async () => {
+    // Tres palabras anchas e iguales: una por línea y todas con la misma forma, así la distancia
+    // entre sus filas de tinta es el interlineado (la primera en color normal, las otras con degradado).
+    const { png, fits } = await renderStyledCard(
+      { ...cover(null), text: "mmmmmm mmmmmm mmmmmm" },
+      BRAND,
+      { style, theme: 0, composition: "announce" },
+      "4:5",
+    );
+    expect(fits).toBe(true);
+    const rows = await inkRows(png, 700, 1150);
+    const tops: number[] = [];
+    rows.forEach((count, y) => {
+      if (count > 0 && (y === 0 || rows[y - 1] === 0)) tops.push(y + 700);
+    });
+    expect(tops, `líneas en ${tops.join(", ")}`).toHaveLength(3);
+    const [a, b, c] = tops as [number, number, number];
+    expect(Math.abs(b - a - (c - b))).toBeLessThanOrEqual(2);
+    expect(b - a).toBeGreaterThan(80);
+  }, 30_000);
+
+  it("sin subtítulo (nulo o vacío) no da error y se ve igual; con subtítulo cambia", async () => {
+    const draw = (
+      subtitle: string | null,
+      format: "4:5" | "1:1",
+      composition: "announce" | "explain",
+    ) => renderStyledCard(cover(subtitle), BRAND, { style, theme: 0, composition }, format);
+    for (const format of ["4:5", "1:1"] as const) {
+      for (const composition of CARD_COMPOSITIONS) {
+        const none = await draw(null, format, composition);
+        const empty = await draw("", format, composition);
+        const withSub = await draw(IAS_SUBTITLE, format, composition);
+        expect(none.fits, `${format} ${composition}`).toBe(true);
+        expect(empty.png.equals(none.png)).toBe(true);
+        expect(withSub.fits, `${format} ${composition} con subtítulo`).toBe(true);
+        if (composition === "announce") expect(withSub.png.equals(none.png)).toBe(false);
+      }
+    }
+  }, 60_000);
+
+  it("el bloque central queda centrado entre el logo y el pie (el mismo aire arriba y abajo)", async () => {
+    for (const [format, height] of [
+      ["4:5", 1350],
+      ["1:1", 1080],
+    ] as const) {
+      const { png } = await renderStyledCard(
+        cover(null),
+        BRAND,
+        { style, theme: 2, composition: "announce" },
+        format,
+      );
+      // Tema claro: la tinta es lo oscuro. Filas con algo de tinta entre el logo y el pie.
+      const { data, info } = await sharp(png)
+        .removeAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      const inked = (y: number) => {
+        for (let x = 0; x < info.width; x++) {
+          if ((data[(y * info.width + x) * 3] ?? 255) < 200) return true;
+        }
+        return false;
+      };
+      const logoBottom = Math.round(height * (format === "4:5" ? 0.125 : 0.13));
+      const footTop = Math.round(height * 0.88);
+      let first = -1;
+      let last = -1;
+      for (let y = logoBottom; y < footTop; y++) {
+        if (inked(y)) {
+          if (first < 0) first = y;
+          last = y;
+        }
+      }
+      expect(first).toBeGreaterThan(0);
+      const above = first - logoBottom;
+      const below = footTop - last;
+      expect(
+        Math.abs(above - below),
+        `${format}: ${above} arriba, ${below} abajo`,
+      ).toBeLessThanOrEqual(Math.round(height * 0.05));
+    }
+  }, 30_000);
+});
+
+describe("1:1 (X, LinkedIn e Instagram)", () => {
+  it("1080 × 1080, con el texto dentro del centro (el perfil de Instagram recorta a 3:4)", async () => {
+    for (const composition of CARD_COMPOSITIONS) {
+      for (const card of cards) {
+        const { png, fits } = await renderStyledCard(
+          card,
+          BRAND,
+          { style, theme: 0, composition },
+          "1:1",
+        );
+        expect(fits, `${composition} ${card.role}`).toBe(true);
+        const meta = await sharp(png).metadata();
+        expect([meta.width, meta.height]).toEqual([1080, 1080]);
+      }
+    }
+    // El titular de «Anuncio» (tema oscuro, texto claro) no pasa de los 135 px de cada lado.
+    const { png } = await renderStyledCard(
+      { role: "cover", text: IAS, subtitle: null, detail: null, position: 1, total: 1 },
+      BRAND,
+      { style, theme: 0, composition: "announce" },
+      "1:1",
+    );
+    const sides = [
+      ...(await inkRows(png, 520, 900, 0, 130)),
+      ...(await inkRows(png, 520, 900, 950, 1080)),
+    ];
+    expect(Math.max(...sides)).toBe(0);
+  }, 60_000);
+});
+
 describe("las fuentes", () => {
   it("convierte el WOFF de Inter Tight a TTF y lee su familia", async () => {
     const path = join(

@@ -42,8 +42,14 @@ const escapeMarkup = (text: string) =>
 function marginsOf(style: CardStyle, format: PostImageFormat) {
   const { side, top, bottom } = style.margins;
   if (format === "9:16") return { side, top: Math.max(top, 220), bottom: Math.max(bottom, 290) };
-  if (format === "1:1")
-    return { side, top: Math.round(top * 0.7), bottom: Math.round(bottom * 0.7) };
+  // En 1:1 el perfil de Instagram muestra el centro (3:4, el 75 % del ancho): el texto queda dentro.
+  if (format === "1:1") {
+    return {
+      side: Math.max(side, 135),
+      top: Math.round(top * 0.7),
+      bottom: Math.round(bottom * 0.7),
+    };
+  }
   return { side, top, bottom };
 }
 
@@ -64,6 +70,8 @@ async function textBlock(
     tracking?: number;
     leading?: number;
     minSize?: number;
+    /** Partes del texto con su color; `null` = invisible (ocupa su lugar pero no se pinta). */
+    spans?: { text: string; color: string | null }[];
   },
 ): Promise<Block> {
   const minSize = options.minSize ?? 22;
@@ -73,7 +81,17 @@ async function textBlock(
       options.tracking === undefined || options.tracking === 0
         ? ""
         : ` letter_spacing="${Math.round(options.tracking * size * 1024)}"`;
-    const markup = `<span font_family="${options.font.family}" font_weight="${options.weight}" size="${Math.round(size * 1024)}" foreground="${options.color}"${tracking}>${escapeMarkup(text)}</span>`;
+    const inner =
+      options.spans === undefined
+        ? escapeMarkup(text)
+        : options.spans
+            .map((span) =>
+              span.color === null
+                ? `<span alpha="1">${escapeMarkup(span.text)}</span>`
+                : `<span foreground="${span.color}">${escapeMarkup(span.text)}</span>`,
+            )
+            .join("");
+    const markup = `<span font_family="${options.font.family}" font_weight="${options.weight}" size="${Math.round(size * 1024)}" foreground="${options.color}"${tracking}>${inner}</span>`;
     const { data, info } = await sharp({
       text: {
         text: markup,
@@ -99,11 +117,30 @@ async function textBlock(
 /** Pinta un bloque de texto blanco con un degradado horizontal (la frase destacada del titular). */
 async function gradientFill(block: Block, from: string, to: string): Promise<Block> {
   const size = { width: block.width, height: block.height };
+  // El degradado va de la primera a la última columna con tinta (no de todo el ancho del bloque).
+  const { data, info } = await sharp(block.input)
+    .ensureAlpha()
+    .extractChannel(3)
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  let first = info.width;
+  let last = 0;
+  for (let i = 0; i < data.length; i++) {
+    if ((data[i] ?? 0) > 16) {
+      const x = i % info.width;
+      if (x < first) first = x;
+      if (x > last) last = x;
+    }
+  }
+  if (last <= first) {
+    first = 0;
+    last = info.width;
+  }
   const fill = await sharp(
     svg(
       size,
       `<rect width="100%" height="100%" fill="url(#g)"/>`,
-      `<linearGradient id="g" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${from}"/><stop offset="1" stop-color="${to}"/></linearGradient>`,
+      `<linearGradient id="g" gradientUnits="userSpaceOnUse" x1="${first}" y1="0" x2="${last}" y2="0"><stop offset="0" stop-color="${from}"/><stop offset="1" stop-color="${to}"/></linearGradient>`,
     ),
   )
     .composite([{ input: block.input, blend: "dest-in" }])
@@ -230,7 +267,12 @@ async function headerOf(
   return { input, width: Math.max(1, total), height, fits: name?.fits ?? true };
 }
 
-/** El titular centrado: la primera parte en el color del texto y la última con el degradado. */
+/**
+ * El titular centrado: la primera parte en el color del texto y la última con el degradado.
+ * Se dibuja en UNA sola pasada de texto (el interlineado es el mismo en todas las líneas, aunque
+ * una parte lleve degradado): una capa con la parte normal visible y otra, idéntica, con solo la
+ * parte destacada, que se pinta con el degradado y se pone encima.
+ */
 async function headlineOf(
   text: string,
   style: CardStyle,
@@ -254,65 +296,69 @@ async function headlineOf(
     align: options.align,
     tracking: style.fonts.headline.tracking,
     leading: -0.02,
+    maxHeight: options.maxHeight,
+    minSize: 40,
   };
-  // Se achican juntos: el tamaño que cabe para las dos partes.
+  const leadText = highlight === "" ? lead : `${lead} `;
+  // El tamaño que cabe con el texto completo (se achica junto).
   let size = options.size;
   for (;;) {
-    const parts: Block[] = [];
-    if (lead !== "") {
-      parts.push(
-        await textBlock(lead, {
-          ...common,
-          size,
-          color: theme.text,
-          maxHeight: 10_000,
-          minSize: size,
-        }),
-      );
-    }
-    if (highlight !== "") {
-      const block = await textBlock(highlight, {
-        ...common,
-        size,
-        color: "#FFFFFF",
-        maxHeight: 10_000,
-        minSize: size,
-      });
-      parts.push(
-        theme.headlineGradient === null
-          ? block
-          : await gradientFill(block, theme.headlineGradient.from, theme.headlineGradient.to),
-      );
-    }
-    // Un poco de aire entre la parte normal y la destacada (Pango deja las líneas muy juntas).
-    const lineGap = parts.length > 1 ? Math.round(size * 0.04) : 0;
-    const height = parts.reduce((sum, part) => sum + part.height, 0) + lineGap;
-    const widest = Math.max(...parts.map((part) => part.width));
-    const fits = height <= options.maxHeight && widest <= options.width + 2;
-    if (fits || size <= 40) {
-      const width = Math.max(1, ...parts.map((part) => part.width));
-      const layers: Layer[] = [];
-      let y = 0;
-      for (const part of parts) {
-        const left = options.align === "centre" ? Math.round((width - part.width) / 2) : 0;
-        layers.push({ input: part.input, top: y, left });
-        y += part.height + lineGap;
-      }
-      const input = await sharp({
-        create: {
-          width,
-          height: Math.max(1, height),
-          channels: 4,
-          background: { r: 0, g: 0, b: 0, alpha: 0 },
-        },
-      })
-        .composite(layers)
-        .png()
-        .toBuffer();
-      return { input, width, height: Math.max(1, height), fits };
-    }
-    size = Math.floor(size * 0.92);
+    const probe = await textBlock(text, { ...common, size, color: theme.text, minSize: size });
+    if (probe.fits || size <= 40) break;
+    size = Math.max(40, Math.floor(size * 0.92));
   }
+  // Líneas parejas: se angosta el ancho mientras el titular siga con las mismas líneas (así no
+  // queda una palabra sola abajo).
+  const full = await textBlock(text, { ...common, size, color: theme.text, minSize: size });
+  let wrapWidth = options.width;
+  for (let step = 1; step <= 8; step++) {
+    const narrower = Math.round(options.width * (1 - step * 0.05));
+    const probe = await textBlock(text, {
+      ...common,
+      size,
+      width: narrower,
+      color: theme.text,
+      minSize: size,
+    });
+    if (probe.height !== full.height || !probe.fits) break;
+    wrapWidth = narrower;
+  }
+  common.width = wrapWidth;
+  // Sin parte destacada (o sin degradado en el tema): un solo bloque, todo en el color del texto.
+  if (highlight === "" || theme.headlineGradient === null) {
+    return textBlock(text, { ...common, size, minSize: size, color: theme.text });
+  }
+  const spans = (visible: "lead" | "highlight") => [
+    ...(lead === "" ? [] : [{ text: leadText, color: visible === "lead" ? theme.text : null }]),
+    { text: highlight, color: visible === "highlight" ? "#FFFFFF" : null },
+  ];
+  const lower = await textBlock(text, {
+    ...common,
+    size,
+    minSize: size,
+    color: theme.text,
+    spans: spans("lead"),
+  });
+  const upper = await textBlock(text, {
+    ...common,
+    size,
+    minSize: size,
+    color: "#FFFFFF",
+    spans: spans("highlight"),
+  });
+  const painted = await gradientFill(upper, theme.headlineGradient.from, theme.headlineGradient.to);
+  const width = Math.max(lower.width, painted.width);
+  const height = Math.max(lower.height, painted.height);
+  const input = await sharp({
+    create: { width, height, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+  })
+    .composite([
+      { input: lower.input, top: 0, left: Math.round((width - lower.width) / 2) },
+      { input: painted.input, top: 0, left: Math.round((width - painted.width) / 2) },
+    ])
+    .png()
+    .toBuffer();
+  return { input, width, height, fits: lower.fits && painted.fits };
 }
 
 /** El subtítulo y el pie, en el cuerpo de texto del estilo. */
@@ -460,20 +506,21 @@ async function announceLayers(
           size: short ? 34 : 40,
           align: "centre",
         });
+  // El espacio libre es el que queda entre la cabecera y el pie; el bloque visible (medalla,
+  // titular y subtítulo) se centra ahí, con el mismo aire arriba y abajo. La medalla trae un
+  // margen transparente (para su sombra) que no cuenta como aire ni como contenido.
   const areaTop = m.top + header.height;
-  const areaBottom = size.height - m.bottom - (footer === null ? 0 : footer.height + 30);
-  // El objeto «se come» su margen de sombra: se cuenta la mitad para no separar tanto el titular.
-  const medalGap = Math.round(-medal.height * 0.22 + 70);
+  const areaBottom = size.height - m.bottom - (footer === null ? 0 : footer.height);
+  const inset = Math.round(medalSize * 0.35);
+  const visibleGap = short ? 44 : 56;
   const blocks = [
-    { block: medalBlock, gapAfter: medalGap },
-    { block: headline, gapAfter: subtitle === null ? 0 : 40 },
+    { block: medalBlock, gapAfter: visibleGap - inset },
+    { block: headline, gapAfter: subtitle === null ? 0 : short ? 30 : 40 },
     ...(subtitle === null ? [] : [{ block: subtitle, gapAfter: 0 }]),
   ];
-  // Repartir el aire: más arriba que abajo, como el ejemplo de DISENO.md.
-  const used = blocks.reduce((sum, item) => sum + item.block.height + item.gapAfter, 0);
-  const spare = Math.max(0, areaBottom - areaTop - used);
-  const offset = Math.round(spare * 0.45);
-  let y = areaTop + offset;
+  const used = blocks.reduce((sum, item) => sum + item.block.height + item.gapAfter, 0) - inset;
+  const spare = areaBottom - areaTop - used;
+  let y = areaTop + Math.round(Math.max(0, spare) / 2) - inset;
   const placed: Layer[] = [];
   for (const item of blocks) {
     placed.push({
@@ -486,7 +533,8 @@ async function announceLayers(
   const medalTop = placed[0]?.top ?? areaTop;
   return {
     layers: placed,
-    fits: headline.fits && (subtitle?.fits ?? true) && used <= areaBottom - areaTop,
+    // Al menos 40 px de aire arriba y abajo del bloque.
+    fits: headline.fits && (subtitle?.fits ?? true) && spare >= 80,
     glow: { x: size.width / 2, y: medalTop + medal.height / 2 },
   };
 }
@@ -521,11 +569,11 @@ async function explainLayers(
           align: "centre",
         });
   const gap = 22;
-  const top = m.top + header.height + (short ? 40 : 70);
+  const top = m.top + header.height + (short ? 64 : 70);
   const layers: Layer[] = [
     { input: headline.input, top, left: Math.round((size.width - headline.width) / 2) },
   ];
-  let y = top + headline.height + 18;
+  let y = top + headline.height + 30;
   if (subtitle !== null) {
     layers.push({
       input: subtitle.input,
@@ -535,7 +583,7 @@ async function explainLayers(
     y += subtitle.height;
   }
   let fits = headline.fits && (subtitle?.fits ?? true);
-  y += short ? 36 : 64;
+  y += short ? 30 : 64;
   const bottom = size.height - m.bottom - (footer === null ? 0 : footer.height + 34);
   const available = bottom - y;
   // Las tarjetas: en un punto, una héroe con su subtítulo; en la portada, los puntos en grilla.

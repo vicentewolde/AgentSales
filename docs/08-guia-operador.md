@@ -591,6 +591,8 @@ Para errores de las últimas 6 horas, Neon tiene además su propia restauración
 ### Estilo de imágenes (Mi marca → Estilo de imágenes)
 - Para AgentPey, carga `docs/marca/agentpey/estilo.json` (traducido de `DISENO.md`): «Cargar un archivo», mira la lámina de muestra en cada tema y composición, y «Guardar el estilo». En la CLI: `pnpm -s cli brand style edit --broker agentpey --file docs/marca/agentpey/estilo.json` y `brand style preview --theme 2 --composition explain`.
 - Con estilo, «Conseguir imagen → Tarjetas de la marca» dibuja las láminas con él y elige **Anuncio** (objeto central y titular) o **Explicar** (grilla). Cada post toma un tema de la rotación y lo mantiene al rehacer.
+- **Proporción:** si el post va a **X o LinkedIn**, el panel sugiere **1:1** (cuadrada, 1080 × 1080): se ve entera en el feed de las tres redes y el texto queda en el centro, que es lo que muestra el perfil de Instagram. Para Instagram solo, **4:5**. En la CLI: `post media <id> --card --format 1:1 --composition announce --replace`. Las vistas previas de X y LinkedIn muestran una sola imagen entera, sin recortarla.
+- **Sin subtítulo:** una lámina puede ir solo con el titular (el logo de arriba y el `@usuario` del pie quedan; el bloque central se centra). En el panel, deja vacío el subtítulo en «Láminas»; en la CLI, `post cards-text <id> --language es --clear-subtitle` y después `post media <id> --card --format 1:1 --replace`.
 
 ### Láminas de un post
 - Al redactar un post de imagen o carrusel, la IA escribe también el texto de cada lámina. Edítalos en «Láminas» del post (o `post cards-text <id> --language es --file láminas.json`); lo que guardas ya no lo pisa una redacción nueva.

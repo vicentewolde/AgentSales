@@ -34,4 +34,29 @@ describe("post cards-text y pdf", () => {
     await expect(runPostPdf(deps, post.id, {})).resolves.toBe(1);
     expect(h.errors()).toContain("POST_PDF_NO_IMAGES");
   });
+
+  it("--clear-subtitle deja la portada sin subtítulo y no toca los puntos; sin error ni aviso", async () => {
+    const h = harness();
+    const brand = await h.brokers.create(brokerData("agentpey"), { kind: "brand" });
+    const post = await h.posts.create({ brokerId: brand.id, topic: "Tema", kind: "carousel" });
+    const cwd = await mkdtemp(join(tmpdir(), "agentsales-cli-cards-"));
+    dirs.push(cwd);
+    const deps = { ...h.io, client: h.client, cwd };
+    await writeFile(
+      join(cwd, "laminas.json"),
+      JSON.stringify([
+        { headline: "Portada", subtitle: "Sub" },
+        { headline: "Punto", subtitle: "Detalle" },
+      ]),
+    );
+    await runCardsText(deps, post.id, { language: "es", file: "laminas.json" });
+    await expect(runCardsText(deps, post.id, { clearSubtitle: true })).resolves.toBe(1);
+    await expect(
+      runCardsText(deps, post.id, { language: "es", clearSubtitle: true }),
+    ).resolves.toBe(0);
+    const text = h.text();
+    expect(text).toContain("Portada sin subtítulo");
+    expect(text).toContain("Portada: Portada\n");
+    expect(text).toContain("Punto 1: Punto — Detalle");
+  });
 });

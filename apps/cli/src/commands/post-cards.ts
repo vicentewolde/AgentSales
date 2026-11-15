@@ -40,18 +40,54 @@ function printTexts(deps: Io, view: PostCardTextsResponse, only: Language | unde
   }
 }
 
-export type CardsTextOptions = { language?: string; file?: string; json?: boolean };
+export type CardsTextOptions = {
+  language?: string;
+  file?: string;
+  clearSubtitle?: boolean;
+  json?: boolean;
+};
 
 /**
  * `agentsales post cards-text <id> [--language es] [--file láminas.json]`: sin `--file`, las muestra;
  * con `--file` (una lista `[{ "headline": "…", "subtitle": "…" }]`, la primera es la portada),
- * reemplaza las de ese idioma (y ya no las pisa una redacción nueva).
+ * reemplaza las de ese idioma (y ya no las pisa una redacción nueva). Con `--clear-subtitle` (y
+ * `--language`) deja la portada sin subtítulo y no toca lo demás: la lámina sale solo con el titular.
  */
 export function runCardsText(deps: PostCardsDeps, id: string, options: CardsTextOptions) {
   return guarded(deps, async () => {
     const language = languageOf(options.language);
     let view: PostCardTextsResponse;
-    if (options.file !== undefined) {
+    if (options.clearSubtitle === true) {
+      if (language === undefined) {
+        throw new CliError(
+          "OPTION_REQUIRED",
+          "Con --clear-subtitle, di el idioma con --language es|en",
+        );
+      }
+      const current = await unwrap(
+        deps.client.posts[":id"]["card-texts"].$get({ param: { id } }),
+        postCardTextsResponseSchema,
+      );
+      const mine = current.texts
+        .filter((text) => text.language === language)
+        .sort((a, b) => a.position - b.position);
+      if (mine.length === 0) {
+        throw new CliError("CARD_TEXTS_EMPTY", "Ese idioma todavía no tiene textos de láminas");
+      }
+      view = await unwrap(
+        deps.client.posts[":id"]["card-texts"][":language"].$put({
+          param: { id, language },
+          json: {
+            texts: mine.map((text) => ({
+              headline: text.headline,
+              subtitle: text.role === "cover" ? "" : text.subtitle,
+            })),
+          },
+        }),
+        postCardTextsResponseSchema,
+      );
+      deps.print(`${deps.colors.green("✓")} Portada sin subtítulo`);
+    } else if (options.file !== undefined) {
       if (language === undefined) {
         throw new CliError("OPTION_REQUIRED", "Con --file, di el idioma con --language es|en");
       }
@@ -120,6 +156,10 @@ export function registerPostCards(post: Command, ctx: CliContext): void {
     .option(
       "--file <láminas.json>",
       'reemplaza las de ese idioma: [{"headline": "…", "subtitle": "…"}]',
+    )
+    .option(
+      "--clear-subtitle",
+      "deja la portada sin subtítulo (con --language); lo demás queda igual",
     )
     .option("--json", "salida en JSON")
     .action((id: string, options: CardsTextOptions) =>
