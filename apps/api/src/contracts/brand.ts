@@ -1,5 +1,9 @@
 import {
   BRAND_KNOWLEDGE_LIMITS,
+  CARD_COMPOSITIONS,
+  CARD_STYLE_MAX_THEMES,
+  cardStyleSchema,
+  POST_IMAGE_FORMATS,
   KNOWLEDGE_PROPOSAL_KINDS,
   knowledgeExampleSchema,
   knowledgeProposalSchema,
@@ -124,3 +128,33 @@ export type AcceptProposalResponse = z.infer<typeof acceptProposalResponseSchema
 
 /** `POST …/proposals/:proposalId/discard`. */
 export const discardProposalResponseSchema = z.object({ ok: z.literal(true) });
+
+// ── Estilo de las imágenes (F9.7 B4) ─────────────────────────────────────
+
+/** `GET` y `PUT /brokers/:id/card-style`: el estilo (o `null`) y los avisos de contraste. */
+export const cardStyleResponseSchema = z.object({
+  cardStyle: z.object({
+    brokerId: z.string(),
+    style: cardStyleSchema.nullable(),
+    version: z.number().int().nullable(),
+    updatedAt: z.coerce.date().nullable(),
+    warnings: z.array(
+      z.object({ theme: z.string(), what: z.string(), text: z.string(), background: z.string() }),
+    ),
+  }),
+});
+export type CardStyleResponse = z.infer<typeof cardStyleResponseSchema>;
+
+/** `PUT /brokers/:id/card-style`: el estilo completo; las reglas las revisa core (400 con `issues`). */
+export const cardStyleBodySchema = z.object({ style: z.unknown() }).strict();
+
+/** `POST /brokers/:id/card-style/preview`: una lámina de muestra (PNG). */
+export const cardStylePreviewBodySchema = z
+  .object({
+    style: z.unknown().optional(),
+    theme: z.number().int().min(0).max(CARD_STYLE_MAX_THEMES - 1).default(0),
+    composition: z.enum(CARD_COMPOSITIONS).default("announce"),
+    format: z.enum(POST_IMAGE_FORMATS).default("4:5"),
+  })
+  .strict();
+export type CardStylePreviewBody = z.infer<typeof cardStylePreviewBodySchema>;

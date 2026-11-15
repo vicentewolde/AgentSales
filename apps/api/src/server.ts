@@ -32,6 +32,7 @@ import {
   createBrandKnowledgeRepository,
   createBrokerPurgeRepository,
   createBrokerRepository,
+  createCardStyleRepository,
   createContentRepository,
   createContentRunRepository,
   createDb,
@@ -68,6 +69,7 @@ import {
   writeBrokerTemplate,
 } from "@agentsales/importers";
 // La subruta: sharp solo para el logo, sin ffmpeg ni el navegador del resto del paquete.
+import { renderStyledCard } from "@agentsales/media/cards";
 import { createLogoNormalizer } from "@agentsales/media/logo";
 import {
   createInstagramAuth,
@@ -237,6 +239,29 @@ const app = createApp({
   ),
   brandKnowledge,
   knowledgeProposals: createKnowledgeProposalRepository(database.db),
+  cardStyles: createCardStyleRepository(database.db),
+  // La lámina de muestra del estilo (F9.7 B4): sharp, sin navegador.
+  cardStylePreview: async ({ style, brandName, detail, theme, composition, format }) =>
+    (
+      await renderStyledCard(
+        {
+          role: "cover",
+          text: `${brandName}, con su estilo`,
+          subtitle: "Así se ven las láminas de tus posts.",
+          detail,
+          position: 1,
+          total: 3,
+          items: [
+            { label: "01", text: "Un punto del post" },
+            { label: "02", text: "Otro punto" },
+            { label: "03", text: "Y uno más" },
+          ],
+        },
+        { brandName, primaryColor: "#000000", secondaryColor: "#ffffff", logo: null },
+        { style, theme, composition },
+        format,
+      )
+    ).png,
   // Los planes de ideas (F9-T21): la API los pide y lee; el worker los corre (`content.plan`).
   planRuns: createPlanRunRepository(database.db),
   // Conseguir imágenes para un post (F9.5-T25): la API busca en la biblioteca y pide; el worker

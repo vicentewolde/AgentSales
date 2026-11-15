@@ -114,6 +114,10 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "GET /brokers/:id/knowledge/runs/:runId": "session",
   "POST /brokers/:id/knowledge/proposals/:proposalId/accept": "session",
   "POST /brokers/:id/knowledge/proposals/:proposalId/discard": "session",
+  // F9.7 B4: el estilo de las imágenes (leer y la muestra `broker.view`, guardar `brand.edit`).
+  "GET /brokers/:id/card-style": "session",
+  "PUT /brokers/:id/card-style": "session",
+  "POST /brokers/:id/card-style/preview": "session",
   // F9-T10: los posts y sus medios, con `posts.manage` revisado en core; un corredor ve y gestiona
   // solo los de su marca (lo ajeno es 404: `ownedBy` y core), el administrador todos.
   "GET /posts": "session",

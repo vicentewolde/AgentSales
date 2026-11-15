@@ -1,0 +1,181 @@
+{
+  "version": 1,
+  "fonts": {
+    "headline": {
+      "family": "inter-tight",
+      "weight": 600,
+      "tracking": -0.028
+    },
+    "body": {
+      "family": "inter",
+      "weight": 500
+    }
+  },
+  "margins": {
+    "side": 80,
+    "top": 120,
+    "bottom": 106
+  },
+  "cardRadius": 34,
+  "logo": {
+    "kind": "svg",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\" aria-hidden=\"true\"><defs><mask id=\"corte\" maskUnits=\"userSpaceOnUse\" x=\"0\" y=\"0\" width=\"512\" height=\"512\"><rect width=\"512\" height=\"512\" fill=\"#fff\"/><path d=\"M378 112l54 54\" stroke=\"#000\" stroke-width=\"60\"/></mask></defs><g mask=\"url(#corte)\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"60\"><path d=\"M72 416 196 96h86v320\"/><path d=\"M136 282h146\"/><path d=\"M282 112h96\"/><path d=\"M432 166v84l-48 48H282\"/></g></svg>"
+  },
+  "showBrandName": true,
+  "themes": [
+    {
+      "name": "A · Medianoche",
+      "background": {
+        "kind": "solid",
+        "color": "#000000"
+      },
+      "text": "#f5f5f7",
+      "secondary": "#86868b",
+      "accent": "#2997ff",
+      "headlineGradient": {
+        "from": "#2997ff",
+        "to": "#6df2c0"
+      },
+      "card": {
+        "background": "#1c1c1e",
+        "text": "#f5f5f7",
+        "label": "#98989d"
+      },
+      "hero": {
+        "background": "#1062f0",
+        "text": "#ffffff",
+        "label": "#e8efff",
+        "accent": "#e2fff4"
+      },
+      "medal": {
+        "ring": [
+          "#fdfdfe",
+          "#8e97a1"
+        ],
+        "disc": [
+          "#4d95ff",
+          "#0a2f86"
+        ]
+      },
+      "glow": {
+        "color": "#176bff",
+        "opacity": 0.3
+      }
+    },
+    {
+      "name": "B · Azul profundo",
+      "background": {
+        "kind": "radial",
+        "from": "#123a8c",
+        "via": "#071a45",
+        "to": "#030b20"
+      },
+      "text": "#f5f5f7",
+      "secondary": "#a9b7d6",
+      "accent": "#7fbaff",
+      "headlineGradient": {
+        "from": "#7fbaff",
+        "to": "#6df2c0"
+      },
+      "card": {
+        "background": "#0d2457",
+        "text": "#f5f5f7",
+        "label": "#a9b7d6"
+      },
+      "hero": {
+        "background": "#1062f0",
+        "text": "#ffffff",
+        "label": "#e8efff",
+        "accent": "#e2fff4"
+      },
+      "medal": {
+        "ring": [
+          "#fdfdfe",
+          "#8e97a1"
+        ],
+        "disc": [
+          "#4d95ff",
+          "#0a2f86"
+        ]
+      },
+      "glow": {
+        "color": "#2997ff",
+        "opacity": 0.22
+      }
+    },
+    {
+      "name": "C · Claro",
+      "background": {
+        "kind": "solid",
+        "color": "#f5f5f7"
+      },
+      "text": "#1d1d1f",
+      "secondary": "#6e6e73",
+      "accent": "#1062f0",
+      "headlineGradient": {
+        "from": "#1062f0",
+        "to": "#0f766e"
+      },
+      "card": {
+        "background": "#ffffff",
+        "text": "#1d1d1f",
+        "label": "#6e6e73"
+      },
+      "hero": {
+        "background": "#1062f0",
+        "text": "#ffffff",
+        "label": "#e8efff",
+        "accent": "#e2fff4"
+      },
+      "medal": {
+        "ring": [
+          "#fdfdfe",
+          "#8e97a1"
+        ],
+        "disc": [
+          "#4d95ff",
+          "#0a2f86"
+        ]
+      },
+      "glow": null
+    },
+    {
+      "name": "D · Titanio",
+      "background": {
+        "kind": "linear",
+        "from": "#2a2a2d",
+        "to": "#141416",
+        "angle": 180
+      },
+      "text": "#f5f5f7",
+      "secondary": "#98989d",
+      "accent": "#2997ff",
+      "headlineGradient": {
+        "from": "#2997ff",
+        "to": "#6df2c0"
+      },
+      "card": {
+        "background": "#2c2c2e",
+        "text": "#f5f5f7",
+        "label": "#98989d"
+      },
+      "hero": {
+        "background": "#e8e4de",
+        "text": "#1d1d1f",
+        "label": "#5f5f64",
+        "accent": "#0b55d6"
+      },
+      "medal": {
+        "ring": [
+          "#f4f1ec",
+          "#6f6a64"
+        ],
+        "disc": [
+          "#4d95ff",
+          "#0a2f86"
+        ]
+      },
+      "glow": null
+    }
+  ]
+}

@@ -23,6 +23,7 @@ import {
   createFakeSecretTokens,
   createFakeTotpProvider,
   createInMemoryBrandKnowledgeRepository,
+  createInMemoryCardStyleRepository,
   createInMemoryBrokerRepository,
   createInMemoryContentRepositories,
   createInMemoryEditorialProfileRepository,
@@ -441,6 +442,14 @@ export const adminApp = (deps: AppDeps) => withAdminSession(createApp(deps));
  * Dependencias de la app con dobles en memoria (ids uuid, como en Postgres). `app.request("/x")`
  * usa http://localhost/x: el Host es "localhost", y el origen del panel, el 5173.
  */
+/** Un PNG de 1×1 transparente (la lámina de muestra de las pruebas). */
+export const TEST_PNG = Uint8Array.from(
+  Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+    "base64",
+  ),
+);
+
 export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
   // El gasto de IA por corredor (F7-T12) cruza la corrida con el aviso (o, desde F9, con el
   // post), como Postgres.
@@ -527,6 +536,9 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     ),
     brandKnowledge,
     knowledgeProposals: createInMemoryKnowledgeProposalRepository(),
+    cardStyles: createInMemoryCardStyleRepository(),
+    // Un PNG de 1×1: las pruebas no dibujan (eso lo prueba `@agentsales/media`).
+    cardStylePreview: async () => TEST_PNG,
     platformAccounts: createInMemoryPlatformAccountRepository({ nextId: randomUUID }),
     publications,
     instagram: { auth: fakeInstagramAuth(), oauthConfigured: true, secureCookie: false },

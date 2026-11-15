@@ -59,6 +59,7 @@ function nextTab(current: Tab, key: string): Tab | null {
 const FORMAT_TEXT: Readonly<Record<PostImageFormat, string>> = {
   "4:5": "Vertical 4:5 (1080 × 1350, Instagram)",
   "9:16": "Vertical 9:16 (1080 × 1920, reel e historia)",
+  "1:1": "Cuadrada 1:1 (1080 × 1080)",
 };
 
 const SOURCE_TEXT = { card: "Tarjetas", stock: "Biblioteca", ai: "IA" } as const;

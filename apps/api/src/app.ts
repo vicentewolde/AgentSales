@@ -2,6 +2,8 @@ import {
   AppError,
   type BrandKnowledgeRepository,
   type Broker,
+  type CardStylePreviewer,
+  type CardStyleRepository,
   type BrokerPurgeRepository,
   type BrokerRepository,
   type ContentRepository,
@@ -53,6 +55,7 @@ import { type AccountRoutesDeps, accountRoutes } from "./routes/accounts.js";
 import { authRoutes } from "./routes/auth.js";
 import { brandKnowledgeRoutes } from "./routes/brand-knowledge.js";
 import { brandWeekRoutes } from "./routes/brand-week.js";
+import { cardStyleRoutes } from "./routes/card-style.js";
 import { brokerRoutes } from "./routes/brokers.js";
 import { contentRoutes, contentRunRoutes, listingContentRoutes } from "./routes/content.js";
 import { editorialProfileRoutes } from "./routes/editorial-profile.js";
@@ -176,6 +179,9 @@ export type AppDeps = {
   /** F9.7 (ADR-0043): el conocimiento de la marca y las lecturas de «Actualizar desde un texto». */
   brandKnowledge: BrandKnowledgeRepository;
   knowledgeProposals: KnowledgeProposalRepository;
+  /** F9.7 B4: el estilo de las imágenes de la marca, el tema de cada post y su lámina de muestra. */
+  cardStyles: CardStyleRepository;
+  cardStylePreview: CardStylePreviewer;
   /**
    * Los planes de ideas (F9-T21, ADR-0030): pedirlos (`content.plan` los corre en el worker), listar
    * los de una marca y ver uno con sus ideas.
@@ -447,6 +453,7 @@ export function createApp(input: AppDeps) {
     .route("/brokers", brandWeekRoutes({ ...deps, ...workerDetails }))
     // F9.7 (ADR-0043): el conocimiento de la marca y sus propuestas.
     .route("/brokers", brandKnowledgeRoutes(deps))
+    .route("/brokers", cardStyleRoutes(deps))
     // F10: los leads de un corredor, un lead por id y el webhook público de ManyChat.
     .route("/brokers", brokerLeadRoutes(deps))
     .route("/leads", leadRoutes(deps))

@@ -1,3 +1,4 @@
+import { CardStyleSection } from "../components/brand/CardStyleSection.js";
 import { KnowledgeSection } from "../components/brand/KnowledgeSection.js";
 import { BrandForm } from "../components/brokers/BrandForm.js";
 import { LogoAndTemplate } from "../components/brokers/LogoAndTemplate.js";
@@ -51,6 +52,7 @@ export function MyBrandPage() {
       <EditorialProfileSection brokerId={broker.id} />
       {/* F9.7 (ADR-0043): lo que la IA sabe de la marca además del perfil. */}
       <KnowledgeSection brokerId={broker.id} />
+      <CardStyleSection brokerId={broker.id} />
     </div>
   );
 }

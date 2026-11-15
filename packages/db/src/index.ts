@@ -25,6 +25,7 @@ export { createBrokerPurgeRepository } from "./repositories/broker-purge.js";
 export { createBrokerRepository } from "./repositories/brokers.js";
 export { createContentRunRepository } from "./repositories/content-runs.js";
 export { createContentRepository } from "./repositories/contents.js";
+export { createCardStyleRepository } from "./repositories/card-styles.js";
 export { createEditorialProfileRepository } from "./repositories/editorial-profiles.js";
 export { createFieldDefinitionRepository } from "./repositories/field-definitions.js";
 export { createImportRunRepository } from "./repositories/import-runs.js";

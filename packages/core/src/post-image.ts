@@ -15,8 +15,11 @@ export type PostImageSource = (typeof POST_IMAGE_SOURCES)[number];
 export const POST_IMAGE_RUN_STATUSES = ["queued", "running", "succeeded", "failed"] as const;
 export type PostImageRunStatus = (typeof POST_IMAGE_RUN_STATUSES)[number];
 
-/** Proporciones de lo que se consigue: vertical de Instagram (4:5) o de reel e historia (9:16). */
-export const POST_IMAGE_FORMATS = ["4:5", "9:16"] as const;
+/**
+ * Proporciones de lo que se consigue: vertical de Instagram (4:5), de reel e historia (9:16) y,
+ * desde F9.7 (B6), cuadrada (1:1).
+ */
+export const POST_IMAGE_FORMATS = ["4:5", "9:16", "1:1"] as const;
 export type PostImageFormat = (typeof POST_IMAGE_FORMATS)[number];
 
 /** Medidas de cada proporción, en píxeles (las de Instagram). */
@@ -25,6 +28,7 @@ export const POST_IMAGE_SIZES: Readonly<
 > = {
   "4:5": { width: 1080, height: 1350 },
   "9:16": { width: 1080, height: 1920 },
+  "1:1": { width: 1080, height: 1080 },
 };
 
 /** Topes de lo que se pide. */

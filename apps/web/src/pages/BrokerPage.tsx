@@ -2,6 +2,7 @@ import type { UserLinkResponse } from "@agentsales/api/contracts";
 import { userStateText } from "@agentsales/core";
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
+import { CardStyleSection } from "../components/brand/CardStyleSection.js";
 import { KnowledgeSection } from "../components/brand/KnowledgeSection.js";
 import { BrandForm } from "../components/brokers/BrandForm.js";
 import { LiveSwitch } from "../components/brokers/LiveSwitch.js";
@@ -267,6 +268,7 @@ export function BrokerPage() {
       <EditorialProfileSection brokerId={broker.id} />
       {/* F9.7 (ADR-0043): el conocimiento de la marca. */}
       <KnowledgeSection brokerId={broker.id} />
+      <CardStyleSection brokerId={broker.id} />
       <BrokerUsers key={broker.id} brokerId={broker.id} />
     </div>
   );
