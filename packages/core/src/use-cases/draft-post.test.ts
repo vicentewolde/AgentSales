@@ -11,6 +11,7 @@ import { SOCIAL_PROMPT_VERSION } from "../social/prompt.js";
 import { postSubject } from "../subject.js";
 import {
   contentBrokerFixture,
+  createInMemoryBrandKnowledgeRepository,
   createInMemoryBrokerRepository,
   createInMemoryContentRepositories,
   createInMemoryEditorialProfileRepository,
@@ -29,6 +30,7 @@ import {
   type ScriptedLlmResponse,
 } from "../testing/index.js";
 import { approveContent } from "./approve-content.js";
+import { editorialProfilesWithKnowledge } from "./brand-knowledge.js";
 import { type DraftPostDeps, draftPost } from "./draft-post.js";
 import { editContent } from "./edit-content.js";
 import { getPostContent } from "./get-post-content.js";
@@ -894,6 +896,56 @@ describe("draftPost · corridas acotadas (agregar una red, rehacer un texto)", (
       ["linkedin", liText.body],
     ]);
     expect(after[1]?.id).toBe(liText.id);
+  });
+
+  it("F9.7: el conocimiento de la marca llega a rehacer un texto, y su novedad es fuente de hechos", async () => {
+    const t = await setup({
+      platforms: ["x"],
+      llm: [
+        { data: answer([{ platform: "x", language: "es" }]) },
+        { data: answer([{ platform: "x", language: "es", body: "Ya hicimos 1.200 pagos." }]) },
+      ],
+    });
+    const knowledge = createInMemoryBrandKnowledgeRepository();
+    await knowledge.save(t.broker.id, {
+      stance: "Control del gasto",
+      tone: "Relato con escena",
+      examples: [{ text: "Ejemplo con Acme Corp.", note: null, favorite: true }],
+    });
+    await knowledge.addUpdate(t.broker.id, {
+      project: "AgentPey en Stellar",
+      date: "2026-10-15",
+      text: "Llegamos a 1.200 pagos.",
+      source: "operator",
+    });
+    const deps = {
+      ...t.deps,
+      editorialProfiles: editorialProfilesWithKnowledge(
+        t.editorialProfiles,
+        knowledge,
+        () => new Date("2026-10-20T15:00:00Z"),
+      ),
+    };
+    const first = await t.request();
+    await draftPost(deps, { contentRunId: first.run.id, isLastAttempt: false });
+    const { run } = await t.request(true, {
+      platforms: ["x"],
+      language: "es",
+      mode: "replace",
+      guidance: "con la novedad",
+    });
+    await draftPost(deps, { contentRunId: run.id, isLastAttempt: false });
+    const prompt = t.llm.requests[1]?.prompt ?? "";
+    expect(prompt).toContain('"postura": "Control del gasto"');
+    expect(prompt).toContain("Llegamos a 1.200 pagos.");
+    expect(prompt).toContain("Ejemplo con Acme Corp.");
+    const [text] = await t.current();
+    expect(text?.body).toBe("Ya hicimos 1.200 pagos.");
+    const report = (await t.contentRuns.get(run.id))?.report as {
+      texts?: { checks: { code: string }[] }[];
+    } | null;
+    const codes = (report?.texts ?? []).flatMap((item) => item.checks.map((check) => check.code));
+    expect(codes).not.toContain("FACT_NOT_IN_PROFILE");
   });
 
   it("rehacer un texto con su publicación pendiente es PUBLICATION_PENDING; otra red no estorba", async () => {
