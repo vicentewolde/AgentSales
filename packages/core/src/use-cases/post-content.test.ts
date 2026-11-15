@@ -46,6 +46,8 @@ type Setup = {
   accounts?: Platform[];
   /** F9.5-T21: el post aún no tiene medios procesados (subidos o por conseguir). */
   noProcessedMedia?: boolean;
+  /** Los idiomas del post (`null`: los de la marca, que sin perfil es solo español). */
+  languages?: Language[] | null;
 };
 
 async function setup(options: Setup = {}) {
@@ -57,6 +59,7 @@ async function setup(options: Setup = {}) {
     topic: "Lo que aprendí construyendo",
     kind: options.kind ?? "image",
     status: options.status ?? "draft",
+    languages: options.languages ?? null,
   });
   const media = createInMemoryMediaRepository();
   const original = await media.create({
@@ -120,7 +123,8 @@ async function setup(options: Setup = {}) {
       language: text.language,
       title: null,
       body: `Texto en ${text.language} para ${text.platform}`,
-      hashtags: ["#agentpey"],
+      // Los fijos de la marca (como los deja la corrida, que siempre los pone).
+      hashtags: ["#InventadaPropiedades"],
       llmProvider: "fake",
       llmModel: "fake",
       promptVersion: "social-v1",
@@ -273,6 +277,7 @@ describe("approveContent con un post", () => {
         { platform: "linkedin", language: "es" },
         { platform: "linkedin", language: "en" },
       ],
+      languages: ["es", "en"],
     });
 
     const es = await approveContent(t.deps, {
@@ -294,6 +299,32 @@ describe("approveContent con un post", () => {
       actor: "operator",
     });
     expect(again.created).toEqual([]);
+  });
+
+  it("el texto de un idioma que el post no tiene no se aprueba (POST_LANGUAGE_EXCLUDED); uno ya aprobado, sí", async () => {
+    const t = await setup({
+      texts: [
+        { platform: "linkedin", language: "es" },
+        { platform: "linkedin", language: "en" },
+      ],
+      languages: ["es", "en"],
+    });
+    const enId = await t.contentId("linkedin", "en");
+    await approveContent(t.deps, { contentId: enId, actor: "operator" });
+    // Se quita el inglés del post: lo aprobado sigue (aprobar de nuevo es idempotente).
+    await t.repos.posts.update(t.post.id, { languages: ["es"] });
+    const again = await approveContent(t.deps, { contentId: enId, actor: "operator" });
+    expect(again.created).toEqual([]);
+    await unapproveContent(t.deps, { contentId: enId, actor: "operator" });
+    await expect(
+      approveContent(t.deps, { contentId: enId, actor: "operator" }),
+    ).rejects.toMatchObject({ code: "POST_LANGUAGE_EXCLUDED" });
+    // Sin idiomas propios (los de la marca, solo español), tampoco.
+    await t.repos.posts.update(t.post.id, { languages: null });
+    await expect(
+      approveContent(t.deps, { contentId: enId, actor: "operator" }),
+    ).rejects.toMatchObject({ code: "POST_LANGUAGE_EXCLUDED" });
+    expect((await t.repos.contents.get(enId))?.status).not.toBe("approved");
   });
 
   it("sin cuenta conectada aprueba sin abrir publicaciones", async () => {
@@ -444,6 +475,7 @@ describe("unapproveContent con un post", () => {
         { platform: "linkedin", language: "es" },
         { platform: "linkedin", language: "en" },
       ],
+      languages: ["es", "en"],
     });
     const es = await t.contentId("linkedin", "es");
     await approveContent(t.deps, { contentId: es, actor: "operator" });

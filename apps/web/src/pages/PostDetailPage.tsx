@@ -32,6 +32,11 @@ import { ErrorAlert } from "../components/ErrorAlert.js";
 import { useBrandPlatforms } from "../components/posts/brand-platforms.js";
 import { LiveConfirmButton } from "../components/posts/LiveConfirm.js";
 import { POST_KIND_LABEL, PostStatusBadge } from "../components/posts/labels.js";
+import {
+  PostLanguagesField,
+  PostLanguagesNotice,
+  postLanguagesValue,
+} from "../components/posts/PostLanguages.js";
 import { PostMedia } from "../components/posts/PostMedia.js";
 import { PostMusic } from "../components/posts/PostMusic.js";
 import { PostPublications, PostPublishBar } from "../components/posts/PostPublishing.js";
@@ -261,6 +266,7 @@ function PostEditForm({
         plannedAt,
         // F9-T21: sin marcar ninguna, todas las redes de la marca.
         platforms: platforms.length === 0 ? null : platforms,
+        languages: postLanguagesValue(form, profile.data?.languages),
       },
       {
         onSuccess: (saved) => {
@@ -347,6 +353,7 @@ function PostEditForm({
           ))}
         </div>
       </fieldset>
+      <PostLanguagesField post={post} brandLanguages={profile.data?.languages} />
       {blocking.length > 0 && <PendingRemoval postId={post.id} blocking={blocking} />}
       <div className="flex gap-2 md:col-span-2">
         <Button
@@ -716,6 +723,7 @@ export function PostDetailPage() {
     uploadsInReview,
     sourceChanged,
   } = post.data;
+  const { languages, hiddenTexts } = post.data;
   const archived = item.status === "archived";
   const publishMode = modeOf(item.brokerId);
   const pillarName =
@@ -898,6 +906,11 @@ export function PostDetailPage() {
                   contents={contents}
                   run={latestRun}
                   drafting={drafting}
+                />
+                <PostLanguagesNotice
+                  languages={languages}
+                  hiddenTexts={hiddenTexts}
+                  contents={contents}
                 />
                 <PostTexts
                   postId={item.id}

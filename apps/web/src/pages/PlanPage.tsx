@@ -851,7 +851,9 @@ function PlanView({
                   const progress = postProgress(trackingRows.get(idea.id));
                   return (
                     (idea.status === "draft" || idea.status === "ready") &&
-                    (progress.state === "none" || progress.state === "approved") &&
+                    (progress.state === "none" ||
+                      progress.state === "cancelled" ||
+                      progress.state === "approved") &&
                     !isStale(idea.plannedAt, progress)
                   );
                 }) && (

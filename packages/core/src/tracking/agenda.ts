@@ -12,6 +12,7 @@ import { hasStartedLive, type Publication, publicationModeFixed } from "../publi
 import { publicationErrorAdvice } from "../publish/error-advice.js";
 import { manualHandoffProgressSchema } from "../publish/outcome.js";
 import { scheduleState } from "../schedule.js";
+import { postPublishesOn } from "../social/post-networks.js";
 import { autoPublishApplies, autoPublishContents } from "../use-cases/auto-publish-listing.js";
 import { canRelist, relistedIds } from "../use-cases/relist-publication.js";
 import { STALE_PUBLISHING_MS } from "../use-cases/watch-publications.js";
@@ -176,7 +177,10 @@ export type AgendaAccount = Pick<
 export type AgendaInput = {
   listings: readonly Pick<Listing, "id" | "brokerId" | "externalRef" | "status">[];
   /** Los posts del alcance (F9), sin los archivados. */
-  posts?: readonly Pick<Post, "id" | "brokerId" | "topic">[];
+  posts?: readonly (Pick<Post, "id" | "brokerId" | "topic"> & {
+    /** Sus redes: lo de una red que el post no tiene no entra a la agenda (2026-11-15). */
+    platforms?: Post["platforms"] | undefined;
+  })[];
   /** Las publicaciones de esas propiedades y posts (`listForTracking`). */
   publications: readonly Publication[];
   /** Las cuentas del alcance (para `token_expiring`). */
@@ -241,6 +245,16 @@ export function agendaItems(input: AgendaInput): AgendaItem[] {
   for (const publication of input.publications) {
     const owner = ownerOf(publication, listings, posts);
     if (owner === null) continue;
+    // Una red que el post ya no tiene no da alertas (2026-11-15).
+    if (publication.subject.kind === "post") {
+      const post = posts.get(publication.subject.id);
+      if (
+        post !== undefined &&
+        !postPublishesOn({ platforms: post.platforms ?? null }, publication.platform)
+      ) {
+        continue;
+      }
+    }
     const kindOf = kindForPublication(publication, owner, input, relisted, workerOff);
     if (kindOf === null) continue;
     items.push({

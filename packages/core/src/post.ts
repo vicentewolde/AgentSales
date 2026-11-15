@@ -52,6 +52,17 @@ export const postSchema = z.object({
    */
   platforms: z.array(z.enum(POST_PLATFORMS)).nullable(),
   /**
+   * Los idiomas del post (2026-11-15): los que fijó el operador en «Idiomas de este post». `null` =
+   * los de la marca (`editorial_profiles.languages`). Manda `postLanguages` (core) en todos los
+   * caminos: redactar, tarjetas, aprobar y lo que muestran la CLI y el panel. Opcional al leer: una
+   * fila anterior a la columna (o un fake) cuenta como `null`.
+   */
+  languages: z
+    .array(z.enum(LANGUAGES))
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
+  /**
    * La música de los videos del post (F9.5-T19): un id del catálogo o `null`, sin música (por
    * defecto). Va en todos sus videos (el reel, el de X y el de Discord).
    */

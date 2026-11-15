@@ -226,7 +226,7 @@ export function editorialProfilesWithKnowledge(
         }),
       ]);
       const context = knowledgeForPrompt({ knowledge: saved, examples, updates, now });
-      if (profile !== null) return { ...profile, knowledge: context };
+      if (profile !== null) return context === null ? profile : { ...profile, knowledge: context };
       if (context === null) return null;
       const at = saved?.updatedAt ?? now;
       return {

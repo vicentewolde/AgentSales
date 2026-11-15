@@ -83,6 +83,7 @@ describe("GET /brokers/:id/editorial-profile", () => {
       avoid: [],
       cadence: {},
       defaultHashtags: [],
+      aiHashtags: null,
       updatedAt: null,
     });
   });

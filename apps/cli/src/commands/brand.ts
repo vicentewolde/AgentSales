@@ -79,6 +79,7 @@ function profileData(profile: EditorialProfileJson): EditorialProfileBody {
     avoid: profile.avoid,
     cadence: profile.cadence,
     defaultHashtags: profile.defaultHashtags,
+    aiHashtags: profile.aiHashtags,
   };
 }
 
@@ -132,8 +133,33 @@ function printProfile(deps: Io, broker: Broker, profile: EditorialProfileJson): 
     ];
     deps.print(`  · ${PLATFORM_TEXT[platform] ?? platform}: ${parts.join(" · ")}`);
   }
+  // 2026-11-15: los que siempre van son los fijos de la marca más los del perfil.
+  const always = [...new Set([...broker.fixedHashtags, ...profile.defaultHashtags])];
   deps.print(
-    `Hashtags: ${profile.defaultHashtags.length === 0 ? c.dim("(ninguno)") : profile.defaultHashtags.join(" ")}`,
+    `Hashtags que siempre van (Instagram, X, LinkedIn y TikTok): ${always.length === 0 ? c.dim("(ninguno)") : always.join(" ")}`,
+  );
+  if (broker.fixedHashtags.length > 0) {
+    deps.print(
+      c.dim(
+        `  (${broker.fixedHashtags.join(" ")} ${broker.fixedHashtags.length === 1 ? "es fijo" : "son fijos"} de la marca: se cambian con agentsales brokers edit ${broker.slug} --hashtags)`,
+      ),
+    );
+  }
+  const aiMayAdd = profile.aiHashtags ?? always.length === 0;
+  deps.print(
+    `La IA puede agregar otros hashtags: ${aiMayAdd ? "sí" : "no"}${profile.aiHashtags === null ? c.dim(" (por defecto)") : ""}`,
+  );
+}
+
+/** `--ai-hashtags si|no|auto` → `true`, `false` o `null` (por defecto). */
+function aiHashtagsOption(text: string): boolean | null {
+  const value = text.trim().toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
+  if (["si", "yes", "true"].includes(value)) return true;
+  if (["no", "false"].includes(value)) return false;
+  if (["auto", "defecto", "default"].includes(value)) return null;
+  throw new CliError(
+    "AI_HASHTAGS_INVALID",
+    `--ai-hashtags necesita si, no o auto: "${text.slice(0, 20)}"`,
   );
 }
 
@@ -170,6 +196,8 @@ export type BrandEditOptions = {
   cadence?: string[];
   removeCadence?: string[];
   hashtags?: string;
+  /** «¿La IA puede agregar otros hashtags?»: si, no o auto (2026-11-15). */
+  aiHashtags?: string;
 };
 
 /** `lun`, `mié`, `miercoles`, `wed`… → el día de la cadencia. */
@@ -342,6 +370,8 @@ export function runBrandEdit(deps: BrandDeps, options: BrandEditOptions) {
     const pillars = options.pillar?.map(pillarOf);
     const cadence = options.cadence?.map(cadenceOf);
     const removed = options.removeCadence?.map((network) => networkOf(network, "--remove-cadence"));
+    const aiHashtags =
+      options.aiHashtags === undefined ? undefined : aiHashtagsOption(options.aiHashtags);
 
     const broker = await brandOf(deps.client, options.broker);
     const { profile: current } = await unwrap(
@@ -369,6 +399,7 @@ export function runBrandEdit(deps: BrandDeps, options: BrandEditOptions) {
     if (options.hashtags !== undefined) {
       next.defaultHashtags = options.hashtags.split(/[\s,]+/).filter(Boolean);
     }
+    if (aiHashtags !== undefined) next.aiHashtags = aiHashtags;
     const { profile } = await unwrap(
       deps.client.brokers[":id"]["editorial-profile"].$put({
         param: { id: broker.id },
@@ -424,7 +455,14 @@ export function register(program: Command, ctx: CliContext): void {
       collect,
     )
     .option("--remove-cadence <red>", "quita la cadencia de una red (repetible)", collect)
-    .option("--hashtags <lista>", "hashtags del perfil, separados por espacio (reemplaza la lista)")
+    .option(
+      "--hashtags <lista>",
+      "hashtags que siempre van, separados por espacio (reemplaza la lista; se suman a los fijos de la marca)",
+    )
+    .option(
+      "--ai-hashtags <si|no|auto>",
+      "si la IA puede agregar otros hashtags (auto: no si hay hashtags que siempre van)",
+    )
     .action((options: BrandEditOptions) => exitWith(() => runBrandEdit(deps(), options)));
   brand
     .command("ready")

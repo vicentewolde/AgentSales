@@ -1,4 +1,4 @@
-import type { Language, Platform, PostKind } from "../enums.js";
+import { LANGUAGES, type Language, type Platform, type PostKind } from "../enums.js";
 import type { Media } from "../media.js";
 import type { PlatformCredentials } from "../platform-account.js";
 import type { PostLockedRepositories } from "../ports/post-lock.js";
@@ -88,7 +88,14 @@ export async function createPostPublicationScenario(
   const broker = contentBrokerFixture({ kind: "brand", operatorOwned: true, liveEnabled: true });
   const brokers = createInMemoryBrokerRepository([broker]);
   const posts = createInMemoryPostRepository();
+  const texts = options.texts ?? [{ platform: "discord", language: "es" }];
+  // Los idiomas de los textos son los del post (la marca del escenario, sin perfil, escribe solo en
+  // español): así se aprueban los de los dos idiomas.
+  const textLanguages = LANGUAGES.filter((language) =>
+    texts.some((text) => text.language === language),
+  );
   const post = await posts.create({
+    ...(textLanguages.some((language) => language !== "es") ? { languages: textLanguages } : {}),
     brokerId: broker.id,
     topic: "Lo que aprendí construyendo",
     kind: options.kind ?? "image",
@@ -204,7 +211,6 @@ export async function createPostPublicationScenario(
     platformAccounts,
   });
 
-  const texts = options.texts ?? [{ platform: "discord", language: "es" }];
   const run = await contentRuns.create({ postId: post.id, texts: true });
   await contentRuns.markRunning(run.id);
   await contentRuns.markSucceeded(run.id, {

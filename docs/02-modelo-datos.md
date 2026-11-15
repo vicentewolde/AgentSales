@@ -238,6 +238,7 @@ Un tema o idea con un texto por red e idioma (`contents.post_id`), a veces medio
 | platforms | text[] null | Desde F9-T20 (migración `0018`): las redes del post, de `POST_PLATFORMS` (core, validado al leer). Las llena el plan con las redes que la IA sugirió y que pasaron las verificaciones de cada idea, y las cambia el operador (`updatePost`). `null` = todas las redes de la marca (un post manual). `post.draft` redacta solo para estas, dentro de las de la marca y que sirvan al `kind` del post. Desde F9-T21 también deciden aprobar, publicar y programar: el texto de una red que no está aquí no se aprueba ni sale (`POST_PLATFORM_EXCLUDED`), y una red con publicaciones pendientes no se quita (`POST_HAS_PENDING_PUBLICATIONS`) |
 | x_link_allowed | boolean default `false` | Desde F9-T16 (migración `0016`): la marca explícita del operador que permite un enlace en el texto de X (cuesta US$0,20 en vez de US$0,015). Sin ella, un enlace en X impide aprobar (`LINK_NOT_ALLOWED`) y publicar (`X_LINK_NOT_ALLOWED`) |
 | music_track_id | text null | Desde F9.5-T19 (migración `0019`): la música de los videos del post, como `listings.music_track_id`; `null` = sin música. Cambiarla (`updatePost`) encola `post.media`, que rehace el reel, el video para X y el de Discord con la pista (su clave de R2 suma `-m-<id>`) |
+| languages | text[] null | Desde 2026-11-15 (migración `0027`): «Idiomas de este post», de `LANGUAGES` (core, validado al leer). `null` = los de la marca (`editorial_profiles.languages`). Manda una sola regla de core (`postLanguages`): `post.draft` redacta solo en estos, las tarjetas y su idioma principal salen de aquí, el texto de otro idioma no se aprueba (`POST_LANGUAGE_EXCLUDED`, 409; uno ya aprobado se mantiene y sale), «Aprobar la semana» no lo toca y `GET /posts/:id` oculta los textos sin aprobar de otro idioma (`hiddenTexts`; no se borran y vuelven con el idioma). Lo cambia el operador (`updatePost`, `post edit --languages`) |
 
 Índice `(broker_id, status, planned_at)` para el contenido y el calendario de una marca, y `posts_plan_run_idx` sobre `(plan_run_id)` para las ideas de un plan (`GET /plans/:id` las lee con `PostRepository.list` por `planRunId`); los dos, desde la migración `0015`.
 
@@ -271,7 +272,8 @@ Uno por corredor (`broker_id` es la llave). `pnpm db:seed --operator-brands` (so
 | facts | text[] | Los hechos que la IA puede afirmar (ADR-0030): lo que no está aquí no se afirma |
 | avoid | text[] | Temas, palabras o promesas que no se usan |
 | cadence | jsonb default `{}` | Por red de `POST_PLATFORMS` (sin Portal ni Marketplace): `{ postsPerWeek, days: ["mon"…"sun"], hours: ["HH:MM"] (hora de Chile), languageGapHours }` (6 h por defecto). Una red sin entrada no tiene cadencia |
-| default_hashtags | text[] | Se suman a `brokers.fixed_hashtags` |
+| default_hashtags | text[] | «Hashtags que siempre van»: se suman a `brokers.fixed_hashtags` y, desde 2026-11-15, van siempre al final de cada texto de post en Instagram, X, LinkedIn y TikTok (no en Discord), los ponga o no la IA (`applyHashtagPolicy`) |
+| ai_hashtags | boolean null | Desde 2026-11-15 (migración `0027`): «¿La IA puede agregar otros hashtags?». `null` = por defecto: no si hay hashtags que siempre van (los de `default_hashtags` o los fijos de la marca), sí si no hay ninguno (`hashtagPolicy`). Con «no», el código quita los que agregue la IA y la revisión marca los de fuera de la lista (`HASHTAG_NOT_IN_LIST`, advertencia) |
 
 El tono sigue en `brokers.tone`. La forma (`editorialProfileSchema`) se valida al leer; las reglas al escribir (topes, claves únicas, pesos, horas) las aplica `normalizeEditorialProfile` en core (F9-T09; ver `docs/01-arquitectura.md`, "Perfil editorial").
 
@@ -475,6 +477,8 @@ Son **aditivas salvo la `0015`**, que además quita el `NOT NULL` de `listing_id
 **F9.6:** `0025_f96_idioma_de_cada_imagen` (T05, ADR-0042) agrega `media.language`, `post_uploads.sort_order` y `post_uploads.language` (todas nulas): aditiva; la versión anterior no las lee (todo vuelve a ir en todos los idiomas), y volver atrás no pide deshacerla.
 
 **F9.5 (lista para mostrar):** `0019_f95_musica` (T19) agrega `listings.music_track_id` y `posts.music_track_id` (texto nulo): aditiva; la versión anterior no las lee, y volver atrás no pide deshacerla. `0020_f95_en_vivo_por_marca` (T22) agrega `brokers.live_enabled` (ver `brokers`). `0021_f95_imagenes_post` (T25) agrega la tabla `post_image_runs` con sus tipos `post_image_source` y `post_image_run_status`: aditiva; la versión anterior no la lee, y volver atrás no pide deshacerla.
+
+**Idiomas y hashtags (2026-11-15):** `0027_idiomas_y_hashtags` agrega `posts.languages` (`text[]` nulo) y `editorial_profiles.ai_hashtags` (`boolean` nulo): aditiva; con `null` todo sigue como antes (los idiomas de la marca y el valor por defecto de los hashtags), la versión anterior no las lee, y volver atrás no pide deshacerla.
 
 ## Reglas de datos
 

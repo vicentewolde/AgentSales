@@ -428,6 +428,8 @@ describe("runSocialEval cuenta los problemas que se le inyectan", () => {
     const base = profile("dos-idiomas");
     const item: SocialEvalProfile = {
       ...base,
+      // La IA puede agregar hashtags (2026-11-15): así llegan los 30 y se prueba el tope.
+      profile: { ...base.profile, aiHashtags: true },
       history: { recentTopics: [], discardedTopics: ["Una idea que ya descartamos"] },
     };
     const planIdea = (tema: string, red: string, formato: string) => ({

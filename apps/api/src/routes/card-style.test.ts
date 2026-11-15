@@ -42,7 +42,10 @@ async function setup() {
 
 const agentpey = async () =>
   JSON.parse(
-    await readFile(join(import.meta.dirname, "../../../../docs/marca/agentpey/estilo.json"), "utf8"),
+    await readFile(
+      join(import.meta.dirname, "../../../../docs/marca/agentpey/estilo.json"),
+      "utf8",
+    ),
   ) as unknown;
 
 describe("/brokers/:id/card-style", () => {

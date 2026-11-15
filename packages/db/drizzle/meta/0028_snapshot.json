@@ -1,6 +1,6 @@
 {
-  "id": "26c1b738-12f7-44be-9b12-2cf592ea7a2c",
-  "prevId": "be462b2f-e8e7-43e1-941c-28e904871785",
+  "id": "c88010e0-3dd0-4eb7-b2eb-24be56ae160c",
+  "prevId": "f51e5443-39cc-4a1e-8efc-aa03317f0a48",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1284,6 +1284,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'{}'::text[]"
+        },
+        "ai_hashtags": {
+          "name": "ai_hashtags",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -3625,6 +3631,12 @@
         "music_track_id": {
           "name": "music_track_id",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "languages": {
+          "name": "languages",
+          "type": "text[]",
           "primaryKey": false,
           "notNull": false
         },

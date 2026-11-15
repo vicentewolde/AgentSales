@@ -3,12 +3,12 @@ import {
   CARD_COMPOSITIONS,
   CARD_STYLE_MAX_THEMES,
   cardStyleSchema,
-  POST_IMAGE_FORMATS,
   KNOWLEDGE_PROPOSAL_KINDS,
   knowledgeExampleSchema,
   knowledgeProposalSchema,
   knowledgeRunSchema,
   knowledgeUpdateSchema,
+  POST_IMAGE_FORMATS,
 } from "@agentsales/core";
 import { z } from "zod";
 
@@ -152,7 +152,12 @@ export const cardStyleBodySchema = z.object({ style: z.unknown() }).strict();
 export const cardStylePreviewBodySchema = z
   .object({
     style: z.unknown().optional(),
-    theme: z.number().int().min(0).max(CARD_STYLE_MAX_THEMES - 1).default(0),
+    theme: z
+      .number()
+      .int()
+      .min(0)
+      .max(CARD_STYLE_MAX_THEMES - 1)
+      .default(0),
     composition: z.enum(CARD_COMPOSITIONS).default("announce"),
     format: z.enum(POST_IMAGE_FORMATS).default("4:5"),
   })

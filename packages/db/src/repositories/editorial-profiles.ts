@@ -47,6 +47,7 @@ export function createEditorialProfileRepository(db: SchemaDatabase): EditorialP
         avoid: [...profile.avoid],
         cadence: profile.cadence,
         defaultHashtags: [...profile.defaultHashtags],
+        aiHashtags: profile.aiHashtags ?? null,
       };
       try {
         return await withDbErrors(async () => {

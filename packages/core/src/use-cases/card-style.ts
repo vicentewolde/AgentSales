@@ -6,9 +6,9 @@ import {
   parseCardStyle,
 } from "../card-style.js";
 import { AppError } from "../errors.js";
-import type { PostImageFormat } from "../post-image.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { CardStyleRepository } from "../ports/card-style-repository.js";
+import type { PostImageFormat } from "../post-image.js";
 import type { User } from "../user.js";
 import { assertBrandAccess } from "./brand-knowledge.js";
 

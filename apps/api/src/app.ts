@@ -2,10 +2,10 @@ import {
   AppError,
   type BrandKnowledgeRepository,
   type Broker,
-  type CardStylePreviewer,
-  type CardStyleRepository,
   type BrokerPurgeRepository,
   type BrokerRepository,
+  type CardStylePreviewer,
+  type CardStyleRepository,
   type ContentRepository,
   type ContentRunRepository,
   type EditorialProfileRepository,
@@ -55,8 +55,8 @@ import { type AccountRoutesDeps, accountRoutes } from "./routes/accounts.js";
 import { authRoutes } from "./routes/auth.js";
 import { brandKnowledgeRoutes } from "./routes/brand-knowledge.js";
 import { brandWeekRoutes } from "./routes/brand-week.js";
-import { cardStyleRoutes } from "./routes/card-style.js";
 import { brokerRoutes } from "./routes/brokers.js";
+import { cardStyleRoutes } from "./routes/card-style.js";
 import { contentRoutes, contentRunRoutes, listingContentRoutes } from "./routes/content.js";
 import { editorialProfileRoutes } from "./routes/editorial-profile.js";
 import { importRoutes } from "./routes/imports.js";

@@ -44,6 +44,36 @@ describe("getPostContent", () => {
     expect(result.publications.map((p) => p.id).sort()).toEqual(t.approved.map((p) => p.id).sort());
   });
 
+  it("un idioma quitado al post oculta sus textos sin aprobar; los aprobados siguen, y vuelven con el idioma (2026-11-15)", async () => {
+    const { t, deps } = await setup();
+    expect((await getPostContent(deps, ADMIN, t.post.id)).languages).toEqual(["es", "en"]);
+    // El escenario aprueba todo: se quita la aprobación del texto de X en inglés.
+    const xEn = await postContentId(deps, ADMIN, {
+      postId: t.post.id,
+      platform: "x",
+      language: "en",
+    });
+    await t.contents.update(xEn, { status: "draft" });
+    await t.posts.update(t.post.id, { languages: ["es"] });
+    const hidden = await getPostContent(deps, ADMIN, t.post.id);
+    expect(hidden.languages).toEqual(["es"]);
+    expect(hidden.contents.map(({ content }) => `${content.platform}/${content.language}`)).toEqual(
+      ["x/es", "discord/es"],
+    );
+    expect(hidden.hiddenTexts).toBe(1);
+    // Aprobado, se sigue mostrando (con su nota en el panel y la CLI).
+    await t.contents.update(xEn, { status: "approved" });
+    expect((await getPostContent(deps, ADMIN, t.post.id)).contents).toHaveLength(3);
+    // Sin idiomas propios, mandan los de la marca (sin perfil: español).
+    await t.contents.update(xEn, { status: "draft" });
+    await t.posts.update(t.post.id, { languages: null });
+    expect((await getPostContent(deps, ADMIN, t.post.id)).hiddenTexts).toBe(1);
+    await t.posts.update(t.post.id, { languages: ["es", "en"] });
+    const back = await getPostContent(deps, ADMIN, t.post.id);
+    expect(back.hiddenTexts).toBe(0);
+    expect(back.contents).toHaveLength(3);
+  });
+
   it("un corredor de otra marca no lo ve (POST_NOT_FOUND)", async () => {
     const { t, deps } = await setup();
     const other = { id: "u", role: "broker" as const, brokerId: "otra-marca" };

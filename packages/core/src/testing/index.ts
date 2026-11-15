@@ -21,6 +21,10 @@ export {
   type FakeBrokerPurgeRepository,
 } from "./broker-purge.js";
 export {
+  createInMemoryCardStyleRepository,
+  type InMemoryCardStyleRepository,
+} from "./card-styles.js";
+export {
   createInMemoryContentRepositories,
   type InMemoryContentRepositories,
 } from "./content.js";
@@ -146,7 +150,3 @@ export {
   createInMemoryWorkerHeartbeatRepository,
   type InMemoryWorkerHeartbeatRepository,
 } from "./worker-heartbeats.js";
-export {
-  createInMemoryCardStyleRepository,
-  type InMemoryCardStyleRepository,
-} from "./card-styles.js";

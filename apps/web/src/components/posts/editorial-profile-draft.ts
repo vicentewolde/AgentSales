@@ -57,6 +57,8 @@ export type Draft = {
   avoid: string;
   cadence: Record<PostPlatform, CadenceRow>;
   hashtags: string;
+  /** «¿La IA puede agregar otros hashtags?»: `null` = por defecto (no si hay hashtags fijos). */
+  aiHashtags: boolean | null;
 };
 
 export type Issue = { field: string; message: string };
@@ -122,6 +124,7 @@ export function draftOf(profile: EditorialProfileJson): Draft {
     avoid: profile.avoid.join("\n"),
     cadence,
     hashtags: profile.defaultHashtags.join(" "),
+    aiHashtags: profile.aiHashtags,
   };
 }
 
@@ -212,6 +215,7 @@ export function profileBody(draft: Draft): { body: EditorialProfileBody; issues:
       }),
     ),
     defaultHashtags: draft.hashtags.split(/[\s,]+/).filter((tag) => tag.trim() !== ""),
+    aiHashtags: draft.aiHashtags,
   };
   return { body, issues };
 }

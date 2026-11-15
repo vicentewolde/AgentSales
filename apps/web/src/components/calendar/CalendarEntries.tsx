@@ -1,4 +1,4 @@
-import type { CalendarEntryView } from "@agentsales/api/contracts";
+import type { CalendarDraftView, CalendarEntryView } from "@agentsales/api/contracts";
 import {
   formatChileTime,
   LANGUAGE_TEXT,
@@ -70,6 +70,35 @@ export function EntryTitle({ entry }: { entry: CalendarEntryView }) {
       {entry.title}
       {entry.postId !== null && <span className="font-normal text-fg-subtle"> (post)</span>}
     </Link>
+  );
+}
+
+/**
+ * Un borrador en la celda de su día (2026-11-15): un post con su fecha planeada y nada programado
+ * ni publicado. Se ve distinto de lo programado (borde punteado, sin color de estado) con la
+ * etiqueta «Borrador» (o «Aprobado, sin hora»), y lleva a la página del post.
+ */
+export function DraftChip({ draft }: { draft: CalendarDraftView }) {
+  const label = draft.approved ? "Aprobado, sin hora" : "Borrador";
+  const time = formatChileTime(draft.at).slice(11);
+  return (
+    <li>
+      <Link
+        to={`/contenido/${draft.postId}`}
+        aria-label={`${time} ${draft.title}, ${label.toLowerCase()} (sin programar)`}
+        title={`${time} · ${label} · ${draft.title}`}
+        className="block w-full min-w-0 rounded-md border border-dashed border-line-strong bg-surface/60 px-1.5 py-1 text-left text-xs leading-tight text-fg-muted hover:border-brand-700 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-700"
+      >
+        <span className="flex min-w-0 items-center gap-1">
+          <span aria-hidden="true" className="w-3 shrink-0 text-center">
+            ✎
+          </span>
+          <span className="font-semibold">{time}</span>
+          <span className="min-w-0 truncate italic">{label}</span>
+        </span>
+        <span className="block truncate pl-4">{draft.title}</span>
+      </Link>
+    </li>
   );
 }
 

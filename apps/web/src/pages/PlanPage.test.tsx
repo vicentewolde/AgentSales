@@ -593,7 +593,7 @@ describe("panel: las redes de un post (F9-T21)", () => {
     // Solo las redes de la marca (Discord por su cuenta; X y LinkedIn por su cadencia).
     await waitFor(() =>
       expect(
-        within(form)
+        within(within(form).getByRole("group", { name: /^Redes/ }))
           .getAllByRole("checkbox")
           .map((box) => box.parentElement?.textContent),
       ).toEqual(["X", "LinkedIn", "Discord"]),

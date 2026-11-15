@@ -471,6 +471,11 @@ export const posts = pgTable(
     /** La música de sus videos (F9.5-T19), como `listings.music_track_id`; `null` = sin música. */
     musicTrackId: text("music_track_id"),
     /**
+     * Los idiomas del post (2026-11-15, «Idiomas de este post»): `null` = los de la marca
+     * (`editorial_profiles.languages`). Texto validado con `LANGUAGES` de core, como `platforms`.
+     */
+    languages: text("languages").array(),
+    /**
      * F9.7 (ADR-0043): el tema del estilo de la marca que le tocó a sus láminas (índice en
      * `brand_card_styles.style.themes`); se fija la primera vez, así rehacer da lo mismo.
      */
@@ -503,8 +508,13 @@ export const editorialProfiles = pgTable("editorial_profiles", {
   avoid: text("avoid").array().notNull().default(sql`'{}'::text[]`),
   /** Posts por semana en cada red, días y horas preferidos y horas entre idiomas. */
   cadence: jsonb("cadence").notNull().default({}),
-  /** Se suman a `brokers.fixed_hashtags`. */
+  /** «Hashtags que siempre van»: se suman a `brokers.fixed_hashtags` en cada texto de post. */
   defaultHashtags: text("default_hashtags").array().notNull().default(sql`'{}'::text[]`),
+  /**
+   * «¿La IA puede agregar otros hashtags?» (2026-11-15): `null` = por defecto (no si hay hashtags
+   * que siempre van; sí si no hay ninguno).
+   */
+  aiHashtags: boolean("ai_hashtags"),
   ...timestamps,
 });
 
