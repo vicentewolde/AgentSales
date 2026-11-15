@@ -22,6 +22,8 @@ const PROFILE = {
   ],
   avoid: ["gratis", "garantizado"],
   defaultHashtags: ["#corretaje"],
+  // La IA puede agregar otros hashtags: la regla de los que siempre van se prueba aparte.
+  aiHashtags: true,
 };
 
 type PostFields = Pick<
@@ -249,6 +251,31 @@ describe("checkPostContent: hechos fuera del perfil", () => {
   it("una sigla o un énfasis en mayúsculas de 2 a 6 letras no es un nombre", () => {
     expect(codes("linkedin", "Esto es GRATIS para siempre, con IA y B2B.")).toEqual(["AVOID_TERM"]);
     expect(codes("linkedin", "Les presento a ACMECORP hoy.")).toEqual(["FACT_NOT_IN_PROFILE"]);
+  });
+
+  it("en inglés, el plural de una sigla y un gentilicio no son nombres inventados (2026-11-15)", () => {
+    // El perfil dice «Chile» (la audiencia): «Chilean» es su gentilicio; «AIs», el plural de AI.
+    expect(
+      codes("linkedin", "Today I share how Chilean brokers use AIs and APIs to publish."),
+    ).toEqual([]);
+    expect(codes("x", "Built for Latin American and Peruvian teams, with CEOs in mind.")).toEqual(
+      [],
+    );
+    // Con el gentilicio en español en el perfil (chilenos), también.
+    const ctx = buildPostCheckContext({
+      post: OPERATOR_POST,
+      profile: { ...PROFILE, audience: "Corredores chilenos de Concepción" },
+      broker: BRAND,
+      media: [{ role: "original", kind: "image" }],
+    });
+    expect(codes("x", "We help Chileans and Concepcion brokers.", ctx)).toEqual([]);
+    // Un plural cuya base está en el perfil (Corredores → corredor) tampoco.
+    expect(codes("linkedin", "Hoy hablamos de Instagrams y de Corredores.")).toEqual([]);
+    // Un nombre que no deriva de nada del perfil se sigue marcando.
+    expect(codes("x", "We met Temucans and Banco Estado.")).toEqual([
+      "FACT_NOT_IN_PROFILE",
+      "FACT_NOT_IN_PROFILE",
+    ]);
   });
 
   it("una ciudad que está en el perfil es fuente; una que no, se marca", () => {

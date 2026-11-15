@@ -72,6 +72,7 @@ describe("normalizeEditorialProfile", () => {
         linkedin: { postsPerWeek: 1, days: [], hours: [], languageGapHours: 12 },
       },
       defaultHashtags: ["#AgentSales", "#chile", "#emprender", "#ñandú_2"],
+      aiHashtags: null,
     });
     // Lo normalizado calza con la forma de la fila (lo que el repositorio lee de vuelta).
     const now = new Date();
@@ -190,7 +191,7 @@ describe("normalizeEditorialProfile", () => {
       expect.unreachable();
     } catch (error) {
       expect((error as AppError).message).toBe(
-        "Revisa el perfil editorial: Idiomas: «fr» no es un idioma (usa es o en); Hashtags: «#a-b» no es un hashtag (solo letras, números y _, hasta 100)",
+        "Revisa el perfil editorial: Idiomas: «fr» no es un idioma (usa es o en); Hashtags que siempre van: «#a-b» no es un hashtag (solo letras, números y _, hasta 100)",
       );
     }
   });

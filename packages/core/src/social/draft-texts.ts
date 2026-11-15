@@ -5,6 +5,7 @@ import type { Language, PostPlatform } from "../enums.js";
 import type { SocialBrief } from "./brief.js";
 import { checkPostContent, type PostCheckContext } from "./check.js";
 import { SOCIAL_DRAFT_JSON_SCHEMA, type SocialDraft, validateSocialDraft } from "./draft.js";
+import { applyHashtagPolicy } from "./post-hashtags.js";
 import { buildSocialPrompt } from "./prompt.js";
 
 /** Un texto de un post redactado: la red, el idioma, el texto y su revisión. */
@@ -42,12 +43,20 @@ export async function draftPostTexts(
   return {
     ...rest,
     draft: data,
-    texts: data.texts.map((text) => ({
-      platform: text.platform,
-      language: text.language,
-      body: text.body,
-      hashtags: text.hashtags,
-      checks: checkPostContent(text.platform, text, params.ctx),
-    })),
+    texts: data.texts.map((text) => {
+      // Los hashtags que siempre van al final y, si la marca lo permite, los de la IA (2026-11-15).
+      const hashtags =
+        params.ctx.hashtags === undefined
+          ? text.hashtags
+          : applyHashtagPolicy(text.platform, text.hashtags, params.ctx.hashtags);
+      const final = { ...text, hashtags };
+      return {
+        platform: text.platform,
+        language: text.language,
+        body: text.body,
+        hashtags,
+        checks: checkPostContent(text.platform, final, params.ctx),
+      };
+    }),
   };
 }

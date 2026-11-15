@@ -57,6 +57,7 @@ const NOW = new Date("2026-10-20T15:00:00Z");
 
 const profile = editorialProfileView("marca-1", {
   brokerId: "marca-1",
+  aiHashtags: null,
   languages: ["es", "en"],
   audience: "Corredores independientes",
   pillars: [

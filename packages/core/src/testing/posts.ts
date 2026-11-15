@@ -74,6 +74,8 @@ export function createInMemoryPostRepository(): InMemoryPostRepository {
         platforms:
           input.platforms === undefined || input.platforms === null ? null : [...input.platforms],
         musicTrackId: null,
+        languages:
+          input.languages === undefined || input.languages === null ? null : [...input.languages],
         createdAt: now,
         updatedAt: now,
       });
@@ -358,6 +360,7 @@ export function createInMemoryEditorialProfileRepository(): EditorialProfileRepo
         avoid: [...data.avoid],
         cadence: structuredCopy(data.cadence),
         defaultHashtags: [...data.defaultHashtags],
+        aiHashtags: data.aiHashtags ?? null,
         createdAt: current?.createdAt ?? now,
         updatedAt: current === undefined ? now : later(current.updatedAt),
       };

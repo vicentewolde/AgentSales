@@ -141,6 +141,20 @@ export {
   planSlots,
 } from "./plan-slots.js";
 export {
+  ALWAYS_HASHTAG_PLATFORMS,
+  applyHashtagPolicy,
+  type HashtagPolicy,
+  hashtagPolicy,
+  hashtagsOutsideList,
+} from "./post-hashtags.js";
+export {
+  normalizePostLanguages,
+  postLanguageExcluded,
+  postLanguages,
+  postTextVisible,
+  postWritesIn,
+} from "./post-languages.js";
+export {
   addedPlatformsToDraft,
   ideaNeedsDraft,
   type PostKindIssues,
@@ -149,6 +163,7 @@ export {
   postNetworkGaps,
   postPlatformExcluded,
   postPublishesOn,
+  postShowsPublication,
   type RescheduleMove,
   type RescheduleSuggestion,
   requirePostPlatform,

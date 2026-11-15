@@ -156,6 +156,7 @@ function postHint(error: ApiCallError, postId: string, xLinkMissing = false): st
     POST_NOT_IDEA: `Ya no es una idea: míralo con ${show(postId)} (si la IA está redactando, sus textos aparecen ahí al terminar). Si quedó aceptada sin textos y sin redacción en curso, pídelos con agentsales post draft ${postId}; un post aceptado se archiva con agentsales post archive ${postId}`,
     QUEUE_UNAVAILABLE: `El worker o la cola no responden: arranca el worker (pnpm dev, o el del servidor) y vuelve a intentarlo; si fue al aceptar una idea, esa ya quedó aceptada sin textos: pídelos con agentsales post draft ${postId}`,
     POST_PLATFORM_EXCLUDED: `Esa red no está entre las del post: agrégala con agentsales post edit ${postId} --platforms <redes>`,
+    POST_LANGUAGE_EXCLUDED: `Ese idioma no está entre los del post: agrégalo con agentsales post edit ${postId} --languages es,en (o a la marca con agentsales brand edit --languages)`,
     POST_NOT_READY: `Mira su estado con ${show(postId)}: una idea se acepta primero y un post archivado ya no cambia`,
     POST_ARCHIVED: "Un post archivado no cambia: crea otro con agentsales post create",
     POST_HAS_PENDING_PUBLICATIONS: `Cancélalas con agentsales publications cancel <id> (o resuélvelas) antes de archivar el post o quitarle esa red; míralas con ${show(postId)}`,
@@ -416,6 +417,8 @@ export function renderPostPublications(
 /** `post show`: el post, sus medios con sus variantes, sus textos con su revisión y sus publicaciones. */
 export function renderPostDetail(detail: PostDetailResponse, brandSlug: string, c: Colors): string {
   const { post, media, contents, latestRun, publications } = detail;
+  // Los idiomas del post (los suyos o los de la marca); un servidor anterior no los manda.
+  const languages = detail.languages;
   const lines = [
     `${c.bold(post.topic)}  ${c.dim(`${POST_STATUS_TEXT[post.status] ?? post.status} · ${POST_KIND_TEXT[post.kind] ?? post.kind} · ${brandSlug}`)}`,
     `  Id: ${post.id}`,
@@ -428,6 +431,13 @@ export function renderPostDetail(detail: PostDetailResponse, brandSlug: string, 
         : post.platforms.map((platform) => PLATFORM_TEXT[platform] ?? platform).join(", ")
     }`,
   );
+  if (languages !== null) {
+    lines.push(
+      `  Idiomas: ${languages.map((language) => LANGUAGE_TEXT[language]).join(" y ")} (${
+        post.languages === null ? "los de la marca" : "de este post"
+      })`,
+    );
+  }
   if (post.pillar !== null) lines.push(`  Tema: ${post.pillar}`);
   // F9.5-T19: la música de sus videos (solo si tiene alguno o ya se eligió).
   if (post.musicTrackId !== null || media.some((item) => item.kind === "video")) {
@@ -502,7 +512,22 @@ export function renderPostDetail(detail: PostDetailResponse, brandSlug: string, 
         ),
       );
     }
+    if (languages !== null && !languages.includes(content.language)) {
+      lines.push(
+        c.dim(
+          `  El ${LANGUAGE_TEXT[content.language]} ya no está entre los idiomas del post: este texto quedó aprobado antes y se mantiene`,
+        ),
+      );
+    }
     lines.push("");
+  }
+  if (detail.hiddenTexts > 0) {
+    lines.push(
+      c.dim(
+        `  ${detail.hiddenTexts === 1 ? "1 texto oculto" : `${detail.hiddenTexts} textos ocultos`} de un idioma que el post ya no usa (vuelve${detail.hiddenTexts === 1 ? "" : "n"} si agregas el idioma con agentsales post edit ${post.id} --languages)`,
+      ),
+      "",
+    );
   }
   if (missing.length > 0) {
     lines.push(
@@ -959,7 +984,27 @@ export type PostEditOptions = {
   xLink?: boolean;
   /** La música de sus videos (`--music <pista|ninguna>`), F9.5-T19. */
   music?: string;
+  /** Los idiomas del post (`es`, `es,en`, o `marca`), 2026-11-15. */
+  languages?: string;
 };
+
+/** `--languages es,en` → esos idiomas; `marca` → `null` (los de la marca). */
+function postLanguagesOption(text: string): Language[] | null {
+  const parts = text
+    .split(",")
+    .map((part) => part.trim().toLowerCase())
+    .filter((part) => part !== "");
+  if (parts.length === 1 && ["marca", "brand", "todas", "todos"].includes(parts[0] ?? ""))
+    return null;
+  const unknown = parts.filter((part) => !(LANGUAGES as readonly string[]).includes(part));
+  if (parts.length === 0 || unknown.length > 0) {
+    throw new CliError(
+      "LANGUAGE_INVALID",
+      `--languages necesita uno o más idiomas separados por comas (${LANGUAGES.join(", ")}), o "marca"`,
+    );
+  }
+  return LANGUAGES.filter((language) => parts.includes(language));
+}
 
 /** `--platforms x,linkedin` → esas redes; `todas` → `null` (todas las de la marca). */
 function platformsOption(text: string): PostPlatform[] | null {
@@ -985,8 +1030,10 @@ function postChangesOf(options: PostEditOptions) {
     brief?: string | null;
     xLinkAllowed?: boolean;
     musicTrackId?: MusicTrackId | null;
+    languages?: Language[] | null;
   } = {};
   if (options.platforms !== undefined) changes.platforms = platformsOption(options.platforms);
+  if (options.languages !== undefined) changes.languages = postLanguagesOption(options.languages);
   if (options.date !== undefined) {
     changes.plannedAt = ["ninguna", "none", ""].includes(options.date.trim().toLowerCase())
       ? null
@@ -1119,6 +1166,15 @@ export function runPostEdit(deps: PostDeps, id: string, options: PostEditOptions
         ...(changes.musicTrackId === undefined
           ? []
           : [`música: ${musicTrackText(post.musicTrackId)} (los videos se rehacen solos)`]),
+        ...(changes.languages === undefined
+          ? []
+          : [
+              `idiomas: ${
+                post.languages === null
+                  ? "los de la marca"
+                  : post.languages.map((language) => LANGUAGE_TEXT[language]).join(" y ")
+              }`,
+            ]),
       ];
       deps.print(`${c.green("✓")} Post ${post.id} actualizado (${summary.join(" · ")})`);
       if (drafting !== null) printDrafting(deps, post.id, drafting);
@@ -1757,7 +1813,7 @@ export function register(program: Command, ctx: CliContext): void {
   post
     .command("edit")
     .description(
-      "Cambia el texto de una red e idioma (desde --file o la entrada estándar), o las redes, la fecha, el brief, el enlace en X o la música del post",
+      "Cambia el texto de una red e idioma (desde --file o la entrada estándar), o las redes, los idiomas, la fecha, el brief, el enlace en X o la música del post",
     )
     .argument("<id>", "id del post")
     .option("--platform <red>", `la red del texto: ${networks}`)
@@ -1776,6 +1832,10 @@ export function register(program: Command, ctx: CliContext): void {
     )
     .option("--no-x-link", "quita el permiso del enlace en X")
     .option("--music <pista>", `la música de sus videos: ${MUSIC_TRACK_IDS.join(", ")} o ninguna`)
+    .option(
+      "--languages <idiomas>",
+      'los idiomas del post: es, en o es,en; "marca" vuelve a los de la marca',
+    )
     .action((id: string, options: PostEditOptions) =>
       exitWith(() => runPostEdit(deps(), id, options)),
     );

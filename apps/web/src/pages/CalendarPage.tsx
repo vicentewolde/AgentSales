@@ -1,4 +1,4 @@
-import type { CalendarEntryView } from "@agentsales/api/contracts";
+import type { CalendarDraftView, CalendarEntryView } from "@agentsales/api/contracts";
 import {
   chileDateOf,
   formatChileTime,
@@ -8,7 +8,12 @@ import {
 } from "@agentsales/core";
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
-import { CalendarChip, DayPanel, EntryTitle } from "../components/calendar/CalendarEntries.js";
+import {
+  CalendarChip,
+  DayPanel,
+  DraftChip,
+  EntryTitle,
+} from "../components/calendar/CalendarEntries.js";
 import {
   applyEntryFilters,
   byChileDay,
@@ -44,16 +49,20 @@ export function CalendarGrid({
   anchor,
   today,
   entries,
+  drafts = [],
   onOpenDay,
 }: {
   view: CalendarView;
   anchor: string;
   today: string;
   entries: readonly CalendarEntryView[];
+  /** Los borradores (2026-11-15): se ven distintos de lo programado y llevan al post. */
+  drafts?: readonly CalendarDraftView[];
   onOpenDay: (day: string, trigger: HTMLElement) => void;
 }) {
   const days = visibleDays(view, anchor);
   const byDay = byChileDay(entries);
+  const draftsByDay = byChileDay(drafts);
   const month = anchor.slice(0, 7);
   return (
     <div className="mt-4">
@@ -67,10 +76,11 @@ export function CalendarGrid({
       <ol className="mt-1 grid grid-cols-1 gap-2 md:grid-cols-7">
         {days.map((day) => {
           const items = byDay.get(day) ?? [];
+          const dayDrafts = draftsByDay.get(day) ?? [];
           const { shown, more } = capDay(items);
           const outside = view === "mes" && !day.startsWith(month);
           // En el teléfono, la vista mensual muestra solo los días con algo (una lista por día).
-          const hideOnPhone = items.length === 0 ? "hidden md:block" : "";
+          const hideOnPhone = items.length === 0 && dayDrafts.length === 0 ? "hidden md:block" : "";
           return (
             <li
               key={day}
@@ -85,7 +95,7 @@ export function CalendarGrid({
                 <span className="md:hidden">{dayLabel(day)}</span>
                 <span className="hidden md:inline">{Number(day.slice(8))}</span>
               </p>
-              {items.length > 0 && (
+              {(items.length > 0 || dayDrafts.length > 0) && (
                 <ul className="mt-1 space-y-1">
                   {shown.map((entry) => (
                     <CalendarChip
@@ -106,6 +116,9 @@ export function CalendarGrid({
                       </button>
                     </li>
                   )}
+                  {dayDrafts.map((draft) => (
+                    <DraftChip key={`borrador-${draft.postId}`} draft={draft} />
+                  ))}
                 </ul>
               )}
             </li>
@@ -237,7 +250,8 @@ export function CalendarPage() {
     opener.current?.focus();
   };
 
-  const { shown, counts } = applyEntryFilters(calendar.data ?? [], filters);
+  const { shown, counts } = applyEntryFilters(calendar.data?.entries ?? [], filters);
+  const drafts = calendar.data?.drafts ?? [];
   const showBroker = role === "admin" && broker === undefined;
   const hidden = (filters.retired ? 0 : counts.retired) + (filters.failed ? 0 : counts.failed);
 
@@ -358,12 +372,16 @@ export function CalendarPage() {
             <span aria-hidden="true">✓</span> publicada · <span aria-hidden="true">◷</span>{" "}
             programada · <span aria-hidden="true">!</span> atrasada o te toca ·{" "}
             <span aria-hidden="true">✕</span> falló · <span aria-hidden="true">?</span> no se sabe
-            si salió · <span aria-hidden="true">⊘</span> retirada o descartada. Los borradores y las
-            ideas no se ven aquí: están en Contenido.
+            si salió · <span aria-hidden="true">⊘</span> retirada o descartada ·{" "}
+            <span className="rounded border border-dashed border-line-strong px-1">
+              <span aria-hidden="true">✎</span> Borrador
+            </span>{" "}
+            con borde punteado: un post con su fecha planeada que todavía no se aprueba ni se
+            programa (ábrelo para hacerlo). Las ideas no se ven aquí: están en Plan.
           </p>
           {shown.length === 0 && (
             <p className="mt-2 text-sm text-fg-muted">
-              {calendar.data.length === 0
+              {calendar.data.entries.length === 0
                 ? "Nada programado ni publicado en estas fechas."
                 : "Nada a la vista con estos filtros."}
             </p>
@@ -385,6 +403,7 @@ export function CalendarPage() {
             anchor={anchor}
             today={today}
             entries={shown}
+            drafts={drafts}
             onOpenDay={(day, trigger) => {
               opener.current = trigger;
               setOpenDay(day);

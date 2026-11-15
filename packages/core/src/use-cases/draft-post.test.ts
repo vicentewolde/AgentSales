@@ -256,7 +256,9 @@ describe("draftPost", () => {
     ]);
     expect(texts[0]).toMatchObject({
       title: null,
-      hashtags: ["#AgentPey"],
+      // 2026-11-15: los hashtags que siempre van (los fijos de la marca) al final; la marca no deja
+      // que la IA agregue otros (#AgentPey), así que se quitan.
+      hashtags: ["#InventadaPropiedades", "#propiedades"],
       llmProvider: "claude-cli",
       llmModel: "claude-sonnet-5-5",
       promptVersion: SOCIAL_PROMPT_VERSION,
@@ -783,6 +785,31 @@ describe("draftPost · corridas acotadas (agregar una red, rehacer un texto)", (
     expect(prompt).toContain('"platform": "linkedin"');
     expect(prompt).not.toContain('"platform": "x"');
     expect(t.publications.all().map((p) => p.status)).toEqual(["approved"]);
+  });
+
+  it("los idiomas del post mandan también en la corrida acotada (2026-11-15)", async () => {
+    const t = await setup({ platforms: ["x"], llm: [{ data: answer(x) }] });
+    // Sin perfil la marca escribe en español: rehacer el texto en inglés no se redacta.
+    const scoped = await t.request(false, {
+      platforms: ["x"],
+      language: "en",
+      mode: "missing",
+      guidance: null,
+    });
+    const error = await caught(
+      draftPost(t.deps, { contentRunId: scoped.run.id, isLastAttempt: true }),
+    );
+    expect(codeOf(error)).toBe("POST_LANGUAGE_EXCLUDED");
+    expect(t.llm.requests).toHaveLength(0);
+    // Sin idioma pedido, solo los del post.
+    const all = await t.request(false, {
+      platforms: ["x"],
+      language: null,
+      mode: "missing",
+      guidance: null,
+    });
+    await draftPost(t.deps, { contentRunId: all.run.id, isLastAttempt: false });
+    expect((await t.current()).map((item) => item.language)).toEqual(["es"]);
   });
 
   it("sin nada que falte, la corrida acotada termina sin llamar a la IA", async () => {

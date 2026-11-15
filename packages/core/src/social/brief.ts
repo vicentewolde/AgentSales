@@ -4,6 +4,7 @@ import { isPostPlatform, type Language, POST_PLATFORMS, type PostPlatform } from
 import type { PlatformAccount } from "../platform-account.js";
 import type { Post } from "../post.js";
 import { linkKey, linksIn } from "./networks.js";
+import { hashtagPolicy } from "./post-hashtags.js";
 import { profileSpeaksAsTeam } from "./voice.js";
 
 // Lo que ve la IA de un post (spec F9 §4.3 y §4.4, ADR-0030 punto 1): el perfil editorial de su
@@ -59,8 +60,13 @@ export type SocialBrief = {
   pillar: { name: string; description: string } | null;
   facts: string[];
   avoid: string[];
-  /** `brokers.fixed_hashtags` y `defaultHashtags` del perfil, sin repetir. */
+  /**
+   * Los hashtags que siempre van (`brokers.fixed_hashtags` y `defaultHashtags` del perfil, sin
+   * repetir): el código los agrega al final en las redes que los usan (`applyHashtagPolicy`).
+   */
   hashtags: string[];
+  /** Si la IA puede agregar otros hashtags (`hashtagPolicy`, 2026-11-15). */
+  aiMayAddHashtags: boolean;
   topic: string;
   /** `true` si el tema lo escribió el operador (un post manual): entonces es fuente de hechos. */
   topicIsSource: boolean;
@@ -123,13 +129,18 @@ export function buildSocialBrief(params: {
   return {
     brandName: broker.brandName,
     tone: broker.tone,
-    languages: [...profile.languages],
+    // Los idiomas que se redactan (los del post, `postLanguages`); sin destinos, los de la marca.
+    languages:
+      params.targets.length > 0
+        ? [...new Set(params.targets.map((target) => target.language))]
+        : [...profile.languages],
     targets: params.targets.map((target) => ({ ...target })),
     audience: profile.audience,
     pillar: pillar === null ? null : { name: pillar.name, description: pillar.description },
     facts: [...profile.facts],
     avoid: [...profile.avoid],
     hashtags: uniqueTags([...broker.fixedHashtags, ...profile.defaultHashtags]),
+    aiMayAddHashtags: hashtagPolicy(profile, broker).aiMayAdd,
     topic: post.topic,
     topicIsSource: post.source === "manual",
     operatorBrief: operatorBriefOf(post),

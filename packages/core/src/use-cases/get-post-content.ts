@@ -20,6 +20,7 @@ import type { Post } from "../post.js";
 import { loadCardLanguages } from "../post-card-languages.js";
 import type { Publication } from "../publication.js";
 import { buildPostCheckContext, checkPostContent } from "../social/check.js";
+import { postLanguages, postTextVisible } from "../social/post-languages.js";
 import { postSubject } from "../subject.js";
 import type { User } from "../user.js";
 import { postSourceHashes } from "./draft-post.js";
@@ -55,6 +56,16 @@ export type PostContent = {
   latestRun: ContentRun | null;
   /** Todas las publicaciones del post, de todas sus redes e idiomas (las más nuevas primero). */
   publications: Publication[];
+  /**
+   * Los idiomas en que escribe el post (`postLanguages`: los suyos o los de la marca), el principal
+   * primero. Un texto aprobado de otro idioma se sigue mostrando: el panel y la CLI le ponen una nota.
+   */
+  languages: Language[];
+  /**
+   * Cuántos textos sin aprobar de un idioma quitado quedaron fuera de `contents` (no se borran:
+   * vuelven si el idioma vuelve al post o a la marca).
+   */
+  hiddenTexts: number;
   /**
    * Si el tema o el brief del post cambiaron después de redactar alguno de sus textos vigentes
    * (la huella `postSource` de la corrida que lo redactó no calza con la del post). Los textos de
@@ -93,14 +104,18 @@ export async function getPostContent(
       details: { postId: post.id },
     });
   }
+  const view = editorialProfileView(post.brokerId, profile);
+  const languages = postLanguages(post, view.languages);
+  // Un texto sin aprobar de un idioma quitado no se muestra ni da alertas (2026-11-15).
+  const visible = current.filter((content) => postTextVisible(content, languages));
   const ctx = buildPostCheckContext({
     post,
-    profile: editorialProfileView(post.brokerId, profile),
+    profile: view,
     broker,
     media,
     cards,
   });
-  const contents = [...current]
+  const contents = [...visible]
     .sort((a, b) => order(a) - order(b))
     .map((content) => ({
       content,
@@ -116,6 +131,8 @@ export async function getPostContent(
     publications: [...publications].sort(
       (a, b) => b.createdAt.getTime() - a.createdAt.getTime() || a.id.localeCompare(b.id),
     ),
+    languages,
+    hiddenTexts: current.length - visible.length,
   };
 }
 

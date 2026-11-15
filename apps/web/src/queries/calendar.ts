@@ -1,5 +1,5 @@
 import {
-  type CalendarEntryView,
+  type CalendarResponse,
   calendarResponseSchema,
   publicationResponseSchema,
 } from "@agentsales/api/contracts";
@@ -28,22 +28,21 @@ export function useCalendar(range: { from: Date; to: Date }, broker?: string) {
   const client = useApiClient();
   return useQuery({
     queryKey: calendarKeys.range(range.from, range.to, broker),
-    queryFn: async ({ signal }): Promise<CalendarEntryView[]> =>
-      (
-        await unwrap(
-          client.calendar.$get(
-            {
-              query: {
-                from: range.from.toISOString(),
-                to: range.to.toISOString(),
-                ...(broker === undefined ? {} : { broker }),
-              },
+    // Lo programado y lo publicado (`entries`) y, desde 2026-11-15, los borradores (`drafts`).
+    queryFn: async ({ signal }): Promise<CalendarResponse> =>
+      unwrap(
+        client.calendar.$get(
+          {
+            query: {
+              from: range.from.toISOString(),
+              to: range.to.toISOString(),
+              ...(broker === undefined ? {} : { broker }),
             },
-            { init: { signal } },
-          ),
-          calendarResponseSchema,
-        )
-      ).entries,
+          },
+          { init: { signal } },
+        ),
+        calendarResponseSchema,
+      ),
     refetchInterval: TRACKING_REFETCH_MS,
     refetchIntervalInBackground: false,
   });

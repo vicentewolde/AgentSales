@@ -27,6 +27,7 @@ import { buildSocialBrief, postPlatforms, socialTargets } from "../social/brief.
 import { buildPostCheckContext } from "../social/check.js";
 import { draftPostTexts } from "../social/draft-texts.js";
 import { kindProblem } from "../social/networks.js";
+import { postLanguageExcluded, postLanguages } from "../social/post-languages.js";
 import { SOCIAL_PROMPT_VERSION } from "../social/prompt.js";
 import { postSubject } from "../subject.js";
 
@@ -226,10 +227,12 @@ async function texts(
     );
   }
   const current = scope === null ? [] : await deps.contents.listCurrent(postSubject(post.id));
-  const languages =
-    scope?.language === null || scope?.language === undefined
-      ? profile.languages
-      : [scope.language];
+  // Los idiomas del post (los suyos o los de la marca, 2026-11-15): un idioma quitado no se redacta,
+  // tampoco en una redacción acotada («Rehacer este texto», una red agregada).
+  const allowed = postLanguages(post, profile.languages);
+  const asked = scope?.language ?? null;
+  if (asked !== null && !allowed.includes(asked)) throw postLanguageExcluded(post.id, asked);
+  const languages = asked === null ? allowed : [asked];
   const targets = socialTargets(scoped, languages).filter(
     (target) =>
       scope?.mode !== "missing" ||

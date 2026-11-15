@@ -104,3 +104,46 @@ describe("el detalle del día", () => {
     expect(onClose).toHaveBeenCalled();
   });
 });
+
+describe("los borradores en el calendario (2026-11-15)", () => {
+  it("se ven aparte de lo programado, con la etiqueta «Borrador», y llevan al post", () => {
+    render(
+      <MemoryRouter>
+        <CalendarGrid
+          view="semana"
+          anchor={DAY}
+          today={DAY}
+          entries={[entry(9, { kind: "scheduled", status: "scheduled", schedule: "upcoming" })]}
+          drafts={[
+            {
+              postId: "post-1",
+              title: "Idea de marca",
+              brokerId: "b1",
+              brokerSlug: "agentpey",
+              at: new Date(chileDateStart(DAY).getTime() + 10 * 3_600_000),
+              approved: false,
+            },
+            {
+              postId: "post-2",
+              title: "Aprobado sin hora",
+              brokerId: "b1",
+              brokerSlug: "agentpey",
+              at: new Date(chileDateStart(DAY).getTime() + 11 * 3_600_000),
+              approved: true,
+            },
+          ]}
+          onOpenDay={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    const day = screen.getByRole("listitem", { name: /martes 20 de octubre/ });
+    const draft = within(day).getByRole("link", { name: /Idea de marca, borrador/ });
+    expect(draft.getAttribute("href")).toBe("/contenido/post-1");
+    expect(draft.className).toContain("border-dashed");
+    expect(within(draft).getByText("Borrador")).toBeTruthy();
+    expect(within(day).getByRole("link", { name: /aprobado, sin hora/ })).toBeTruthy();
+    // Lo programado sigue siendo su botón de siempre, sin el borde punteado.
+    const scheduled = within(day).getByRole("button", { name: /Instagram/ });
+    expect(scheduled.className).not.toContain("border-dashed");
+  });
+});

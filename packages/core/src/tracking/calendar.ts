@@ -112,3 +112,64 @@ export function calendarEntries(input: CalendarInput): CalendarEntry[] {
       a.publicationId.localeCompare(b.publicationId),
   );
 }
+
+/**
+ * Un borrador en el calendario (2026-11-15): un post en borrador o listo con su fecha planeada en el
+ * rango y nada programado ni publicado todavía. Se muestra distinto de lo programado (punteado y
+ * con la etiqueta «Borrador», o «Aprobado, sin hora» si ya tiene textos aprobados), y lleva a su
+ * página de Contenido: no se mueve desde el calendario.
+ */
+export type CalendarDraft = {
+  postId: string;
+  title: string;
+  brokerId: string;
+  /** La fecha planeada (`planned_at`). */
+  at: Date;
+  /** `true` si ya tiene una publicación aprobada (sin hora); `false` si no aprobó nada. */
+  approved: boolean;
+};
+
+/** Lo que ya está en el calendario, saliendo o por resolver: un post con algo así no es borrador. */
+const NOT_DRAFT: ReadonlySet<PublicationStatus> = new Set([
+  "scheduled",
+  "publishing",
+  "published",
+  "awaiting_manual_confirm",
+  "outcome_unknown",
+  "failed",
+]);
+
+/**
+ * Los borradores del calendario (`calendarDrafts`, pura): los posts `draft` o `ready` con
+ * `plannedAt` en `[from, to)` sin publicaciones programadas, publicadas ni en curso. Las ideas no
+ * entran (están en Plan). Por fecha y después título.
+ */
+export function calendarDrafts(input: {
+  posts: readonly Pick<Post, "id" | "brokerId" | "topic" | "status" | "plannedAt">[];
+  publications: readonly Pick<Publication, "subject" | "status">[];
+  from: Date;
+  to: Date;
+}): CalendarDraft[] {
+  const drafts: CalendarDraft[] = [];
+  for (const post of input.posts) {
+    if (post.status !== "draft" && post.status !== "ready") continue;
+    const at = post.plannedAt;
+    if (at === null || at.getTime() < input.from.getTime() || at.getTime() >= input.to.getTime()) {
+      continue;
+    }
+    const own = input.publications.filter(
+      ({ subject }) => subject.kind === "post" && subject.id === post.id,
+    );
+    if (own.some((publication) => NOT_DRAFT.has(publication.status))) continue;
+    drafts.push({
+      postId: post.id,
+      title: post.topic,
+      brokerId: post.brokerId,
+      at,
+      approved: own.some((publication) => publication.status === "approved"),
+    });
+  }
+  return drafts.sort(
+    (a, b) => a.at.getTime() - b.at.getTime() || a.title.localeCompare(b.title, "es"),
+  );
+}

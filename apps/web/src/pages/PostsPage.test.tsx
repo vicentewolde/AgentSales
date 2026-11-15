@@ -167,7 +167,12 @@ describe("panel: perfil editorial", () => {
     s.renderApp("/mi-marca");
     const section = await screen.findByRole("region", { name: "Perfil editorial" });
     const form = await within(section).findByRole("form", { name: "Perfil editorial" });
-    fireEvent.change(within(form).getByLabelText("Segundo idioma"), { target: { value: "en" } });
+    // «Idiomas de los posts»: el español viene marcado y no se puede quitar si es el único.
+    expect(
+      (within(form).getByRole("checkbox", { name: "Español" }) as HTMLInputElement).disabled,
+    ).toBe(true);
+    fireEvent.click(within(form).getByRole("checkbox", { name: "Inglés" }));
+    expect(within(form).getByLabelText("Principal")).toBeTruthy();
     fireEvent.change(within(form).getByLabelText(/^Público/), {
       target: { value: "Corredores independientes" },
     });

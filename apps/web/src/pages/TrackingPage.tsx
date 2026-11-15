@@ -368,25 +368,53 @@ export function TrackingPosts({
       (publication) => !isSupersededSimulation(publication) && publication.status !== "cancelled",
     );
   const columns = POST_PLATFORMS.filter((platform) => posts.some(visible(platform)));
+  // 2026-11-15: la primera columna es el post y las demás, sus redes (encabezado agrupado). En el
+  // teléfono la misma tabla se lee como tarjetas: cada post arriba y sus redes en lista, sin
+  // desplazarse de lado (las celdas vacías no se muestran).
   return (
-    <div className="mt-2 overflow-x-auto rounded-xl border border-line bg-surface shadow-xs">
-      <table className="ui-table">
-        <thead>
+    <div className="mt-2 rounded-xl border border-line bg-surface shadow-xs md:overflow-x-auto">
+      <table className="ui-table max-md:block">
+        <thead className="max-md:hidden">
           <tr>
-            <th scope="col">Post</th>
-            {columns.map((platform) => (
-              <th key={platform} scope="col">
-                {PLATFORM_TEXT[platform]}
+            <th scope="col" rowSpan={columns.length > 0 ? 2 : 1} className="align-bottom">
+              Post
+            </th>
+            {columns.length > 0 && (
+              <th
+                scope="colgroup"
+                colSpan={columns.length}
+                className="border-l border-line text-center"
+              >
+                Redes
               </th>
-            ))}
+            )}
           </tr>
+          {columns.length > 0 && (
+            <tr>
+              {columns.map((platform, index) => (
+                <th
+                  key={platform}
+                  scope="col"
+                  className={index === 0 ? "border-l border-line" : undefined}
+                >
+                  {PLATFORM_TEXT[platform]}
+                </th>
+              ))}
+            </tr>
+          )}
         </thead>
-        <tbody>
+        <tbody className="max-md:block">
           {entries.map(({ row, progress, when }) => {
             const brand = brandOf?.(row.post.brokerId) ?? null;
             return (
-              <tr key={row.post.id}>
-                <th scope="row" className="min-w-48 font-normal">
+              <tr
+                key={row.post.id}
+                className="max-md:block max-md:border-b max-md:border-line max-md:px-3 max-md:py-3 max-md:last:border-b-0"
+              >
+                <th
+                  scope="row"
+                  className="font-normal max-md:block max-md:border-0 max-md:p-0 md:min-w-48"
+                >
                   <Link
                     to={`/contenido/${row.post.id}`}
                     className="font-semibold text-fg underline-offset-2 hover:text-brand-700 hover:underline"
@@ -401,17 +429,26 @@ export function TrackingPosts({
                   </span>
                   {brand !== null && <span className="block text-xs text-fg-subtle">{brand}</span>}
                 </th>
-                {columns.map((platform) => {
+                {columns.map((platform, index) => {
                   const shown = row.cells[platform].filter(
                     (publication) =>
                       !isSupersededSimulation(publication) && publication.status !== "cancelled",
                   );
                   return (
-                    <td key={platform}>
+                    <td
+                      key={platform}
+                      className={`max-md:mt-2 max-md:flex max-md:gap-3 max-md:border-0 max-md:p-0 ${
+                        index === 0 ? "md:border-l md:border-line" : ""
+                      } ${shown.length === 0 ? "max-md:hidden" : ""}`}
+                    >
+                      {/* En el teléfono, el nombre de la red va junto a lo suyo. */}
+                      <span className="w-20 shrink-0 text-xs font-semibold text-fg-muted md:hidden">
+                        {PLATFORM_TEXT[platform]}
+                      </span>
                       {shown.length === 0 ? (
                         <span className="text-fg-subtle">—</span>
                       ) : (
-                        <ul className="space-y-2">
+                        <ul className="min-w-0 space-y-2">
                           {shown.map((publication) => (
                             <PostCellPublication
                               key={publication.id}

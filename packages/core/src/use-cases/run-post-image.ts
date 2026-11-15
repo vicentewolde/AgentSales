@@ -34,6 +34,7 @@ import {
   sniffImage,
 } from "../post-image.js";
 import { scrubMessage } from "../redact.js";
+import { postLanguages } from "../social/post-languages.js";
 import { postSubject } from "../subject.js";
 import { assertCardsRemovable, cardMediaIds, deleteStoredFiles } from "./post-cards-cleanup.js";
 import { POST_UPLOAD } from "./post-uploads.js";
@@ -151,10 +152,10 @@ async function produce(
     // Un solo texto, de **un** idioma (el del pedido; en uno anterior al idioma, el principal de la
     // marca), y no más tarjetas de las que admite la red más estricta del post. La portada y el
     // cierre salen de ese mismo texto: nada de otro idioma.
-    const [primary] = editorialProfileView(
-      broker.id,
-      await deps.editorialProfiles.get(broker.id),
-    ).languages;
+    const [primary] = postLanguages(
+      post,
+      editorialProfileView(broker.id, await deps.editorialProfiles.get(broker.id)).languages,
+    );
     const language = request.language ?? primary;
     const deck = postCardDeck(
       { ...post, kind: post.kind },

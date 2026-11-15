@@ -226,6 +226,24 @@ describe("updatePost", () => {
   });
 });
 
+describe("updatePost · idiomas (2026-11-15)", () => {
+  it("fija los idiomas del post, null vuelve a los de la marca y uno que no existe es 400", async () => {
+    const s = await setup();
+    const post = await createPost(s.deps, ADMIN, { brokerId: s.mine.id, topic: "Solo español" });
+    expect(post.languages).toBeNull();
+    expect(
+      (await updatePost(s.deps, ADMIN, post.id, { languages: ["EN", "es"] })).languages,
+    ).toEqual(["es", "en"]);
+    expect((await updatePost(s.deps, ADMIN, post.id, { languages: null })).languages).toBeNull();
+    await expect(updatePost(s.deps, ADMIN, post.id, { languages: [] })).rejects.toMatchObject({
+      code: "POST_INVALID",
+    });
+    await expect(updatePost(s.deps, ADMIN, post.id, { languages: ["fr"] })).rejects.toMatchObject({
+      code: "POST_INVALID",
+    });
+  });
+});
+
 describe("updatePost · música (F9.5-T19)", () => {
   it("elegir o quitar la pista encola post.media; repetirla no; una que no existe es 400", async () => {
     const s = await setup();

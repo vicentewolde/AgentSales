@@ -190,6 +190,13 @@
       "when": 1794767035583,
       "tag": "0026_f96_alcance_de_la_corrida",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1794769282482,
+      "tag": "0027_idiomas_y_hashtags",
+      "breakpoints": true
     }
   ]
 }

@@ -208,6 +208,28 @@ describe("defaultWeekDay", () => {
 });
 
 describe("approvePostWeek", () => {
+  it("un texto de un idioma que la marca no usa no se aprueba ni da problemas (2026-11-15)", async () => {
+    const s = await setup();
+    // Sin perfil, la marca escribe solo en español: el texto en inglés queda fuera, sin alerta.
+    const post = await s.addPost({
+      topic: "Lunes",
+      at: "2026-10-26 10:00",
+      texts: [
+        { platform: "linkedin" },
+        { platform: "linkedin", language: "en", body: "Hello, Chileans." },
+      ],
+    });
+    const result = await approvePostWeek(s.deps, ADMIN, {
+      brokerId: s.broker.id,
+      day: "2026-10-27",
+      dryRun: true,
+      by: "operator",
+    });
+    expect(result.posts[0]?.problems).toEqual([]);
+    expect(result.posts[0]?.approved).toEqual([{ platform: "linkedin", language: "es" }]);
+    expect(s.ofPost(post.id).map((publication) => publication.language)).toEqual(["es"]);
+  });
+
   it("aprueba y programa cada post aceptado de la semana a su fecha, sin publicar nada ahora", async () => {
     const s = await setup();
     const first = await s.addPost({ topic: "Lunes", at: "2026-10-26 10:00" });
