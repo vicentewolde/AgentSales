@@ -4,6 +4,7 @@ import { createFakeStockPhotoProvider } from "@agentsales/core/testing";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { brokerData, harness } from "../../../test/harness.js";
+import { suggestedFormat } from "./GetImagePanel.js";
 
 // F9.5-T25 (ADR-0038): «Conseguir imagen» en el detalle de un post, contra la API real en proceso:
 // sin claves, solo las tarjetas y lo que falta; con la biblioteca, buscar y elegir; con la IA, la
@@ -517,5 +518,15 @@ describe("panel: conseguir imagen", () => {
   it("un post de solo texto no ofrece conseguir imagen", async () => {
     await setup({ kind: "text" });
     expect(screen.queryByRole("button", { name: /^Conseguir una imagen automática/ })).toBeNull();
+  });
+});
+
+describe("suggestedFormat (F9.7 B6)", () => {
+  it("sugiere la cuadrada si el post va a X o a LinkedIn, y la vertical si no", () => {
+    expect(suggestedFormat(["instagram", "x"])).toBe("1:1");
+    expect(suggestedFormat(["linkedin"])).toBe("1:1");
+    expect(suggestedFormat(["instagram"])).toBe("4:5");
+    expect(suggestedFormat(null)).toBe("4:5");
+    expect(suggestedFormat(undefined)).toBe("4:5");
   });
 });

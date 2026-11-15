@@ -64,8 +64,8 @@ export function PostPreview({
           className="rounded-lg border border-line-soft bg-canvas px-3 py-2 text-sm text-fg-muted"
         >
           X muestra {images.length > 4 ? "solo 4 imágenes" : `las ${images.length} imágenes`} en una
-          cuadrícula que recorta cada una (arriba y abajo, como abajo). Si las láminas tienen texto,
-          se cortará: conviene publicarlo como hilo, una lámina por post.
+          cuadrícula que recorta cada una. Si las láminas tienen texto, se cortará: conviene
+          publicarlo como hilo, una lámina por post. Con una sola imagen no se recorta.
         </p>
       )}
       {platform === "linkedin" && kind === "carousel" && images.length >= 2 && video === null && (

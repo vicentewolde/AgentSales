@@ -132,3 +132,10 @@ El operador edita un post y ve el cambio reflejado en el mismo post (una red agr
 - La ortografía (B8) es una lista acotada por idioma, sin dependencia ni IA (sin costo y sin falsos positivos con nombres de marca).
 - El logo del estilo va dentro del JSON (SVG sin scripts ni referencias externas, o PNG en base64), no como medio en R2.
 - «¿Salió?» (B10): para una aprobada o programada, «Ya lo publiqué» la registra con su enlace (`post record`) y «No salió» la cancela.
+
+### Ajuste de láminas y vista previa (rama `fix/laminas-espaciado-y-redes`, `CARD_RENDER_VERSION` 4)
+- **Titular con interlineado parejo:** el titular se dibuja en una sola pasada de texto (una capa con la parte normal y otra idéntica con solo la parte destacada, pintada con el degradado), así todas las líneas quedan a la misma distancia; además se angosta el ancho mientras no cambie el número de líneas, para que no quede una palabra sola abajo.
+- **Sin subtítulo:** ya era válido en core, API y panel (cadena vacía); ahora el dibujante centra el bloque (medalla + titular [+ subtítulo]) entre el logo y el pie con el mismo aire arriba y abajo. CLI: `post cards-text <id> --language es --clear-subtitle`.
+- **1:1:** el texto queda dentro del centro de 3:4 (márgenes laterales de 135 px) porque la cuadrícula del perfil de Instagram recorta a 3:4. El panel sugiere 1:1 si el post va a X o LinkedIn.
+- **Vista previa (B9):** una sola imagen en X, LinkedIn y Discord se muestra entera (antes se recortaba a 4:3, un recorte que esas redes no hacen); la cuadrícula de varias imágenes sí recorta.
+- **Qué hacen las redes (lo confirmado y lo no):** no hay documentación oficial de X con las proporciones del feed; las guías de terceros coinciden en que 4:5 y 1:1 se ven completas, pero sus límites exactos difieren. LinkedIn (página oficial de anuncios) prefiere 4:5 en móvil; para publicaciones orgánicas solo hay guías de terceros. Instagram pasó el perfil a una cuadrícula 3:4 (comunicado por su jefe, cubierto por la prensa; no hay página oficial verificada): 1:1 se recorta a los lados y 4:5 apenas. Conviene una prueba real con un post antes de afirmarlo.

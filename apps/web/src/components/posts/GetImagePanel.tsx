@@ -60,7 +60,7 @@ function nextTab(current: Tab, key: string): Tab | null {
 const FORMAT_TEXT: Readonly<Record<PostImageFormat, string>> = {
   "4:5": "Vertical 4:5 (1080 × 1350, Instagram)",
   "9:16": "Vertical 9:16 (1080 × 1920, reel e historia)",
-  "1:1": "Cuadrada 1:1 (1080 × 1080)",
+  "1:1": "Cuadrada 1:1 (1080 × 1080, Instagram, X y LinkedIn)",
 };
 
 const SOURCE_TEXT = { card: "Tarjetas", stock: "Biblioteca", ai: "IA" } as const;
@@ -83,6 +83,15 @@ function Missing({ what, variable }: { what: string; variable: string | null }) 
   );
 }
 
+/**
+ * La proporción que se sugiere (F9.7 B6): una imagen cuadrada 1:1 se ve entera en el feed de X, en
+ * el de LinkedIn y en Instagram; la vertical 4:5 es la mejor en Instagram. Si el post va a X o a
+ * LinkedIn, cuadrada; si no (o no se sabe), vertical.
+ */
+export function suggestedFormat(platforms: PostJson["platforms"] | undefined): PostImageFormat {
+  return platforms?.some((platform) => platform === "x" || platform === "linkedin") ? "1:1" : "4:5";
+}
+
 function FormatSelect({
   value,
   onChange,
@@ -91,7 +100,10 @@ function FormatSelect({
   onChange: (format: PostImageFormat) => void;
 }) {
   return (
-    <Field label="Proporción">
+    <Field
+      label="Proporción"
+      hint="Para X o LinkedIn conviene la cuadrada 1:1 (se ve entera en las tres redes); en Instagram sola, la vertical 4:5."
+    >
       <Select
         width="auto"
         value={value}
@@ -478,14 +490,14 @@ export function GetImagePanel({
   post,
   lockReason,
 }: {
-  post: Pick<PostJson, "id" | "kind">;
+  post: Pick<PostJson, "id" | "kind"> & { platforms?: PostJson["platforms"] };
   lockReason: string | null;
 }) {
   const ids = useId();
   const tabRefs = useRef(new Map<Tab, HTMLButtonElement>());
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("card");
-  const [format, setFormat] = useState<PostImageFormat>("4:5");
+  const [format, setFormat] = useState<PostImageFormat>(suggestedFormat(post.platforms));
   const [prompt, setPrompt] = useState<string | null>(null);
   const options = usePostImageOptions(post.id, open);
   const request = useRequestPostImage(post.id);

@@ -384,7 +384,10 @@ export function registerPostMedia(post: Command, ctx: CliContext): void {
     .option("--pick <n o id>", "con --stock: elige el resultado n (desde 1) o la foto con ese id")
     .option("--people", "con --stock: incluye fotos con personas")
     .option("--ai <indicación>", "crea una imagen con IA (sin texto dentro; tiene costo y tope)")
-    .option("--format <proporción>", `${POST_IMAGE_FORMATS.join(" o ")} (por defecto 4:5)`)
+    .option(
+      "--format <proporción>",
+      `${POST_IMAGE_FORMATS.join(" o ")} (por defecto 4:5; 1:1 se ve entera en Instagram, X y LinkedIn)`,
+    )
     .option(
       "--composition <announce|explain>",
       "con el estilo de la marca: Anuncio (objeto central y titular) o Explicar (grilla)",

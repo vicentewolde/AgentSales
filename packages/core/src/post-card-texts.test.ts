@@ -111,3 +111,24 @@ describe("el PDF de LinkedIn", () => {
     }
   });
 });
+
+describe("lámina sin subtítulo (F9.7 B5)", () => {
+  it("un subtítulo vacío o ausente es válido, no da aviso y el mazo lo deja sin subtítulo", () => {
+    expect(
+      checkCardText({ headline: "Solo el titular", subtitle: "" }, { sources: "", avoid: [] }),
+    ).toEqual([]);
+    const texts = normalizeCardTexts([
+      { headline: "Solo el titular" },
+      { headline: "Punto", subtitle: null },
+    ]);
+    expect(texts.map((text) => text.subtitle)).toEqual(["", ""]);
+    const deck = cardDeckFromTexts({
+      texts: texts.map((text, index) => ({ ...text, position: index + 1 })),
+      kind: "image",
+      brandName: "AgentPey",
+      detail: "@agentpeyai",
+      maxPoints: 4,
+    });
+    expect(deck[0]?.subtitle).toBeNull();
+  });
+});
