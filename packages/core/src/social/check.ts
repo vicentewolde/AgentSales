@@ -45,6 +45,7 @@ import {
   hashtagPolicy,
   hashtagsOutsideList,
 } from "./post-hashtags.js";
+import { misspellings } from "./spelling.js";
 
 // La revisión de los textos de un post (spec F9 §4.4, ADR-0030 punto 7): una función pura que
 // corre sobre el texto final, también después de una edición manual, y no se guarda (se calcula
@@ -899,6 +900,17 @@ export function checkPostContent(
       "u",
     );
     if (pattern.test(folded)) add("AVOID_TERM", `Usa «${term}», que el perfil pide evitar`);
+  }
+
+  // F9.7 B8: la ortografía (aviso), sobre todo de lo que el operador editó a mano.
+  if (text.language !== undefined) {
+    const wrong = misspellings(text.body, text.language);
+    if (wrong.length > 0) {
+      add(
+        "SPELLING",
+        `Revisa la ortografía: ${wrong.map((item) => `«${item.word}» → «${item.suggestion}»`).join(", ")}`,
+      );
+    }
   }
 
   const tells = findAiTells(text.body);

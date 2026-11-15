@@ -297,7 +297,8 @@ function CardsTab({
       ...(first === undefined ? {} : { language: first }),
       ...(rest.length > 0 ? { thenLanguages: rest } : {}),
       ...(anyExisting && replace ? { replaceCards: true } : {}),
-      composition,
+      // «Anuncio» es la composición por defecto: solo se manda «Explicar».
+      ...(composition === "announce" ? {} : { composition }),
     });
   };
   return (

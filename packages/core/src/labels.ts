@@ -427,6 +427,7 @@ export const AGENDA_KIND_TEXT: Readonly<Record<AgendaKind, string>> = {
   worker_off: "El worker está apagado y hay algo por vencer",
   overdue: "Atrasadas",
   your_turn: "Te toca (Marketplace)",
+  did_it_go_out: "¿Salió?",
   outcome_unknown: "No se sabe si salieron",
   stuck: "Atascadas",
   failed: "Fallaron",

@@ -27,6 +27,7 @@ const item = (extra: Partial<Item>): Item => ({
   platform: "instagram",
   format: "post",
   publicationId: "p1",
+  language: null,
   at: new Date("2026-10-19T13:00:00.000Z"),
   dryRun: true,
   modeFixed: true,

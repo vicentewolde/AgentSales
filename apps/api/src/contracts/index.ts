@@ -1220,6 +1220,8 @@ export const agendaItemSchema = z.object({
   platform: z.enum(PLATFORMS).nullable(),
   format: z.enum(PUBLICATION_FORMATS).nullable(),
   publicationId: z.string().nullable(),
+  /** F9.7 B10: el idioma del texto de la publicación; `null` si no es una o de un servidor anterior. */
+  language: z.enum(LANGUAGES).nullable().default(null),
   at: z.coerce.date().nullable(),
   dryRun: z.boolean().nullable(),
   /** Como en el seguimiento: si el modo ya está fijado (D4 del spec F9.5); `true` si no es una publicación. */

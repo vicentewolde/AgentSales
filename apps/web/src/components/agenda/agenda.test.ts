@@ -18,6 +18,7 @@ const item = (extra: Partial<Item>): Item => ({
   platform: "linkedin",
   format: "post",
   publicationId: "pub-1",
+  language: null,
   at: new Date(),
   dryRun: false,
   modeFixed: true,
