@@ -121,3 +121,14 @@ El operador edita un post y ve el cambio reflejado en el mismo post (una red agr
 - **Prompt más caro:** tope (D5) y medición con `eval:social`.
 - **Láminas feas o ilegibles con otro estilo:** contraste comprobado en tests y revisión de diseño con capturas antes de fusionar.
 - **Dos ramas con migraciones a la vez:** se renumera al fusionar; las migraciones son aditivas.
+
+## 9. Notas de la implementación (parte B, rama `feat/f97-lote-2-marca`)
+- El ADR es **ADR-0043** (el 0042 ya era «el idioma de cada imagen»).
+- Las rutas usan el id del corredor, como el resto de `/brokers/:id` (no el slug): `/brokers/:id/knowledge`, `/knowledge/updates`, `/knowledge/proposals`, `/knowledge/runs/:runId`, `/brokers/:id/card-style` (y `/preview`), `/posts/:id/card-texts` y `/posts/:id/linkedin-pdf`.
+- Se sumó `brand_knowledge_runs` (la corrida de B2: texto, estado y gasto, que entra al tope de IA); la migración es la **0028** (todo aditivo).
+- El conocimiento viaja con el perfil (`editorialProfilesWithKnowledge`): así llega a redactar, rehacer, agregar una red, revisar, aprobar y al plan sin tocar esos casos de uso.
+- Las láminas se piden solo en la redacción completa (no al rehacer un texto ni al agregar una red).
+- El PDF de LinkedIn se escribe a mano (sin `pdf-lib`): solo imágenes JPEG, una por página.
+- La ortografía (B8) es una lista acotada por idioma, sin dependencia ni IA (sin costo y sin falsos positivos con nombres de marca).
+- El logo del estilo va dentro del JSON (SVG sin scripts ni referencias externas, o PNG en base64), no como medio en R2.
+- «¿Salió?» (B10): para una aprobada o programada, «Ya lo publiqué» la registra con su enlace (`post record`) y «No salió» la cancela.

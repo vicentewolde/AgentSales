@@ -495,3 +495,15 @@ El registro verificable de una propiedad: uno por propiedad (`listing_id` único
 
 ## `lead_webhook_keys` (F10, migración 0024)
 Una fila por corredor con el `secret_hash` (sha256) del secreto del webhook de ManyChat; el secreto en claro se muestra una sola vez al generarlo o rotarlo. Se borra con el corredor.
+
+## Conocimiento y estilo de la marca (F9.7 parte B, migración 0028, ADR-0043)
+Todas aditivas (tablas nuevas y una columna que acepta `null`). Los valores de texto (`source`, `status`, `kind`, `role`, `language`) se validan con las tuplas de core (`KNOWLEDGE_*`, `CARD_TEXT_ROLES`, `LANGUAGES`), como `posts.platforms`.
+- **`brand_knowledge`** (`broker_id` PK, `stance`, `tone`): «Qué queremos transmitir» y «Tono y forma de contar» (hasta 2.000 cada uno).
+- **`brand_knowledge_examples`** (`id`, `broker_id`, `text`, `note`, `favorite`, `sort_order`): hasta 10 ejemplos de texto (3.000 cada uno). Guía de **forma**, nunca fuente de hechos (D1).
+- **`brand_knowledge_updates`** (`id`, `broker_id`, `project`, `date` `AAAA-MM-DD`, `text`, `source` `operator|proposal`, `archived_at`): las novedades de los proyectos. **Fuente de hechos** (entran en `profileSources`); borrar es archivar.
+- **`brand_knowledge_runs`** (`id`, `broker_id`, `status`, `source_text`, `warnings`, `error`, `llm_usage`, `created_by`, `started_at`, `finished_at`): cada «Actualizar desde un texto» (job `brand.propose`); una activa por marca (índice único parcial). Su `llm_usage` entra en `sumLlmCost` (el tope de IA del mes). No estaba en el spec (§4.3 nombraba `run_id` sin su tabla): se agregó para guardar el texto, el estado y el gasto de la corrida.
+- **`brand_knowledge_proposals`** (`id`, `broker_id`, `run_id`, `kind` `update|fact`, `text`, `project`, `date`, `status` `pending|accepted|discarded`, `position`): lo que propone la IA; nada entra sin el operador (D2).
+- **`brand_card_styles`** (`broker_id` PK, `style` jsonb validado con `cardStyleSchema`, `version`): el estilo de las imágenes (colores, fuentes de `CARD_FONTS`, márgenes, logo SVG o PNG en el JSON y de 1 a 4 temas).
+- **`posts.card_theme`** (int, null): el tema de la rotación que le tocó al post; se fija la primera vez (`assignTheme`: cuántos posts de la marca ya tienen tema, módulo los temas).
+- **`post_card_texts`** (`post_id`, `language`, `position` PK; `role` `cover|point`, `headline`, `subtitle`, `approved`): los textos de las láminas. La IA los escribe con `approved = false` y no pisa un idioma que el operador ya revisó.
+- Borrar un corredor (ADR-0035) borra también todo lo anterior (`broker-purge.ts`).

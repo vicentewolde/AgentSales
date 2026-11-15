@@ -579,3 +579,23 @@ Para errores de las últimas 6 horas, Neon tiene además su propia restauración
 - **Hashtags sugeridos**: al editar un texto, bajo «Hashtags» aparecen sugerencias (los del perfil de la marca y los nombres propios y siglas del texto) y cuántos conviene usar en esa red; toca uno para agregarlo. No gasta IA.
 - **Imágenes**: lo normal es diseñarlas aparte y subirlas en «Fotos y videos». «Conseguir una imagen automática (opcional)» queda como enlace: tarjetas de la marca o una foto de Pixabay (US$0); la imagen con IA solo aparece si está configurada en el servidor.
 - Pasa el mouse por un botón (o enfócalo con el teclado) y aparece qué hace.
+
+## La IA conoce la marca y las láminas con su estilo (F9.7 parte B)
+
+### Conocimiento (Mi marca → Conocimiento)
+- **Qué queremos transmitir** y **Tono y forma de contar**: en tus palabras. Guían el enfoque; no son hechos.
+- **Ejemplos que me gustan** (hasta 10, marca ★ los que más): la IA copia su forma, nunca sus datos. Si un texto copia una cifra de un ejemplo, la revisión lo marca.
+- **Novedades de los proyectos** (fecha, proyecto y texto): son hechos que la IA puede afirmar. La IA ve las de los últimos 90 días. Archiva las que ya no son verdad.
+- **Actualizar desde un texto**: pega tus notas de la semana, un informe o un README y aprieta «Leer y proponer». La IA propone novedades y hechos; acepta (puedes editar antes) o descarta cada una. Gasta IA de la marca. En la CLI: `pnpm -s cli brand propose --file notas.txt` y `brand proposals accept|discard <id>`.
+
+### Estilo de imágenes (Mi marca → Estilo de imágenes)
+- Para AgentPey, carga `docs/marca/agentpey/estilo.json` (traducido de `DISENO.md`): «Cargar un archivo», mira la lámina de muestra en cada tema y composición, y «Guardar el estilo». En la CLI: `pnpm -s cli brand style edit --broker agentpey --file docs/marca/agentpey/estilo.json` y `brand style preview --theme 2 --composition explain`.
+- Con estilo, «Conseguir imagen → Tarjetas de la marca» dibuja las láminas con él y elige **Anuncio** (objeto central y titular) o **Explicar** (grilla). Cada post toma un tema de la rotación y lo mantiene al rehacer.
+
+### Láminas de un post
+- Al redactar un post de imagen o carrusel, la IA escribe también el texto de cada lámina. Edítalos en «Láminas» del post (o `post cards-text <id> --language es --file láminas.json`); lo que guardas ya no lo pisa una redacción nueva.
+- En un carrusel, «Descargar PDF para LinkedIn» baja las láminas de un idioma en un PDF: súbelo en LinkedIn como documento y se ve como carrusel. Haz antes las tarjetas de ese idioma.
+- La vista previa de cada texto avisa si X recorta las láminas en su cuadrícula (conviene un hilo) y muestra cómo queda la primera imagen en la cuadrícula del perfil de Instagram.
+
+### «¿Salió?»
+- En Hoy y Seguimiento aparece una publicación a mano (aprobada, programada o lista para publicar a mano) cuya hora pasó hace más de 12 horas. Si ya la publicaste, pega el enlace y «Ya lo publiqué» (lista para publicar a mano: sin enlace también, en LinkedIn); si no, «No salió» (una aprobada o programada se cancela: vuelve a programarla desde el post).

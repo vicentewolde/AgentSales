@@ -328,3 +328,28 @@ Imprime cada idea (aceptada o descartada con su motivo) y cada texto con su revi
 **Código de salida:** 1 si hubo fallas de la IA, un corte, o problemas que **llegan al operador**: textos con errores de la revisión o con problemas de escape. Las ideas que el plan descarta (repetidas, fuera del perfil, menciones masivas…) son la defensa funcionando: se muestran como estadística ("descartadas por el plan", por motivo) y no cambian la salida, salvo con `--strict`, que también sale con 1 si el plan descartó alguna. Las advertencias (parecidas y términos a evitar) nunca la cambian.
 
 **Límite conocido: "fuera del perfil" no es una garantía.** Cuenta lo que ve la heurística de hechos de core (`unsupportedFacts` y `checkPostContent`), con sus mismos límites (sección del texto por red). En particular, no ve clientes con nombre de empresa en una línea con forma de título: "Trabajamos con Banco Estado y Falabella", sin punto final y con sus palabras largas en mayúscula, se toma como título y no se revisa como nombres (con el perfil `sin-hechos` da `[]`). Un cero en ese contador no reemplaza leer las ideas y los textos: el operador sigue aprobando cada uno.
+
+## Posts de marca: el conocimiento de la marca (F9.7 B1 a B3, ADR-0043)
+- El perfil que lee la IA trae `knowledge` (`editorialProfilesWithKnowledge`), con un tope fijo (B3, D5): postura y tono completos, hasta **3 ejemplos** (los favoritos primero) y las **novedades de los últimos 90 días** (hasta 20).
+- **Textos** (`SOCIAL_PROMPT_VERSION = social-post-v6`): el bloque de datos suma `postura`, `forma_de_contar`, `ejemplos_de_forma` (`texto`, `por_que_gusta`) y `novedades` (`fecha`, `proyecto`, `texto`). Reglas nuevas: la regla 1 cuenta las `novedades` como fuente; la 10 dice que los ejemplos son de **forma** («imita cómo abren, el ritmo, el largo de las frases, cómo cuentan una escena y cómo cierran, nunca su contenido; ninguna cifra, nombre, fecha, cliente ni hecho de un ejemplo se puede afirmar si no está en las fuentes»); la 11, que postura y forma guían el enfoque y la voz, no son hechos. Llega a todas las redacciones, también a «Rehacer este texto» y a una red agregada.
+- **Plan** (`PLAN_PROMPT_VERSION = social-plan-v4`): suma `postura`, `forma_de_contar` y `novedades` (sin los ejemplos). La regla 2 permite apoyarse en hechos y novedades; la 13 pide que, si hay novedades, al menos una idea se apoye en la más reciente que calce con las líneas.
+- **Revisión de hechos** (`FACT_NOT_IN_PROFILE`, en textos, ideas y láminas): las fuentes suman cada novedad como `«proyecto (fecha): texto»`; los ejemplos, la postura y el tono **no** son fuente (D1). Una cifra copiada de un ejemplo se marca.
+- Costo: el perfil `con-conocimiento` de `pnpm eval:social` mide el prompt con conocimiento contra `dos-idiomas` (D5: no más de un 30 % por texto); se mide con un proveedor real (lo corre el operador).
+
+## Posts de marca: «Actualizar desde un texto» (F9.7 B2, ADR-0043)
+- Prompt propio (`KNOWLEDGE_PROMPT_VERSION = brand-knowledge-v1`, en core, `social/knowledge-prompt.ts`): el texto pegado (hasta 20.000) va en el bloque `<texto_del_operador>`, con `hechos_actuales`, `novedades_actuales` y `proyectos_conocidos` para no repetir. La IA **propone** `update` (novedad con proyecto y fecha si el texto la dice) o `fact` (hecho estable), hasta 20, con sus mismas cifras, fechas y nombres; sin datos personales de terceros ni secretos (los avisa en `warnings`).
+- La validación no reintenta por detalles: una novedad sin proyecto pasa a hecho, una fecha que no es `AAAA-MM-DD` queda `null`, los repetidos se quitan.
+
+## Posts de marca: los textos de las láminas (F9.7 B5)
+- Con un post de **imagen o carrusel**, la redacción completa pide también `slides` (`laminas_pedidas`, `puntos_maximos`): por idioma, la portada (`cover`) y, en un carrusel, un punto por lámina (`point`, hasta el tope de la red más estricta menos portada y cierre). Titular de hasta **8 palabras** y subtítulo de hasta **20**, con las mismas reglas de hechos, evitar y voz, sin hashtags, emojis ni enlaces. Al rehacer un texto o agregar una red no se piden.
+- La respuesta sin láminas sigue sirviendo (los textos no se pierden). De lo que llega queda una portada por idioma pedido y los puntos que caben (`pickSlides`).
+- Revisión (`checkCardText`): `FACT_NOT_IN_PROFILE` (error), `TOO_LONG` (más palabras de las permitidas) y `AVOID_TERM`.
+
+## Posts de marca: las láminas con el estilo de la marca (F9.7 B4, B6 y B7)
+- Con `brand_card_styles`, «Tarjetas de la marca» dibuja con el manual: **Anuncio** (logo y nombre arriba, una medalla con el logo o el número del punto, el titular con su segunda mitad en el degradado de la marca, el subtítulo y el contacto abajo) o **Explicar** (titular, subtítulo y una grilla: una tarjeta héroe ancha, dos medianas y una ancha, con su etiqueta). En 4:5, 1:1 y 9:16 (zona segura de los reels). El cierre es la marca con su contacto.
+- El texto sale de las láminas del idioma (B5); sin ellas, de los puntos del texto como antes (y en «Explicar», en la grilla). El tema rota uno por post y queda fijo.
+- Contraste: cada texto de cada tema contra cada color de su fondo, al menos **4,5:1** (`themeContrastPairs`; la API avisa al guardar y la prueba lo exige para AgentPey).
+- «Descargar PDF para LinkedIn» une las imágenes JPEG del idioma (las tarjetas de otro idioma no) en un PDF de una página por imagen.
+
+## Ortografía (F9.7 B8)
+- `SPELLING` (advertencia, no bloquea): palabras de una lista acotada de errores frecuentes por idioma (`social/spelling.ts`: «tambien» → «también», «aveces» → «a veces», «recieve» → «receive»…), sin palabras ambiguas («esta», «solo»). Corre en cada texto de post; sirve sobre todo para lo editado a mano.
