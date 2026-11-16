@@ -88,6 +88,30 @@ describe("renderStyledCard", () => {
     }
   }, 60_000);
 
+  it("el pie con las redes ({instagram} y {x}) cabe en cada formato y no choca con la grilla", async () => {
+    const detail =
+      "Kantar Chile, noviembre 2026 · agentpey.com · {instagram} agentpey · {x} agentpeyai";
+    const plain = { ...(cards[0] as CardSpec), detail: "@agentpeyai" };
+    for (const format of POST_IMAGE_FORMATS) {
+      const card = { ...(cards[0] as CardSpec), detail };
+      const result = await renderStyledCard(
+        card,
+        BRAND,
+        { style, theme: 0, composition: "explain" },
+        format,
+      );
+      expect(result.fits, format).toBe(true);
+      const before = await renderStyledCard(
+        plain,
+        BRAND,
+        { style, theme: 0, composition: "explain" },
+        format,
+      );
+      // Los íconos se dibujan: la lámina cambia respecto del pie de siempre.
+      expect(result.png.equals(before.png)).toBe(false);
+    }
+  }, 60_000);
+
   it("cada tema pinta su fondo y el tema rota con el índice del post", async () => {
     const corner = async (theme: number) => {
       const { png } = await renderStyledCard(

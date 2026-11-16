@@ -387,6 +387,74 @@ function bodyText(
   });
 }
 
+/** Los íconos que puede llevar el pie: `{instagram}` y `{x}` dentro del texto. */
+const FOOTER_ICONS: Record<string, (color: string) => string> = {
+  instagram: (color) =>
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="2.5" y="2.5" width="19" height="19" rx="5.5" fill="none" stroke="${color}" stroke-width="2"/><circle cx="12" cy="12" r="4.3" fill="none" stroke="${color}" stroke-width="2"/><circle cx="17.4" cy="6.6" r="1.3" fill="${color}"/></svg>`,
+  x: (color) =>
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="${color}" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>`,
+};
+const FOOTER_TOKEN = /\{(instagram|x)\}/;
+
+/**
+ * El pie de una lámina. Sin íconos, el texto como siempre (`bodyText`). Con `{instagram}` o `{x}`
+ * en el texto, una sola línea con cada ícono del tamaño de la letra y del mismo color, centrado
+ * en la altura del texto; si no cabe en `width`, se achica la letra.
+ */
+async function footerBlock(
+  text: string,
+  style: CardStyle,
+  color: string,
+  options: { width: number; maxHeight: number; size: number; align: "left" | "centre" },
+): Promise<Block> {
+  if (!FOOTER_TOKEN.test(text)) return bodyText(text, style, color, { ...options, weight: 400 });
+  const parts = text
+    .split(FOOTER_TOKEN)
+    .map((part, index) => ({ icon: index % 2 === 1, value: part.trim() }))
+    .filter((part) => part.value !== "");
+  let size = options.size;
+  for (;;) {
+    const gap = Math.round(size * 0.35);
+    const iconSize = Math.round(size * 0.95);
+    const blocks: Block[] = [];
+    for (const part of parts) {
+      if (part.icon) {
+        const svg = FOOTER_ICONS[part.value]?.(color) ?? "";
+        const input = await sharp(Buffer.from(svg)).resize(iconSize, iconSize).png().toBuffer();
+        blocks.push({ input, width: iconSize, height: iconSize, fits: true });
+      } else {
+        blocks.push(
+          await bodyText(part.value, style, color, {
+            width: 4000,
+            maxHeight: options.maxHeight,
+            size,
+            align: "left",
+            weight: 400,
+          }),
+        );
+      }
+    }
+    const width = blocks.reduce((sum, block) => sum + block.width, 0) + gap * (blocks.length - 1);
+    const height = Math.max(...blocks.map((block) => block.height));
+    if (width <= options.width || size <= 16) {
+      const layers: Layer[] = [];
+      let x = 0;
+      for (const block of blocks) {
+        layers.push({ input: block.input, top: Math.round((height - block.height) / 2), left: x });
+        x += block.width + gap;
+      }
+      const input = await sharp({
+        create: { width, height, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+      })
+        .composite(layers)
+        .png()
+        .toBuffer();
+      return { input, width, height, fits: width <= options.width && height <= options.maxHeight };
+    }
+    size = Math.floor(size * 0.94);
+  }
+}
+
 /** El contenido de una tarjeta de la grilla (etiqueta y título), medido a un tamaño de letra. */
 type CardContent = { label: Block; title: Block; height: number };
 
@@ -779,7 +847,10 @@ async function wideLayers(
   const widthOf = (row: (typeof rows)[number]) =>
     row.wide ? rightWidth : Math.floor((rightWidth - gap) / 2);
   const gridTop = top;
-  const available = size.height - bottom - gridTop;
+  // Un pie más ancho que la columna del titular (con las redes) pasa bajo la grilla: le deja lugar.
+  const gridBottom =
+    footer !== null && footer.width > leftWidth ? areaBottom : size.height - bottom;
+  const available = gridBottom - gridTop;
   const measureAt = async (titleSize: number) => {
     const pad = Math.round(Math.max(20, titleSize * 0.8));
     const measuredRows: { contents: CardContent[]; height: number }[] = [];
@@ -846,12 +917,11 @@ export async function renderStyledCard(
     const footer =
       footerText === null || footerText === undefined || footerText === ""
         ? null
-        : await bodyText(footerText, style, theme.secondary, {
-            width: 500,
+        : await footerBlock(footerText, style, theme.secondary, {
+            width: FOOTER_TOKEN.test(footerText) ? size.width - 144 : 500,
             maxHeight: 50,
             size: 22,
             align: "left",
-            weight: 400,
           });
     const built = await wideLayers(card, style, theme, size, styled.composition, header, footer);
     const layers: Layer[] = [{ input: header.input, top: 60, left: 72 }, ...built.layers];
@@ -870,12 +940,11 @@ export async function renderStyledCard(
   const footer =
     footerText === null || footerText === undefined || footerText === ""
       ? null
-      : await bodyText(footerText, style, theme.secondary, {
+      : await footerBlock(footerText, style, theme.secondary, {
           width: inner,
           maxHeight: 60,
           size: format === "1:1" ? 24 : 28,
           align: "centre",
-          weight: 400,
         });
   const built =
     styled.composition === "explain" && card.role !== "closing"
