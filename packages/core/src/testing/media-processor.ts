@@ -66,7 +66,13 @@ const decodeFailed = () => new AppError("MEDIA_DECODE_FAILED", "No se pudo leer 
 function output(variant: ImageVariant, source: Uint8Array, version: string): ImageOutput {
   const bytes = encoder.encode(`${variant}:v${version}:${decoder.decode(source)}`);
   const [width, height] =
-    variant === "thumb" ? [800, 600] : variant === "ig_4x5" ? [1080, 1350] : [1600, 1200];
+    variant === "thumb"
+      ? [800, 600]
+      : variant === "ig_4x5"
+        ? [1080, 1350]
+        : variant === "post_full"
+          ? [1440, 810]
+          : [1600, 1200];
   return {
     variant,
     bytes,

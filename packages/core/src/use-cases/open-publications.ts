@@ -203,6 +203,33 @@ const postImages = (media: readonly Media[], language?: Language): Media[] =>
     .map((photo) => variantOf(media, photo.id, "ig_4x5"))
     .filter((variant): variant is Media => variant !== null);
 
+/**
+ * Las imágenes enteras de un post (2026-11-16): la `post_full` de cada foto (sin recorte), o su
+ * `ig_4x5` si aún no la tiene (procesada antes de que existiera). Para X, LinkedIn y Discord, que
+ * muestran la imagen con su proporción: así una lámina ancha o cuadrada no pierde los bordes.
+ */
+const postFullImages = (media: readonly Media[], language?: Language): Media[] =>
+  postPhotos(media, language)
+    .map((photo) => variantOf(media, photo.id, "post_full") ?? variantOf(media, photo.id, "ig_4x5"))
+    .filter((variant): variant is Media => variant !== null);
+
+/** Proporciones que Instagram publica sin recortar: de 4:5 (0,8) a 1,91:1. */
+const INSTAGRAM_MIN_RATIO = 0.8;
+const INSTAGRAM_MAX_RATIO = 1.91;
+
+/**
+ * La imagen suelta de Instagram: la entera (`post_full`) si su proporción cabe en Instagram (4:5,
+ * 1:1 o ancha hasta 1,91:1), así no se recorta; si no (más alta que 4:5) o sin medidas, el `ig_4x5`.
+ */
+function instagramSingleImage(media: readonly Media[], photo: Media): Media | null {
+  const full = variantOf(media, photo.id, "post_full");
+  if (full !== null && full.width !== null && full.height !== null && full.height > 0) {
+    const ratio = full.width / full.height;
+    if (ratio >= INSTAGRAM_MIN_RATIO - 0.005 && ratio <= INSTAGRAM_MAX_RATIO + 0.005) return full;
+  }
+  return variantOf(media, photo.id, "ig_4x5");
+}
+
 /** El primer video original del post (con el idioma del texto, primero los de su idioma). */
 const firstVideo = (media: readonly Media[], language?: Language): Media | undefined =>
   language === undefined
@@ -254,7 +281,8 @@ const MISSING_CAROUSEL = `Faltan las imágenes del carrusel: súbelas o consígu
 
 /**
  * Instagram (spec F9 §4.4 y §4.6, F9-T13): lo que publica según lo que lleva el post. Una imagen
- * va como imagen suelta (el `ig_4x5` de su primera foto, aunque el post tenga más); un carrusel,
+ * va como imagen suelta (su primera foto, aunque el post tenga más: entera si su proporción cabe
+ * en Instagram, `instagramSingleImage`; si no, su `ig_4x5`); un carrusel,
  * con el `ig_4x5` de 2 a 10 fotos en su orden (con menos de 2 procesadas no es carrusel y falta
  * esperar o subir otra; sobre 10, la revisión del texto ya lo frena y aquí se cortan); un video,
  * como `reel` con su `ig_reel` (9:16, de 3 a 90 s, sin texto encima; la portada es el cuadro del
@@ -287,8 +315,11 @@ function instagramPostPlan(
   // ADR-0042: un post de imagen con imágenes de más de un idioma sale como carrusel bilingüe.
   const bilingual = language !== undefined && isBilingualImageSet(postPhotos(media), language);
   if (kind === "image" && !bilingual) {
-    const [first] = images;
-    if (first === undefined) {
+    const firstPhoto = postPhotos(media, language).find(
+      (photo) => variantOf(media, photo.id, "ig_4x5") !== null,
+    );
+    const first = firstPhoto === undefined ? null : instagramSingleImage(media, firstPhoto);
+    if (first === null) {
       throw postMediaMissing("instagram", MISSING_IMAGE);
     }
     return { format: "post", mediaIds: [first.id] };
@@ -309,7 +340,7 @@ function instagramPostPlan(
  * El formato y los medios de un post en una red (spec F9 §4.4 y §4.6), según lo que lleva
  * (`post.kind`). Instagram tiene su propia selección (`instagramPostPlan`, F9-T13). En las demás
  * redes: un texto solo va sin medios (TikTok lo rechaza); una imagen o un carrusel, con sus
- * `ig_4x5`; un video, con su `ig_reel` (en Discord, la variante más liviana, `discordVideo`, F9-T14;
+ * imágenes enteras (`post_full`, o el `ig_4x5` si aún no la tienen; 2026-11-16); un video, con su `ig_reel` (en Discord, la variante más liviana, `discordVideo`, F9-T14;
  * en X, el video reducido `x_video` y hasta 4 imágenes, F9-T16).
  * Las verificaciones de cada red (X: hasta 4 imágenes, spec F9 §4.4) son de la revisión del texto,
  * no de aquí, y las variantes propias de cada red (el video reducido de X) las afinan sus tareas
@@ -353,7 +384,7 @@ export function postPublicationPlan(
   if (platform === "tiktok") {
     throw postMediaMissing(platform, "TikTok publica solo video: súbelo al post");
   }
-  const images = postImages(media, language);
+  const images = postFullImages(media, language);
   if (images.length === 0) {
     throw postMediaMissing(platform, kind === "carousel" ? MISSING_CAROUSEL : MISSING_IMAGE);
   }

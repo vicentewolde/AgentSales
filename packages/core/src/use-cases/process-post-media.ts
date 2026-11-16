@@ -34,7 +34,11 @@ import { postSubject } from "../subject.js";
 // en su clave: cambiarla los rehace; sin música, las claves de siempre.
 
 /** Las variantes JPEG de una foto de un post. */
-export const POST_PHOTO_VARIANTS = ["thumb", "ig_4x5"] as const satisfies readonly ImageVariant[];
+export const POST_PHOTO_VARIANTS = [
+  "thumb",
+  "ig_4x5",
+  "post_full",
+] as const satisfies readonly ImageVariant[];
 
 export type ProcessPostMediaDeps = {
   posts: Pick<PostRepository, "get">;
