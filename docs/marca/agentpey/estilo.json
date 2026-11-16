@@ -48,14 +48,8 @@
         "accent": "#e2fff4"
       },
       "medal": {
-        "ring": [
-          "#fdfdfe",
-          "#8e97a1"
-        ],
-        "disc": [
-          "#4d95ff",
-          "#0a2f86"
-        ]
+        "ring": ["#fdfdfe", "#8e97a1"],
+        "disc": ["#4d95ff", "#0a2f86"]
       },
       "glow": {
         "color": "#176bff",
@@ -89,14 +83,8 @@
         "accent": "#e2fff4"
       },
       "medal": {
-        "ring": [
-          "#fdfdfe",
-          "#8e97a1"
-        ],
-        "disc": [
-          "#3fe0b0",
-          "#0b6b52"
-        ]
+        "ring": ["#fdfdfe", "#8e97a1"],
+        "disc": ["#3fe0b0", "#0b6b52"]
       },
       "glow": {
         "color": "#6df2c0",
@@ -130,14 +118,8 @@
         "accent": "#e2fff4"
       },
       "medal": {
-        "ring": [
-          "#fdfdfe",
-          "#8e97a1"
-        ],
-        "disc": [
-          "#e8a900",
-          "#7a4d00"
-        ]
+        "ring": ["#fdfdfe", "#8e97a1"],
+        "disc": ["#e8a900", "#7a4d00"]
       },
       "glow": {
         "color": "#ffd23f",
@@ -169,14 +151,8 @@
         "accent": "#e2fff4"
       },
       "medal": {
-        "ring": [
-          "#fdfdfe",
-          "#8e97a1"
-        ],
-        "disc": [
-          "#4d95ff",
-          "#0a2f86"
-        ]
+        "ring": ["#fdfdfe", "#8e97a1"],
+        "disc": ["#4d95ff", "#0a2f86"]
       },
       "glow": null
     }
