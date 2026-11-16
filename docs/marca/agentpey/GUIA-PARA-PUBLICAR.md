@@ -11,7 +11,7 @@ Para el agente (o la persona) que solo publica los posts de AgentPey. Las mejora
 - Hashtags: los fijos de la marca van siempre al final; el operador puede agregar otros a mano.
 
 ## Imágenes
-- Estilo de la marca (colores, fuentes, logo, temas): `docs/marca/agentpey/estilo.json`, ya cargado en la marca. Manual completo: `DISENO.md`. Otros colores listos para usar: `colores-alternativos.json` (verde menta, gris claro, naranja, amarillo).
+- Estilo de la marca (colores, fuentes, logo, temas): `docs/marca/agentpey/estilo.json`, ya cargado en la marca. Manual completo: `DISENO.md`. Otros colores listos para usar: `colores-alternativos.json` (verde menta, gris claro, naranja, amarillo; en vivo desde 2026-11-16: Medianoche, Verde menta, Amarillo y Blanco).
 - Formato recomendado: **1:1** (se ve completo en Instagram, X y LinkedIn); 4:5 para solo Instagram; 9:16 para historias y reels. Composiciones: `announce` (medalla y titular) y `explain` (titular y tarjetas).
 - Una portada **sin subtítulo**: `pnpm -s cli post cards-text <id> --language es --clear-subtitle`. Imagen: `pnpm -s cli post media <id> --card --format 1:1 --composition announce --language es --replace`. Costo US$0.
 - Carrusel para LinkedIn: `pnpm -s cli post pdf <id> --language es` (LinkedIn muestra un PDF como carrusel).
