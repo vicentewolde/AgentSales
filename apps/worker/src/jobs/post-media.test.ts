@@ -132,7 +132,7 @@ describe("job post.media", () => {
       .filter((item) => item.role === "processed")
       .map((item) => item.variant)
       .sort();
-    expect(variants).toEqual(["ig_4x5", "ig_reel", "thumb", "thumb", "x_video"]);
+    expect(variants).toEqual(["ig_4x5", "ig_reel", "post_full", "thumb", "thumb", "x_video"]);
     expect(t.workDirs).toHaveLength(1);
     expect(t.workDirs[0]?.startsWith(join(t.root, t.post.id))).toBe(true);
     expect(await readdir(t.root)).toEqual([]);

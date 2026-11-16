@@ -197,6 +197,15 @@ describe("checkPostContent: hechos fuera del perfil", () => {
     expect(codes("linkedin", "Pensamos en B2B y en la web3 sin apuro.")).toEqual([]);
   });
 
+  it("el sufijo de una cifra (200M, $274K) no es un nombre propio (2026-11-16)", () => {
+    const messages = check("x", "x402 has processed 200M+ payments. In October, $274K.").map(
+      (item) => item.message,
+    );
+    expect(messages.some((message) => message.includes("«M»") || message.includes("«K»"))).toBe(
+      false,
+    );
+  });
+
   it("un nombre propio que no está en el perfil impide aprobar; los del perfil, las redes y los meses, no", () => {
     const checks = check("linkedin", "Esta semana firmamos con Banco Central.");
     expect(checks.map((item) => item.code)).toEqual(["FACT_NOT_IN_PROFILE"]);

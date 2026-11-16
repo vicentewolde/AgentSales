@@ -22,7 +22,7 @@ describe("brand style", () => {
     const file = join(import.meta.dirname, "../../../../docs/marca/agentpey/estilo.json");
     await expect(runStyleEdit(deps, { broker: "agentpey", file })).resolves.toBe(0);
     await expect(runStyleShow(deps, { broker: "agentpey" })).resolves.toBe(0);
-    expect(h.text()).toContain("A · Medianoche · B · Azul profundo · C · Claro · D · Titanio");
+    expect(h.text()).toContain("A · Medianoche · B · Verde menta · C · Amarillo · D · Blanco");
     await expect(
       runStylePreview(deps, { broker: "agentpey", theme: "3", out: "muestra.png" }),
     ).resolves.toBe(0);

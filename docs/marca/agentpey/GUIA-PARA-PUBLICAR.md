@@ -11,9 +11,9 @@ Para el agente (o la persona) que solo publica los posts de AgentPey. Las mejora
 - Hashtags: los fijos de la marca van siempre al final; el operador puede agregar otros a mano.
 
 ## Imágenes
-- Estilo de la marca (colores, fuentes, logo, temas): `docs/marca/agentpey/estilo.json`, ya cargado en la marca. Manual completo: `DISENO.md`. Otros colores listos para usar: `colores-alternativos.json` (verde menta, gris claro, naranja, amarillo).
-- Formato recomendado: **1:1** (se ve completo en Instagram, X y LinkedIn); 4:5 para solo Instagram; 9:16 para historias y reels. Composiciones: `announce` (medalla y titular) y `explain` (titular y tarjetas).
-- Una portada **sin subtítulo**: `pnpm -s cli post cards-text <id> --language es --clear-subtitle`. Imagen: `pnpm -s cli post media <id> --card --format 1:1 --composition announce --language es --replace`. Costo US$0.
+- Estilo de la marca (colores, fuentes, logo, temas): `docs/marca/agentpey/estilo.json`, ya cargado en la marca. Manual completo: `DISENO.md`. Otros colores listos para usar: `colores-alternativos.json` (verde menta, gris claro, naranja, amarillo; en vivo desde 2026-11-16: Medianoche, Verde menta, Amarillo y Blanco).
+- Formato por red (desde 2026-11-16, pedido de Vinny): **4:5** en Instagram (más alta), **16:9** en X y LinkedIn (más ancha: texto a la izquierda, medalla o tarjetas a la derecha). Como un post usa la misma imagen en todas sus redes, el post en español se divide en dos: uno para Instagram (4:5) y otro para X y LinkedIn (16:9). 1:1 sirve si un post va a las tres; 9:16 para historias y reels. Composiciones: `announce` (medalla y titular) y `explain` (titular y tarjetas).
+- Una portada **sin subtítulo**: `pnpm -s cli post cards-text <id> --language es --clear-subtitle`. Imagen: `pnpm -s cli post media <id> --card --format 16:9 --composition announce --language es --replace` (o `--format 4:5` en el de Instagram). Variar la composición: algunas `explain` (titular y tarjetas, al estilo de «Conoce AgentPey»). Costo US$0.
 - Carrusel para LinkedIn: `pnpm -s cli post pdf <id> --language es` (LinkedIn muestra un PDF como carrusel).
 - Cambiar los temas de color de la marca: editar `estilo.json` (hasta 4 temas) y cargar con `pnpm -s cli brand style edit --broker agentpey --file docs/marca/agentpey/estilo.json`.
 

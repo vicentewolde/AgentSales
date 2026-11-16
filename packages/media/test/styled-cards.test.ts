@@ -67,7 +67,7 @@ describe("estilo de AgentPey", () => {
 });
 
 describe("renderStyledCard", () => {
-  it("las dos composiciones en 4:5, 1:1 y 9:16: su tamaño, y el texto más largo cabe", async () => {
+  it("las dos composiciones en 4:5, 1:1, 9:16 y 16:9: su tamaño, y el texto más largo cabe", async () => {
     for (const format of POST_IMAGE_FORMATS) {
       for (const composition of CARD_COMPOSITIONS) {
         for (const card of cards) {
@@ -100,7 +100,8 @@ describe("renderStyledCard", () => {
       return pixel(new Uint8Array(jpeg), 5, 5);
     };
     expect(await corner(0)).toEqual(await corner(4));
-    const light = await corner(2);
+    // El tema claro es el cuarto (D · Blanco).
+    const light = await corner(3);
     expect((light[0] ?? 0) > 230).toBe(true);
     const dark = await corner(0);
     expect((dark[0] ?? 255) < 20).toBe(true);

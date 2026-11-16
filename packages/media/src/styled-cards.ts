@@ -671,6 +671,162 @@ async function explainLayers(
 }
 
 /**
+ * La lámina ancha (16:9, para X y LinkedIn): el logo arriba a la izquierda, el titular y el
+ * subtítulo en la columna izquierda y, a la derecha, la medalla («Anuncio») o la grilla de
+ * tarjetas («Explicar»); el contacto abajo a la izquierda.
+ */
+async function wideLayers(
+  card: CardSpec,
+  style: CardStyle,
+  theme: CardTheme,
+  size: Size,
+  composition: "announce" | "explain",
+  header: Block,
+  footer: Block | null,
+): Promise<{ layers: Layer[]; fits: boolean; glow: { x: number; y: number } | null }> {
+  const side = 72;
+  const top = 60;
+  const bottom = 56;
+  const gutter = 56;
+  const explain = composition === "explain" && card.role !== "closing";
+  const items: { label: string; text: string }[] = explain
+    ? card.role === "point"
+      ? [{ label: String(card.position - 1).padStart(2, "0"), text: card.subtitle ?? "" }].filter(
+          (item) => item.text !== "",
+        )
+      : (card.items ?? []).slice(0, 4)
+    : [];
+  const rightWidth = explain && items.length > 0 ? 560 : 380;
+  const leftWidth = size.width - side * 2 - gutter - rightWidth;
+  const areaTop = top + header.height;
+  const areaBottom = size.height - bottom - (footer === null ? 0 : footer.height + 16);
+  const subtitleText = card.role === "closing" ? (card.detail ?? "") : (card.subtitle ?? "");
+  const subtitle =
+    subtitleText === "" || (explain && card.role === "point")
+      ? null
+      : await bodyText(subtitleText, style, theme.secondary, {
+          width: leftWidth,
+          maxHeight: 160,
+          size: 28,
+          align: "left",
+        });
+  // El titular ocupa lo que deja el subtítulo, con 40 px de aire bajo la cabecera.
+  const headline = await headlineOf(card.text, style, theme, {
+    width: leftWidth,
+    maxHeight: areaBottom - areaTop - 40 - (subtitle === null ? 0 : subtitle.height + 24),
+    size: explain && items.length > 0 ? 70 : 80,
+    align: "left",
+  });
+  const textHeight = headline.height + (subtitle === null ? 0 : 24 + subtitle.height);
+  let y = areaTop + Math.max(0, Math.round((areaBottom - areaTop - textHeight) / 2));
+  const layers: Layer[] = [{ input: headline.input, top: y, left: side }];
+  if (subtitle !== null) {
+    layers.push({ input: subtitle.input, top: y + headline.height + 24, left: side });
+  }
+  let fits = headline.fits && (subtitle?.fits ?? true) && textHeight <= areaBottom - areaTop - 20;
+  const rightLeft = size.width - side - rightWidth;
+  if (!explain || items.length === 0) {
+    // La medalla, centrada en la columna derecha y en el alto de la lámina.
+    const medalSize = card.role === "point" ? 220 : 260;
+    const medal = await medalOf(theme, medalSize);
+    const inside =
+      card.role === "point"
+        ? await textBlock(String(card.position - 1).padStart(2, "0"), {
+            font: resolveFont(style.fonts.headline.family, 700),
+            weight: 700,
+            size: Math.round(medalSize * 0.36),
+            color: "#FFFFFF",
+            width: medalSize,
+            maxHeight: medalSize,
+            align: "centre",
+            tracking: -0.02,
+          })
+        : await logoOf(style, "#FFFFFF", Math.round(medalSize * 0.33));
+    const medalInput =
+      inside === null
+        ? medal.input
+        : await sharp(medal.input)
+            .composite([
+              {
+                input: inside.input,
+                top: Math.round((medal.height - inside.height) / 2),
+                left: Math.round((medal.width - inside.width) / 2),
+              },
+            ])
+            .png()
+            .toBuffer();
+    const centreX = rightLeft + rightWidth / 2;
+    const centreY = size.height / 2;
+    layers.push({
+      input: medalInput,
+      top: Math.round(centreY - medal.height / 2),
+      left: Math.round(centreX - medal.width / 2),
+    });
+    return { layers, fits, glow: { x: centreX, y: centreY } };
+  }
+  // La grilla a la derecha: la primera tarjeta héroe ancha, y las demás de a dos o anchas.
+  const gap = 16;
+  const rows: { items: typeof items; wide: boolean }[] = [];
+  const [first, ...rest] = items;
+  if (first !== undefined) rows.push({ items: [first], wide: true });
+  if (rest.length >= 2) rows.push({ items: rest.slice(0, 2), wide: false });
+  else if (rest.length === 1) rows.push({ items: rest, wide: true });
+  if (rest.length >= 3) rows.push({ items: rest.slice(2, 3), wide: true });
+  const colorsOf = (index: number) =>
+    index === 0
+      ? { background: theme.hero.background, text: theme.hero.text, label: theme.hero.label }
+      : theme.card;
+  const widthOf = (row: (typeof rows)[number]) =>
+    row.wide ? rightWidth : Math.floor((rightWidth - gap) / 2);
+  const gridTop = top;
+  const available = size.height - bottom - gridTop;
+  const measureAt = async (titleSize: number) => {
+    const pad = Math.round(Math.max(20, titleSize * 0.8));
+    const measuredRows: { contents: CardContent[]; height: number }[] = [];
+    for (const [index, row] of rows.entries()) {
+      const contents: CardContent[] = [];
+      for (const item of row.items) {
+        contents.push(
+          await cardContent(item, style, colorsOf(index), widthOf(row), titleSize, pad),
+        );
+      }
+      measuredRows.push({ contents, height: Math.max(...contents.map((c) => c.height)) });
+    }
+    const total = measuredRows.reduce((sum, row) => sum + row.height, 0) + gap * (rows.length - 1);
+    return { titleSize, pad, rows: measuredRows, total };
+  };
+  let measured = await measureAt(card.role === "point" ? 48 : 32);
+  while (measured.total > available && measured.titleSize > 20) {
+    measured = await measureAt(Math.floor(measured.titleSize * 0.9));
+  }
+  fits &&= measured.total <= available;
+  const spare = Math.max(0, available - measured.total);
+  const grow = Math.round((spare * 0.6) / rows.length);
+  y = gridTop + Math.round((available - measured.total - grow * rows.length) / 2);
+  for (const [index, row] of rows.entries()) {
+    const measuredRow = measured.rows[index];
+    const height = (measuredRow?.height ?? 0) + grow;
+    let x = rightLeft;
+    for (const content of measuredRow?.contents ?? []) {
+      const width = widthOf(row);
+      const input = await gridCard(
+        content,
+        style,
+        colorsOf(index).background,
+        { width, height },
+        measured.pad + Math.round((height - content.height) / 2),
+        measured.titleSize,
+        measured.pad,
+      );
+      layers.push({ input, top: y, left: x });
+      x += width + gap;
+    }
+    y += height + gap;
+  }
+  return { layers, fits, glow: null };
+}
+
+/**
  * Dibuja una lámina con el estilo de la marca: PNG del tamaño de su proporción y si el texto cupo.
  * El tema es el del post (`themeOfPost`); la composición, la pedida.
  */
@@ -684,6 +840,28 @@ export async function renderStyledCard(
   const size = POST_IMAGE_SIZES[format];
   const theme = style.themes[themeOfPost(styled.theme, style.themes.length)] ?? style.themes[0];
   if (theme === undefined) throw new Error("El estilo no tiene temas");
+  if (format === "16:9") {
+    const header = await headerOf(style, theme, brand.brandName, 600, 0.85);
+    const footerText = card.role === "closing" ? null : card.detail;
+    const footer =
+      footerText === null || footerText === undefined || footerText === ""
+        ? null
+        : await bodyText(footerText, style, theme.secondary, {
+            width: 500,
+            maxHeight: 50,
+            size: 22,
+            align: "left",
+            weight: 400,
+          });
+    const built = await wideLayers(card, style, theme, size, styled.composition, header, footer);
+    const layers: Layer[] = [{ input: header.input, top: 60, left: 72 }, ...built.layers];
+    if (footer !== null) {
+      layers.push({ input: footer.input, top: size.height - 56 - footer.height, left: 72 });
+    }
+    const background = await backgroundOf(theme, size, built.glow);
+    const png = await sharp(background).composite(layers).png().toBuffer();
+    return { png, fits: built.fits && header.fits && (footer?.fits ?? true) };
+  }
   const m = marginsOf(style, format);
   const inner = size.width - m.side * 2;
   const scale = format === "1:1" ? 0.85 : 1;

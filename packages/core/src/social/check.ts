@@ -562,8 +562,11 @@ function unknownNames(text: string, sourceWords: ReadonlySet<string>): string[] 
         const before = sentence.slice(0, start).trimEnd();
         const opener = first || OPENERS.has(before.at(-1) ?? "");
         first = false;
+        // El sufijo pegado a una cifra (`200M`, `$274K`, `5G`) es parte del número, no un nombre.
+        const numberSuffix = word.length <= 2 && /\p{N}$/u.test(sentence.slice(0, start));
         const unknown =
           !opener &&
+          !numberSuffix &&
           hasUppercase(word) &&
           !isShoutOrAcronym(word) &&
           !isKnownCapitalized(word, sourceWords);
