@@ -503,7 +503,7 @@ describe("editContent con un post", () => {
     expect((await t.repos.contents.get(contentId))?.body).toBe("Texto en es para linkedin");
   });
 
-  it("edita el cuerpo y los hashtags en cualquier red; un título no", async () => {
+  it("edita el cuerpo y los hashtags en cualquier red, con sus mayúsculas (#ChatGPT); un título no", async () => {
     const t = await setup();
     const contentId = await t.contentId("linkedin");
 
@@ -513,7 +513,8 @@ describe("editContent con un post", () => {
     });
 
     expect(result.content).toMatchObject({ status: "edited", body: "Nuevo texto" });
-    expect(result.content.hashtags).toEqual(["#producto"]);
+    // Sin repetir (sin mirar mayúsculas) y con la mayúscula que escribió el operador (2026-11-16).
+    expect(result.content.hashtags).toEqual(["#Producto"]);
     expect(
       codeOf(await caught(editContent(t.deps, { contentId, edit: { title: "Título" } }))),
     ).toBe("CONTENT_TITLE_INVALID");
