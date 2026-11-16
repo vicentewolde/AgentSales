@@ -386,7 +386,7 @@ export function registerPostMedia(post: Command, ctx: CliContext): void {
     .option("--ai <indicación>", "crea una imagen con IA (sin texto dentro; tiene costo y tope)")
     .option(
       "--format <proporción>",
-      `${POST_IMAGE_FORMATS.join(" o ")} (por defecto 4:5; 1:1 se ve entera en Instagram, X y LinkedIn)`,
+      `${POST_IMAGE_FORMATS.join(" o ")} (por defecto 4:5; 16:9 para X y LinkedIn; 1:1 se ve entera en las tres)`,
     )
     .option(
       "--composition <announce|explain>",

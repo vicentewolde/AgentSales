@@ -524,7 +524,8 @@ describe("panel: conseguir imagen", () => {
 describe("suggestedFormat (F9.7 B6)", () => {
   it("sugiere la cuadrada si el post va a X o a LinkedIn, y la vertical si no", () => {
     expect(suggestedFormat(["instagram", "x"])).toBe("1:1");
-    expect(suggestedFormat(["linkedin"])).toBe("1:1");
+    expect(suggestedFormat(["linkedin"])).toBe("16:9");
+    expect(suggestedFormat(["x", "linkedin"])).toBe("16:9");
     expect(suggestedFormat(["instagram"])).toBe("4:5");
     expect(suggestedFormat(null)).toBe("4:5");
     expect(suggestedFormat(undefined)).toBe("4:5");

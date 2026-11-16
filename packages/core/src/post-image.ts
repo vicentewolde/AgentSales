@@ -20,7 +20,7 @@ export type PostImageRunStatus = (typeof POST_IMAGE_RUN_STATUSES)[number];
  * Proporciones de lo que se consigue: vertical de Instagram (4:5), de reel e historia (9:16) y,
  * desde F9.7 (B6), cuadrada (1:1).
  */
-export const POST_IMAGE_FORMATS = ["4:5", "9:16", "1:1"] as const;
+export const POST_IMAGE_FORMATS = ["4:5", "9:16", "1:1", "16:9"] as const;
 export type PostImageFormat = (typeof POST_IMAGE_FORMATS)[number];
 
 /** Medidas de cada proporción, en píxeles (las de Instagram). */
@@ -30,6 +30,8 @@ export const POST_IMAGE_SIZES: Readonly<
   "4:5": { width: 1080, height: 1350 },
   "9:16": { width: 1080, height: 1920 },
   "1:1": { width: 1080, height: 1080 },
+  // Ancha, para X y LinkedIn (se ve entera en el feed de ambas).
+  "16:9": { width: 1200, height: 675 },
 };
 
 /** Topes de lo que se pide. */

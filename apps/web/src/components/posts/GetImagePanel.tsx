@@ -61,6 +61,7 @@ const FORMAT_TEXT: Readonly<Record<PostImageFormat, string>> = {
   "4:5": "Vertical 4:5 (1080 × 1350, Instagram)",
   "9:16": "Vertical 9:16 (1080 × 1920, reel e historia)",
   "1:1": "Cuadrada 1:1 (1080 × 1080, Instagram, X y LinkedIn)",
+  "16:9": "Ancha 16:9 (1200 × 675, X y LinkedIn)",
 };
 
 const SOURCE_TEXT = { card: "Tarjetas", stock: "Biblioteca", ai: "IA" } as const;
@@ -84,12 +85,14 @@ function Missing({ what, variable }: { what: string; variable: string | null }) 
 }
 
 /**
- * La proporción que se sugiere (F9.7 B6): una imagen cuadrada 1:1 se ve entera en el feed de X, en
- * el de LinkedIn y en Instagram; la vertical 4:5 es la mejor en Instagram. Si el post va a X o a
- * LinkedIn, cuadrada; si no (o no se sabe), vertical.
+ * La proporción que se sugiere (F9.7 B6): la ancha 16:9 es la mejor en X y LinkedIn; la vertical
+ * 4:5, en Instagram; la cuadrada 1:1 se ve entera en las tres. Si el post va solo a X o LinkedIn,
+ * ancha; si mezcla Instagram con X o LinkedIn, cuadrada; si no (o no se sabe), vertical.
  */
 export function suggestedFormat(platforms: PostJson["platforms"] | undefined): PostImageFormat {
-  return platforms?.some((platform) => platform === "x" || platform === "linkedin") ? "1:1" : "4:5";
+  const wide = platforms?.some((platform) => platform === "x" || platform === "linkedin") ?? false;
+  if (!wide) return "4:5";
+  return platforms?.includes("instagram") ? "1:1" : "16:9";
 }
 
 function FormatSelect({
@@ -102,7 +105,7 @@ function FormatSelect({
   return (
     <Field
       label="Proporción"
-      hint="Para X o LinkedIn conviene la cuadrada 1:1 (se ve entera en las tres redes); en Instagram sola, la vertical 4:5."
+      hint="Solo X o LinkedIn: la ancha 16:9. Instagram sola: la vertical 4:5. Las tres juntas: la cuadrada 1:1 (se ve entera en todas)."
     >
       <Select
         width="auto"
