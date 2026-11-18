@@ -144,7 +144,7 @@ function itemLine(item: Item, c: Colors): string {
   if (item.kind === "backup") {
     const last = item.at === null ? "nunca" : formatChileTime(item.at);
     const notes = [
-      item.stale ? c.yellow("tiene más de 48 h") : null,
+      item.stale ? c.yellow("tiene más de 8 días") : null,
       item.code === null ? null : c.yellow(`el último intento falló (${item.code})`),
     ].filter(Boolean);
     return `  Último respaldo: ${last}${notes.length === 0 ? "" : ` · ${notes.join(" · ")}`}`;

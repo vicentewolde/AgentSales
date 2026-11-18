@@ -438,7 +438,7 @@ Fuera de F8. Cuando quieras que los corredores usen la herramienta cualquier dí
 2. **La base de Neon:** un **proyecto nuevo** en **console.neon.tech** → **New project**, en la misma región que el de hoy (AWS São Paulo), y sigue `docs/09-alta-neon-r2.md` (parte A: la cadena **sin** `-pooler`). Un proyecto aparte, y no una rama del de hoy, deja separados los datos, el cupo gratis y los respaldos de Neon. Cuántos proyectos permite el plan gratis es NO VERIFICADO: si Neon no te deja crear otro, avísale a Claude antes de usar una rama del proyecto de hoy.
 3. **Los dos buckets de R2** (`docs/09-alta-neon-r2.md`, parte B), cada uno con **su propio token** "Object Read & Write" limitado a él:
    - `<app>-media`, con la misma regla de CORS que `agentsales-media` pero desde el dominio nuevo: solo `PUT`, origen `https://<dominio>`, cabeceras `content-type` y `x-amz-checksum-sha256`.
-   - `<app>-backups`, para el respaldo diario (su token no puede ser el del bucket de medios: el servidor no arranca si son el mismo).
+   - `<app>-backups`, para el respaldo semanal (los lunes; su token no puede ser el del bucket de medios: el servidor no arranca si son el mismo).
 4. **El archivo `.env.<instancia>`** en la carpeta del proyecto (git ya lo ignora, como `.env.production`; Claude no lo lee). Lleva los mismos nombres que `.env.production`, con los valores de la instancia nueva:
    - `PUBLIC_URL=https://<dominio>` (la usan los scripts como `auth:admin`).
    - `DATABASE_URL` del proyecto nuevo de Neon; `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` y `R2_BUCKET=<app>-media`; `BACKUP_R2_ACCESS_KEY_ID` y `BACKUP_R2_SECRET_ACCESS_KEY` del token de `<app>-backups`.

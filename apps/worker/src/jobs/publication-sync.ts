@@ -1,5 +1,5 @@
 import { isAppError, type SyncPublicationDeps, syncPublication } from "@agentsales/core";
-import { defineJob, type Job, type QueuePolicy } from "./define.js";
+import { BACKGROUND_POLLING_SECONDS, defineJob, type Job, type QueuePolicy } from "./define.js";
 
 /**
  * Política de `publication.sync` (spec F4 §4.9, `docs/01-arquitectura.md` → Cola de trabajos):
@@ -45,6 +45,7 @@ export function publicationSyncJob(deps: PublicationSyncJobDeps): Job {
   return defineJob({
     name: "publication.sync",
     queue: PUBLICATION_SYNC_QUEUE,
+    pollingSeconds: BACKGROUND_POLLING_SECONDS,
     errorLogFields: (error) => ({
       code: codeOf(error),
       retriable: !isAppError(error) || error.retriable,

@@ -146,7 +146,7 @@ export type AgendaItem = {
   daysLeft: number | null;
   /** Portal o el token: ya venció. */
   expired: boolean;
-  /** El respaldo tiene más de 48 h, o no hay ninguno. */
+  /** El respaldo tiene más de 8 días, o no hay ninguno. */
   stale: boolean;
 };
 

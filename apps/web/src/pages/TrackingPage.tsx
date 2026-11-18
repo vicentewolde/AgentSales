@@ -60,7 +60,7 @@ function AgendaEntry({
     return (
       <li className="text-sm">
         Último respaldo: {item.at === null ? "nunca" : formatChileTime(item.at)}
-        {item.stale && <span className="ml-1 text-warning-800">(más de 48 h)</span>}
+        {item.stale && <span className="ml-1 text-warning-800">(más de 8 días)</span>}
         {item.code !== null && (
           <span className="ml-1 text-warning-800">· el último intento falló ({item.code})</span>
         )}
