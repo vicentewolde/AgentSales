@@ -75,11 +75,22 @@ describe("registerJobs", () => {
     expect(calls).toEqual([
       `create system.ping ${JSON.stringify(policy)}`,
       "update system.ping",
-      'work system.ping {"batchSize":1,"includeMetadata":true}',
+      'work system.ping {"batchSize":1,"includeMetadata":true,"pollingIntervalSeconds":10}',
       `create import.run ${JSON.stringify(policy)}`,
       "update import.run",
-      'work import.run {"batchSize":1,"includeMetadata":true}',
+      'work import.run {"batchSize":1,"includeMetadata":true,"pollingIntervalSeconds":10}',
     ]);
+  });
+
+  it("usa el intervalo de consulta del job si lo trae (colas de fondo)", async () => {
+    const { boss, calls } = fakeBoss();
+    const { logger } = capture();
+
+    await registerJobs(boss, [{ ...job("publications.watch"), pollingSeconds: 60 }], logger);
+
+    expect(calls).toContain(
+      'work publications.watch {"batchSize":1,"includeMetadata":true,"pollingIntervalSeconds":60}',
+    );
   });
 
   it("programa el cron de un job después de crear su cola y registrar su worker", async () => {
@@ -100,7 +111,7 @@ describe("registerJobs", () => {
     expect(calls.slice(3)).toEqual([
       `create tokens.refresh ${JSON.stringify(policy)}`,
       "update tokens.refresh",
-      'work tokens.refresh {"batchSize":1,"includeMetadata":true}',
+      'work tokens.refresh {"batchSize":1,"includeMetadata":true,"pollingIntervalSeconds":10}',
       'schedule tokens.refresh 0 12 * * * {} {"tz":"America/Santiago","missed":"skip","singletonKey":"tokens.refresh"}',
     ]);
     expect(calls.filter((call) => call.startsWith("schedule"))).toHaveLength(1);
@@ -251,7 +262,7 @@ describe("registerJobs", () => {
 
     expect(done).toBe(false);
     expect(calls.filter((call) => call.startsWith("work"))).toEqual([
-      'work system.ping {"batchSize":1,"includeMetadata":true}',
+      'work system.ping {"batchSize":1,"includeMetadata":true,"pollingIntervalSeconds":10}',
     ]);
   });
 

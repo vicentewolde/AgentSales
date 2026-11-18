@@ -490,7 +490,7 @@ export async function checkPgDump(
   return { name, level: "ok", detail: `${clientText} (la base es ${serverVersion})` };
 }
 
-/** El último respaldo según `/health` (F6-T14): avisa si no hay, si falló o si tiene más de 48 h. */
+/** El último respaldo según `/health` (F6-T14): avisa si no hay, si falló o si tiene más de 8 días. */
 export function checkBackup(report: HealthReport | null, now: Date = new Date()): CheckItem | null {
   if (report === null || report.backup === undefined) return null;
   const name = "Respaldo";

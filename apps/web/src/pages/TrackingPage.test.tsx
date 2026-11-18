@@ -80,7 +80,7 @@ describe("la agenda", () => {
     expect(failed.textContent).toContain("código IG_AUTH_INVALID");
     const backup = screen.getByRole("region", { name: AGENDA_KIND_TEXT.backup });
     expect(backup.textContent).toContain("nunca");
-    expect(backup.textContent).toContain("más de 48 h");
+    expect(backup.textContent).toContain("más de 8 días");
   });
 
   it("un post va con su tema y enlaza a su página de Contenido (F9-T17); lo nuevo de F9 dice qué hacer", () => {

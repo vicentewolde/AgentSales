@@ -217,7 +217,7 @@ describe("agendaItems", () => {
       lastFailureCode: null,
     };
     expect(run([], { backup: ok })).toMatchObject([{ kind: "backup", action: "none" }]);
-    expect(run([], { backup: { ...ok, lastSuccessAt: days(-3).toISOString() } })).toMatchObject([
+    expect(run([], { backup: { ...ok, lastSuccessAt: days(-9).toISOString() } })).toMatchObject([
       { kind: "backup", action: "backup", stale: true },
     ]);
     expect(run([], { backup: { ...ok, lastFailureCode: "BACKUP_FAILED" } })).toMatchObject([

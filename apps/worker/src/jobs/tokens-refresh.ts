@@ -6,7 +6,13 @@ import {
   type RefreshAccountTokensDeps,
   refreshAccountTokens,
 } from "@agentsales/core";
-import { defineJob, type Job, type JobSchedule, type QueuePolicy } from "./define.js";
+import {
+  BACKGROUND_POLLING_SECONDS,
+  defineJob,
+  type Job,
+  type JobSchedule,
+  type QueuePolicy,
+} from "./define.js";
 
 /**
  * Clave fija de `tokens.refresh`: con la cola `exclusive`, el job del arranque y el del cron nunca
@@ -89,6 +95,7 @@ export function tokensRefreshJob(deps: TokensRefreshJobDeps): Job {
   return defineJob({
     name: "tokens.refresh",
     queue: TOKENS_REFRESH_QUEUE,
+    pollingSeconds: BACKGROUND_POLLING_SECONDS,
     schedule: TOKENS_REFRESH_SCHEDULE,
     errorLogFields: (error) => ({
       code: codeOf(error),

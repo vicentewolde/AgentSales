@@ -100,11 +100,11 @@ describe("GET /health", () => {
     expect(healthReportSchema.parse(body)).toEqual(body);
   });
 
-  it("informa la versión de la base y el último respaldo, con stale a las 48 h (F6-T14)", async () => {
+  it("informa la versión de la base y el último respaldo, con stale a los 8 días (F6-T14)", async () => {
     const now = new Date("2026-10-15T16:00:00.000Z");
     const status = {
-      lastSuccessAt: "2026-10-13T15:00:00.000Z",
-      lastFile: "agentsales-20261013-1200.dump",
+      lastSuccessAt: "2026-10-07T15:00:00.000Z",
+      lastFile: "agentsales-20261007-1200.dump",
       lastFailureAt: null,
       lastFailureCode: null,
     };

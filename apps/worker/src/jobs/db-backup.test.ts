@@ -102,7 +102,7 @@ describe("db.backup", () => {
         name: "schedule",
         args: [
           "db.backup",
-          "0 13 * * *",
+          "0 13 * * 1",
           {},
           { tz: "America/Santiago", missed: "skip", singletonKey: DB_BACKUP_KEY },
         ],
@@ -271,7 +271,7 @@ describe("requestBackupIfDue (arranque)", () => {
   const status = (lastSuccessAt: string | null) =>
     JSON.stringify({ lastSuccessAt, lastFile: null, lastFailureAt: null, lastFailureCode: null });
 
-  it("encola si no hay respaldo o el último tiene más de 20 h; si es reciente, no", async () => {
+  it("encola si no hay respaldo o el último tiene casi una semana (164 h); si es reciente, no", async () => {
     const queue = createInMemoryJobQueue();
     const dir = await tempDir();
     const deps = {
@@ -283,12 +283,12 @@ describe("requestBackupIfDue (arranque)", () => {
     expect(await requestBackupIfDue(queue, deps)).toBe("enqueued");
     await writeFile(
       join(dir, BACKUP_STATUS_FILE),
-      status(new Date(NOW.getTime() - 19 * 3600_000).toISOString()),
+      status(new Date(NOW.getTime() - 163 * 3600_000).toISOString()),
     );
     expect(await requestBackupIfDue(queue, deps)).toBe("recent");
     await writeFile(
       join(dir, BACKUP_STATUS_FILE),
-      status(new Date(NOW.getTime() - 21 * 3600_000).toISOString()),
+      status(new Date(NOW.getTime() - 165 * 3600_000).toISOString()),
     );
     expect(await requestBackupIfDue(queue, deps)).toBe("enqueued");
     expect(queue.jobs).toMatchObject([
