@@ -219,6 +219,8 @@ En vez de encenderlo y apagarlo tú, el worker puede **encenderse solo** cada ho
 4. **Probar el encendido a mano:** con el worker apagado, en GitHub → **Actions** → **Encender el worker** → **Run workflow** (rama `main`). Debe decir "Encendiendo el worker …" y, al minuto, `pnpm -s cli doctor` (contra el servidor) debe decir "Worker: encendido". NO VERIFICADO hasta esa primera corrida: la forma del JSON de `fly machine list --json` que lee el flujo (el grupo en `config.metadata.fly_process_group` y el estado en `state`).
 5. **Que se apague solo:** pídele a Claude quitar el `#` de `WORKER_IDLE_EXIT_MINUTES = "10"` en `fly.toml` y despliega (paso 4). Desde ahí, el worker se apaga a los 10 minutos sin nada que hacer. Compruébalo con `pnpm -s cli doctor` unos 15 minutos después de que termine lo programado: "Worker: apagado desde …".
 
+**Si el encendido falla con "token validation error":** Fly no acepta el token guardado (pasó el 2026-11-17: cada revisión fallaba y antes se veía como "No hay una máquina del worker"). Crea uno nuevo (punto 2) y guárdalo encima del anterior (punto 3); después prueba el encendido a mano (punto 4).
+
 **Sin el secreto, el flujo no hace nada:** cada corrida programada termina en verde con el aviso "Falta el secreto FLY_WORKER_START_TOKEN" (el horario queda escrito, pero apagado). Y sin el paso 5, el worker nunca se apaga solo (como hoy).
 
 **Encender ya** (para preparar o publicar sin esperar la revisión, o de noche): **Actions** → **Encender el worker** → **Run workflow**, o `fly machine start <id_worker> -a agentsales` (arriba). Con el paso 5 hecho, se vuelve a apagar solo; no hace falta apagarlo.
