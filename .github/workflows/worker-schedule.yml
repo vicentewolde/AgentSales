@@ -116,7 +116,7 @@ jobs:
           workers() {
             local machines
             if ! machines="$(flyctl machine list -a "$FLY_APP" --json)"; then
-              echo "::error::Fly no aceptó la consulta (mira el error de arriba). Si dice 'token validation error', el token FLY_WORKER_START_TOKEN no sirve: créalo y guárdalo de nuevo (docs/10-despliegue.md, «El worker con horario», punto 3)." >&2
+              echo "::error::Fly no aceptó la consulta (mira el error de arriba). Si dice 'token validation error', el token FLY_WORKER_START_TOKEN no sirve: créalo y guárdalo de nuevo (docs/10-despliegue.md, «El worker con horario», puntos 2 y 3)." >&2
               return 1
             fi
             jq -r '.[] | select(.config.metadata.fly_process_group == "worker") | "\(.id) \(.state)"' <<< "$machines"
