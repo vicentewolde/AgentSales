@@ -15,7 +15,7 @@ import {
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { isUniqueViolation, withDbErrors } from "../errors.js";
-import { contentRuns, contents, listings, planRuns, posts } from "../schema.js";
+import { brandKnowledgeRuns, contentRuns, contents, listings, planRuns, posts } from "../schema.js";
 
 /** Una corrida activa por aviso y, desde F9, por post: los dos dan `CONTENT_RUN_CONFLICT`. */
 const ONE_ACTIVE = ["content_runs_one_active_per_listing", "content_runs_one_active_per_post"];
@@ -45,6 +45,7 @@ function toContentRun(row: typeof contentRuns.$inferSelect): ContentRun {
     finishedAt: row.finishedAt,
     createdAt: row.createdAt,
     llmUsage: row.llmUsage,
+    scope: row.scope,
   });
   if (!parsed.success) {
     throw new AppError(
@@ -78,6 +79,7 @@ export function createContentRunRepository(db: SchemaDatabase): ContentRunReposi
             .values({
               ...(subject.kind === "listing" ? { listingId: subject.id } : { postId: subject.id }),
               texts: run.texts,
+              ...(run.scope === undefined || run.scope === null ? {} : { scope: run.scope }),
             })
             .returning();
           if (row === undefined) {
@@ -320,7 +322,18 @@ export function createContentRunRepository(db: SchemaDatabase): ContentRunReposi
               lt(planRuns.createdAt, to),
             ),
           );
-        const spend = runSpend.unionAll(planSpend).as("spend");
+        // F9.7 (ADR-0043): las lecturas de «Actualizar desde un texto» también gastan IA de la marca.
+        const knowledgeSpend = db
+          .select({ brokerId: brandKnowledgeRuns.brokerId, llmUsage: brandKnowledgeRuns.llmUsage })
+          .from(brandKnowledgeRuns)
+          .where(
+            and(
+              isNotNull(brandKnowledgeRuns.llmUsage),
+              gte(brandKnowledgeRuns.createdAt, from),
+              lt(brandKnowledgeRuns.createdAt, to),
+            ),
+          );
+        const spend = runSpend.unionAll(planSpend).unionAll(knowledgeSpend).as("spend");
         const rows = await db
           .select({
             brokerId: spend.brokerId,

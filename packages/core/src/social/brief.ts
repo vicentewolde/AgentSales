@@ -1,9 +1,12 @@
+import type { BrandKnowledgeContext } from "../brand-knowledge.js";
 import type { Broker } from "../broker.js";
 import type { EditorialProfileView } from "../editorial-profile.js";
 import { isPostPlatform, type Language, POST_PLATFORMS, type PostPlatform } from "../enums.js";
 import type { PlatformAccount } from "../platform-account.js";
 import type { Post } from "../post.js";
+import { cardImageLimit, POST_CARDS } from "../post-cards.js";
 import { linkKey, linksIn } from "./networks.js";
+import { hashtagPolicy } from "./post-hashtags.js";
 import { profileSpeaksAsTeam } from "./voice.js";
 
 // Lo que ve la IA de un post (spec F9 §4.3 y §4.4, ADR-0030 punto 1): el perfil editorial de su
@@ -59,8 +62,13 @@ export type SocialBrief = {
   pillar: { name: string; description: string } | null;
   facts: string[];
   avoid: string[];
-  /** `brokers.fixed_hashtags` y `defaultHashtags` del perfil, sin repetir. */
+  /**
+   * Los hashtags que siempre van (`brokers.fixed_hashtags` y `defaultHashtags` del perfil, sin
+   * repetir): el código los agrega al final en las redes que los usan (`applyHashtagPolicy`).
+   */
   hashtags: string[];
+  /** Si la IA puede agregar otros hashtags (`hashtagPolicy`, 2026-11-15). */
+  aiMayAddHashtags: boolean;
   topic: string;
   /** `true` si el tema lo escribió el operador (un post manual): entonces es fuente de hechos. */
   topicIsSource: boolean;
@@ -77,6 +85,24 @@ export type SocialBrief = {
    * eso, los textos no hablan de «nosotros».
    */
   speaksAsTeam: boolean;
+  /**
+   * Al rehacer un texto: lo que el operador quiere cambiar («más corto», «sin hashtags»). Es una
+   * guía de forma y tono, **nunca** una fuente de hechos (la revisión no la cuenta como fuente).
+   */
+  guidance?: string | null;
+  /** Al rehacer un solo texto: el texto actual, como referencia de forma (no es fuente de hechos). */
+  currentText?: { body: string; hashtags: string[] } | null;
+  /**
+   * El conocimiento de la marca (spec F9.7 B3, ADR-0043): postura, tono y forma de contar, ejemplos
+   * (guía de forma, nunca de hechos) y novedades (fuente de hechos). `null` si la marca no tiene.
+   */
+  knowledge: BrandKnowledgeContext | null;
+  /**
+   * Los textos de las láminas que se piden (spec F9.7 B5): en un post de imagen o carrusel, los
+   * idiomas de los textos pedidos y cuántos puntos caben (0 en una imagen: solo la portada). `null`
+   * en un post de texto o de video.
+   */
+  slides: { languages: Language[]; maxPoints: number } | null;
 };
 
 /** Hashtags sin repetir (sin mirar mayúsculas), en el orden en que llegan. */
@@ -116,13 +142,18 @@ export function buildSocialBrief(params: {
   return {
     brandName: broker.brandName,
     tone: broker.tone,
-    languages: [...profile.languages],
+    // Los idiomas que se redactan (los del post, `postLanguages`); sin destinos, los de la marca.
+    languages:
+      params.targets.length > 0
+        ? [...new Set(params.targets.map((target) => target.language))]
+        : [...profile.languages],
     targets: params.targets.map((target) => ({ ...target })),
     audience: profile.audience,
     pillar: pillar === null ? null : { name: pillar.name, description: pillar.description },
     facts: [...profile.facts],
     avoid: [...profile.avoid],
     hashtags: uniqueTags([...broker.fixedHashtags, ...profile.defaultHashtags]),
+    aiMayAddHashtags: hashtagPolicy(profile, broker).aiMayAdd,
     topic: post.topic,
     topicIsSource: post.source === "manual",
     operatorBrief: operatorBriefOf(post),
@@ -130,5 +161,25 @@ export function buildSocialBrief(params: {
     // F9-T16: sin la marca del operador, la IA no pone enlaces en X (costarían US$0,20).
     xLinks: post.xLinkAllowed ? xLinksOf(post) : [],
     speaksAsTeam: profileSpeaksAsTeam(profile),
+    knowledge: profile.knowledge ?? null,
+    slides: slidesFor(post.kind, params.targets),
   };
+}
+
+/**
+ * Las láminas que se piden con los textos (B5): un post de imagen lleva la portada; un carrusel,
+ * la portada y un punto por lámina sin pasar el tope de la red más estricta (portada y cierre
+ * aparte). Un post de texto o de video, ninguna.
+ */
+export function slidesFor(
+  kind: Post["kind"],
+  targets: readonly SocialTarget[],
+): SocialBrief["slides"] {
+  if (kind !== "image" && kind !== "carousel") return null;
+  const languages = [...new Set(targets.map((target) => target.language))];
+  if (languages.length === 0) return null;
+  if (kind === "image") return { languages, maxPoints: 0 };
+  const platforms = [...new Set(targets.map((target) => target.platform))];
+  const limit = cardImageLimit(kind, platforms);
+  return { languages, maxPoints: Math.max(0, Math.min(POST_CARDS.maxPoints, limit.max - 2)) };
 }

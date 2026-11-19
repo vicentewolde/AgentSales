@@ -24,12 +24,15 @@ import {
 import {
   ALL_SCOPE,
   brokersNeedingApiKey,
+  editorialProfilesWithKnowledge,
   liveEnabledBrokers,
   WORKER_HEARTBEAT_LOOKBACK,
 } from "@agentsales/core";
 import {
+  createBrandKnowledgeRepository,
   createBrokerPurgeRepository,
   createBrokerRepository,
+  createCardStyleRepository,
   createContentRepository,
   createContentRunRepository,
   createDb,
@@ -37,6 +40,7 @@ import {
   createFieldDefinitionRepository,
   createImportRunRepository,
   createInvitationRepository,
+  createKnowledgeProposalRepository,
   createLeadRepository,
   createLeadWebhookKeyRepository,
   createListingLock,
@@ -48,6 +52,7 @@ import {
   createPlanRunRepository,
   createPlatformAccountRepository,
   createPlatformCatalogRepository,
+  createPostCardTextRepository,
   createPostImageRunRepository,
   createPostLock,
   createPostRepository,
@@ -65,6 +70,7 @@ import {
   writeBrokerTemplate,
 } from "@agentsales/importers";
 // La subruta: sharp solo para el logo, sin ffmpeg ni el navegador del resto del paquete.
+import { renderStyledCard } from "@agentsales/media/cards";
 import { createLogoNormalizer } from "@agentsales/media/logo";
 import {
   createInstagramAuth,
@@ -146,6 +152,8 @@ const imageAiPricing = {
   monthlyCapUsd: env.IMAGE_AI_MONTHLY_CAP_USD,
 };
 const users = createUserRepository(database.db);
+// F9.7 (ADR-0043): el conocimiento de la marca (lo envuelve el perfil editorial, abajo).
+const brandKnowledge = createBrandKnowledgeRepository(database.db);
 const workerHeartbeats = createWorkerHeartbeatRepository(database.db);
 const backupStatus = backupStatusReader(
   env.BACKUP_TARGET === "r2"
@@ -225,7 +233,37 @@ const app = createApp({
   },
   postLock: createPostLock(database.db, { secretBox }),
   postUploads: createPostUploadRepository(database.db),
-  editorialProfiles: createEditorialProfileRepository(database.db),
+  // F9.7 (ADR-0043): el perfil trae el conocimiento de la marca al leerlo (lo ve la IA y la revisión).
+  editorialProfiles: editorialProfilesWithKnowledge(
+    createEditorialProfileRepository(database.db),
+    brandKnowledge,
+  ),
+  brandKnowledge,
+  knowledgeProposals: createKnowledgeProposalRepository(database.db),
+  cardStyles: createCardStyleRepository(database.db),
+  cardTexts: createPostCardTextRepository(database.db),
+  // La lámina de muestra del estilo (F9.7 B4): sharp, sin navegador.
+  cardStylePreview: async ({ style, brandName, detail, theme, composition, format }) =>
+    (
+      await renderStyledCard(
+        {
+          role: "cover",
+          text: `${brandName}, con su estilo`,
+          subtitle: "Así se ven las láminas de tus posts.",
+          detail,
+          position: 1,
+          total: 3,
+          items: [
+            { label: "01", text: "Un punto del post" },
+            { label: "02", text: "Otro punto" },
+            { label: "03", text: "Y uno más" },
+          ],
+        },
+        { brandName, primaryColor: "#000000", secondaryColor: "#ffffff", logo: null },
+        { style, theme, composition },
+        format,
+      )
+    ).png,
   // Los planes de ideas (F9-T21): la API los pide y lee; el worker los corre (`content.plan`).
   planRuns: createPlanRunRepository(database.db),
   // Conseguir imágenes para un post (F9.5-T25): la API busca en la biblioteca y pide; el worker

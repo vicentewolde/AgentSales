@@ -185,7 +185,7 @@ describe("el perfil sin hechos (primer criterio de F9-T22)", () => {
 });
 
 describe("runSocialEval con fake", () => {
-  it("evalúa los cuatro perfiles, con un texto por idioma en el de dos idiomas, sin problemas", async () => {
+  it("evalúa los cinco perfiles, con un texto por idioma en el de dos idiomas, sin problemas", async () => {
     const { exitCode, report, output } = await run(fakeProviders(), SOCIAL_EVAL_PROFILES);
     expect(report.profiles.map((item) => item.profile)).toEqual(
       SOCIAL_EVAL_PROFILES.map((item) => item.name),
@@ -223,9 +223,10 @@ describe("runSocialEval con fake", () => {
       textsWithErrors: 0,
     });
     // `fake` no informa tokens: el costo es 0, por separado y en total.
-    expect(report.usage.plan).toMatchObject({ calls: 4, reportedCalls: 0, costUsd: 0 });
-    expect(report.usage.texts).toMatchObject({ calls: 12, reportedCalls: 0, costUsd: 0 });
-    expect(report.usage.total.calls).toBe(16);
+    // F9.7: el perfil con conocimiento suma un plan y sus textos.
+    expect(report.usage.plan).toMatchObject({ calls: 5, reportedCalls: 0, costUsd: 0 });
+    expect(report.usage.texts).toMatchObject({ calls: 15, reportedCalls: 0, costUsd: 0 });
+    expect(report.usage.total.calls).toBe(20);
     expect(output).toContain("fake no informa tokens (US$ 0)");
     expect(output).toContain("Resultado: ✓");
     expect(report.stopped).toBe(false);
@@ -427,6 +428,8 @@ describe("runSocialEval cuenta los problemas que se le inyectan", () => {
     const base = profile("dos-idiomas");
     const item: SocialEvalProfile = {
       ...base,
+      // La IA puede agregar hashtags (2026-11-15): así llegan los 30 y se prueba el tope.
+      profile: { ...base.profile, aiHashtags: true },
       history: { recentTopics: [], discardedTopics: ["Una idea que ya descartamos"] },
     };
     const planIdea = (tema: string, red: string, formato: string) => ({

@@ -155,9 +155,11 @@ describe("agendaItems", () => {
       expired: false,
     });
     expect(items.find((item) => item.kind === "manual_task")?.externalRef).toBe("L2");
-    // Es el orden declarado (sin el estado del worker no hay `worker_off`).
+    // Es el orden declarado (sin el estado del worker no hay `worker_off`; «¿Salió?» tiene su caso).
     expect([...new Set(items.map((item) => item.kind))]).toEqual(
-      AGENDA_KINDS.filter((kind) => kind !== "approved_waiting" && kind !== "worker_off"),
+      AGENDA_KINDS.filter(
+        (kind) => kind !== "approved_waiting" && kind !== "worker_off" && kind !== "did_it_go_out",
+      ),
     );
   });
 
@@ -215,7 +217,7 @@ describe("agendaItems", () => {
       lastFailureCode: null,
     };
     expect(run([], { backup: ok })).toMatchObject([{ kind: "backup", action: "none" }]);
-    expect(run([], { backup: { ...ok, lastSuccessAt: days(-3).toISOString() } })).toMatchObject([
+    expect(run([], { backup: { ...ok, lastSuccessAt: days(-9).toISOString() } })).toMatchObject([
       { kind: "backup", action: "backup", stale: true },
     ]);
     expect(run([], { backup: { ...ok, lastFailureCode: "BACKUP_FAILED" } })).toMatchObject([
@@ -564,6 +566,36 @@ describe("trackingPostRow", () => {
     expect(row.cells.instagram).toEqual([]);
     expect(row.cells.tiktok).toEqual([]);
   });
+
+  it("una red que el post no tiene solo muestra lo publicado, y no entra a la agenda (2026-11-15)", () => {
+    const post = {
+      id: "p1",
+      brokerId: "b1",
+      topic: "Bastidores",
+      status: "ready" as const,
+      kind: "image" as const,
+      plannedAt: null,
+      platforms: ["x" as const],
+    };
+    const publications = [
+      postPublication("p1", { platform: "x", status: "failed" }),
+      postPublication("p1", { platform: "linkedin", status: "failed" }),
+      postPublication("p1", { platform: "discord", status: "published" }),
+    ];
+    const row = trackingPostRow(post, publications, NOW);
+    expect(row.cells.x.map((p) => p.status)).toEqual(["failed"]);
+    expect(row.cells.linkedin).toEqual([]);
+    expect(row.cells.discord.map((p) => p.status)).toEqual(["published"]);
+    const items = agendaItems({
+      listings: [],
+      posts: [post],
+      publications,
+      autoPublishBrokerIds: new Set(),
+      pendingReviews: [],
+      now: NOW,
+    });
+    expect(items.map((item) => item.platform)).toEqual(["x"]);
+  });
 });
 
 describe("pendingReviewsOf", () => {
@@ -596,5 +628,76 @@ describe("pendingReviewsOf", () => {
       ]),
     });
     expect(reviews).toEqual([{ listingId: "a", platform: "portal_inmobiliario" }]);
+  });
+});
+
+describe("F9.7 B10: «¿Salió?»", () => {
+  const manual = account({ id: "acc-li", tokenExpiresAt: days(60) });
+  const api = account({ id: "acc-x", platform: "x", meta: {}, tokenExpiresAt: days(60) });
+  const items = (publications: Publication[], plannedAt: Date | null = null) =>
+    agendaItems({
+      listings: [],
+      posts: [{ ...post("p1"), plannedAt }],
+      publications,
+      accounts: [manual, api],
+      autoPublishBrokerIds: new Set(),
+      pendingReviews: [],
+      now: NOW,
+    }).filter((item) => item.kind === "did_it_go_out");
+
+  it("una a mano lista para publicar hace más de 12 h pide decir si salió", () => {
+    const readyAt = minutes(-13 * 60);
+    const ready = postPublication("p1", {
+      platformAccountId: "acc-li",
+      platform: "linkedin",
+      status: "awaiting_manual_confirm",
+      progress: {
+        manual: { attempt: 1, simulated: true, readyAt: readyAt.toISOString(), media: 1 },
+      },
+    });
+    expect(items([ready])).toMatchObject([
+      { action: "confirm", publicationId: ready.id, language: "es", at: readyAt },
+    ]);
+    // Hace menos de 12 h, todavía es una tarea a mano.
+    const recent = postPublication("p1", {
+      platformAccountId: "acc-li",
+      platform: "linkedin",
+      status: "awaiting_manual_confirm",
+      progress: {
+        manual: { attempt: 1, simulated: true, readyAt: minutes(-60).toISOString(), media: 1 },
+      },
+    });
+    expect(items([recent])).toEqual([]);
+  });
+
+  it("una programada o aprobada a mano con la hora pasada pide registrarla; nunca lo confirmado ni las de API", () => {
+    const scheduled = postPublication("p1", {
+      platformAccountId: "acc-li",
+      platform: "linkedin",
+      status: "scheduled",
+      scheduledAt: minutes(-20 * 60),
+    });
+    const approved = postPublication("p1", { platformAccountId: "acc-li", platform: "linkedin" });
+    const published = postPublication("p1", {
+      platformAccountId: "acc-li",
+      platform: "linkedin",
+      status: "published",
+      publishedAt: minutes(-30 * 60),
+    });
+    const viaApi = postPublication("p1", {
+      platformAccountId: "acc-x",
+      platform: "x",
+      status: "scheduled",
+      scheduledAt: minutes(-20 * 60),
+    });
+    expect(
+      items([scheduled, approved, published, viaApi], minutes(-15 * 60)).map((item) => [
+        item.publicationId,
+        item.action,
+      ]),
+    ).toEqual([
+      [scheduled.id, "record"],
+      [approved.id, "record"],
+    ]);
   });
 });

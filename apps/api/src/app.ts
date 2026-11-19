@@ -1,8 +1,11 @@
 import {
   AppError,
+  type BrandKnowledgeRepository,
   type Broker,
   type BrokerPurgeRepository,
   type BrokerRepository,
+  type CardStylePreviewer,
+  type CardStyleRepository,
   type ContentRepository,
   type ContentRunRepository,
   type EditorialProfileRepository,
@@ -11,6 +14,7 @@ import {
   type ImageAiPricing,
   type ImportRunRepository,
   type JobQueue,
+  type KnowledgeProposalRepository,
   type LeadRepository,
   type LeadWebhookKeyRepository,
   type LeadWebhookSecretDeps,
@@ -26,6 +30,7 @@ import {
   type PlanRunRepository,
   type Platform,
   type PlatformAccountRepository,
+  type PostCardTextRepository,
   type PostImageRunRepository,
   type PostImageSourcesConfig,
   type PostLock,
@@ -49,8 +54,10 @@ import { type RequestContext, withEventUser, withPostEventUser } from "./request
 import { requestLogger } from "./request-logger.js";
 import { type AccountRoutesDeps, accountRoutes } from "./routes/accounts.js";
 import { authRoutes } from "./routes/auth.js";
+import { brandKnowledgeRoutes } from "./routes/brand-knowledge.js";
 import { brandWeekRoutes } from "./routes/brand-week.js";
 import { brokerRoutes } from "./routes/brokers.js";
+import { cardStyleRoutes } from "./routes/card-style.js";
 import { contentRoutes, contentRunRoutes, listingContentRoutes } from "./routes/content.js";
 import { editorialProfileRoutes } from "./routes/editorial-profile.js";
 import { importRoutes } from "./routes/imports.js";
@@ -61,6 +68,7 @@ import { musicRoutes } from "./routes/music.js";
 import { type OAuthDeps, oauthRoutes } from "./routes/oauth.js";
 import { type LinkedInOAuthDeps, linkedinOAuthRoutes } from "./routes/oauth-linkedin.js";
 import { planRoutes } from "./routes/plans.js";
+import { postCardTextRoutes } from "./routes/post-card-texts.js";
 import { postRoutes } from "./routes/posts.js";
 import {
   listingPublicationRoutes,
@@ -104,11 +112,12 @@ export type AppDeps = {
   /**
    * Las URLs de lectura temporales de los medios (fotos, renders y reel); desde F7-T14, subir el
    * logo de un corredor, y desde F8 (spec §4.4, ADR-0025) firmar las subidas directas de una carga,
-   * revisar que llegaron y borrarlas; desde F9.5-T19, ver si una pista de música está en R2.
+   * revisar que llegaron y borrarlas; desde F9.5-T19, ver si una pista de música está en R2;
+   * desde F9.7 (B7), leer las láminas de un carrusel para su PDF de LinkedIn.
    */
   storage: Pick<
     MediaStorage,
-    "signedReadUrl" | "put" | "signedUploadUrl" | "list" | "delete" | "head"
+    "signedReadUrl" | "put" | "signedUploadUrl" | "list" | "delete" | "head" | "get"
   >;
   /** El logo de un corredor con sharp (`@agentsales/media/logo`; F7-T14). */
   logos: LogoNormalizer;
@@ -165,8 +174,19 @@ export type AppDeps = {
   imageSources: PostImageSourcesConfig;
   /** El precio y el tope de la IA de imágenes (para `GET /usage`, aunque falte la clave). */
   imageAiPricing: ImageAiPricing;
-  /** El perfil editorial de cada corredor o marca (F9-T09): lo lee la IA de los posts. */
+  /**
+   * El perfil editorial de cada corredor o marca (F9-T09): lo lee la IA de los posts. Desde F9.7
+   * (ADR-0043), envuelto con `editorialProfilesWithKnowledge`: al leerlo trae el conocimiento.
+   */
   editorialProfiles: EditorialProfileRepository;
+  /** F9.7 (ADR-0043): el conocimiento de la marca y las lecturas de «Actualizar desde un texto». */
+  brandKnowledge: BrandKnowledgeRepository;
+  knowledgeProposals: KnowledgeProposalRepository;
+  /** F9.7 B4: el estilo de las imágenes de la marca, el tema de cada post y su lámina de muestra. */
+  cardStyles: CardStyleRepository;
+  cardStylePreview: CardStylePreviewer;
+  /** F9.7 B5: los textos de las láminas de cada post. */
+  cardTexts: PostCardTextRepository;
   /**
    * Los planes de ideas (F9-T21, ADR-0030): pedirlos (`content.plan` los corre en el worker), listar
    * los de una marca y ver uno con sus ideas.
@@ -436,11 +456,15 @@ export function createApp(input: AppDeps) {
     .route("/brokers", editorialProfileRoutes(deps))
     // F9.5-T27: aprobar la semana y la lista para publicar a diario de una marca.
     .route("/brokers", brandWeekRoutes({ ...deps, ...workerDetails }))
+    // F9.7 (ADR-0043): el conocimiento de la marca y sus propuestas.
+    .route("/brokers", brandKnowledgeRoutes(deps))
+    .route("/brokers", cardStyleRoutes(deps))
     // F10: los leads de un corredor, un lead por id y el webhook público de ManyChat.
     .route("/brokers", brokerLeadRoutes(deps))
     .route("/leads", leadRoutes(deps))
     .route("/webhooks", leadWebhookRoutes(deps))
     .route("/posts", postRoutes(deps))
+    .route("/posts", postCardTextRoutes(deps))
     .route("/plans", planRoutes(deps))
     .route("/music", musicRoutes(deps))
     .route("/schedule", scheduleRoutes(publicationDeps))

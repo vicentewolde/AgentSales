@@ -7,6 +7,7 @@ import {
   LANGUAGES,
   LLM_PROVIDERS,
   PLATFORMS,
+  POST_PLATFORMS,
 } from "./enums.js";
 import { llmUsageSchema } from "./llm-usage.js";
 import { subjectFields } from "./subject.js";
@@ -60,6 +61,12 @@ export const contentRunReportSchema = z.object({
       }),
     )
     .optional(),
+  /**
+   * Corridas de posts: una huella (`postSourceHashes`) del tema y del brief con que se redactó, para avisar si
+   * cambiaron después (`postSourceChanges`). Sin el texto: solo la huella. Las corridas anteriores
+   * no la traen.
+   */
+  postSource: z.object({ topic: z.string(), brief: z.string() }).optional(),
   warnings: z.array(z.string()),
 });
 export type ContentRunReport = z.infer<typeof contentRunReportSchema>;
@@ -67,6 +74,28 @@ export type ContentRunReport = z.infer<typeof contentRunReportSchema>;
 /** Motivo de una corrida fallida (`content_runs.error`): sin rutas ni datos de clientes. */
 export const contentRunErrorSchema = z.object({ code: z.string(), message: z.string() });
 export type ContentRunError = z.infer<typeof contentRunErrorSchema>;
+
+/** El tope de la indicación «¿Qué cambiar?» al rehacer un texto de un post (caracteres). */
+export const CONTENT_RUN_GUIDANCE_MAX = 300;
+
+/** Qué hace una corrida acotada: `missing` solo crea los textos que faltan; `replace` rehace los pedidos. */
+export const CONTENT_RUN_SCOPE_MODES = ["missing", "replace"] as const;
+export type ContentRunScopeMode = (typeof CONTENT_RUN_SCOPE_MODES)[number];
+
+/**
+ * El alcance de una corrida de un post (`content_runs.scope`): sin él (`null`), la corrida redacta
+ * todas las redes del post en todos los idiomas de la marca. Con él, solo `platforms` (y solo
+ * `language`, si viene): `missing` crea solo los textos que todavía no existen (una red agregada al
+ * post, sin tocar los demás); `replace` rehace esos textos (rehacer uno, con la indicación del
+ * operador `guidance` como guía de forma y tono, nunca como fuente de hechos).
+ */
+export const contentRunScopeSchema = z.object({
+  platforms: z.array(z.enum(POST_PLATFORMS)).min(1).max(POST_PLATFORMS.length),
+  language: z.enum(LANGUAGES).nullable(),
+  mode: z.enum(CONTENT_RUN_SCOPE_MODES),
+  guidance: z.string().max(CONTENT_RUN_GUIDANCE_MAX).nullable(),
+});
+export type ContentRunScope = z.infer<typeof contentRunScopeSchema>;
 
 /**
  * Corrida de contenido (`content_runs`, ADR-0012): la entidad que devuelve el repositorio. Desde F9
@@ -88,6 +117,8 @@ export const contentRunSchema = z.object({
   createdAt: z.date(),
   /** Lo gastado en IA, sumado por llamada (spec F7 §4.7); `null` si no llamó al modelo. */
   llmUsage: llmUsageSchema.nullable(),
+  /** El alcance de una corrida de post (`contentRunScopeSchema`); `null`: todo el post. */
+  scope: contentRunScopeSchema.nullable().default(null),
 });
 export type ContentRun = z.infer<typeof contentRunSchema>;
 

@@ -141,11 +141,32 @@ export {
   planSlots,
 } from "./plan-slots.js";
 export {
+  ALWAYS_HASHTAG_PLATFORMS,
+  applyHashtagPolicy,
+  type HashtagPolicy,
+  hashtagPolicy,
+  hashtagsOutsideList,
+} from "./post-hashtags.js";
+export {
+  normalizePostLanguages,
+  postLanguageExcluded,
+  postLanguages,
+  postTextVisible,
+  postWritesIn,
+} from "./post-languages.js";
+export {
+  addedPlatformsToDraft,
   ideaNeedsDraft,
+  type PostKindIssues,
   type PostNetworkGaps,
+  postKindIssues,
   postNetworkGaps,
   postPlatformExcluded,
   postPublishesOn,
+  postShowsPublication,
+  type RescheduleMove,
+  type RescheduleSuggestion,
   requirePostPlatform,
+  rescheduleSuggestion,
 } from "./post-networks.js";
 export { buildSocialPrompt, SOCIAL_PROMPT_VERSION, SOCIAL_SYSTEM_PROMPT } from "./prompt.js";

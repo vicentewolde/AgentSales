@@ -151,3 +151,48 @@ describe("postPublicationPlan · el idioma de cada imagen (ADR-0042)", () => {
     });
   });
 });
+
+describe("postPublicationPlan · imagen entera (post_full, 2026-11-16)", () => {
+  /** Un post de una imagen con su `post_full` del tamaño dado (o sin ella). */
+  async function withFull(size: [number, number] | null) {
+    const { t, media } = await mediaOf({ kind: "image", images: 1 });
+    const ig = t.images[0] as Media;
+    if (size === null) return { ig, full: null, media };
+    const full: Media = {
+      ...ig,
+      id: "00000000-0000-4000-8000-0000000000f1",
+      variant: "post_full",
+      width: size[0],
+      height: size[1],
+    };
+    return { ig, full, media: [...media, full] };
+  }
+
+  it("X, LinkedIn y Discord llevan la imagen entera, sin recorte", async () => {
+    const { full, media } = await withFull([1440, 810]);
+    for (const platform of ["x", "linkedin", "discord"] as const) {
+      expect(postPublicationPlan(platform, "image", media).mediaIds).toEqual([full?.id]);
+    }
+  });
+
+  it("Instagram lleva la entera si cabe (4:5 a 1,91:1); si es más alta, el ig_4x5", async () => {
+    for (const size of [
+      [1440, 810],
+      [1080, 1080],
+      [1080, 1350],
+    ] as [number, number][]) {
+      const { full, media } = await withFull(size);
+      expect(postPublicationPlan("instagram", "image", media).mediaIds, `${size}`).toEqual([
+        full?.id,
+      ]);
+    }
+    const tall = await withFull([1080, 1920]);
+    expect(postPublicationPlan("instagram", "image", tall.media).mediaIds).toEqual([tall.ig.id]);
+  });
+
+  it("una imagen procesada antes (sin post_full) sigue con su ig_4x5 en todas las redes", async () => {
+    const { ig, media } = await withFull(null);
+    expect(postPublicationPlan("x", "image", media).mediaIds).toEqual([ig.id]);
+    expect(postPublicationPlan("instagram", "image", media).mediaIds).toEqual([ig.id]);
+  });
+});

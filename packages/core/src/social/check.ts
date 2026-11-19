@@ -1,3 +1,4 @@
+import { knowledgeSources } from "../brand-knowledge.js";
 import type { Broker } from "../broker.js";
 import { aiTellMessage, findAiTells } from "../content/ai-tells.js";
 import {
@@ -38,6 +39,13 @@ import {
   X_MAX_IMAGES,
   X_POST_COST_USD,
 } from "./networks.js";
+import {
+  ALWAYS_HASHTAG_PLATFORMS,
+  type HashtagPolicy,
+  hashtagPolicy,
+  hashtagsOutsideList,
+} from "./post-hashtags.js";
+import { misspellings } from "./spelling.js";
 
 // La revisión de los textos de un post (spec F9 §4.4, ADR-0030 punto 7): una función pura que
 // corre sobre el texto final, también después de una edición manual, y no se guarda (se calcula
@@ -85,6 +93,11 @@ export type PostCheckContext = {
    */
   xLinkAllowed: boolean;
   avoid: string[];
+  /**
+   * Los hashtags que siempre van y si la IA puede agregar otros (2026-11-15, `hashtagPolicy`); sin
+   * ella, no se revisan.
+   */
+  hashtags?: HashtagPolicy;
 };
 
 /**
@@ -94,12 +107,17 @@ export type PostCheckContext = {
  * y el tema del operador) y la de las ideas de un plan (F9-T20), que no tienen brief.
  */
 export function profileSources(
-  profile: Pick<EditorialProfileView, "facts" | "audience" | "pillars" | "defaultHashtags">,
+  profile: Pick<EditorialProfileView, "facts" | "audience" | "pillars" | "defaultHashtags"> & {
+    knowledge?: EditorialProfileView["knowledge"];
+  },
   broker: Pick<Broker, "brandName" | "fixedHashtags">,
 ): string {
   return [
     broker.brandName,
     ...profile.facts,
+    // Las novedades de la marca son fuente de hechos; los ejemplos, la postura y el tono no (D1 de
+    // F9.7, ADR-0043).
+    ...knowledgeSources(profile.knowledge),
     profile.audience ?? "",
     ...profile.pillars.flatMap((pillar) => [pillar.name, pillar.description]),
     ...profile.defaultHashtags,
@@ -119,8 +137,8 @@ export function buildPostCheckContext(params: {
   post: Pick<Post, "kind" | "topic" | "brief" | "briefOrigin" | "source" | "xLinkAllowed">;
   profile: Pick<
     EditorialProfileView,
-    "facts" | "audience" | "pillars" | "defaultHashtags" | "avoid"
-  >;
+    "facts" | "audience" | "pillars" | "defaultHashtags" | "avoid" | "knowledge"
+  > & { aiHashtags?: boolean | null };
   broker: Pick<Broker, "brandName" | "fixedHashtags">;
   media: readonly (Pick<Media, "role" | "kind"> &
     Partial<Pick<Media, "id" | "sortOrder" | "parentMediaId" | "language">>)[];
@@ -178,6 +196,7 @@ export function buildPostCheckContext(params: {
     xLinks: xLinksOf(post),
     xLinkAllowed: post.xLinkAllowed,
     avoid: [...profile.avoid],
+    hashtags: hashtagPolicy(profile, broker),
   };
 }
 
@@ -336,6 +355,32 @@ const DATE_ABBREVIATIONS: ReadonlySet<string> = new Set([
  * siglas comunes. Plegadas (sin tildes, en minúsculas). Las abreviaturas de fechas van aparte
  * (`DATE_ABBREVIATIONS`): solo valen junto a una fecha.
  */
+/** Gentilicios comunes en inglés (en minúsculas y sin tildes, como `foldText`). */
+const ENGLISH_DEMONYMS = [
+  "chilean",
+  "chileans",
+  "latin",
+  "latino",
+  "latinos",
+  "latina",
+  "latinas",
+  "latam",
+  "hispanic",
+  "american",
+  "americans",
+  "european",
+  "europeans",
+  "argentine",
+  "argentinian",
+  "peruvian",
+  "mexican",
+  "colombian",
+  "brazilian",
+  "uruguayan",
+  "bolivian",
+  "venezuelan",
+] as const;
+
 const COMMON_CAPITALIZED: ReadonlySet<string> = new Set([
   "instagram",
   "linkedin",
@@ -361,7 +406,44 @@ const COMMON_CAPITALIZED: ReadonlySet<string> = new Set([
   ...DATE_NAMES,
   "english",
   "spanish",
+  // Gentilicios en inglés (2026-11-15): en español van en minúscula (chileno, latino) y no se
+  // revisan; en inglés llevan mayúscula y no son nombres inventados.
+  ...ENGLISH_DEMONYMS,
 ]);
+
+/**
+ * Formas de una palabra con mayúscula que se aceptan si su base es conocida (2026-11-15): el plural
+ * («AIs», «CEOs», «Pilots») y el gentilicio en inglés («Chilean» de «Chile» o «chileno»). Devuelve
+ * las bases a buscar en las fuentes y en `COMMON_CAPITALIZED`.
+ */
+function knownBases(folded: string): string[] {
+  const bases: string[] = [];
+  if (folded.length > 2 && folded.endsWith("s")) bases.push(folded.slice(0, -1));
+  if (folded.length > 3 && folded.endsWith("es")) bases.push(folded.slice(0, -2));
+  const singular = folded.endsWith("s") ? folded.slice(0, -1) : folded;
+  for (const suffix of ["ian", "ean", "an", "ese", "ish"]) {
+    if (singular.length - suffix.length < 3 || !singular.endsWith(suffix)) continue;
+    const stem = singular.slice(0, -suffix.length);
+    // «Chile» + «an», «México» + «an» (mexic-o), «Colombia» + «n», y el gentilicio en español.
+    const kept = suffix === "ean" ? [stem, `${stem}e`] : [stem];
+    for (const base of kept) {
+      bases.push(base, `${base}a`, `${base}o`, `${base}e`);
+      for (const ending of ["no", "na", "ano", "ana", "ense", "eno", "ena"]) {
+        bases.push(`${base}${ending}`, `${base}${ending}s`);
+      }
+    }
+  }
+  return bases;
+}
+
+/** Si una palabra con mayúscula es conocida: está en las fuentes, es común o deriva de una de ellas. */
+function isKnownCapitalized(word: string, sourceWords: ReadonlySet<string>): boolean {
+  const folded = foldText(word);
+  if (sourceWords.has(folded) || COMMON_CAPITALIZED.has(folded)) return true;
+  // La sigla en plural: «AIs», «APIs», «CEOs».
+  if (/^[\p{Lu}\p{N}]{2,6}s$/u.test(word)) return true;
+  return knownBases(folded).some((base) => sourceWords.has(base) || COMMON_CAPITALIZED.has(base));
+}
 
 /** Lo que puede separar las partes de una fecha: espacios, punto, coma, guiones y barra. */
 const DATE_GLUE = /^[\s.,\-–—/]+$/u;
@@ -480,13 +562,14 @@ function unknownNames(text: string, sourceWords: ReadonlySet<string>): string[] 
         const before = sentence.slice(0, start).trimEnd();
         const opener = first || OPENERS.has(before.at(-1) ?? "");
         first = false;
-        const folded = foldText(word);
+        // El sufijo pegado a una cifra (`200M`, `$274K`, `5G`) es parte del número, no un nombre.
+        const numberSuffix = word.length <= 2 && /\p{N}$/u.test(sentence.slice(0, start));
         const unknown =
           !opener &&
+          !numberSuffix &&
           hasUppercase(word) &&
           !isShoutOrAcronym(word) &&
-          !sourceWords.has(folded) &&
-          !COMMON_CAPITALIZED.has(folded);
+          !isKnownCapitalized(word, sourceWords);
         if (!unknown) {
           if (run !== null) names.push(run.text);
           run = null;
@@ -704,7 +787,28 @@ export function checkPostContent(
   const name = PLATFORM_NAME[platform];
 
   const { length, max } = postTextLength(platform, text);
-  if (length > max) add("TOO_LONG", tooLongMessage(platform, length, max));
+  if (length > max) {
+    // Los hashtags que siempre van cuentan: si no caben, se dice (el texto nunca se corta solo).
+    const always =
+      ctx.hashtags !== undefined && ALWAYS_HASHTAG_PLATFORMS.includes(platform)
+        ? ctx.hashtags.always
+        : [];
+    add(
+      "TOO_LONG",
+      always.length === 0
+        ? tooLongMessage(platform, length, max)
+        : `${tooLongMessage(platform, length, max)}, contando los hashtags que siempre van (${always.join(" ")}): acorta el texto o quita alguno en Mi marca`,
+    );
+  }
+  if (ctx.hashtags !== undefined) {
+    const outside = hashtagsOutsideList(text.hashtags, ctx.hashtags);
+    if (outside.length > 0) {
+      add(
+        "HASHTAG_NOT_IN_LIST",
+        `${outside.join(" ")} no ${outside.length === 1 ? "está" : "están"} entre los hashtags que siempre van, y la IA no puede agregar otros: ${outside.length === 1 ? "quítalo" : "quítalos"}, o permite otros hashtags en Mi marca`,
+      );
+    }
+  }
 
   if (platform === "instagram") {
     const count = text.hashtags.length + (text.body.match(HASHTAG_IN_TEXT) ?? []).length;
@@ -799,6 +903,17 @@ export function checkPostContent(
       "u",
     );
     if (pattern.test(folded)) add("AVOID_TERM", `Usa «${term}», que el perfil pide evitar`);
+  }
+
+  // F9.7 B8: la ortografía (aviso), sobre todo de lo que el operador editó a mano.
+  if (text.language !== undefined) {
+    const wrong = misspellings(text.body, text.language);
+    if (wrong.length > 0) {
+      add(
+        "SPELLING",
+        `Revisa la ortografía: ${wrong.map((item) => `«${item.word}» → «${item.suggestion}»`).join(", ")}`,
+      );
+    }
   }
 
   const tells = findAiTells(text.body);

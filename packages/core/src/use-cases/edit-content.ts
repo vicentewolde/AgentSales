@@ -9,6 +9,7 @@ import {
 import { AppError } from "../errors.js";
 import type { ContentChanges } from "../ports/content-repository.js";
 import { ACTIVE_PUBLICATION_STATUSES, PENDING_PUBLICATION_STATUSES } from "../publication-state.js";
+import { normalizePostHashtags } from "../social/draft.js";
 import { runOnSubject, type SubjectLocks } from "../subject-lock.js";
 
 export type EditContentDeps = ContentLockDeps & SubjectLocks;
@@ -94,7 +95,12 @@ export async function editContent(
           "Solo Instagram usa hashtags: en este canal deben ir vacíos",
         );
       }
-      changes.hashtags = normalizeHashtags(edit.hashtags);
+      // Un post conserva las mayúsculas que escribe el operador (#ChatGPT), como los de la IA y los
+      // que siempre van; un aviso, el formato de Instagram de siempre (minúsculas, sin tildes).
+      changes.hashtags =
+        found.kind === "post"
+          ? normalizePostHashtags(edit.hashtags)
+          : normalizeHashtags(edit.hashtags);
     }
 
     const updated = await repos.contents.update(content.id, changes);

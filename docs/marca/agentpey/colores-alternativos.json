@@ -1,0 +1,73 @@
+{
+  "nota": "Temas de color alternativos para las láminas de AgentPey (mismo estilo, otros colores). Se pegan dentro de `themes` de estilo.json (hasta 4 temas por estilo; el post rota uno fijo). Verde menta, naranja y los grises salen de la paleta del sitio agentpey.com (#6df2c0, #ff5a36, #070b16). El amarillo es nuevo (2026-11-15), no sale del sitio. Mostrados al operador el 2026-11-15 sobre el post «Las IAs casi no recomiendan tiendas pequeñas».",
+  "themes": [
+    {
+      "name": "Verde menta",
+      "background": { "kind": "radial", "from": "#0f4a3b", "via": "#07251e", "to": "#020d0a" },
+      "text": "#f5f5f7",
+      "secondary": "#a8c9bf",
+      "accent": "#6df2c0",
+      "headlineGradient": { "from": "#2ee6a6", "to": "#c4ffe9" },
+      "card": { "background": "#1c1c1e", "text": "#f5f5f7", "label": "#98989d" },
+      "hero": {
+        "background": "#1c1c1e",
+        "text": "#ffffff",
+        "label": "#e8efff",
+        "accent": "#e2fff4"
+      },
+      "medal": { "ring": ["#fdfdfe", "#8e97a1"], "disc": ["#3fe0b0", "#0b6b52"] },
+      "glow": { "color": "#6df2c0", "opacity": 0.22 }
+    },
+    {
+      "name": "Gris claro",
+      "background": { "kind": "solid", "color": "#e8e8ed" },
+      "text": "#1d1d1f",
+      "secondary": "#5a5a5f",
+      "accent": "#3a3a3c",
+      "headlineGradient": { "from": "#1d1d1f", "to": "#636366" },
+      "card": { "background": "#ffffff", "text": "#1d1d1f", "label": "#5a5a5f" },
+      "hero": {
+        "background": "#1c1c1e",
+        "text": "#ffffff",
+        "label": "#e8efff",
+        "accent": "#e2fff4"
+      },
+      "medal": { "ring": ["#fdfdfe", "#8e97a1"], "disc": ["#8e8e93", "#2c2c2e"] },
+      "glow": null
+    },
+    {
+      "name": "Naranja",
+      "background": { "kind": "radial", "from": "#3f1609", "via": "#1a0b07", "to": "#070b16" },
+      "text": "#f5f5f7",
+      "secondary": "#d9b8ab",
+      "accent": "#ff5a36",
+      "headlineGradient": { "from": "#ff5a36", "to": "#ffb199" },
+      "card": { "background": "#1c1c1e", "text": "#f5f5f7", "label": "#98989d" },
+      "hero": {
+        "background": "#1c1c1e",
+        "text": "#ffffff",
+        "label": "#e8efff",
+        "accent": "#e2fff4"
+      },
+      "medal": { "ring": ["#fdfdfe", "#8e97a1"], "disc": ["#ff7a57", "#a82c0c"] },
+      "glow": { "color": "#ff5a36", "opacity": 0.22 }
+    },
+    {
+      "name": "Amarillo",
+      "background": { "kind": "radial", "from": "#463a08", "via": "#201a04", "to": "#0a0802" },
+      "text": "#f5f5f7",
+      "secondary": "#d6cb9a",
+      "accent": "#ffd23f",
+      "headlineGradient": { "from": "#ffc41f", "to": "#fff1b0" },
+      "card": { "background": "#1c1c1e", "text": "#f5f5f7", "label": "#98989d" },
+      "hero": {
+        "background": "#1c1c1e",
+        "text": "#ffffff",
+        "label": "#e8efff",
+        "accent": "#e2fff4"
+      },
+      "medal": { "ring": ["#fdfdfe", "#8e97a1"], "disc": ["#e8a900", "#7a4d00"] },
+      "glow": { "color": "#ffd23f", "opacity": 0.2 }
+    }
+  ]
+}

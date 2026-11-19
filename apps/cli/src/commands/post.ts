@@ -23,6 +23,7 @@ import {
   publicationResponseSchema,
 } from "@agentsales/api/contracts";
 import {
+  CONTENT_RUN_GUIDANCE_MAX,
   CONTENT_STATUS_TEXT,
   contentRunProgressText,
   formatChileTime,
@@ -48,6 +49,7 @@ import {
   postPublishesOn,
   publicationFormatText,
   publicationModeText,
+  rescheduleSuggestion,
   X_LINK_POST_COST_USD,
   X_POST_COST_USD,
   xPostHasLink,
@@ -68,6 +70,7 @@ import {
 import { brandOf } from "./brand.js";
 import { brandWeekCommands } from "./brand-week.js";
 import { paintContentRunStatus, renderChecks } from "./content-view.js";
+import { registerPostCards } from "./post-cards.js";
 import { registerPostMedia } from "./post-media.js";
 import { paintPublicationStatus } from "./publication-view.js";
 import { atOption, collect, confirmLive } from "./schedule.js";
@@ -154,6 +157,7 @@ function postHint(error: ApiCallError, postId: string, xLinkMissing = false): st
     POST_NOT_IDEA: `Ya no es una idea: míralo con ${show(postId)} (si la IA está redactando, sus textos aparecen ahí al terminar). Si quedó aceptada sin textos y sin redacción en curso, pídelos con agentsales post draft ${postId}; un post aceptado se archiva con agentsales post archive ${postId}`,
     QUEUE_UNAVAILABLE: `El worker o la cola no responden: arranca el worker (pnpm dev, o el del servidor) y vuelve a intentarlo; si fue al aceptar una idea, esa ya quedó aceptada sin textos: pídelos con agentsales post draft ${postId}`,
     POST_PLATFORM_EXCLUDED: `Esa red no está entre las del post: agrégala con agentsales post edit ${postId} --platforms <redes>`,
+    POST_LANGUAGE_EXCLUDED: `Ese idioma no está entre los del post: agrégalo con agentsales post edit ${postId} --languages es,en (o a la marca con agentsales brand edit --languages)`,
     POST_NOT_READY: `Mira su estado con ${show(postId)}: una idea se acepta primero y un post archivado ya no cambia`,
     POST_ARCHIVED: "Un post archivado no cambia: crea otro con agentsales post create",
     POST_HAS_PENDING_PUBLICATIONS: `Cancélalas con agentsales publications cancel <id> (o resuélvelas) antes de archivar el post o quitarle esa red; míralas con ${show(postId)}`,
@@ -414,6 +418,8 @@ export function renderPostPublications(
 /** `post show`: el post, sus medios con sus variantes, sus textos con su revisión y sus publicaciones. */
 export function renderPostDetail(detail: PostDetailResponse, brandSlug: string, c: Colors): string {
   const { post, media, contents, latestRun, publications } = detail;
+  // Los idiomas del post (los suyos o los de la marca); un servidor anterior no los manda.
+  const languages = detail.languages;
   const lines = [
     `${c.bold(post.topic)}  ${c.dim(`${POST_STATUS_TEXT[post.status] ?? post.status} · ${POST_KIND_TEXT[post.kind] ?? post.kind} · ${brandSlug}`)}`,
     `  Id: ${post.id}`,
@@ -426,6 +432,13 @@ export function renderPostDetail(detail: PostDetailResponse, brandSlug: string, 
         : post.platforms.map((platform) => PLATFORM_TEXT[platform] ?? platform).join(", ")
     }`,
   );
+  if (languages !== null) {
+    lines.push(
+      `  Idiomas: ${languages.map((language) => LANGUAGE_TEXT[language]).join(" y ")} (${
+        post.languages === null ? "los de la marca" : "de este post"
+      })`,
+    );
+  }
   if (post.pillar !== null) lines.push(`  Tema: ${post.pillar}`);
   // F9.5-T19: la música de sus videos (solo si tiene alguno o ya se eligió).
   if (post.musicTrackId !== null || media.some((item) => item.kind === "video")) {
@@ -500,7 +513,22 @@ export function renderPostDetail(detail: PostDetailResponse, brandSlug: string, 
         ),
       );
     }
+    if (languages !== null && !languages.includes(content.language)) {
+      lines.push(
+        c.dim(
+          `  El ${LANGUAGE_TEXT[content.language]} ya no está entre los idiomas del post: este texto quedó aprobado antes y se mantiene`,
+        ),
+      );
+    }
     lines.push("");
+  }
+  if (detail.hiddenTexts > 0) {
+    lines.push(
+      c.dim(
+        `  ${detail.hiddenTexts === 1 ? "1 texto oculto" : `${detail.hiddenTexts} textos ocultos`} de un idioma que el post ya no usa (vuelve${detail.hiddenTexts === 1 ? "" : "n"} si agregas el idioma con agentsales post edit ${post.id} --languages)`,
+      ),
+      "",
+    );
   }
   if (missing.length > 0) {
     lines.push(
@@ -761,7 +789,53 @@ export function runPostUpload(
 
 // ── draft ────────────────────────────────────────────────────────────────
 
-export type PostDraftOptions = { replaceEdits?: boolean; wait?: boolean };
+export type PostDraftOptions = {
+  replaceEdits?: boolean;
+  wait?: boolean;
+  /** Solo esa red (F9.6): rehace su texto, o con `missing` redacta solo el que falta. */
+  platform?: string;
+  /** Solo ese idioma de la red. */
+  language?: string;
+  /** «¿Qué cambiar?» al rehacer un texto (hasta 300 caracteres): guía la forma, nunca los hechos. */
+  guidance?: string;
+  /** Solo los textos que faltan de esa red (no toca los que ya existen). */
+  missing?: boolean;
+};
+
+/** El cuerpo de `POST /posts/:id/draft` según las opciones de `post draft`. */
+function draftBodyOf(options: PostDraftOptions) {
+  if (options.platform === undefined) {
+    if (
+      options.language !== undefined ||
+      options.guidance !== undefined ||
+      options.missing === true
+    ) {
+      throw new CliError(
+        "PLATFORM_REQUIRED",
+        "--language, --guidance y --missing van con --platform (la red del texto)",
+        `Redes: ${POST_PLATFORM_OPTION_NAMES.join(", ")}`,
+      );
+    }
+    return options.replaceEdits ? { replaceEdits: true } : {};
+  }
+  const guidance = options.guidance?.trim();
+  if (guidance !== undefined && [...guidance].length > CONTENT_RUN_GUIDANCE_MAX) {
+    throw new CliError(
+      "GUIDANCE_TOO_LONG",
+      `--guidance pasa de ${CONTENT_RUN_GUIDANCE_MAX} caracteres: di en pocas palabras qué cambiar (por ejemplo, "más corto")`,
+    );
+  }
+  if (guidance !== undefined && options.missing === true) {
+    throw new CliError("GUIDANCE_INVALID", "--guidance es para rehacer un texto, no con --missing");
+  }
+  return {
+    platforms: [postPlatformOption(options.platform)],
+    ...(options.language === undefined ? {} : { language: languageOption(options.language) }),
+    ...(guidance === undefined || guidance === "" ? {} : { guidance }),
+    ...(options.missing === true ? { onlyMissing: true } : {}),
+    ...(options.replaceEdits ? { replaceEdits: true } : {}),
+  };
+}
 
 /** Resumen de una corrida de textos de un post. */
 function renderDraftRun(run: ContentRunView, c: Colors, postId: string): string {
@@ -784,7 +858,10 @@ function renderDraftRun(run: ContentRunView, c: Colors, postId: string): string 
 /**
  * `agentsales post draft <id> [--replace-edits] [--no-wait]` (spec F9 §4.9): pide a la IA un texto
  * por red e idioma y espera la corrida como `prepare` (`RUN_WAIT`). Al final, la revisión de cada
- * texto. Sale con 1 si la corrida falló.
+ * texto. Sale con 1 si la corrida falló. Con `--platform` (y `--language`), solo ese texto: lo
+ * rehace con la indicación de `--guidance`, o con `--missing` redacta solo el que falta; los demás
+ * textos no se tocan. Un texto editado a mano o aprobado se rehace con `--replace-edits` (uno
+ * aprobado, después de quitarle la aprobación: `post approve --undo`).
  */
 export function runPostDraft(deps: PostDeps, id: string, options: PostDraftOptions = {}) {
   const c = deps.colors;
@@ -793,7 +870,7 @@ export function runPostDraft(deps: PostDeps, id: string, options: PostDraftOptio
     const { contentRun, reused } = await unwrap(
       deps.client.posts[":id"].draft.$post({
         param: { id: postId },
-        json: options.replaceEdits ? { replaceEdits: true } : {},
+        json: draftBodyOf(options),
       }),
       contentRunRequestResponseSchema,
     ).catch((error: unknown) => {
@@ -908,7 +985,27 @@ export type PostEditOptions = {
   xLink?: boolean;
   /** La música de sus videos (`--music <pista|ninguna>`), F9.5-T19. */
   music?: string;
+  /** Los idiomas del post (`es`, `es,en`, o `marca`), 2026-11-15. */
+  languages?: string;
 };
+
+/** `--languages es,en` → esos idiomas; `marca` → `null` (los de la marca). */
+function postLanguagesOption(text: string): Language[] | null {
+  const parts = text
+    .split(",")
+    .map((part) => part.trim().toLowerCase())
+    .filter((part) => part !== "");
+  if (parts.length === 1 && ["marca", "brand", "todas", "todos"].includes(parts[0] ?? ""))
+    return null;
+  const unknown = parts.filter((part) => !(LANGUAGES as readonly string[]).includes(part));
+  if (parts.length === 0 || unknown.length > 0) {
+    throw new CliError(
+      "LANGUAGE_INVALID",
+      `--languages necesita uno o más idiomas separados por comas (${LANGUAGES.join(", ")}), o "marca"`,
+    );
+  }
+  return LANGUAGES.filter((language) => parts.includes(language));
+}
 
 /** `--platforms x,linkedin` → esas redes; `todas` → `null` (todas las de la marca). */
 function platformsOption(text: string): PostPlatform[] | null {
@@ -934,8 +1031,10 @@ function postChangesOf(options: PostEditOptions) {
     brief?: string | null;
     xLinkAllowed?: boolean;
     musicTrackId?: MusicTrackId | null;
+    languages?: Language[] | null;
   } = {};
   if (options.platforms !== undefined) changes.platforms = platformsOption(options.platforms);
+  if (options.languages !== undefined) changes.languages = postLanguagesOption(options.languages);
   if (options.date !== undefined) {
     changes.plannedAt = ["ninguna", "none", ""].includes(options.date.trim().toLowerCase())
       ? null
@@ -947,6 +1046,63 @@ function postChangesOf(options: PostEditOptions) {
   if (options.xLink !== undefined) changes.xLinkAllowed = options.xLink;
   if (options.music !== undefined) changes.musicTrackId = parseMusicTrack(options.music);
   return Object.keys(changes).length === 0 ? null : changes;
+}
+
+/** Las redes que la IA empezó a redactar al guardar (una red agregada), o por qué no pudo. */
+function printDrafting(
+  deps: PostDeps,
+  postId: string,
+  drafting: NonNullable<z.infer<typeof postResponseSchema>["drafting"]>,
+) {
+  const c = deps.colors;
+  const names = drafting.platforms.map((platform) => PLATFORM_TEXT[platform] ?? platform);
+  if (drafting.error === null) {
+    deps.print(
+      `${c.green("✓")} La IA redacta el texto de ${names.join(", ")} (los demás textos no cambian)`,
+    );
+    deps.print(c.dim(`→ Míralo en un momento con ${show(postId)}`));
+    return;
+  }
+  deps.printError(
+    c.yellow(`No se pidió el texto de ${names.join(", ")}: ${drafting.error.message}`),
+  );
+  for (const platform of drafting.platforms) {
+    deps.printError(
+      c.dim(
+        `→ Cuando se pueda: agentsales post draft ${postId} --platform ${platformShortName(platform)} --missing`,
+      ),
+    );
+  }
+}
+
+/**
+ * La fecha planificada cambió y el post tiene publicaciones programadas: sugiere moverlas a la hora
+ * nueva con el comando de cada red (`rescheduleSuggestion`). Nunca las mueve sola.
+ */
+function printRescheduleSuggestion(
+  deps: PostDeps,
+  postId: string,
+  publications: PostDetailResponse["publications"],
+  at: Date,
+) {
+  const suggestion = rescheduleSuggestion(publications, at);
+  if (suggestion === null) return;
+  const c = deps.colors;
+  const when = suggestion.times.map((time) => formatChileTime(time)).join(" y ");
+  deps.print(
+    c.yellow(
+      `Este post tiene ${suggestion.count} publicación(es) programada(s) para ${when} (Chile): ¿moverlas a ${formatChileTime(at)}? No se mueven solas:`,
+    ),
+  );
+  for (const move of suggestion.moves) {
+    const languages = move.languages.length > 1 ? ` --language ${move.languages.join(",")}` : "";
+    const spacing = move.languages.length > 1 ? ` --spacing ${move.spacingMinutes}` : "";
+    deps.print(
+      c.dim(
+        `→ agentsales post schedule ${postId} --at "${formatChileTime(at)}" --platform ${platformShortName(move.platform)}${languages}${spacing}`,
+      ),
+    );
+  }
 }
 
 /** `--date "AAAA-MM-DD HH:MM"` en hora de Chile. */
@@ -984,7 +1140,12 @@ export function runPostEdit(deps: PostDeps, id: string, options: PostEditOptions
       options.file !== undefined ||
       options.hashtags !== undefined;
     if (changes !== null) {
-      const { post } = await unwrap(
+      // Con la fecha nueva, lo programado antes (para sugerir moverlo; nunca se mueve solo).
+      const before =
+        changes.plannedAt === undefined || changes.plannedAt === null
+          ? null
+          : await fetchPost(deps.client, postId).catch(() => null);
+      const { post, drafting } = await unwrap(
         deps.client.posts[":id"].$patch({ param: { id: postId }, json: changes }),
         postResponseSchema,
       ).catch((error: unknown) => {
@@ -1006,8 +1167,21 @@ export function runPostEdit(deps: PostDeps, id: string, options: PostEditOptions
         ...(changes.musicTrackId === undefined
           ? []
           : [`música: ${musicTrackText(post.musicTrackId)} (los videos se rehacen solos)`]),
+        ...(changes.languages === undefined
+          ? []
+          : [
+              `idiomas: ${
+                post.languages === null
+                  ? "los de la marca"
+                  : post.languages.map((language) => LANGUAGE_TEXT[language]).join(" y ")
+              }`,
+            ]),
       ];
       deps.print(`${c.green("✓")} Post ${post.id} actualizado (${summary.join(" · ")})`);
+      if (drafting !== null) printDrafting(deps, post.id, drafting);
+      if (before !== null && post.plannedAt !== null) {
+        printRescheduleSuggestion(deps, post.id, before.publications, post.plannedAt);
+      }
       if (!editsText) {
         deps.print(
           c.dim(
@@ -1621,11 +1795,20 @@ export function register(program: Command, ctx: CliContext): void {
     );
   // F9.5-T25: conseguir imágenes (tarjetas, biblioteca o IA).
   registerPostMedia(post, ctx);
+  // F9.7 B5 y B7: los textos de las láminas y el PDF para LinkedIn.
+  registerPostCards(post, ctx);
   post
     .command("draft")
-    .description("Pide a la IA un texto por red e idioma y espera")
+    .description("Pide a la IA un texto por red e idioma (o rehace uno con --platform) y espera")
     .argument("<id>", "id del post")
     .option("--replace-edits", "reemplaza también los textos editados a mano o aprobados")
+    .option("--platform <red>", `solo el texto de esa red: ${networks} (los demás no se tocan)`)
+    .option("--language <idioma>", "con --platform, solo ese idioma: es o en")
+    .option(
+      "--guidance <texto>",
+      `con --platform, qué cambiar al rehacerlo (hasta ${CONTENT_RUN_GUIDANCE_MAX} caracteres, p. ej. "más corto"): guía la forma, no los hechos`,
+    )
+    .option("--missing", "con --platform, solo los textos que faltan de esa red")
     .option("--no-wait", "imprime el id de la corrida y sale sin esperar")
     .action((id: string, options: PostDraftOptions) =>
       exitWith(() => runPostDraft(deps(), id, options)),
@@ -1633,7 +1816,7 @@ export function register(program: Command, ctx: CliContext): void {
   post
     .command("edit")
     .description(
-      "Cambia el texto de una red e idioma (desde --file o la entrada estándar), o las redes, la fecha, el brief, el enlace en X o la música del post",
+      "Cambia el texto de una red e idioma (desde --file o la entrada estándar), o las redes, los idiomas, la fecha, el brief, el enlace en X o la música del post",
     )
     .argument("<id>", "id del post")
     .option("--platform <red>", `la red del texto: ${networks}`)
@@ -1652,6 +1835,10 @@ export function register(program: Command, ctx: CliContext): void {
     )
     .option("--no-x-link", "quita el permiso del enlace en X")
     .option("--music <pista>", `la música de sus videos: ${MUSIC_TRACK_IDS.join(", ")} o ninguna`)
+    .option(
+      "--languages <idiomas>",
+      'los idiomas del post: es, en o es,en; "marca" vuelve a los de la marca',
+    )
     .action((id: string, options: PostEditOptions) =>
       exitWith(() => runPostEdit(deps(), id, options)),
     );

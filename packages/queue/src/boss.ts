@@ -21,6 +21,12 @@ export type BossOptions = {
   role: BossRole;
 };
 
+/** pg-boss revisa sus flujos (que no usamos) cada tantos segundos. */
+export const WORKER_FLOW_SECONDS = 300;
+
+/** pg-boss revisa si toca encolar un cron cada tantos segundos (máximo 45). */
+export const WORKER_CRON_SECONDS = 15;
+
 /**
  * Crea pg-boss (ADR-0005, ADR-0007).
  * - `worker`: procesa jobs; hace mantenimiento, supervisión y crea o migra el esquema `pgboss`.
@@ -37,6 +43,12 @@ export function createBoss({ connectionString, role }: BossOptions): PgBoss {
     supervise: isWorker,
     schedule: isWorker,
     migrate: isWorker,
+    // Menos consultas de fondo (2026-11-18: el worker agotó los 5 GB de transferencia de Neon). Los
+    // flujos de pg-boss no se usan (por defecto miraba cada 5 s); el cron se revisa cada 15 s en vez
+    // de 5, y el más rápido, el de cada minuto, igual cae dentro de su minuto.
+    ...(isWorker
+      ? { flowIntervalSeconds: WORKER_FLOW_SECONDS, cronWorkerIntervalSeconds: WORKER_CRON_SECONDS }
+      : {}),
     ...(isWorker ? {} : { queueCacheIntervalSeconds: PRODUCER_QUEUE_CACHE_SECONDS }),
   });
 }

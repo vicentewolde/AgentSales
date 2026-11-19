@@ -5,6 +5,7 @@ import type {
   PublicationView,
 } from "@agentsales/api/contracts";
 import {
+  CONTENT_RUN_GUIDANCE_MAX,
   CONTENT_STATUS_TEXT,
   hasContentErrors,
   LANGUAGE_TEXT,
@@ -15,7 +16,7 @@ import {
   postTextLength,
 } from "@agentsales/core";
 import { useEffect, useId, useRef, useState } from "react";
-import { useEditPostContent, usePostApproval } from "../../queries/posts.js";
+import { useEditPostContent, usePostApproval, useRequestPostDraft } from "../../queries/posts.js";
 import { Checks } from "../content/Checks.js";
 import { parseHashtags } from "../content/editor.js";
 import { ErrorAlert } from "../ErrorAlert.js";
@@ -223,6 +224,112 @@ function Editor({
   );
 }
 
+/**
+ * «Rehacer este texto»: la IA rehace solo este texto (red e idioma), con una indicación opcional de
+ * qué cambiar (guía de forma y tono, nunca de hechos). Si estaba aprobado o editado a mano, primero
+ * pide confirmar: uno aprobado pierde la aprobación (y se descartan sus publicaciones que no
+ * salieron) y uno editado pierde tu versión. Los demás textos no se tocan.
+ */
+function RedoBox({
+  postId,
+  content,
+  blocked,
+  onClose,
+}: {
+  postId: string;
+  content: PostContentView;
+  /** Por qué no se puede rehacer ahora (la IA redactando, una publicación en curso…). */
+  blocked: string | null;
+  onClose: () => void;
+}) {
+  const ids = useId();
+  const [guidance, setGuidance] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const draft = useRequestPostDraft(postId);
+  const approval = usePostApproval(postId);
+  const approved = content.status === "approved";
+  const reviewed = approved || content.status === "edited";
+  const pending = draft.isPending || approval.isPending;
+  const redo = async () => {
+    try {
+      // Uno aprobado suelta primero la aprobación (y sus publicaciones que no salieron).
+      if (approved) {
+        await approval.mutateAsync({
+          platform: content.platform,
+          language: content.language,
+          approve: false,
+        });
+      }
+      await draft.mutateAsync({
+        platforms: [content.platform],
+        language: content.language,
+        ...(guidance.trim() === "" ? {} : { guidance: guidance.trim() }),
+        ...(reviewed ? { replaceEdits: true } : {}),
+      });
+      onClose();
+    } catch {
+      // El error queda en `draft.error` o `approval.error`.
+    }
+  };
+  return (
+    <div className="space-y-2 rounded-lg border border-line bg-surface p-3">
+      <Field
+        label="¿Qué cambiar? (opcional)"
+        hint="Por ejemplo «más corto», «sin hashtags» o «más cercano». Es una guía de forma y tono: los datos siguen saliendo del perfil de la marca y del brief."
+      >
+        <Textarea
+          rows={2}
+          maxLength={CONTENT_RUN_GUIDANCE_MAX}
+          value={guidance}
+          onChange={(event) => setGuidance(event.target.value)}
+          aria-describedby={`${ids}-left`}
+        />
+      </Field>
+      <p id={`${ids}-left`} className="text-xs text-fg-subtle tabular-nums">
+        {guidance.length} / {CONTENT_RUN_GUIDANCE_MAX} caracteres
+      </p>
+      {confirming ? (
+        <div
+          role="alert"
+          className="rounded-lg border border-warning-200 bg-warning-50 p-3 text-sm"
+        >
+          <p className="font-medium text-warning-800">
+            {approved
+              ? `${tabName(content)} está aprobado: al rehacerlo pierde la aprobación y se descartan sus publicaciones que no salieron.`
+              : `Editaste ${tabName(content)} a mano: al rehacerlo se reemplaza tu versión.`}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button size="sm" loading={pending} onClick={() => void redo()}>
+              Sí, rehacerlo
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
+              Cancelar
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            loading={pending}
+            disabled={blocked !== null}
+            title={blocked ?? undefined}
+            onClick={() => (reviewed ? setConfirming(true) : void redo())}
+          >
+            Rehacer con IA
+          </Button>
+          <Button variant="secondary" size="sm" disabled={pending} onClick={onClose}>
+            Cancelar
+          </Button>
+        </div>
+      )}
+      {blocked !== null && <p className="text-xs text-warning-800">{blocked}</p>}
+      {approval.error && <ErrorAlert error={approval.error} />}
+      {draft.error && <ErrorAlert error={draft.error} />}
+    </div>
+  );
+}
+
 /** Una pestaña: el texto de una red e idioma con su conteo, vista previa, revisión y aprobación. */
 function TextTab({
   postId,
@@ -247,6 +354,7 @@ function TextTab({
   lockReason: string | null;
 }) {
   const [editing, setEditing] = useState(false);
+  const [redoing, setRedoing] = useState(false);
   // La vista previa sigue al borrador mientras se edita (F9.5-T07).
   const [draft, setDraft] = useState<PreviewText | null>(null);
   const accountName = useAccountName(post.brokerId, content.platform);
@@ -266,6 +374,9 @@ function TextTab({
           : null);
   const unapproveBlocked = lockReason ?? unapproveBlockedReason(content, publications);
   const blocked = approved ? unapproveBlocked : approveBlocked;
+  // Rehacer reemplaza el texto: uno aprobado primero suelta la aprobación (y descarta sus
+  // publicaciones que no salieron), así que lo frena lo mismo que quitarla; otro, lo que frena editarlo.
+  const redoBlocked = approved ? unapproveBlocked : editBlocked;
   // Por qué no se edita o no se aprueba, a la vista y en tono de aviso (F9.5-T15), sin repetir.
   const notices = [
     ...new Set([
@@ -294,6 +405,17 @@ function TextTab({
               Editar
             </Button>
           )}
+          {!editing && !redoing && (
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={redoBlocked !== null}
+              title={redoBlocked ?? undefined}
+              onClick={() => setRedoing(true)}
+            >
+              Rehacer este texto
+            </Button>
+          )}
           <Button
             variant={approved ? "secondary" : "primary"}
             size="sm"
@@ -307,6 +429,14 @@ function TextTab({
           </Button>
         </div>
       </div>
+      {redoing && !editing && (
+        <RedoBox
+          postId={postId}
+          content={content}
+          blocked={redoBlocked}
+          onClose={() => setRedoing(false)}
+        />
+      )}
       {!editing &&
         notices.map((notice) => (
           <Alert key={notice} tone="warning">
@@ -391,13 +521,25 @@ export function PostTexts({
 }) {
   const ids = useId();
   const [selected, setSelected] = useState<string | null>(null);
-  const texts = postContents(contents);
-  if (texts.length === 0) {
+  const all = postContents(contents);
+  if (all.length === 0) {
     return <p className="text-sm text-fg-muted">Todavía no hay textos: pídelos a la IA.</p>;
   }
+  // F9.6: los textos de las redes que se le quitaron al post van aparte, plegados.
+  const texts = all.filter((content) => postPublishesOn(post, content.platform));
+  const removed = all.filter((content) => !postPublishesOn(post, content.platform));
   const current =
     texts.find((content) => `${content.platform}:${content.language}` === selected) ?? texts[0];
-  if (current === undefined) return null;
+  if (current === undefined) {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-fg-muted">
+          Ninguna red del post tiene texto todavía: pídelos a la IA.
+        </p>
+        <RemovedTexts texts={removed} />
+      </div>
+    );
+  }
   const keyOf = (content: ContentView) => `${content.platform}:${content.language}`;
   return (
     <div>
@@ -465,6 +607,44 @@ export function PostTexts({
           lockReason={lockReason}
         />
       </div>
+      {removed.length > 0 && (
+        <div className="mt-3">
+          <RemovedTexts texts={removed} />
+        </div>
+      )}
     </div>
+  );
+}
+
+/**
+ * Los textos de las redes que se le quitaron al post (F9-T21), plegados: no se aprueban, publican
+ * ni programan, pero no se borran y vuelven si la red vuelve al post.
+ */
+function RemovedTexts({ texts }: { texts: readonly PostContentView[] }) {
+  if (texts.length === 0) return null;
+  const networks = [...new Set(texts.map((content) => PLATFORM_TEXT[content.platform]))];
+  return (
+    <details className="rounded-lg border border-line bg-canvas p-3 text-sm">
+      <summary className="cursor-pointer font-medium text-fg">
+        Redes quitadas ({networks.join(", ")})
+      </summary>
+      <p className="mt-2 text-xs text-fg-muted">
+        Estos textos no se publican ni se programan: la red ya no está entre las del post. No se
+        borran: vuelven si agregas la red con «Editar el post».
+      </p>
+      <ul className="mt-2 space-y-3">
+        {texts.map((content) => (
+          <li key={`${content.platform}:${content.language}`}>
+            <p className="text-xs font-medium text-fg-subtle">
+              {tabName(content)} · {CONTENT_STATUS_TEXT[content.status]}
+            </p>
+            <p className="mt-1 whitespace-pre-wrap text-fg">{content.body}</p>
+            {content.hashtags.length > 0 && (
+              <p className="mt-1 text-xs text-fg-muted">{content.hashtags.join(" ")}</p>
+            )}
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }

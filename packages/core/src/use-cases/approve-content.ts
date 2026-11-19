@@ -9,6 +9,7 @@ import {
   settlePostStatus,
 } from "../content/locked-content.js";
 import type { Content } from "../content.js";
+import type { Language } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
 import { LISTING_NOT_PREPARABLE_TEXT } from "../labels.js";
 import { canPrepareContent } from "../listing.js";
@@ -16,6 +17,7 @@ import { type MarketplaceReadiness, marketplaceReadiness } from "../marketplace/
 import { type PortalReadiness, portalReadiness } from "../portal/readiness.js";
 import { canDraftPost, postNotReady } from "../post.js";
 import type { Publication, PublicationActor } from "../publication.js";
+import { postLanguageExcluded, postWritesIn } from "../social/post-languages.js";
 import { requirePostPlatform } from "../social/post-networks.js";
 import { listingSubject } from "../subject.js";
 import {
@@ -106,7 +108,7 @@ export async function approveContent(
     const review = await approvable(found, contentId);
     return found.kind === "listing"
       ? approveListingContent(deps, found, review, actor)
-      : approvePostContent(found, review, actor);
+      : approvePostContent(found, review, actor, before.profile?.languages ?? []);
   });
 }
 
@@ -224,9 +226,15 @@ async function approvePostContent(
   { repos: locked, content, post }: Extract<LockedContent, { kind: "post" }>,
   review: CheckedContent,
   actor: PublicationActor,
+  brandLanguages: readonly Language[],
 ): Promise<ApprovedContent> {
   // F9-T21: el texto de una red que se le quitó al post no se aprueba (abriría publicaciones).
   requirePostPlatform(post, content.platform);
+  // 2026-11-15: ni el de un idioma quitado (al post o a la marca), salvo que ya estuviera aprobado
+  // (aprobar de nuevo es idempotente y abre lo que falte).
+  if (content.status !== "approved" && !postWritesIn(post, brandLanguages, content.language)) {
+    throw postLanguageExcluded(post.id, content.language);
+  }
   const { opening, mediaPending } = await planWithoutMedia(locked, { post, content });
 
   // Recién aquí se escribe.

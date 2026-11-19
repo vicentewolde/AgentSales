@@ -8,6 +8,7 @@ import {
   AppError,
   type DiscordWebhooks,
   discordWebhookParts,
+  editorialProfilesWithKnowledge,
   type InstagramAuth,
   type LinkedInAuth,
   type MercadoLibreAuth,
@@ -21,12 +22,15 @@ import {
   createFakeSecretBox,
   createFakeSecretTokens,
   createFakeTotpProvider,
+  createInMemoryBrandKnowledgeRepository,
   createInMemoryBrokerRepository,
+  createInMemoryCardStyleRepository,
   createInMemoryContentRepositories,
   createInMemoryEditorialProfileRepository,
   createInMemoryFieldDefinitionRepository,
   createInMemoryImportRunRepository,
   createInMemoryJobQueue,
+  createInMemoryKnowledgeProposalRepository,
   createInMemoryLeadRepository,
   createInMemoryLeadWebhookKeyRepository,
   createInMemoryListingLock,
@@ -36,6 +40,7 @@ import {
   createInMemoryMetaDeletionRepository,
   createInMemoryPlanRunRepository,
   createInMemoryPlatformAccountRepository,
+  createInMemoryPostCardTextRepository,
   createInMemoryPostImageRunRepository,
   createInMemoryPostLock,
   createInMemoryPostRepository,
@@ -438,6 +443,14 @@ export const adminApp = (deps: AppDeps) => withAdminSession(createApp(deps));
  * Dependencias de la app con dobles en memoria (ids uuid, como en Postgres). `app.request("/x")`
  * usa http://localhost/x: el Host es "localhost", y el origen del panel, el 5173.
  */
+/** Un PNG de 1×1 transparente (la lámina de muestra de las pruebas). */
+export const TEST_PNG = Uint8Array.from(
+  Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+    "base64",
+  ),
+);
+
 export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
   // El gasto de IA por corredor (F7-T12) cruza la corrida con el aviso (o, desde F9, con el
   // post), como Postgres.
@@ -461,6 +474,7 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
   const brokers = overrides.brokers ?? createInMemoryBrokerRepository([], { nextId: randomUUID });
   // Las subidas de posts: la app las lee y el candado del post las cambia (los mismos datos).
   const postUploads = createInMemoryPostUploadRepository();
+  const brandKnowledge = overrides.brandKnowledge ?? createInMemoryBrandKnowledgeRepository();
   const deps: Omit<AppDeps, "lock" | "postLock"> & {
     lock?: AppDeps["lock"];
     postLock?: AppDeps["postLock"];
@@ -516,7 +530,17 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     postImageRuns: createInMemoryPostImageRunRepository(),
     imageSources: { stock: null, ai: null },
     imageAiPricing: { priceUsd: 0.034, monthlyCapUsd: 2 },
-    editorialProfiles: createInMemoryEditorialProfileRepository(),
+    // F9.7 (ADR-0043): el perfil con el conocimiento, como en el servidor.
+    editorialProfiles: editorialProfilesWithKnowledge(
+      createInMemoryEditorialProfileRepository(),
+      brandKnowledge,
+    ),
+    brandKnowledge,
+    knowledgeProposals: createInMemoryKnowledgeProposalRepository(),
+    cardStyles: createInMemoryCardStyleRepository(),
+    cardTexts: createInMemoryPostCardTextRepository(),
+    // Un PNG de 1×1: las pruebas no dibujan (eso lo prueba `@agentsales/media`).
+    cardStylePreview: async () => TEST_PNG,
     platformAccounts: createInMemoryPlatformAccountRepository({ nextId: randomUUID }),
     publications,
     instagram: { auth: fakeInstagramAuth(), oauthConfigured: true, secureCookie: false },

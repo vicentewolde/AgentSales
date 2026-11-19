@@ -84,7 +84,9 @@ describe("brand edit y show", () => {
     expect(text).toContain(
       "  · X: 5 por semana · cualquier día · cualquier hora · 6 h entre idiomas",
     );
-    expect(text).toContain("Hashtags: #agentsales #ConstruirEnPublico");
+    expect(text).toContain(
+      "Hashtags que siempre van (Instagram, X, LinkedIn y TikTok): #agentsales #ConstruirEnPublico",
+    );
   });
 
   it("show sin perfil explica cómo llenarlo; --json da los campos para --file", async () => {
@@ -105,6 +107,7 @@ describe("brand edit y show", () => {
       avoid: [],
       cadence: {},
       defaultHashtags: [],
+      aiHashtags: null,
     });
   });
 
@@ -140,6 +143,29 @@ describe("brand edit y show", () => {
     expect(Object.keys((await s.h.editorialProfiles.get(s.agentpey.id))?.cadence ?? {})).toEqual([
       "linkedin",
     ]);
+  });
+});
+
+describe("hashtags que siempre van (2026-11-15)", () => {
+  it("--hashtags y --ai-hashtags se guardan; show dice los que siempre van y si la IA agrega otros", async () => {
+    const s = await setup();
+    await expect(
+      runBrandEdit(s.deps, { broker: "agentpey", hashtags: "#AgentPey #pagos" }),
+    ).resolves.toBe(0);
+    expect(s.h.text()).toContain("Hashtags que siempre van");
+    expect(s.h.text()).toContain("#AgentPey #pagos");
+    expect(s.h.text()).toContain("La IA puede agregar otros hashtags: no (por defecto)");
+    await expect(runBrandEdit(s.deps, { broker: "agentpey", aiHashtags: "sí" })).resolves.toBe(0);
+    expect((await s.h.editorialProfiles.get(s.agentpey.id))?.aiHashtags).toBe(true);
+    // Otra edición no la pisa.
+    await runBrandEdit(s.deps, { broker: "agentpey", audience: "Tiendas" });
+    expect((await s.h.editorialProfiles.get(s.agentpey.id))?.aiHashtags).toBe(true);
+    await runBrandEdit(s.deps, { broker: "agentpey", aiHashtags: "auto" });
+    expect((await s.h.editorialProfiles.get(s.agentpey.id))?.aiHashtags).toBeNull();
+    await expect(runBrandEdit(s.deps, { broker: "agentpey", aiHashtags: "quizás" })).resolves.toBe(
+      1,
+    );
+    expect(s.h.errors()).toContain("AI_HASHTAGS_INVALID");
   });
 });
 
@@ -191,7 +217,7 @@ describe("errores con qué hacer", () => {
     const errors = s.h.errors();
     expect(errors).toContain("EDITORIAL_PROFILE_INVALID");
     expect(errors).toContain("Idiomas: «fr» no es un idioma (usa es o en)");
-    expect(errors).toContain("Hashtags: «#mal-escrito» no es un hashtag");
+    expect(errors).toContain("Hashtags que siempre van: «#mal-escrito» no es un hashtag");
     expect(errors).toContain("brand show --json muestra el perfil actual");
   });
 

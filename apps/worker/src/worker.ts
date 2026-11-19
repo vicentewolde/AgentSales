@@ -15,18 +15,22 @@ import {
 import {
   type AutoPublishDeps,
   confirmManualPublication,
+  editorialProfilesWithKnowledge,
   enqueueLiveSyncs,
   isTerminalImportRun,
   type RunImportDeps,
 } from "@agentsales/core";
 import {
+  createBrandKnowledgeRepository,
   createBrokerRepository,
+  createCardStyleRepository,
   createContentRepository,
   createContentRunRepository,
   createDb,
   createEditorialProfileRepository,
   createFieldDefinitionRepository,
   createImportRunRepository,
+  createKnowledgeProposalRepository,
   createListingLock,
   createListingRepository,
   createLoginChallengeRepository,
@@ -35,6 +39,7 @@ import {
   createPlanRunRepository,
   createPlatformAccountRepository,
   createPlatformCatalogRepository,
+  createPostCardTextRepository,
   createPostImageRunRepository,
   createPostLock,
   createPostRepository,
@@ -88,6 +93,7 @@ import { registerJobs } from "./jobs/registry.js";
 import { enqueueTokensRefresh } from "./jobs/tokens-refresh.js";
 import {
   apiLlmOptions,
+  knowledgeLlmProviderOptions,
   llmProviderOptions,
   planLlmProviderOptions,
   socialLlmProviderOptions,
@@ -270,6 +276,17 @@ const postLock = createPostLock(database.db, { secretBox });
 const planRuns = createPlanRunRepository(database.db);
 // Los pedidos de imágenes de los posts (F9.5-T25): el job y el arranque (abandonados y en cola).
 const postImageRuns = createPostImageRunRepository(database.db);
+// F9.7 (ADR-0043): el conocimiento de la marca viaja con su perfil editorial (redactar, revisar y
+// el plan lo ven igual), y las lecturas de «Actualizar desde un texto».
+const brandKnowledge = createBrandKnowledgeRepository(database.db);
+const editorialProfiles = editorialProfilesWithKnowledge(
+  createEditorialProfileRepository(database.db),
+  brandKnowledge,
+);
+const knowledgeProposals = createKnowledgeProposalRepository(database.db);
+// F9.7 B4 a B6: el estilo de las imágenes y los textos de las láminas.
+const cardStyles = createCardStyleRepository(database.db);
+const cardTexts = createPostCardTextRepository(database.db);
 const marketplaceWindows = createMarketplaceWindows({
   publications,
   confirm: (publicationId, url) =>
@@ -459,14 +476,18 @@ const jobs = buildJobs({
   postDraft: {
     shared: {
       contentRuns,
+      // Los textos vigentes: una corrida acotada solo crea los que faltan o rehace uno.
+      contents: createContentRepository(database.db),
       posts,
       brokers: repositories.brokers,
-      editorialProfiles: createEditorialProfileRepository(database.db),
+      editorialProfiles,
       platformAccounts,
       media: repositories.media,
       // El idioma de las tarjetas: la revisión de cada texto cuenta las imágenes de su idioma.
       postImageRuns,
       postLock,
+      // F9.7 B5: los textos de las láminas de un post de imagen o carrusel.
+      cardTexts,
       // Con `fake`, el borrador de ejemplo de un post (no el de un aviso).
       llm: createLlmProvider(socialLlmProviderOptions(env, process.env)),
       apiLlm,
@@ -480,12 +501,26 @@ const jobs = buildJobs({
       planRuns,
       posts,
       brokers: repositories.brokers,
-      editorialProfiles: createEditorialProfileRepository(database.db),
+      editorialProfiles,
       contentRuns,
       // Con `fake`, un plan de ejemplo armado con lo que pide el prompt.
       llm: createLlmProvider(planLlmProviderOptions(env, process.env)),
       apiLlm,
       newId: randomUUID,
+    },
+    signal: jobsAbort.signal,
+  },
+  // «Actualizar desde un texto» (F9.7 B2, ADR-0043): la IA de la marca propone novedades y hechos.
+  brandPropose: {
+    shared: {
+      knowledgeProposals,
+      brokers: repositories.brokers,
+      editorialProfiles,
+      brandKnowledge,
+      contentRuns,
+      // Con `fake`, una novedad y un hecho de ejemplo.
+      llm: createLlmProvider(knowledgeLlmProviderOptions(env, process.env)),
+      apiLlm,
     },
     signal: jobsAbort.signal,
   },
@@ -497,13 +532,16 @@ const jobs = buildJobs({
       posts,
       brokers: repositories.brokers,
       contents: createContentRepository(database.db),
-      editorialProfiles: createEditorialProfileRepository(database.db),
+      editorialProfiles,
       media: repositories.media,
       storage,
       postLock,
       // Se arma más abajo (`jobQueueFromBoss`); los handlers corren después de arrancar.
       queue: { enqueue: (name, data, options) => queue.enqueue(name, data, options) },
       cards: createCardRenderer(),
+      // F9.7 B4 a B6: las láminas con el estilo de la marca y sus textos.
+      cardStyles,
+      cardTexts,
       stock: env.PIXABAY_API_KEY ? createPixabayStock({ apiKey: env.PIXABAY_API_KEY }) : null,
       ai: env.GEMINI_API_KEY
         ? {

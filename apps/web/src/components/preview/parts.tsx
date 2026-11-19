@@ -253,6 +253,8 @@ export function Gallery({
 /**
  * Las fotos en grilla, como X, LinkedIn y Discord muestran varias: una entera; dos lado a lado;
  * tres con la primera alta; cuatro o más en 2×2 y, si hay más de cuatro, «+N» en la última.
+ * Una sola imagen se ve entera, con su proporción (4:5 o 1:1 no se recortan): lo que sí recorta la
+ * red es la cuadrícula de varias imágenes.
  */
 export function PhotoGrid({
   images,
@@ -284,7 +286,7 @@ export function PhotoGrid({
           <PreviewPhoto
             image={image}
             alt={alt(index, images.length)}
-            className={single ? "aspect-[4/3] w-full" : "size-full"}
+            className={single ? "h-auto min-h-24 w-full" : "size-full"}
           />
           {hidden > 0 && index === shown.length - 1 && (
             <span

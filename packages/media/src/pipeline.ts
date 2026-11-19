@@ -31,6 +31,8 @@ export const IMAGE_VARIANT_SPECS: Readonly<Record<ImageVariant, ImageVariantSpec
   ig_4x5: { fit: "cover", width: 1080, height: 1350, quality: 90 },
   // Portal Inmobiliario y Marketplace: 4:3 (Mercado Libre aceptaría hasta 1920; por confirmar en F4).
   pi_4x3: { fit: "cover", width: 1600, height: 1200, quality: 88 },
+  // Posts: la imagen entera, sin recortar (Instagram acepta hasta 1440 px de ancho; X y LinkedIn, más).
+  post_full: { fit: "inside", maxSide: 1440, quality: 92 },
 };
 
 /**

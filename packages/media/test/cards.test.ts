@@ -103,7 +103,8 @@ describe("createCardRenderer", () => {
   });
 
   it("la versión del dibujo cambió y las tarjetas son deterministas", async () => {
-    expect(CARD_RENDER_VERSION).toBe("2");
+    // F9.7 (ADR-0043): «3» suma las láminas con el estilo de la marca y el cuadrado 1:1.
+    expect(CARD_RENDER_VERSION).toBe("4");
     const a = await renderer.render(card("cover", "Mismo texto", "@agentpey"), {
       format: "4:5",
       brand: BRAND,

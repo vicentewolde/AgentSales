@@ -604,7 +604,7 @@ describe("estado y nombres", () => {
     );
   });
 
-  it("un estado ilegible cuenta como sin respaldo, y sin respaldo o de más de 48 h está atrasado", async () => {
+  it("un estado ilegible cuenta como sin respaldo, y sin respaldo o de más de 8 días está atrasado", async () => {
     const dir = await tempDir();
     await writeFile(join(dir, BACKUP_STATUS_FILE), "{roto");
 
@@ -616,8 +616,8 @@ describe("estado y nombres", () => {
       lastFailureAt: null,
       lastFailureCode: null,
     };
-    expect(isBackupStale(status, new Date(NOW.getTime() + 47 * 3600_000))).toBe(false);
-    expect(isBackupStale(status, new Date(NOW.getTime() + 49 * 3600_000))).toBe(true);
+    expect(isBackupStale(status, new Date(NOW.getTime() + 191 * 3600_000))).toBe(false);
+    expect(isBackupStale(status, new Date(NOW.getTime() + 193 * 3600_000))).toBe(true);
     expect(isBackupStale({ ...status, lastSuccessAt: "ayer" }, NOW)).toBe(true);
   });
 });

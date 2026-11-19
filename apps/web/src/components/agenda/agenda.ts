@@ -33,6 +33,7 @@ export const AGENDA_ACTION_TEXT: Readonly<Record<AgendaAction, string>> = {
   resolve: "Revisa la red y di si salió o no desde el post, en Contenido",
   confirm:
     "Publícala a mano en la red y confírmala desde el post, en Contenido (en LinkedIn el enlace es opcional)",
+  record: "Si ya salió, pega su enlace; si no, cancélala y vuelve a programarla",
   reconnect: "Vuelve a conectar la cuenta en Cuentas",
   // F9.5-T24 (ADR-0037): con horario, la próxima revisión lo enciende (el horario sale de core);
   // sin horario, hay que encenderlo.
@@ -49,6 +50,7 @@ export const AGENDA_KIND_TONE: Readonly<Record<AgendaKind, BadgeTone>> = {
   worker_off: "warning",
   overdue: "danger",
   your_turn: "warning",
+  did_it_go_out: "warning",
   outcome_unknown: "warning",
   stuck: "warning",
   failed: "danger",

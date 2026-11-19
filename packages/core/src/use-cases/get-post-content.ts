@@ -20,8 +20,10 @@ import type { Post } from "../post.js";
 import { loadCardLanguages } from "../post-card-languages.js";
 import type { Publication } from "../publication.js";
 import { buildPostCheckContext, checkPostContent } from "../social/check.js";
+import { postLanguages, postTextVisible } from "../social/post-languages.js";
 import { postSubject } from "../subject.js";
 import type { User } from "../user.js";
+import { postSourceHashes } from "./draft-post.js";
 import { assertPostAccess } from "./posts.js";
 
 // Leer los textos de un post con su revisión, y encontrar el texto vigente de una red e idioma
@@ -36,7 +38,8 @@ export type GetPostContentDeps = {
   editorialProfiles: Pick<EditorialProfileRepository, "get">;
   media: Pick<MediaRepository, "listBySubject">;
   contents: Pick<ContentRepository, "listCurrent">;
-  contentRuns: Pick<ContentRunRepository, "latest">;
+  /** Con `get`, también si el tema o el brief cambiaron después de redactar (`sourceChanged`). */
+  contentRuns: Pick<ContentRunRepository, "latest"> & Partial<Pick<ContentRunRepository, "get">>;
   publications: Pick<PublicationRepository, "listBySubject">;
   /** El idioma de las tarjetas, para contar las imágenes de cada texto (sin él, no se separan). */
   postImageRuns?: Pick<PostImageRunRepository, "listByPost">;
@@ -53,6 +56,22 @@ export type PostContent = {
   latestRun: ContentRun | null;
   /** Todas las publicaciones del post, de todas sus redes e idiomas (las más nuevas primero). */
   publications: Publication[];
+  /**
+   * Los idiomas en que escribe el post (`postLanguages`: los suyos o los de la marca), el principal
+   * primero. Un texto aprobado de otro idioma se sigue mostrando: el panel y la CLI le ponen una nota.
+   */
+  languages: Language[];
+  /**
+   * Cuántos textos sin aprobar de un idioma quitado quedaron fuera de `contents` (no se borran:
+   * vuelven si el idioma vuelve al post o a la marca).
+   */
+  hiddenTexts: number;
+  /**
+   * Si el tema o el brief del post cambiaron después de redactar alguno de sus textos vigentes
+   * (la huella `postSource` de la corrida que lo redactó no calza con la del post). Los textos de
+   * corridas anteriores a la huella no cuentan.
+   */
+  sourceChanged: { topic: boolean; brief: boolean };
 };
 
 const order = (content: Pick<Content, "platform" | "language">) =>
@@ -85,14 +104,18 @@ export async function getPostContent(
       details: { postId: post.id },
     });
   }
+  const view = editorialProfileView(post.brokerId, profile);
+  const languages = postLanguages(post, view.languages);
+  // Un texto sin aprobar de un idioma quitado no se muestra ni da alertas (2026-11-15).
+  const visible = current.filter((content) => postTextVisible(content, languages));
   const ctx = buildPostCheckContext({
     post,
-    profile: editorialProfileView(post.brokerId, profile),
+    profile: view,
     broker,
     media,
     cards,
   });
-  const contents = [...current]
+  const contents = [...visible]
     .sort((a, b) => order(a) - order(b))
     .map((content) => ({
       content,
@@ -104,10 +127,31 @@ export async function getPostContent(
     post,
     contents,
     latestRun,
+    sourceChanged: await sourceChangedOf(deps.contentRuns, post, current),
     publications: [...publications].sort(
       (a, b) => b.createdAt.getTime() - a.createdAt.getTime() || a.id.localeCompare(b.id),
     ),
+    languages,
+    hiddenTexts: current.length - visible.length,
   };
+}
+
+/** Compara la huella de cada corrida que redactó un texto vigente con la del post ahora. */
+async function sourceChangedOf(
+  runs: GetPostContentDeps["contentRuns"],
+  post: Post,
+  current: readonly Content[],
+): Promise<{ topic: boolean; brief: boolean }> {
+  const changed = { topic: false, brief: false };
+  if (runs.get === undefined || current.length === 0) return changed;
+  const now = postSourceHashes(post);
+  for (const runId of new Set(current.map((content) => content.contentRunId))) {
+    const source = (await runs.get(runId))?.report?.postSource;
+    if (source === undefined) continue;
+    if (source.topic !== now.topic) changed.topic = true;
+    if (source.brief !== now.brief) changed.brief = true;
+  }
+  return changed;
 }
 
 /**

@@ -4,6 +4,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { SchemaDatabase } from "../src/client.js";
 import { createBrokerPurgeRepository } from "../src/repositories/broker-purge.js";
 import {
+  brandCardStyles,
+  brandKnowledge,
+  brandKnowledgeExamples,
+  brandKnowledgeProposals,
+  brandKnowledgeRuns,
+  brandKnowledgeUpdates,
   brokers,
   contentRuns,
   contents,
@@ -19,6 +25,7 @@ import {
   media,
   planRuns,
   platformAccounts,
+  postCardTexts,
   postImageRuns,
   posts,
   postUploads,
@@ -359,6 +366,26 @@ async function seedBroker(
     .insert(publicationEvents)
     .values({ publicationId: postPublication?.id ?? "", type: "created", actor: "operator" });
   await db.insert(editorialProfiles).values({ brokerId: b, audience: "Familias" });
+  // F9.7 (ADR-0043): el conocimiento, el estilo y los textos de las láminas.
+  await db.insert(brandKnowledge).values({ brokerId: b, stance: "Postura" });
+  await db.insert(brandKnowledgeExamples).values({ brokerId: b, text: "Un ejemplo" });
+  await db
+    .insert(brandKnowledgeUpdates)
+    .values({ brokerId: b, project: "Proyecto", date: "2026-11-01", text: "Novedad" });
+  const [knowledgeRun] = await db
+    .insert(brandKnowledgeRuns)
+    .values({ brokerId: b, status: "succeeded", sourceText: "Notas de la semana" })
+    .returning();
+  await db.insert(brandKnowledgeProposals).values({
+    brokerId: b,
+    runId: knowledgeRun?.id ?? "",
+    kind: "fact",
+    text: "Un hecho",
+  });
+  await db.insert(brandCardStyles).values({ brokerId: b, style: {} });
+  await db
+    .insert(postCardTexts)
+    .values({ postId: p, language: "es", position: 1, role: "cover", headline: "Titular" });
   const [run] = await db
     .insert(importRuns)
     .values({ brokerId: b, status: "succeeded", source: "xlsx", fileName: "planilla.xlsx" })
@@ -423,6 +450,13 @@ describe("BrokerPurgeRepository (PGlite)", () => {
       "lead_webhook_keys",
       "leads",
       "editorial_profiles",
+      "brand_knowledge",
+      "brand_knowledge_examples",
+      "brand_knowledge_updates",
+      "brand_knowledge_runs",
+      "brand_knowledge_proposals",
+      "brand_card_styles",
+      "post_card_texts",
       "import_runs",
     ]) {
       expect(seeded[table], table).toBeGreaterThan(countsOf(before)[table] ?? 0);
@@ -469,6 +503,7 @@ describe("BrokerPurgeRepository (PGlite)", () => {
       media: 5,
       post_uploads: 1,
       post_image_runs: 1,
+      post_card_texts: 1,
       registry_records: 1,
       lead_events: 1,
       lead_webhook_keys: 1,
@@ -476,6 +511,12 @@ describe("BrokerPurgeRepository (PGlite)", () => {
       posts: 1,
       plan_runs: 1,
       editorial_profiles: 1,
+      brand_knowledge_proposals: 1,
+      brand_knowledge_runs: 1,
+      brand_knowledge_updates: 1,
+      brand_knowledge_examples: 1,
+      brand_knowledge: 1,
+      brand_card_styles: 1,
       listings: 1,
       platform_accounts: 1,
       field_definitions: 1,

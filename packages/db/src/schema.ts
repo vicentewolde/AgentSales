@@ -470,6 +470,16 @@ export const posts = pgTable(
     platforms: text("platforms").array(),
     /** La música de sus videos (F9.5-T19), como `listings.music_track_id`; `null` = sin música. */
     musicTrackId: text("music_track_id"),
+    /**
+     * Los idiomas del post (2026-11-15, «Idiomas de este post»): `null` = los de la marca
+     * (`editorial_profiles.languages`). Texto validado con `LANGUAGES` de core, como `platforms`.
+     */
+    languages: text("languages").array(),
+    /**
+     * F9.7 (ADR-0043): el tema del estilo de la marca que le tocó a sus láminas (índice en
+     * `brand_card_styles.style.themes`); se fija la primera vez, así rehacer da lo mismo.
+     */
+    cardTheme: integer("card_theme"),
     ...timestamps,
   },
   (t) => [
@@ -498,8 +508,13 @@ export const editorialProfiles = pgTable("editorial_profiles", {
   avoid: text("avoid").array().notNull().default(sql`'{}'::text[]`),
   /** Posts por semana en cada red, días y horas preferidos y horas entre idiomas. */
   cadence: jsonb("cadence").notNull().default({}),
-  /** Se suman a `brokers.fixed_hashtags`. */
+  /** «Hashtags que siempre van»: se suman a `brokers.fixed_hashtags` en cada texto de post. */
   defaultHashtags: text("default_hashtags").array().notNull().default(sql`'{}'::text[]`),
+  /**
+   * «¿La IA puede agregar otros hashtags?» (2026-11-15): `null` = por defecto (no si hay hashtags
+   * que siempre van; sí si no hay ninguno).
+   */
+  aiHashtags: boolean("ai_hashtags"),
   ...timestamps,
 });
 
@@ -761,6 +776,11 @@ export const contentRuns = pgTable(
      * (se intentó, no aplicaba o se retomó al arrancar). `null` en una terminada: quedó cortado.
      */
     autoPublishDoneAt: timestamp("auto_publish_done_at", { withTimezone: true }),
+    /**
+     * `contentRunScopeSchema` (core): el alcance de una corrida de post (solo unas redes, un idioma,
+     * solo lo que falta o rehacer con una indicación); `null` = todo el post.
+     */
+    scope: jsonb("scope"),
     ...timestamps,
   },
   (t) => [
@@ -945,4 +965,151 @@ export const importRuns = pgTable(
   },
   // Cerrar las que nadie terminó de subir (`awaiting_upload` de más de 24 h, spec F8 §4.4).
   (t) => [index("import_runs_status_created_at_idx").on(t.status, t.createdAt)],
+);
+
+// ── Conocimiento y estilo de la marca (F9.7 parte B, ADR-0043) ───────────
+
+/** La postura y el tono de una marca (spec F9.7 B1): uno por corredor. */
+export const brandKnowledge = pgTable("brand_knowledge", {
+  brokerId: uuid("broker_id")
+    .primaryKey()
+    .references(() => brokers.id),
+  /** «Qué queremos transmitir», hasta 2.000 caracteres. */
+  stance: text("stance"),
+  /** «Tono y forma de contar», hasta 2.000 caracteres. */
+  tone: text("tone"),
+  ...timestamps,
+});
+
+/** Los ejemplos que le gustan al operador (B1): guía de **forma**, nunca fuente de hechos (D1). */
+export const brandKnowledgeExamples = pgTable(
+  "brand_knowledge_examples",
+  {
+    id: id(),
+    brokerId: uuid("broker_id")
+      .notNull()
+      .references(() => brokers.id),
+    text: text("text").notNull(),
+    note: text("note"),
+    favorite: boolean("favorite").notNull().default(false),
+    /** El orden en que los guardó el operador. */
+    sortOrder: integer("sort_order").notNull().default(0),
+    ...timestamps,
+  },
+  (t) => [index("brand_knowledge_examples_broker_idx").on(t.brokerId, t.sortOrder)],
+);
+
+/** Las novedades de los proyectos (B1): fuente de hechos (D1). Borrar es archivar. */
+export const brandKnowledgeUpdates = pgTable(
+  "brand_knowledge_updates",
+  {
+    id: id(),
+    brokerId: uuid("broker_id")
+      .notNull()
+      .references(() => brokers.id),
+    project: text("project").notNull(),
+    /** La fecha de la novedad (`AAAA-MM-DD`, de Chile). */
+    date: text("date").notNull(),
+    text: text("text").notNull(),
+    /** `KNOWLEDGE_UPDATE_SOURCES` (core): `operator` o `proposal`. */
+    source: text("source").notNull().default("operator"),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [index("brand_knowledge_updates_broker_date_idx").on(t.brokerId, t.date)],
+);
+
+/**
+ * «Actualizar desde un texto largo» (B2): una corrida de IA (job `brand.propose`) que solo propone.
+ * El texto pegado viaja a la IA y no se muestra en los logs. Columnas de corrida como las de un plan.
+ */
+export const brandKnowledgeRuns = pgTable(
+  "brand_knowledge_runs",
+  {
+    id: id(),
+    brokerId: uuid("broker_id")
+      .notNull()
+      .references(() => brokers.id),
+    /** `KNOWLEDGE_RUN_STATUSES` (core). */
+    status: text("status").notNull().default("queued"),
+    sourceText: text("source_text").notNull(),
+    warnings: text("warnings").array().notNull().default(sql`'{}'::text[]`),
+    error: jsonb("error"),
+    /** `llmUsageSchema` (core): entra al tope de IA del mes de la marca (`sumLlmCost`). */
+    llmUsage: jsonb("llm_usage"),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    index("brand_knowledge_runs_broker_created_idx").on(t.brokerId, t.createdAt),
+    // Una corrida activa (en cola o corriendo) por marca.
+    uniqueIndex("brand_knowledge_runs_one_active_per_broker")
+      .on(t.brokerId)
+      .where(sql`"status" IN ('queued', 'running')`),
+  ],
+);
+
+/** Lo que propone una corrida (B2): una novedad o un hecho, que espera al operador (D2). */
+export const brandKnowledgeProposals = pgTable(
+  "brand_knowledge_proposals",
+  {
+    id: id(),
+    brokerId: uuid("broker_id")
+      .notNull()
+      .references(() => brokers.id),
+    runId: uuid("run_id")
+      .notNull()
+      .references(() => brandKnowledgeRuns.id),
+    /** `KNOWLEDGE_PROPOSAL_KINDS` (core): `update` o `fact`. */
+    kind: text("kind").notNull(),
+    text: text("text").notNull(),
+    project: text("project"),
+    date: text("date"),
+    /** `KNOWLEDGE_PROPOSAL_STATUSES` (core). */
+    status: text("status").notNull().default("pending"),
+    /** El orden en que la IA las propuso dentro de su corrida. */
+    position: integer("position").notNull().default(0),
+    ...timestamps,
+  },
+  (t) => [index("brand_knowledge_proposals_broker_status_idx").on(t.brokerId, t.status)],
+);
+
+/**
+ * El estilo de las imágenes de una marca (B4, D3): `cardStyleSchema` de core en jsonb. `version`
+ * sube con cada cambio (las láminas lo usan para no reutilizar las de un estilo anterior).
+ */
+export const brandCardStyles = pgTable("brand_card_styles", {
+  brokerId: uuid("broker_id")
+    .primaryKey()
+    .references(() => brokers.id),
+  style: jsonb("style").notNull(),
+  version: integer("version").notNull().default(1),
+  ...timestamps,
+});
+
+/**
+ * Los textos de las láminas de un post (B5), por idioma y posición: la portada y un punto por
+ * lámina. Los escribe la IA al redactar y los edita el operador (`approved`).
+ */
+export const postCardTexts = pgTable(
+  "post_card_texts",
+  {
+    postId: uuid("post_id")
+      .notNull()
+      .references(() => posts.id),
+    /** `LANGUAGES` (core). */
+    language: text("language").notNull(),
+    /** Desde 1 (la portada). */
+    position: integer("position").notNull(),
+    /** `cover` o `point`. */
+    role: text("role").notNull(),
+    headline: text("headline").notNull(),
+    subtitle: text("subtitle").notNull().default(""),
+    /** El operador los revisó o editó: redactar de nuevo no los pisa (salvo reemplazar ediciones). */
+    approved: boolean("approved").notNull().default(false),
+    ...timestamps,
+  },
+  (t) => [primaryKey({ columns: [t.postId, t.language, t.position] })],
 );

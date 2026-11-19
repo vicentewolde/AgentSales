@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createBoss, PRODUCER_QUEUE_CACHE_SECONDS } from "./boss.js";
+import {
+  createBoss,
+  PRODUCER_QUEUE_CACHE_SECONDS,
+  WORKER_CRON_SECONDS,
+  WORKER_FLOW_SECONDS,
+} from "./boss.js";
 
 describe("createBoss", () => {
   // Construir no conecta: solo valida la configuración (pg-boss la verifica en el constructor).
@@ -14,5 +19,11 @@ describe("createBoss", () => {
 
   it("el productor refresca su caché de colas una vez al día (el tope de pg-boss)", () => {
     expect(PRODUCER_QUEUE_CACHE_SECONDS).toBe(24 * 60 * 60);
+  });
+
+  it("el worker revisa el cron y los flujos con menos frecuencia (transferencia de Neon)", () => {
+    // El cron de cada minuto (publication.due) necesita que el cron se revise varias veces por minuto.
+    expect(WORKER_CRON_SECONDS).toBeLessThanOrEqual(20);
+    expect(WORKER_FLOW_SECONDS).toBeGreaterThanOrEqual(60);
   });
 });

@@ -146,6 +146,9 @@ export const PROCESSED_MEDIA_VARIANTS = [
   "ig_reel",
   "x_video",
   "discord_video",
+  // Desde 2026-11-16, solo posts: la imagen completa, sin recorte (lado mayor hasta 1440 px), para X,
+  // LinkedIn y Discord, y para Instagram cuando su proporción está entre 4:5 y 1,91:1.
+  "post_full",
 ] as const;
 export type ProcessedMediaVariant = (typeof PROCESSED_MEDIA_VARIANTS)[number];
 

@@ -1,4 +1,10 @@
-import type { Content, ContentRun, ContentRunError, ContentRunReport } from "../content.js";
+import type {
+  Content,
+  ContentRun,
+  ContentRunError,
+  ContentRunReport,
+  ContentRunScope,
+} from "../content.js";
 import {
   type ContentRunStage,
   type ContentStatus,
@@ -15,6 +21,8 @@ import type { Subject, SubjectInput, SubjectKind } from "../subject.js";
 export type NewContentRun = SubjectInput & {
   /** Si la corrida genera textos (`false`: solo medios y renders). */
   texts: boolean;
+  /** Solo posts: el alcance de la corrida (`ContentRunScope`); sin él, todo el post. */
+  scope?: ContentRunScope | null;
 };
 
 /** Un texto nuevo de una corrida: nace en `draft` y hereda el sujeto (aviso o post) de la corrida. */

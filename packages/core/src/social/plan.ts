@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { BrandKnowledgeContext } from "../brand-knowledge.js";
 import type { Broker } from "../broker.js";
 import { chileDateOf, chileDateStart, formatChileTime } from "../chile-time.js";
 import { describeIssues, type Validated } from "../content/generate.js";
@@ -432,6 +433,12 @@ export type PlanBrief = {
   guidance: string | null;
   /** Si un hecho del perfil dice que la marca es un equipo (`profileSpeaksAsTeam`). */
   speaksAsTeam: boolean;
+  /**
+   * El conocimiento de la marca (spec F9.7 B3, ADR-0043): la postura y la forma de contar guían el
+   * enfoque; las novedades son fuente de hechos (están en `profileSources`). Sin los ejemplos: son
+   * de la forma de un texto, no de qué publicar. `null` si la marca no tiene.
+   */
+  knowledge: Pick<BrandKnowledgeContext, "stance" | "tone" | "updates"> | null;
 };
 
 /** Arma lo que ve la IA con el perfil de **su** marca y su corredor. */
@@ -480,6 +487,14 @@ export function buildPlanBrief(params: {
     planned: (params.planned ?? []).map((slot) => ({ ...slot, platforms: [...slot.platforms] })),
     guidance: params.guidance ?? null,
     speaksAsTeam: profileSpeaksAsTeam(profile),
+    knowledge:
+      profile.knowledge == null
+        ? null
+        : {
+            stance: profile.knowledge.stance,
+            tone: profile.knowledge.tone,
+            updates: profile.knowledge.updates.map((update) => ({ ...update })),
+          },
   };
 }
 

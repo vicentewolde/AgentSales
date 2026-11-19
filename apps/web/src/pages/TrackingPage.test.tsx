@@ -27,6 +27,7 @@ const item = (extra: Partial<Item>): Item => ({
   platform: "instagram",
   format: "post",
   publicationId: "p1",
+  language: null,
   at: new Date("2026-10-19T13:00:00.000Z"),
   dryRun: true,
   modeFixed: true,
@@ -79,7 +80,7 @@ describe("la agenda", () => {
     expect(failed.textContent).toContain("código IG_AUTH_INVALID");
     const backup = screen.getByRole("region", { name: AGENDA_KIND_TEXT.backup });
     expect(backup.textContent).toContain("nunca");
-    expect(backup.textContent).toContain("más de 48 h");
+    expect(backup.textContent).toContain("más de 8 días");
   });
 
   it("un post va con su tema y enlaza a su página de Contenido (F9-T17); lo nuevo de F9 dice qué hacer", () => {
@@ -353,13 +354,45 @@ describe("los posts en Seguimiento", () => {
     expect(screen.queryByRole("link", { name: /Ver lo publicado/ })).toBeNull();
   });
 
-  it("una publicación cancelada no ocupa la celda", () => {
+  it("una publicación cancelada no ocupa la celda, y el post dice «Cancelada», no «Sin programar»", () => {
     render(
       <MemoryRouter>
         <TrackingPosts posts={[post("Con cancelada", { x: [pub({ status: "cancelled" })] })]} />
       </MemoryRouter>,
     );
-    expect(screen.queryByText(/descartada|cancelada/i, { selector: "span" })).toBeNull();
+    // Sin redes con algo: no hay columna de X ni celda con la cancelada.
+    expect(screen.queryByRole("columnheader", { name: "X" })).toBeNull();
+    expect(screen.queryByRole("cell")).toBeNull();
+    const header = screen.getByRole("rowheader");
+    expect(within(header).getByText("Cancelada")).toBeTruthy();
+    expect(screen.queryByText("Sin programar")).toBeNull();
+  });
+
+  it("el encabezado separa el post de sus redes, agrupadas bajo «Redes» (2026-11-15)", () => {
+    render(
+      <MemoryRouter>
+        <TrackingPosts
+          posts={[
+            post("Con dos redes", {
+              x: [pub({ publishedAt: new Date("2026-11-09T15:00:00Z") })],
+              linkedin: [
+                pub({ status: "scheduled", scheduledAt: new Date("2026-11-20T13:00:00Z") }),
+              ],
+            }),
+          ]}
+        />
+      </MemoryRouter>,
+    );
+    const group = screen.getByRole("columnheader", { name: "Redes" });
+    expect(group.getAttribute("colspan")).toBe("2");
+    expect(group.getAttribute("scope")).toBe("colgroup");
+    expect(screen.getByRole("columnheader", { name: "Post" }).getAttribute("rowspan")).toBe("2");
+    expect(
+      screen
+        .getAllByRole("columnheader")
+        .map((cell) => cell.textContent)
+        .slice(2),
+    ).toEqual(["X", "LinkedIn"]);
   });
 
   it("ordena por la fecha que se ve: lo más nuevo primero", () => {

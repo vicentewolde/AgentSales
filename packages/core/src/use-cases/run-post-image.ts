@@ -12,18 +12,21 @@ import {
 } from "../image-ai-budget.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { CardBrand, CardRenderer } from "../ports/card-renderer.js";
+import type { CardStyleRepository } from "../ports/card-style-repository.js";
 import type { ContentRepository } from "../ports/content-repository.js";
 import type { EditorialProfileRepository } from "../ports/editorial-profile-repository.js";
 import type { JobQueue } from "../ports/job-queue.js";
 import type { MediaProcessor, VideoOutput } from "../ports/media-processor.js";
 import type { MediaRepository } from "../ports/media-repository.js";
 import type { MediaStorage } from "../ports/media-storage.js";
+import type { PostCardTextRepository } from "../ports/post-card-text-repository.js";
 import type { PostImageRunRepository } from "../ports/post-image-run-repository.js";
 import type { ImageFile, ImageGenerator, StockPhotoProvider } from "../ports/post-image-sources.js";
 import type { PostLock } from "../ports/post-lock.js";
 import type { PostRepository } from "../ports/post-repository.js";
 import type { Post } from "../post.js";
-import { postCardDeck } from "../post-cards.js";
+import { cardDeckFromTexts, cardTextsOf } from "../post-card-texts.js";
+import { POST_CARDS, postCardPlan } from "../post-cards.js";
 import {
   imageAiPrompt,
   POST_IMAGE_LIMITS,
@@ -34,6 +37,7 @@ import {
   sniffImage,
 } from "../post-image.js";
 import { scrubMessage } from "../redact.js";
+import { postLanguages } from "../social/post-languages.js";
 import { postSubject } from "../subject.js";
 import { assertCardsRemovable, cardMediaIds, deleteStoredFiles } from "./post-cards-cleanup.js";
 import { POST_UPLOAD } from "./post-uploads.js";
@@ -55,6 +59,10 @@ export type RunPostImageDeps = {
   postLock: PostLock;
   queue: JobQueue;
   cards: CardRenderer;
+  /** F9.7 B4 y B6: el estilo de la marca y el tema del post (sin él, las tarjetas de siempre). */
+  cardStyles?: Pick<CardStyleRepository, "get" | "assignTheme">;
+  /** F9.7 B5: los textos de las láminas que escribió la IA o el operador. */
+  cardTexts?: Pick<PostCardTextRepository, "list">;
   /** El procesador del intento: solo arma el video de las tarjetas (`processPhotoReel`). */
   processor: Pick<MediaProcessor, "processPhotoReel">;
   /** La biblioteca (sin `PIXABAY_API_KEY`, `null`). */
@@ -151,18 +159,54 @@ async function produce(
     // Un solo texto, de **un** idioma (el del pedido; en uno anterior al idioma, el principal de la
     // marca), y no más tarjetas de las que admite la red más estricta del post. La portada y el
     // cierre salen de ese mismo texto: nada de otro idioma.
-    const [primary] = editorialProfileView(
-      broker.id,
-      await deps.editorialProfiles.get(broker.id),
-    ).languages;
+    const [primary] = postLanguages(
+      post,
+      editorialProfileView(broker.id, await deps.editorialProfiles.get(broker.id)).languages,
+    );
     const language = request.language ?? primary;
-    const deck = postCardDeck(
+    const plan = postCardPlan(
       { ...post, kind: post.kind },
       contents,
       broker,
       language === undefined ? {} : { language },
     );
-    const brand = await cardBrand(deps, broker);
+    let deck = plan.cards;
+    const brand: CardBrand = await cardBrand(deps, broker);
+    // F9.7 B6: con el estilo de la marca, sus láminas (con el tema fijo del post) y, si hay, los
+    // textos de las láminas del idioma (B5); sin textos, los puntos de siempre.
+    const saved = (await deps.cardStyles?.get(broker.id)) ?? null;
+    if (saved !== null && deps.cardStyles !== undefined) {
+      const theme = await deps.cardStyles.assignTheme(
+        post.id,
+        broker.id,
+        saved.style.themes.length,
+      );
+      brand.style = { style: saved.style, theme, composition: request.composition ?? "announce" };
+      const texts =
+        language === undefined
+          ? []
+          : cardTextsOf((await deps.cardTexts?.list(post.id)) ?? [], language);
+      const detail = plan.cards[0]?.detail ?? null;
+      const fromTexts = cardDeckFromTexts({
+        texts,
+        kind: post.kind,
+        brandName: broker.brandName,
+        detail,
+        maxPoints: post.kind === "video" ? POST_CARDS.maxPoints : Math.max(0, plan.limit.max - 2),
+      });
+      if (
+        fromTexts.length > 0 &&
+        (post.kind !== "video" || fromTexts.length >= POST_CARDS.videoMinCards)
+      ) {
+        deck = fromTexts;
+      } else {
+        // Sin textos de láminas: la portada lleva los puntos en grilla («Explicar»).
+        const items = plan.cards
+          .filter((card) => card.role === "point")
+          .map((card, index) => ({ label: String(index + 1).padStart(2, "0"), text: card.text }));
+        deck = plan.cards.map((card) => (card.role === "cover" ? { ...card, items } : card));
+      }
+    }
     const format = post.kind === "video" ? "9:16" : request.format;
     const rendered = [];
     for (const card of deck) {

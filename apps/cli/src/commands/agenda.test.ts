@@ -22,6 +22,7 @@ const item = (extra: Partial<Item>): Item => ({
   platform: "linkedin",
   format: "post",
   publicationId: "pub-1",
+  language: null,
   at: new Date("2026-10-21T13:00:00.000Z"),
   dryRun: true,
   modeFixed: true,

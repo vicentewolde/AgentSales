@@ -492,17 +492,14 @@ describe("panel: las redes de un post (F9-T21)", () => {
     expect(approve.disabled).toBe(false);
   });
 
-  it("aprobar el texto de una red quitada está desactivado, con el motivo", async () => {
+  it("el texto de una red quitada va plegado en «Redes quitadas», sin aprobar ni pestaña", async () => {
     const s = await setup();
     const post = await postWithTexts(s, "Solo X", ["discord"], ["x"]);
     s.renderApp(`/contenido/${post.id}`);
-    const approve = (await screen.findByRole("button", { name: "Aprobar" })) as HTMLButtonElement;
-    expect(approve.disabled).toBe(true);
-    expect(
-      screen.getByText(
-        /Discord ya no está entre las redes del post: agrégala con «Editar el post»/,
-      ),
-    ).toBeTruthy();
+    const folded = await screen.findByText("Redes quitadas (Discord)");
+    expect(folded.closest("details")?.textContent).toContain("Texto para discord");
+    expect(screen.queryByRole("tab", { name: /^Discord/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Aprobar" })).toBeNull();
   });
 
   it("el detalle dice qué texto falta de una red agregada y cuál ya no corresponde", async () => {
@@ -537,11 +534,17 @@ describe("panel: las redes de un post (F9-T21)", () => {
     s.renderApp(`/contenido/${post.id}`);
     expect(await screen.findByText(/redes: X/)).toBeTruthy();
     expect(screen.getByText(/Falta el texto de X/)).toBeTruthy();
-    expect(screen.getByText(/Los textos de Discord no se publican ni se programan/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Redactar los textos de nuevo" }));
+    expect(screen.getByText("Redes quitadas (Discord)")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Redactar solo X" }));
     await waitFor(async () =>
-      expect(await s.deps.contentRuns.findActive({ kind: "post", id: post.id })).not.toBeNull(),
+      expect((await s.deps.contentRuns.findActive({ kind: "post", id: post.id }))?.scope).toEqual({
+        platforms: ["x"],
+        language: null,
+        mode: "missing",
+        guidance: null,
+      }),
     );
+    expect(await screen.findByText(/Redactando el texto de X…/)).toBeTruthy();
   });
 
   it("quitar una red con una publicación pendiente se rechaza con qué hacer", async () => {
@@ -590,7 +593,7 @@ describe("panel: las redes de un post (F9-T21)", () => {
     // Solo las redes de la marca (Discord por su cuenta; X y LinkedIn por su cadencia).
     await waitFor(() =>
       expect(
-        within(form)
+        within(within(form).getByRole("group", { name: /^Redes/ }))
           .getAllByRole("checkbox")
           .map((box) => box.parentElement?.textContent),
       ).toEqual(["X", "LinkedIn", "Discord"]),

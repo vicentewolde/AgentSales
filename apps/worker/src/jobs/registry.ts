@@ -1,6 +1,6 @@
 import type { Logger } from "@agentsales/config";
 import { isAppError } from "@agentsales/core";
-import type { Job, QueuePolicy } from "./define.js";
+import { DEFAULT_POLLING_SECONDS, type Job, type QueuePolicy } from "./define.js";
 
 /** Lo que el registro usa de pg-boss; `PgBoss` lo cumple. */
 export type WorkerBoss = {
@@ -15,7 +15,7 @@ export type WorkerBoss = {
   ): Promise<void>;
   work(
     name: string,
-    options: { batchSize: 1; includeMetadata: true },
+    options: { batchSize: 1; includeMetadata: true; pollingIntervalSeconds: number },
     handler: (
       jobs: { id: string; data: unknown; retryCount: number; retryLimit: number }[],
     ) => Promise<void>,
@@ -30,6 +30,8 @@ export type RegisterOptions = {
 /**
  * Crea o actualiza la cola de cada job con su política, registra su handler y, si tiene cron, lo
  * programa (`schedule` exige que la cola exista).
+ * - `pollingIntervalSeconds`: el del job o `DEFAULT_POLLING_SECONDS` (cada consulta cuenta en la
+ *   transferencia de Neon).
  * - `batchSize: 1`: si un lote trae varios jobs y falla uno, pg-boss reintenta el lote completo.
  * - Un `AppError` no reintentable (datos inválidos, transición inválida…) se registra y el job se
  *   da por cerrado: reintentarlo no cambiaría el resultado. El caso de uso ya dejó el estado de
@@ -53,7 +55,12 @@ export async function registerJobs(
     await boss.updateQueue(job.name, updatable);
     await checkPolicy(boss, job, logger);
     // `includeMetadata`: trae `retryLimit`, para saber si es el último intento.
-    await boss.work(job.name, { batchSize: 1, includeMetadata: true }, async (batch) => {
+    const workOptions = {
+      batchSize: 1,
+      includeMetadata: true,
+      pollingIntervalSeconds: job.pollingSeconds ?? DEFAULT_POLLING_SECONDS,
+    } as const;
+    await boss.work(job.name, workOptions, async (batch) => {
       for (const { id, data, retryCount, retryLimit } of batch) {
         await runOne(
           job,

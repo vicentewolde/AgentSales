@@ -219,6 +219,8 @@ En vez de encenderlo y apagarlo tú, el worker puede **encenderse solo** cada ho
 4. **Probar el encendido a mano:** con el worker apagado, en GitHub → **Actions** → **Encender el worker** → **Run workflow** (rama `main`). Debe decir "Encendiendo el worker …" y, al minuto, `pnpm -s cli doctor` (contra el servidor) debe decir "Worker: encendido". NO VERIFICADO hasta esa primera corrida: la forma del JSON de `fly machine list --json` que lee el flujo (el grupo en `config.metadata.fly_process_group` y el estado en `state`).
 5. **Que se apague solo:** `WORKER_IDLE_EXIT_MINUTES = "10"` ya está activo en `fly.toml` (desde 2026-11-13); **despliega (paso 4) solo después de los pasos 1 a 4**, porque sin el horario encendiendo el worker, nada programado saldría. Desde ahí, el worker se apaga a los 10 minutos sin nada que hacer. Compruébalo con `pnpm -s cli doctor` unos 15 minutos después de que termine lo programado: "Worker: apagado desde …".
 
+**Si el encendido falla con "token validation error":** Fly no acepta el token guardado (pasó el 2026-11-17: cada revisión fallaba y antes se veía como "No hay una máquina del worker"). Crea uno nuevo (punto 2) y guárdalo encima del anterior (punto 3); después prueba el encendido a mano (punto 4).
+
 **Sin el secreto, el flujo no hace nada:** cada corrida programada termina en verde con el aviso "Falta el secreto FLY_WORKER_START_TOKEN" (el horario queda escrito, pero apagado). Y sin el paso 5, el worker nunca se apaga solo (como hoy).
 
 **Encender ya** (para preparar o publicar sin esperar la revisión, o de noche): **Actions** → **Encender el worker** → **Run workflow**, o `fly machine start <id_worker> -a agentsales` (arriba). Con el paso 5 hecho, se vuelve a apagar solo; no hace falta apagarlo.
@@ -438,7 +440,7 @@ Fuera de F8. Cuando quieras que los corredores usen la herramienta cualquier dí
 2. **La base de Neon:** un **proyecto nuevo** en **console.neon.tech** → **New project**, en la misma región que el de hoy (AWS São Paulo), y sigue `docs/09-alta-neon-r2.md` (parte A: la cadena **sin** `-pooler`). Un proyecto aparte, y no una rama del de hoy, deja separados los datos, el cupo gratis y los respaldos de Neon. Cuántos proyectos permite el plan gratis es NO VERIFICADO: si Neon no te deja crear otro, avísale a Claude antes de usar una rama del proyecto de hoy.
 3. **Los dos buckets de R2** (`docs/09-alta-neon-r2.md`, parte B), cada uno con **su propio token** "Object Read & Write" limitado a él:
    - `<app>-media`, con la misma regla de CORS que `agentsales-media` pero desde el dominio nuevo: solo `PUT`, origen `https://<dominio>`, cabeceras `content-type` y `x-amz-checksum-sha256`.
-   - `<app>-backups`, para el respaldo diario (su token no puede ser el del bucket de medios: el servidor no arranca si son el mismo).
+   - `<app>-backups`, para el respaldo semanal (los lunes; su token no puede ser el del bucket de medios: el servidor no arranca si son el mismo).
 4. **El archivo `.env.<instancia>`** en la carpeta del proyecto (git ya lo ignora, como `.env.production`; Claude no lo lee). Lleva los mismos nombres que `.env.production`, con los valores de la instancia nueva:
    - `PUBLIC_URL=https://<dominio>` (la usan los scripts como `auth:admin`).
    - `DATABASE_URL` del proyecto nuevo de Neon; `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` y `R2_BUCKET=<app>-media`; `BACKUP_R2_ACCESS_KEY_ID` y `BACKUP_R2_SECRET_ACCESS_KEY` del token de `<app>-backups`.

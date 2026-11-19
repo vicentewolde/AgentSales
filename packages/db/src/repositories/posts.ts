@@ -48,6 +48,8 @@ export function newPostValues(input: NewPost): typeof posts.$inferInsert {
     xLinkAllowed: input.xLinkAllowed ?? false,
     platforms:
       input.platforms === undefined || input.platforms === null ? null : [...input.platforms],
+    languages:
+      input.languages === undefined || input.languages === null ? null : [...input.languages],
   };
 }
 

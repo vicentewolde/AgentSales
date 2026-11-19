@@ -7,6 +7,7 @@ import {
   type BrokerRepository,
   type Content,
   type ContentRepository,
+  calendarDrafts,
   calendarEntries,
   connectedPlatforms,
   type Listing,
@@ -234,6 +235,11 @@ export function trackingRoutes(deps: TrackingRoutesDeps) {
         entries: calendarEntries({ listings, posts, publications, from, to, now: now() }).map(
           (entry) => ({ ...entry, brokerSlug: slugs.get(entry.brokerId) ?? null }),
         ),
+        // Los borradores (2026-11-15): posts con fecha planeada y nada programado ni publicado.
+        drafts: calendarDrafts({ posts, publications, from, to }).map((draft) => ({
+          ...draft,
+          brokerSlug: slugs.get(draft.brokerId) ?? null,
+        })),
       };
       return c.json(body, 200);
     });

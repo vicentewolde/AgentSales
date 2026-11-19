@@ -4,6 +4,7 @@ import type { EditorialProfileData } from "@agentsales/core";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { brokerData, harness } from "../../../test/harness.js";
+import { toggleLanguage } from "./EditorialProfileForm.js";
 import {
   addHour,
   draftOf,
@@ -41,10 +42,12 @@ const FULL: EditorialProfileData = {
     linkedin: { postsPerWeek: 1, days: ["tue"], hours: ["09:00"], languageGapHours: 12 },
   },
   defaultHashtags: ["#propiedades", "#nunoa"],
+  aiHashtags: null,
 };
 
 const json = (data: EditorialProfileData): EditorialProfileJson => ({
   ...data,
+  aiHashtags: data.aiHashtags ?? null,
   brokerId: "b1",
   updatedAt: null,
 });
@@ -414,5 +417,41 @@ describe("perfil editorial en el panel (F9.5-T17)", () => {
         { key: "propiedades-disponibles", name: "Departamentos en arriendo" },
       ]),
     );
+  });
+});
+
+describe("toggleLanguage (Idiomas de los posts, 2026-11-15)", () => {
+  it("marca y quita idiomas; siempre queda uno, y quitar el principal deja el otro", () => {
+    const base = draftOf({
+      brokerId: "b",
+      languages: ["es"],
+      audience: null,
+      pillars: [],
+      facts: [],
+      avoid: [],
+      cadence: {},
+      defaultHashtags: [],
+    } as unknown as EditorialProfileJson);
+    const both = toggleLanguage(base, "en");
+    expect([both.primary, both.second]).toEqual(["es", "en"]);
+    const onlyEn = toggleLanguage(both, "es");
+    expect([onlyEn.primary, onlyEn.second]).toEqual(["en", ""]);
+    expect(toggleLanguage(onlyEn, "en")).toBe(onlyEn);
+    expect(profileBody(toggleLanguage(both, "en")).body.languages).toEqual(["es"]);
+  });
+});
+
+describe("hashtags que siempre van (2026-11-15)", () => {
+  it("con hashtags, la IA no agrega otros por defecto; elegir «Sí» se guarda", async () => {
+    const s = await setup(FULL);
+    expect(within(s.form).getByLabelText("Hashtags que siempre van")).toBeTruthy();
+    const no = within(s.form).getByRole("radio", { name: "No, solo los que siempre van" });
+    expect((no as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(
+      within(s.form).getByRole("radio", { name: "Sí, puede agregar otros que calcen con el tema" }),
+    );
+    fireEvent.click(within(s.form).getByRole("button", { name: "Guardar el perfil" }));
+    expect(await within(s.form).findByText("Perfil guardado.")).toBeTruthy();
+    expect((await saved(s)).aiHashtags).toBe(true);
   });
 });

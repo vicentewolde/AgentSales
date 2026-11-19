@@ -57,6 +57,7 @@ const NOW = new Date("2026-10-20T15:00:00Z");
 
 const profile = editorialProfileView("marca-1", {
   brokerId: "marca-1",
+  aiHashtags: null,
   languages: ["es", "en"],
   audience: "Corredores independientes",
   pillars: [
@@ -356,7 +357,7 @@ describe("lo que ve la IA", () => {
   });
 
   it("la versión del plan es propia, distinta de la de los textos", () => {
-    expect(PLAN_PROMPT_VERSION).toBe("social-plan-v3");
+    expect(PLAN_PROMPT_VERSION).toBe("social-plan-v4");
     expect(PLAN_PROMPT_VERSION).not.toBe(SOCIAL_PROMPT_VERSION);
   });
 

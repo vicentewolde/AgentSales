@@ -77,7 +77,7 @@ async function setup(
 }
 
 describe("processPostMedia", () => {
-  it("foto: thumb e ig_4x5; video: thumb, reel sin texto y x_video; todo bajo posts/{postId}/", async () => {
+  it("foto: thumb, ig_4x5 y post_full (entera); video: thumb, reel sin texto y x_video; todo bajo posts/{postId}/", async () => {
     const s = await setup();
     const photo = await s.original(1, "image", "foto");
     const video = await s.original(2, "video", "video");
@@ -90,7 +90,12 @@ describe("processPostMedia", () => {
     });
     // Sin pi_4x3 (un post no va a Portal) y el reel sin el PNG del texto.
     expect(s.processor.calls).toEqual([
-      { kind: "image", mime: "image/jpeg", variants: ["thumb", "ig_4x5"], inputBytes: 4 },
+      {
+        kind: "image",
+        mime: "image/jpeg",
+        variants: ["thumb", "ig_4x5", "post_full"],
+        inputBytes: 4,
+      },
       {
         kind: "video",
         reel: true,
@@ -110,12 +115,13 @@ describe("processPostMedia", () => {
       expect.arrayContaining([
         [photo.id, "thumb", "image", `${root}/thumb/${sha(1)}-v7.jpg`],
         [photo.id, "ig_4x5", "image", `${root}/ig_4x5/${sha(1)}-v7.jpg`],
+        [photo.id, "post_full", "image", `${root}/post_full/${sha(1)}-v7.jpg`],
         [video.id, "thumb", "image", `${root}/thumb/${sha(2)}-v7.jpg`],
         [video.id, "ig_reel", "video", `${root}/ig_reel/${sha(2)}-v7.mp4`],
         [video.id, "x_video", "video", `${root}/x_video/${sha(2)}-v7.mp4`],
       ]),
     );
-    expect(derived).toHaveLength(5);
+    expect(derived).toHaveLength(6);
     expect(all.every((item) => item.postId === s.post.id && item.listingId === null)).toBe(true);
     expect(
       [...s.storage.objects.keys()].every((path) => path.startsWith(`posts/${s.post.id}/`)),

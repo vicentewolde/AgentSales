@@ -240,7 +240,8 @@ describe("agentsales post media", () => {
     const s = await setup();
     await expect(runPostMedia(s.deps, s.post.id, { card: true, ai: "x" })).resolves.toBe(1);
     await expect(runPostMedia(s.deps, s.post.id, { pick: "1" })).resolves.toBe(1);
-    await expect(runPostMedia(s.deps, s.post.id, { card: true, format: "1:1" })).resolves.toBe(1);
+    // F9.7 B6: el cuadrado 1:1 ya es una proporción válida; 3:2 no.
+    await expect(runPostMedia(s.deps, s.post.id, { card: true, format: "3:2" })).resolves.toBe(1);
     expect(s.h.requests.filter((request) => request.includes("/images"))).toEqual([]);
   });
 });

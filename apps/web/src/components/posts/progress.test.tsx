@@ -47,9 +47,12 @@ const row = (x: Pub[], instagram: Pub[] = []): TrackingPostRow => ({
 });
 
 describe("postProgress: en qué va un post", () => {
-  it("sin publicaciones, o solo canceladas, no hay nada", () => {
+  it("sin publicaciones no hay nada; solo canceladas dice «Cancelada», no «Sin programar» (2026-11-15)", () => {
     expect(postProgress(undefined).state).toBe("none");
-    expect(postProgress(row([pub("cancelled")])).state).toBe("none");
+    expect(postProgress(row([])).state).toBe("none");
+    const cancelled = postProgress(row([pub("cancelled")]));
+    expect(cancelled.state).toBe("cancelled");
+    expect(POST_PROGRESS_LABEL[cancelled.state]).toBe("Cancelada");
   });
 
   it("publicado solo si todo lo que se pidió salió; si falta algo, en parte", () => {

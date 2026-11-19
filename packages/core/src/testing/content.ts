@@ -88,6 +88,7 @@ export function createInMemoryContentRepositories(
         finishedAt: null,
         createdAt: new Date(),
         llmUsage: null,
+        scope: run.scope ?? null,
       };
       runs.push(created);
       return structuredCopy(created);

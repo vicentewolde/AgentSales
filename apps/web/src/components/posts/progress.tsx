@@ -14,6 +14,7 @@ export type TrackingPostRow = TrackingResponse["posts"][number];
  * - `waiting`: a mano; te toca publicar y confirmar.
  * - `failed`: falló o no se sabe si salió.
  * - `approved`: texto aprobado, pero sin hora.
+ * - `cancelled`: todo lo que tuvo se canceló (2026-11-15: antes decía «Sin programar»).
  * - `none`: nada aprobado ni programado.
  */
 export const POST_PROGRESS_STATES = [
@@ -24,6 +25,7 @@ export const POST_PROGRESS_STATES = [
   "waiting",
   "failed",
   "approved",
+  "cancelled",
   "none",
 ] as const;
 export type PostProgressState = (typeof POST_PROGRESS_STATES)[number];
@@ -73,10 +75,15 @@ const DEAD = new Set(["cancelled", "unpublished"]);
 
 export function postProgress(row: TrackingPostRow | undefined): PostProgress {
   if (row === undefined) return { state: "none", nextAt: null, publishedAt: null };
-  const all = Object.values(row.cells)
+  const cells = Object.values(row.cells)
     .flat()
-    .filter((pub) => !DEAD.has(pub.status));
-  if (all.length === 0) return { state: "none", nextAt: null, publishedAt: null };
+    .filter((pub) => !isSupersededSimulation(pub));
+  const all = cells.filter((pub) => !DEAD.has(pub.status));
+  if (all.length === 0) {
+    // Lo único que tuvo se canceló: lo dice así, no «Sin programar».
+    const cancelled = cells.some((pub) => pub.status === "cancelled");
+    return { state: cancelled ? "cancelled" : "none", nextAt: null, publishedAt: null };
+  }
   const publishedPubs = all.filter((pub) => pub.status === "published");
   const published = publishedPubs.length;
   const publishedAt =
@@ -114,6 +121,7 @@ export const POST_PROGRESS_LABEL: Readonly<Record<PostProgressState, string>> = 
   waiting: "Te toca publicarlo a mano",
   failed: "Falló: hay que mirarlo",
   approved: "Aprobado, sin hora",
+  cancelled: "Cancelada",
   none: "Sin programar",
 };
 
@@ -125,6 +133,7 @@ const PROGRESS_TONE: Readonly<Record<PostProgressState, BadgeTone>> = {
   waiting: "warning",
   failed: "danger",
   approved: "neutral",
+  cancelled: "neutral",
   none: "neutral",
 };
 

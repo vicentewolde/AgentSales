@@ -13,6 +13,7 @@ import {
   CLOSE_REASONS,
   CONTENT_CHECK_CODES,
   CONTENT_CHECK_SEVERITY_LEVELS,
+  CONTENT_RUN_GUIDANCE_MAX,
   CONTENT_STATUSES,
   contentRunReportSchema,
   contentRunSchema,
@@ -1219,6 +1220,8 @@ export const agendaItemSchema = z.object({
   platform: z.enum(PLATFORMS).nullable(),
   format: z.enum(PUBLICATION_FORMATS).nullable(),
   publicationId: z.string().nullable(),
+  /** F9.7 B10: el idioma del texto de la publicación; `null` si no es una o de un servidor anterior. */
+  language: z.enum(LANGUAGES).nullable().default(null),
   at: z.coerce.date().nullable(),
   dryRun: z.boolean().nullable(),
   /** Como en el seguimiento: si el modo ya está fijado (D4 del spec F9.5); `true` si no es una publicación. */
@@ -1276,8 +1279,26 @@ export const calendarEntrySchema = z.object({
   brokerSlug: z.string().nullable(),
   externalUrl: z.string().nullable(),
 });
-export const calendarResponseSchema = z.object({ entries: z.array(calendarEntrySchema) });
+/**
+ * Un borrador en el calendario (2026-11-15): un post en borrador o listo con su fecha planeada y
+ * nada programado ni publicado (`calendarDrafts`). Se ve distinto y lleva a su página.
+ */
+export const calendarDraftSchema = z.object({
+  postId: z.string(),
+  title: z.string(),
+  brokerId: z.string(),
+  brokerSlug: z.string().nullable(),
+  at: z.coerce.date(),
+  /** Ya tiene una publicación aprobada, sin hora. */
+  approved: z.boolean(),
+});
+export const calendarResponseSchema = z.object({
+  entries: z.array(calendarEntrySchema),
+  /** Un servidor anterior no los manda: se leen vacíos. */
+  drafts: z.array(calendarDraftSchema).default([]),
+});
 export type CalendarEntryView = z.infer<typeof calendarEntrySchema>;
+export type CalendarDraftView = z.infer<typeof calendarDraftSchema>;
 export type CalendarResponse = z.infer<typeof calendarResponseSchema>;
 
 /** `GET /usage?month=AAAA-MM` (spec F7 §4.7): por defecto, el mes de hoy en Chile. */
@@ -1544,6 +1565,11 @@ export const editorialProfileBodySchema = z
       )
       .refine((cadence) => Object.keys(cadence).length <= 20, { message: "Demasiadas redes" }),
     defaultHashtags: profileList(EDITORIAL_LIMITS.hashtags, EDITORIAL_LIMITS.hashtag),
+    /**
+     * «¿La IA puede agregar otros hashtags?» (2026-11-15): `null` o sin el campo, por defecto (no
+     * si hay hashtags que siempre van; sí si no hay ninguno).
+     */
+    aiHashtags: z.boolean().nullable().optional(),
   })
   .strict();
 export type EditorialProfileBody = z.infer<typeof editorialProfileBodySchema>;
@@ -1640,6 +1666,11 @@ export const updatePostBodySchema = z
      * post de video: en otro, `POST_INVALID` (400).
      */
     musicTrackId: musicTrackIdSchema.nullable().optional(),
+    /**
+     * Los idiomas del post («Idiomas de este post», 2026-11-15): `null` = los de la marca. Un idioma
+     * quitado no se redacta y sus textos sin aprobar se ocultan (no se borran).
+     */
+    languages: z.array(z.enum(LANGUAGES)).min(1).max(LANGUAGES.length).nullable().optional(),
   })
   .strict();
 export type UpdatePostBody = z.infer<typeof updatePostBodySchema>;
@@ -1697,8 +1728,25 @@ export const postPublicationSchema = publicationViewSchema.extend({
 });
 export type PostPublicationView = z.infer<typeof postPublicationSchema>;
 
-/** `POST /posts`, `PATCH /posts/:id` y `POST /posts/:id/archive`. */
-export const postResponseSchema = z.object({ post: postJsonSchema });
+/**
+ * Lo que la IA empezó a redactar al guardar la edición (una red agregada a un post ya redactado), o
+ * por qué no pudo (`error`, por ejemplo el tope de IA del mes).
+ */
+export const postDraftingSchema = z.object({
+  platforms: z.array(z.enum(POST_PLATFORMS)),
+  contentRunId: z.string().nullable(),
+  error: z.object({ code: z.string(), message: z.string() }).nullable(),
+});
+export type PostDraftingView = z.infer<typeof postDraftingSchema>;
+
+/**
+ * `POST /posts`, `PATCH /posts/:id` y `POST /posts/:id/archive`. `drafting` solo en `PATCH`: si al
+ * guardar se le agregó una red, lo que la IA empezó a redactar (o por qué no); si no, `null`.
+ */
+export const postResponseSchema = z.object({
+  post: postJsonSchema,
+  drafting: postDraftingSchema.nullable().default(null),
+});
 export type PostResponse = z.infer<typeof postResponseSchema>;
 
 /**
@@ -1718,6 +1766,20 @@ export const postDetailResponseSchema = z.object({
    * todavía no son medios. Un servidor anterior no lo manda: se lee 0.
    */
   uploadsInReview: z.number().int().nonnegative().default(0),
+  /**
+   * Los idiomas en que escribe el post (los suyos o los de la marca, el principal primero; 2026-11-15).
+   * Un texto aprobado de otro idioma se muestra con una nota. Un servidor anterior no lo manda: `null`.
+   */
+  languages: z.array(z.enum(LANGUAGES)).nullable().default(null),
+  /** Los textos sin aprobar de un idioma quitado, que no van en `contents` (vuelven con el idioma). */
+  hiddenTexts: z.number().int().nonnegative().default(0),
+  /**
+   * Si el tema o el brief cambiaron después de redactar alguno de los textos vigentes: el panel
+   * ofrece pedir textos nuevos (nunca los rehace solo). Un servidor anterior no lo manda: no cambió.
+   */
+  sourceChanged: z
+    .object({ topic: z.boolean(), brief: z.boolean() })
+    .default({ topic: false, brief: false }),
 });
 export type PostDetailResponse = z.infer<typeof postDetailResponseSchema>;
 
@@ -1900,8 +1962,24 @@ export type PostImageStockResponse = z.infer<typeof postImageStockResponseSchema
 
 // ── Textos, aprobación, publicar y programar un post (F9-T12, spec F9 §4.10) ──
 
-/** `POST /posts/:id/draft`: pide los textos; `replaceEdits` reemplaza también los editados o aprobados. */
-export const postDraftBodySchema = z.object({ replaceEdits: z.boolean().optional() }).strict();
+/**
+ * `POST /posts/:id/draft`: pide los textos; `replaceEdits` reemplaza también los editados o
+ * aprobados. Con `platforms`, solo esas redes (y con `language`, solo ese idioma): `onlyMissing`
+ * redacta solo los textos que faltan («Redactar solo LinkedIn»); sin él, los rehace. `guidance`
+ * («¿Qué cambiar?», hasta 300 caracteres) es para rehacer: guía la forma y el tono, nunca los hechos.
+ */
+export const postDraftBodySchema = z
+  .object({
+    replaceEdits: z.boolean().optional(),
+    platforms: z.array(z.enum(POST_PLATFORMS)).min(1).max(POST_PLATFORMS.length).optional(),
+    language: z.enum(LANGUAGES).optional(),
+    guidance: z
+      .string()
+      .max(CONTENT_RUN_GUIDANCE_MAX + 50)
+      .optional(),
+    onlyMissing: z.boolean().optional(),
+  })
+  .strict();
 export type PostDraftBody = z.infer<typeof postDraftBodySchema>;
 
 /** `/posts/:id/contents/:platform/:language`: el texto vigente de una red (de posts) e idioma. */
@@ -2393,3 +2471,4 @@ export type LeadWebhookSecretResponse = z.infer<typeof leadWebhookSecretResponse
 
 /** Lo que recibe ManyChat: solo si se guardó y si ya existía, nunca datos personales. */
 export const leadWebhookResponseSchema = z.object({ ok: z.literal(true), created: z.boolean() });
+export * from "./brand.js";

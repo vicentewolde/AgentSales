@@ -15,6 +15,7 @@ import {
   createFakeImageGenerator,
   createFakeStockPhotoProvider,
   createInMemoryBrokerRepository,
+  createInMemoryCardStyleRepository,
   createInMemoryContentRepositories,
   createInMemoryEditorialProfileRepository,
   createInMemoryJobQueue,
@@ -22,6 +23,7 @@ import {
   createInMemoryMediaRepository,
   createInMemoryMediaStorage,
   createInMemoryPlatformAccountRepository,
+  createInMemoryPostCardTextRepository,
   createInMemoryPostImageRunRepository,
   createInMemoryPostLock,
   createInMemoryPostRepository,
@@ -1269,5 +1271,97 @@ describe("tarjetas por idioma", () => {
         ["es", 0],
       ]);
     });
+  });
+});
+
+describe("F9.7 B6: láminas con el estilo de la marca", () => {
+  const STYLE = {
+    version: 1 as const,
+    fonts: {
+      headline: { family: "inter-tight" as const, weight: 600 as const, tracking: -0.028 },
+      body: { family: "inter" as const, weight: 500 as const },
+    },
+    margins: { side: 80, top: 120, bottom: 106 },
+    cardRadius: 34,
+    logo: null,
+    showBrandName: true,
+    themes: ["Uno", "Dos"].map((name) => ({
+      name,
+      background: { kind: "solid" as const, color: "#000000" },
+      text: "#f5f5f7",
+      secondary: "#86868b",
+      accent: "#2997ff",
+      headlineGradient: null,
+      card: { background: "#1c1c1e", text: "#f5f5f7", label: "#98989d" },
+      hero: { background: "#1062f0", text: "#ffffff", label: "#e8efff", accent: "#e2fff4" },
+      medal: {
+        ring: ["#fdfdfe", "#8e97a1"] as [string, string],
+        disc: ["#4d95ff", "#0a2f86"] as [string, string],
+      },
+      glow: null,
+    })),
+  };
+
+  it("usa los textos de las láminas del idioma, el tema fijo del post y la composición pedida", async () => {
+    const s = await setup({ platforms: ["instagram"], languages: ["es"] });
+    const cardStyles = createInMemoryCardStyleRepository();
+    await cardStyles.save(s.broker.id, STYLE);
+    const cardTexts = createInMemoryPostCardTextRepository();
+    await cardTexts.replace(
+      s.post.id,
+      "es",
+      [
+        { role: "cover", headline: "Precio justo", subtitle: "Tres cosas que mirar" },
+        { role: "point", headline: "El mercado", subtitle: "Compara con lo vendido" },
+      ],
+      { fromAi: true },
+    );
+    const worker = { ...s.worker, cardStyles, cardTexts };
+    const run = await s.request({
+      source: "card",
+      format: "1:1",
+      language: "es",
+      composition: "explain",
+    });
+    expect(await runPostImage(worker, { runId: run.id, isLastAttempt: true })).toMatchObject({
+      outcome: "succeeded",
+    });
+    expect(
+      s.cards.calls.map((call) => [
+        call.card.role,
+        call.card.text,
+        call.card.subtitle ?? null,
+        call.format,
+      ]),
+    ).toEqual([
+      ["cover", "Precio justo", "Tres cosas que mirar", "1:1"],
+      ["point", "El mercado", "Compara con lo vendido", "1:1"],
+      ["closing", "AgentPey", null, "1:1"],
+    ]);
+    expect(s.cards.calls[0]?.card.items).toEqual([{ label: "01", text: "El mercado" }]);
+    expect(s.cards.calls.every((call) => call.styled?.composition === "explain")).toBe(true);
+    const theme = s.cards.calls[0]?.styled?.theme;
+    // Rehacer da el mismo tema; el post siguiente de la marca, el otro.
+    await runPostImage(worker, {
+      runId: (
+        await s.request({ source: "card", format: "4:5", language: "es", replaceCards: true })
+      ).id,
+      isLastAttempt: true,
+    });
+    expect(s.cards.calls.at(-1)?.styled?.theme).toBe(theme);
+    expect(await cardStyles.assignTheme("otro-post", s.broker.id, 2)).toBe(((theme ?? 0) + 1) % 2);
+  });
+
+  it("sin textos de láminas, la portada lleva los puntos en grilla", async () => {
+    const s = await setup({ platforms: ["instagram"], languages: ["es"] });
+    const cardStyles = createInMemoryCardStyleRepository();
+    await cardStyles.save(s.broker.id, STYLE);
+    const run = await s.request({ source: "card", format: "4:5", language: "es" });
+    await runPostImage({ ...s.worker, cardStyles }, { runId: run.id, isLastAttempt: true });
+    expect(s.cards.calls[0]?.card.items?.map((item) => item.text)).toEqual([
+      "Mira el mercado",
+      "Revisa los gastos",
+    ]);
+    expect(s.cards.calls[0]?.styled).toEqual({ theme: 0, composition: "announce" });
   });
 });

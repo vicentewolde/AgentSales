@@ -5,6 +5,8 @@ import {
   postImageStockResponseSchema,
 } from "@agentsales/api/contracts";
 import {
+  CARD_COMPOSITIONS,
+  type CardComposition,
   formatUsd,
   LANGUAGE_TEXT,
   LANGUAGES,
@@ -30,6 +32,8 @@ export type PostMediaDeps = WaitDeps & { client: ApiClient };
 
 export type PostMediaOptions = {
   card?: boolean;
+  /** F9.7 B6: con el estilo de la marca, `announce` (Anuncio) o `explain` (Explicar). */
+  composition?: string;
   /** Con `--card`: `es`, `en` o `all` (las tarjetas de cada idioma, una después de otra). */
   language?: string;
   /** Con `--card`: quita antes las tarjetas anteriores del post (nunca lo que subiste). */
@@ -65,6 +69,17 @@ function postIdOf(id: string): string {
   return trimmed;
 }
 
+function compositionOf(text: string): CardComposition {
+  const found = CARD_COMPOSITIONS.find((value) => value === text.trim());
+  if (found === undefined) {
+    throw new CliError(
+      "POST_IMAGE_COMPOSITION_INVALID",
+      `--composition debe ser ${CARD_COMPOSITIONS.join(" o ")}: "${text}"`,
+    );
+  }
+  return found;
+}
+
 function formatOf(text: string | undefined): PostImageFormat {
   if (text === undefined) return "4:5";
   const found = POST_IMAGE_FORMATS.find((format) => format === text.trim());
@@ -96,7 +111,9 @@ async function printOptions(deps: PostMediaDeps, postId: string): Promise<number
   );
   const { stock, ai } = options.sources;
   deps.print(c.bold("Conseguir imagen"));
-  deps.print(`  Tarjetas de la marca (US$ 0): ${media(postId)} --card [--format 4:5|9:16]`);
+  deps.print(
+    `  Tarjetas de la marca (US$ 0): ${media(postId)} --card [--format 4:5|1:1|9:16] [--composition announce|explain]`,
+  );
   if (options.cards !== null) {
     const several = options.cards.languages.length > 1;
     for (const item of options.cards.languages) {
@@ -284,6 +301,9 @@ export function runPostMedia(deps: PostMediaDeps, id: string, options: PostMedia
         ...(first === undefined ? {} : { language: first }),
         ...(rest.length > 0 ? { thenLanguages: rest } : {}),
         ...(options.replace === true ? { replaceCards: true } : {}),
+        ...(options.composition === undefined
+          ? {}
+          : { composition: compositionOf(options.composition) }),
       };
     } else if (options.stock !== undefined) {
       const query = options.stock.trim();
@@ -364,7 +384,14 @@ export function registerPostMedia(post: Command, ctx: CliContext): void {
     .option("--pick <n o id>", "con --stock: elige el resultado n (desde 1) o la foto con ese id")
     .option("--people", "con --stock: incluye fotos con personas")
     .option("--ai <indicación>", "crea una imagen con IA (sin texto dentro; tiene costo y tope)")
-    .option("--format <proporción>", `${POST_IMAGE_FORMATS.join(" o ")} (por defecto 4:5)`)
+    .option(
+      "--format <proporción>",
+      `${POST_IMAGE_FORMATS.join(" o ")} (por defecto 4:5; 16:9 para X y LinkedIn; 1:1 se ve entera en las tres)`,
+    )
+    .option(
+      "--composition <announce|explain>",
+      "con el estilo de la marca: Anuncio (objeto central y titular) o Explicar (grilla)",
+    )
     .option("--no-wait", "imprime el id del pedido y sale sin esperar")
     .action((id: string, options: PostMediaOptions) =>
       exitWith(() =>

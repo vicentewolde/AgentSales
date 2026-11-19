@@ -9,6 +9,8 @@ import {
   type EditorialProfileBody,
   editorialProfileResponseSchema,
   type PostDetailResponse,
+  type PostDraftBody,
+  type PostResponse,
   type PostScheduleResponse,
   postDetailResponseSchema,
   postListResponseSchema,
@@ -151,14 +153,16 @@ export function useCreatePost() {
   });
 }
 
-/** `PATCH /posts/:id`: tema, brief, tipo, línea o fecha planeada. */
+/**
+ * `PATCH /posts/:id`: tema, brief, tipo, línea, fecha planeada o redes. Devuelve el post y, si al
+ * guardar se le agregó una red a un post ya redactado, lo que la IA empezó a redactar (`drafting`).
+ */
 export function useUpdatePost(id: string) {
   const client = useApiClient();
   const refresh = useRefreshPost(id);
   return useMutation({
-    mutationFn: async (body: UpdatePostBody) =>
-      (await unwrap(client.posts[":id"].$patch({ param: { id }, json: body }), postResponseSchema))
-        .post,
+    mutationFn: async (body: UpdatePostBody): Promise<PostResponse> =>
+      unwrap(client.posts[":id"].$patch({ param: { id }, json: body }), postResponseSchema),
     onSettled: refresh,
   });
 }
@@ -220,16 +224,20 @@ export function useArchivePosts() {
   });
 }
 
-/** `POST /posts/:id/draft`: pide los textos a la IA (con `replaceEdits`, también los editados). */
+/**
+ * `POST /posts/:id/draft`: pide los textos a la IA (con `replaceEdits`, también los editados). Con
+ * `platforms`, solo esos textos: `onlyMissing` redacta los que faltan («Redactar solo LinkedIn») y,
+ * sin él, los rehace (con `language` y la indicación `guidance`, «Rehacer este texto»).
+ */
 export function useRequestPostDraft(id: string) {
   const client = useApiClient();
   const refresh = useRefreshPost(id);
   return useMutation({
-    mutationFn: (replaceEdits: boolean) =>
+    mutationFn: (request: boolean | PostDraftBody) =>
       unwrap(
         client.posts[":id"].draft.$post({
           param: { id },
-          json: replaceEdits ? { replaceEdits: true } : {},
+          json: typeof request === "boolean" ? (request ? { replaceEdits: true } : {}) : request,
         }),
         contentRunRequestResponseSchema,
       ),

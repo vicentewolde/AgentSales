@@ -33,6 +33,8 @@ async function setup() {
     topic: "Lo que aprendí esta semana",
     kind: "text",
     status: "draft",
+    // Escribe en los dos idiomas (la marca, sin perfil, solo en español).
+    languages: ["es", "en"],
   });
   /** Hace de worker: pide la corrida y la termina con un texto por red e idioma. */
   const draft = async (

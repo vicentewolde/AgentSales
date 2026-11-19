@@ -1,4 +1,5 @@
 import type { RunImportDeps } from "@agentsales/core";
+import { type BrandProposeJobDeps, brandProposeJob } from "./brand-propose.js";
 import { type ContentPlanJobDeps, contentPlanJob } from "./content-plan.js";
 import { type ContentPrepareJobDeps, contentPrepareJob } from "./content-prepare.js";
 import { type DbBackupJobDeps, dbBackupJob } from "./db-backup.js";
@@ -46,6 +47,8 @@ export type JobDeps = {
   contentPlan: ContentPlanJobDeps;
   /** Conseguir imágenes para un post (F9.5-T25): tarjetas, biblioteca e IA. */
   postImage: PostImageJobDeps;
+  /** «Actualizar desde un texto» (F9.7 B2): la IA propone novedades y hechos de la marca. */
+  brandPropose: BrandProposeJobDeps;
 };
 
 /** Jobs que procesa el worker, con sus dependencias inyectadas. Los de ADR-0005 llegan en su fase. */
@@ -65,5 +68,6 @@ export function buildJobs(deps: JobDeps): readonly Job[] {
     postDraftJob(deps.postDraft),
     contentPlanJob(deps.contentPlan),
     postImageJob(deps.postImage),
+    brandProposeJob(deps.brandPropose),
   ];
 }

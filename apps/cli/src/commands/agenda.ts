@@ -42,6 +42,12 @@ function publicationCommands(item: Item): string[] | null {
         ...(item.platform === "linkedin" ? [`agentsales publications confirm ${id} --no-url`] : []),
         `agentsales publications not-published ${id}`,
       ];
+    case "record":
+      // F9.7 B10: una aprobada o programada a mano cuya hora pasó: registrar que salió, o cancelarla.
+      return [
+        `pbpaste | agentsales publications record ${item.postId ?? "<post>"} --platform ${item.platform === null ? "<red>" : platformShortName(item.platform)} --language ${item.language ?? "es"} --url-stdin`,
+        `agentsales publications cancel ${id}`,
+      ];
     default:
       return null;
   }
@@ -138,7 +144,7 @@ function itemLine(item: Item, c: Colors): string {
   if (item.kind === "backup") {
     const last = item.at === null ? "nunca" : formatChileTime(item.at);
     const notes = [
-      item.stale ? c.yellow("tiene más de 48 h") : null,
+      item.stale ? c.yellow("tiene más de 8 días") : null,
       item.code === null ? null : c.yellow(`el último intento falló (${item.code})`),
     ].filter(Boolean);
     return `  Último respaldo: ${last}${notes.length === 0 ? "" : ` · ${notes.join(" · ")}`}`;

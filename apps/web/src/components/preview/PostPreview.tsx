@@ -57,6 +57,26 @@ export function PostPreview({
           {problem}
         </p>
       )}
+      {/* F9.7 B9: lo que cada red le hace a las imágenes, para decidir antes de publicar. */}
+      {platform === "x" && images.length >= 2 && video === null && (
+        <p
+          role="note"
+          className="rounded-lg border border-line-soft bg-canvas px-3 py-2 text-sm text-fg-muted"
+        >
+          X muestra {images.length > 4 ? "solo 4 imágenes" : `las ${images.length} imágenes`} en una
+          cuadrícula que recorta cada una. Si las láminas tienen texto, se cortará: conviene
+          publicarlo como hilo, una lámina por post. Con una sola imagen no se recorta.
+        </p>
+      )}
+      {platform === "linkedin" && kind === "carousel" && images.length >= 2 && video === null && (
+        <p
+          role="note"
+          className="rounded-lg border border-line-soft bg-canvas px-3 py-2 text-sm text-fg-muted"
+        >
+          LinkedIn pone varias imágenes en una cuadrícula recortada. Para que se vea como carrusel,
+          usa «Descargar PDF para LinkedIn» (en «Láminas») y súbelo como documento.
+        </p>
+      )}
       <NetworkView
         label={label}
         platform={platform}
@@ -67,7 +87,29 @@ export function PostPreview({
         accountName={accountName}
         draft={draft}
       />
+      {platform === "instagram" && images[0] !== undefined && video === null && (
+        <ProfileGrid image={images[0]} />
+      )}
     </div>
+  );
+}
+
+/**
+ * Cómo se ve la primera imagen en la cuadrícula del perfil de Instagram (B9): recortada a 3:4 en la
+ * primera de tres columnas, junto a dos casillas de posts anteriores.
+ */
+function ProfileGrid({ image }: { image: PreviewImage }) {
+  return (
+    <figure className="max-w-xs">
+      <figcaption className="mb-1 text-xs text-fg-subtle">En la cuadrícula de tu perfil</figcaption>
+      <div className="grid grid-cols-3 gap-0.5" aria-hidden="true">
+        <div className="aspect-[3/4] overflow-hidden bg-sand">
+          {image.src !== null && <img src={image.src} alt="" className="size-full object-cover" />}
+        </div>
+        <div className="aspect-[3/4] bg-sand" />
+        <div className="aspect-[3/4] bg-sand" />
+      </div>
+    </figure>
   );
 }
 

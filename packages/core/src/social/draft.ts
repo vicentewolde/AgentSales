@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { describeIssues, type Validated } from "../content/generate.js";
 import { LANGUAGES, POST_PLATFORMS } from "../enums.js";
-import type { SocialTarget } from "./brief.js";
+import type { SocialBrief, SocialTarget } from "./brief.js";
 
 /**
  * Topes del borrador de un post (en caracteres; los hashtags y advertencias, en elementos). Son
@@ -15,7 +15,14 @@ export const SOCIAL_DRAFT_LIMITS = {
   texts: 20,
   warning: 300,
   warnings: 10,
+  /** Los textos de las láminas (B5): titular y subtítulo, holgados (las palabras las revisa el check). */
+  slides: 24,
+  slideHeadline: 200,
+  slideSubtitle: 400,
 } as const;
+
+/** El papel de la lámina que escribe la IA: la portada o un punto (el cierre es la marca). */
+export const SOCIAL_SLIDE_ROLES = ["cover", "point"] as const;
 
 /** La forma del borrador; con `limits`, con topes y recortes (la de validar). */
 function draftShape(limits: boolean) {
@@ -38,6 +45,19 @@ function draftShape(limits: boolean) {
       limits ? z.string().trim().max(SOCIAL_DRAFT_LIMITS.warning) : z.string(),
       SOCIAL_DRAFT_LIMITS.warnings,
     ),
+    // F9.7 B5: los textos de las láminas, solo en un post de imagen o carrusel (si no, vacía). Es
+    // opcional: una respuesta sin ella sigue sirviendo (los textos no se pierden por las láminas).
+    slides: list(
+      z.strictObject({
+        language: z.enum(LANGUAGES),
+        role: z.enum(SOCIAL_SLIDE_ROLES),
+        headline: limits
+          ? z.string().trim().min(1).max(SOCIAL_DRAFT_LIMITS.slideHeadline)
+          : z.string(),
+        subtitle: limits ? z.string().trim().max(SOCIAL_DRAFT_LIMITS.slideSubtitle) : z.string(),
+      }),
+      SOCIAL_DRAFT_LIMITS.slides,
+    ).optional(),
   });
 }
 
@@ -48,6 +68,7 @@ function draftShape(limits: boolean) {
 export const socialDraftSchema = draftShape(true);
 export type SocialDraft = z.infer<typeof socialDraftSchema>;
 export type SocialDraftText = SocialDraft["texts"][number];
+export type SocialDraftSlide = NonNullable<SocialDraft["slides"]>[number];
 
 /** JSON Schema (draft-07) que va al proveedor: la misma forma sin topes (ADR-0013). */
 export const SOCIAL_DRAFT_JSON_SCHEMA: Record<string, unknown> = z.toJSONSchema(draftShape(false), {
@@ -85,6 +106,7 @@ export function normalizePostHashtags(tags: readonly string[]): string[] {
 export function validateSocialDraft(
   data: unknown,
   targets: readonly SocialTarget[],
+  slides: SocialBrief["slides"] = null,
 ): Validated<SocialDraft> {
   const parsed = socialDraftSchema.safeParse(data);
   if (!parsed.success) return { success: false, issues: describeIssues(parsed.error) };
@@ -98,7 +120,31 @@ export function validateSocialDraft(
     else texts.push({ ...found, hashtags: normalizePostHashtags(found.hashtags) });
   }
   if (issues.length > 0) return { success: false, issues };
-  return { success: true, data: { texts, warnings: parsed.data.warnings } };
+  return {
+    success: true,
+    data: { texts, warnings: parsed.data.warnings, slides: pickSlides(parsed.data.slides, slides) },
+  };
+}
+
+/**
+ * Las láminas que sirven de lo que devolvió la IA (B5): solo las de los idiomas pedidos, una
+ * portada por idioma (la primera) y hasta `maxPoints` puntos, en su orden. Nunca motivo de
+ * reintento: sin láminas, el post se dibuja como antes.
+ */
+export function pickSlides(
+  raw: readonly SocialDraftSlide[] | undefined,
+  wanted: SocialBrief["slides"],
+): SocialDraftSlide[] {
+  if (wanted === null || raw === undefined) return [];
+  const picked: SocialDraftSlide[] = [];
+  for (const language of wanted.languages) {
+    const mine = raw.filter((slide) => slide.language === language);
+    const cover = mine.find((slide) => slide.role === "cover");
+    if (cover === undefined) continue;
+    picked.push(cover);
+    picked.push(...mine.filter((slide) => slide.role === "point").slice(0, wanted.maxPoints));
+  }
+  return picked;
 }
 
 /**
@@ -124,4 +170,22 @@ export const SAMPLE_SOCIAL_DRAFT: SocialDraft = {
     },
   ]),
   warnings: [],
+  slides: (["es", "en"] as const).flatMap((language) => [
+    {
+      language,
+      role: "cover" as const,
+      headline: language === "es" ? "Lo que se aprende en el camino" : "What the work teaches",
+      subtitle:
+        language === "es"
+          ? "Una reflexión sobre cómo se trabaja."
+          : "A thought about how the work gets done.",
+    },
+    {
+      language,
+      role: "point" as const,
+      headline: language === "es" ? "Empezar por lo simple" : "Start with the simple part",
+      subtitle:
+        language === "es" ? "Lo simple se puede revisar." : "The simple part can be checked.",
+    },
+  ]),
 };

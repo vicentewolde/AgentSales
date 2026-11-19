@@ -13,6 +13,8 @@ export {
   type ListingField,
   listingFields,
 } from "./attributes.js";
+// ── F9.7 parte B: conocimiento y estilo de la marca (ADR-0043) ───────────
+export * from "./brand-knowledge.js";
 export {
   assertAutoPublishAllowed,
   assertBrokerHoldsListings,
@@ -41,6 +43,7 @@ export {
   slugify,
   TONE_MAX,
 } from "./broker.js";
+export * from "./card-style.js";
 export {
   CHILE_TIME_ZONE,
   chileDateOf,
@@ -67,14 +70,19 @@ export {
 } from "./content/locked-content.js";
 export {
   CONTENT_REEL_OUTCOMES,
+  CONTENT_RUN_GUIDANCE_MAX,
+  CONTENT_RUN_SCOPE_MODES,
   type Content,
   type ContentReelOutcome,
   type ContentRun,
   type ContentRunError,
   type ContentRunReport,
+  type ContentRunScope,
+  type ContentRunScopeMode,
   contentRunErrorSchema,
   contentRunReportSchema,
   contentRunSchema,
+  contentRunScopeSchema,
   contentSchema,
 } from "./content.js";
 export {
@@ -115,6 +123,7 @@ export {
   monthlyImageSpend,
   wouldPassImageAiCap,
 } from "./image-ai-budget.js";
+export * from "./image-pdf.js";
 export { type ImportIssue, importReportIssues } from "./import-progress.js";
 export {
   IMPORT_BROKER_OUTCOMES,
@@ -541,6 +550,7 @@ export {
   portalReadiness,
 } from "./portal/readiness.js";
 export type { PasswordHasher, SecretTokens, TotpProvider } from "./ports/auth.js";
+export type * from "./ports/brand-knowledge-repository.js";
 export type {
   BrokerPurgeBlocker,
   BrokerPurgeCounts,
@@ -550,6 +560,7 @@ export type {
   BrokerStorageRefs,
 } from "./ports/broker-purge-repository.js";
 export type { BrokerRepository } from "./ports/broker-repository.js";
+export type { CardBrandStyle } from "./ports/card-renderer.js";
 export {
   CARD_ROLES,
   type CardBrand,
@@ -558,6 +569,7 @@ export {
   type CardSpec,
   type RenderedCard,
 } from "./ports/card-renderer.js";
+export type * from "./ports/card-style-repository.js";
 export {
   type ContentChanges,
   type ContentRepository,
@@ -666,6 +678,7 @@ export {
   type TokenUpdate,
 } from "./ports/platform-account-repository.js";
 export type { PlatformCatalogRepository } from "./ports/platform-catalog-repository.js";
+export type * from "./ports/post-card-text-repository.js";
 export type {
   BrokerImageSpend,
   NewPostImageRun,
@@ -773,6 +786,7 @@ export {
   loadCardLanguages,
   mediaForLanguage,
 } from "./post-card-languages.js";
+export * from "./post-card-texts.js";
 export {
   assertTextInLanguage,
   type CardImageLimit,
@@ -962,6 +976,7 @@ export {
   scheduleState,
 } from "./schedule.js";
 export * from "./social/index.js";
+export * from "./social/knowledge-prompt.js";
 export * from "./subject.js";
 export {
   type LockedSubject,
@@ -996,9 +1011,11 @@ export {
 export {
   CALENDAR_ENTRY_KINDS,
   CALENDAR_MAX_RANGE_MS,
+  type CalendarDraft,
   type CalendarEntry,
   type CalendarEntryKind,
   type CalendarInput,
+  calendarDrafts,
   calendarEntries,
 } from "./tracking/calendar.js";
 export { isManualTask, manualTasksOf } from "./tracking/manual-tasks.js";
@@ -1087,10 +1104,12 @@ export {
   autoPublishListing,
   connectedPlatforms,
 } from "./use-cases/auto-publish-listing.js";
+export * from "./use-cases/brand-knowledge.js";
 export {
   type CancelPublicationDeps,
   cancelPublication,
 } from "./use-cases/cancel-publication.js";
+export * from "./use-cases/card-style.js";
 export {
   type ChangeListingStatusDeps,
   changeListingStatus,
@@ -1155,6 +1174,7 @@ export {
   type DraftPostParams,
   type DraftPostResult,
   draftPost,
+  postSourceHashes,
 } from "./use-cases/draft-post.js";
 export {
   type ContentEdit,
@@ -1210,6 +1230,7 @@ export {
   ingestMedia,
   listingMediaPath,
 } from "./use-cases/ingest-media.js";
+export * from "./use-cases/knowledge-proposals.js";
 export { setListingMusic } from "./use-cases/listing-music.js";
 export {
   getMetaDeletionRequest,
@@ -1245,6 +1266,7 @@ export {
   discardIdea,
 } from "./use-cases/plan-ideas.js";
 export { expireAccountIfRejected, isAccessRejected } from "./use-cases/platform-auth.js";
+export * from "./use-cases/post-card-texts.js";
 export {
   getPostImageOptions,
   getPostImageRun,
@@ -1256,6 +1278,7 @@ export {
   requestPostImage,
   searchStockPhotos,
 } from "./use-cases/post-images.js";
+export * from "./use-cases/post-linkedin-pdf.js";
 export {
   MEDIA_LANGUAGE_LOCKED_BY,
   type SetPostMediaLanguageDeps,
@@ -1285,10 +1308,13 @@ export {
   type CreatePostDeps,
   type CreatePostInput,
   createPost,
+  type EditPostDeps,
+  editPost,
   getPost,
   type ListPostsFilters,
   listPosts,
   POST_LIMITS,
+  type PostDrafting,
   type UpdatePostDeps,
   type UpdatePostInput,
   updatePost,

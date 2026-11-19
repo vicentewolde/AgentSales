@@ -265,3 +265,17 @@ describe("vista previa por red", () => {
     expect(screen.getByText("Sin fotos todavía.")).toBeTruthy();
   });
 });
+
+describe("una sola imagen en X y LinkedIn (F9.7 B9)", () => {
+  it("se ve entera, con su proporción: no se recorta a 4:3", () => {
+    for (const platform of ["x", "linkedin"] as const) {
+      const figure = preview(platform, "image", { body: "Texto", hashtags: [] }, [
+        images[0] as PostMediaItem,
+      ]);
+      const img = within(figure).getAllByRole("img")[1] ?? within(figure).getAllByRole("img")[0];
+      expect(img?.className).not.toContain("aspect-[4/3]");
+      expect(img?.className).toContain("h-auto");
+      cleanup();
+    }
+  });
+});
