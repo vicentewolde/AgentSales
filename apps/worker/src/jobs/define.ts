@@ -51,10 +51,23 @@ export type JobSchedule<N extends JobName = JobName> = {
 /** Campos del log de un intento que falló (por defecto, el error completo: `{ err }`). */
 export type ErrorLogFields = (error: unknown) => Record<string, unknown>;
 
+/**
+ * Cada cuántos segundos el worker pregunta a la base si hay jobs nuevos en una cola, si el job no
+ * dice otro (desde 2026-11-18; antes, los 2 s de pg-boss). Cada pregunta es una consulta a Neon, y
+ * con 14 colas cada 2 s el worker agotó los 5 GB de transferencia del plan gratis. 10 s apenas se
+ * nota en lo que espera el operador (un texto o una imagen tardan más que eso).
+ */
+export const DEFAULT_POLLING_SECONDS = 10;
+
+/** Para las colas de fondo, que nadie espera mirando (crons, revisiones, respaldo). */
+export const BACKGROUND_POLLING_SECONDS = 60;
+
 /** Job listo para registrar: valida sus datos con zod y luego llama al handler. */
 export type Job = {
   name: JobName;
   queue: QueuePolicy;
+  /** Segundos entre consultas por jobs nuevos (por defecto `DEFAULT_POLLING_SECONDS`). */
+  pollingSeconds?: number;
   /** Si además corre con un cron. */
   schedule?: JobSchedule;
   run(data: unknown, context: JobContext): Promise<void>;
@@ -75,15 +88,17 @@ export function defineJob<N extends JobName>(definition: {
   name: N;
   queue: QueuePolicy;
   schedule?: JobSchedule<N>;
+  pollingSeconds?: number;
   handler: (data: JobPayload<N>, context: JobContext) => Promise<void>;
   errorLogFields?: ErrorLogFields;
 }): Job {
-  const { name, queue, schedule, handler, errorLogFields } = definition;
+  const { name, queue, schedule, pollingSeconds, handler, errorLogFields } = definition;
   const schema = JOB_PAYLOADS[name];
   return {
     name,
     queue,
     ...(schedule === undefined ? {} : { schedule }),
+    ...(pollingSeconds === undefined ? {} : { pollingSeconds }),
     ...(errorLogFields === undefined ? {} : { errorLogFields }),
     async run(data, context) {
       const parsed = schema.safeParse(data);

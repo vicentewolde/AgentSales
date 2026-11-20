@@ -47,6 +47,8 @@ export function publicationDueJob(deps: PublicationDueJobDeps): Job {
   return defineJob({
     name: "publication.due",
     queue: PUBLICATION_DUE_QUEUE,
+    // Lo dispara el cron de cada minuto: 30 s entre consultas lo deja salir antes del siguiente.
+    pollingSeconds: 30,
     schedule: PUBLICATION_DUE_SCHEDULE,
     errorLogFields: (error) => ({ code: codeOf(error) }),
     handler: async (_data, { logger }) => {

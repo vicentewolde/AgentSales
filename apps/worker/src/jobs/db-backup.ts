@@ -20,7 +20,13 @@ import {
   runBackup,
 } from "@agentsales/db/backup";
 import { readStoredBackupStatus, writeStoredBackupStatus } from "@agentsales/storage";
-import { defineJob, type Job, type JobSchedule, type QueuePolicy } from "./define.js";
+import {
+  BACKGROUND_POLLING_SECONDS,
+  defineJob,
+  type Job,
+  type JobSchedule,
+  type QueuePolicy,
+} from "./define.js";
 
 /**
  * Clave fija de `db.backup`: con la cola `exclusive`, el del arranque y el del cron nunca corren a
@@ -38,18 +44,22 @@ export const DB_BACKUP_QUEUE: QueuePolicy = {
 };
 
 /**
- * Una vez al día a las 13:00 de Chile (el worker corre con `pnpm dev`, en horas de trabajo). El cron
- * perdido con el worker apagado no se repite: lo cubre el del arranque.
+ * Una vez por semana, los lunes a las 13:00 de Chile (desde 2026-11-18; antes, cada día). Cada
+ * volcado completo cuenta en la transferencia mensual de Neon, que el plan gratis limita a 5 GB. El
+ * cron perdido con el worker apagado no se repite: lo cubre el del arranque.
  */
 export const DB_BACKUP_SCHEDULE: JobSchedule<"db.backup"> = {
-  cron: "0 13 * * *",
+  cron: "0 13 * * 1",
   tz: "America/Santiago",
   data: {},
   singletonKey: DB_BACKUP_KEY,
 };
 
-/** Al arrancar se respalda si el último bueno tiene más de esto (o no hay ninguno). */
-export const DB_BACKUP_STARTUP_AFTER_MS = 20 * 60 * 60 * 1000;
+/**
+ * Al arrancar se respalda si el último bueno tiene más de esto (o no hay ninguno): casi una semana,
+ * así un worker que se enciende varias veces al día (F9.5-T24) no vuelca la base en cada arranque.
+ */
+export const DB_BACKUP_STARTUP_AFTER_MS = (7 * 24 - 4) * 60 * 60 * 1000;
 
 /**
  * Dónde queda el respaldo (spec F8 §4.9, `BACKUP_TARGET`): en la carpeta (F6, el Mac) o en R2, con
@@ -170,6 +180,7 @@ export function dbBackupJob(deps: DbBackupJobDeps): Job {
   return defineJob({
     name: "db.backup",
     queue: DB_BACKUP_QUEUE,
+    pollingSeconds: BACKGROUND_POLLING_SECONDS,
     schedule: DB_BACKUP_SCHEDULE,
     errorLogFields: (error) => ({ code: codeOf(error) }),
     handler: async (_data, { logger }) => {
@@ -188,7 +199,7 @@ export function dbBackupJob(deps: DbBackupJobDeps): Job {
       } else {
         // `mkdtemp` la crea con `0700`; el volcado trae datos de clientes y se borra siempre. Si no se
         // puede crear (disco lleno), el job falla sin anotarlo en el estado: lo dice el log, y
-        // `doctor` avisa cuando el último bueno pasa de 48 h. El candado de `runBackup` queda en esta
+        // `doctor` avisa cuando el último bueno pasa de 8 días. El candado de `runBackup` queda en esta
         // carpeta nueva y no protege nada: aquí la exclusión es la cola `exclusive` (y
         // `pnpm db:backup` nunca va a R2). Los 15 min del job alcanzan con holgura para la base del
         // piloto (pocos MB); con una base de cientos de MB habría que medir el volcado y la subida.

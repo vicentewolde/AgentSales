@@ -29,10 +29,13 @@ export const backupStatusSchema = z.object({
 });
 export type BackupStatus = z.infer<typeof backupStatusSchema>;
 
-/** Un respaldo de más de 48 h (o ninguno) se avisa en `/health` y en la agenda. */
-export const BACKUP_STALE_MS = 48 * 60 * 60 * 1000;
+/**
+ * Un respaldo de más de 8 días (o ninguno) se avisa en `/health` y en la agenda. Desde 2026-11-18 el
+ * respaldo es semanal (los lunes): cada volcado completo cuenta en la transferencia mensual de Neon.
+ */
+export const BACKUP_STALE_MS = 8 * 24 * 60 * 60 * 1000;
 
-/** Si el último respaldo bueno es de hace más de 48 h, o no hay ninguno. */
+/** Si el último respaldo bueno es de hace más de 8 días, o no hay ninguno. */
 export function isBackupStale(status: BackupStatus | null, now: Date): boolean {
   if (status?.lastSuccessAt == null) return true;
   const last = Date.parse(status.lastSuccessAt);
@@ -72,7 +75,7 @@ export const healthReportSchema = z.object({
    */
   database: z.object({ serverVersion: z.string().nullable() }).optional(),
   /**
-   * Desde F6-T14: el estado del último respaldo, con `stale` (más de 48 h o ninguno); `null` si
+   * Desde F6-T14: el estado del último respaldo, con `stale` (más de 8 días o ninguno); `null` si
    * nunca se respaldó o no se pudo leer el estado. Opcional, como `database`.
    */
   backup: backupStatusSchema.extend({ stale: z.boolean() }).nullable().optional(),

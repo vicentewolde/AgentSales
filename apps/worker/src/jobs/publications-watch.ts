@@ -11,7 +11,13 @@ import {
   type WatchPublicationsDeps,
   watchPublications,
 } from "@agentsales/core";
-import { defineJob, type Job, type JobSchedule, type QueuePolicy } from "./define.js";
+import {
+  BACKGROUND_POLLING_SECONDS,
+  defineJob,
+  type Job,
+  type JobSchedule,
+  type QueuePolicy,
+} from "./define.js";
 
 /**
  * Clave fija de `publications.watch`: con la cola `exclusive`, dos vueltas nunca corren a la vez
@@ -77,6 +83,7 @@ export function publicationsWatchJob(deps: PublicationsWatchJobDeps): Job {
   return defineJob({
     name: "publications.watch",
     queue: PUBLICATIONS_WATCH_QUEUE,
+    pollingSeconds: BACKGROUND_POLLING_SECONDS,
     schedule: PUBLICATIONS_WATCH_SCHEDULE,
     errorLogFields: (error) => ({ code: codeOf(error) }),
     handler: async (_data, { logger }) => {
