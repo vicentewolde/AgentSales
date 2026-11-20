@@ -455,6 +455,19 @@ async function footerBlock(
   }
 }
 
+/** Cuánto más grande que el texto de la tarjeta se dibuja una cifra al inicio de un punto. */
+export const FIGURE_SCALE = 2.4;
+
+/**
+ * La cifra con que empieza un punto (un porcentaje: «68%», «64,5 %») y el resto del texto, o `null`
+ * si no empieza con una.
+ */
+export function figureOf(text: string): { value: string; rest: string } | null {
+  const match = /^(\d{1,3}(?:[.,]\d{1,2})?\s?%)\s+(\S[\s\S]*)$/.exec(text.trim());
+  if (match === null) return null;
+  return { value: (match[1] ?? "").replace(/\s/g, ""), rest: match[2] ?? "" };
+}
+
 /** El contenido de una tarjeta de la grilla (etiqueta y título), medido a un tamaño de letra. */
 type CardContent = { label: Block; title: Block; height: number };
 
@@ -467,14 +480,30 @@ async function cardContent(
   pad: number,
 ): Promise<CardContent> {
   const inner = width - pad * 2;
-  const label = await bodyText(item.label, style, colors.label, {
-    width: inner,
-    maxHeight: 60,
-    size: Math.max(20, Math.round(titleSize * 0.58)),
-    align: "left",
-    weight: 600,
-  });
-  const title = await textBlock(item.text, {
+  // Un punto que empieza con una cifra («68% probaría…») la muestra grande en vez del número de
+  // la tarjeta, con la letra del titular, para que el dato se note.
+  const figure = figureOf(item.text);
+  const label =
+    figure === null
+      ? await bodyText(item.label, style, colors.label, {
+          width: inner,
+          maxHeight: 60,
+          size: Math.max(20, Math.round(titleSize * 0.58)),
+          align: "left",
+          weight: 600,
+        })
+      : await textBlock(figure.value, {
+          font: resolveFont(style.fonts.headline.family, style.fonts.headline.weight),
+          weight: style.fonts.headline.weight,
+          size: Math.round(titleSize * FIGURE_SCALE),
+          color: colors.label,
+          width: inner,
+          maxHeight: 10_000,
+          align: "left",
+          tracking: -0.02,
+          minSize: Math.round(titleSize * FIGURE_SCALE),
+        });
+  const title = await textBlock(figure === null ? item.text : figure.rest, {
     font: resolveFont(style.fonts.headline.family, style.fonts.headline.weight),
     weight: style.fonts.headline.weight,
     size: titleSize,
