@@ -13,7 +13,7 @@ import sharp from "sharp";
 import { beforeAll, describe, expect, it } from "vitest";
 import { familyNameOf, woffToSfnt } from "../src/fonts.js";
 import { createCardRenderer } from "../src/index.js";
-import { renderStyledCard } from "../src/styled-cards.js";
+import { figureOf, renderStyledCard } from "../src/styled-cards.js";
 import { pixel } from "./images.js";
 
 // F9.7 B6 (ADR-0043): las láminas con el estilo de AgentPey (`docs/marca/agentpey/estilo.json`),
@@ -88,6 +88,30 @@ describe("renderStyledCard", () => {
     }
   }, 60_000);
 
+  it("el pie con las redes ({instagram} y {x}) cabe en cada formato y no choca con la grilla", async () => {
+    const detail =
+      "Kantar Chile, noviembre 2026 · agentpey.com · {instagram} agentpey · {x} agentpeyai";
+    const plain = { ...(cards[0] as CardSpec), detail: "@agentpeyai" };
+    for (const format of POST_IMAGE_FORMATS) {
+      const card = { ...(cards[0] as CardSpec), detail };
+      const result = await renderStyledCard(
+        card,
+        BRAND,
+        { style, theme: 0, composition: "explain" },
+        format,
+      );
+      expect(result.fits, format).toBe(true);
+      const before = await renderStyledCard(
+        plain,
+        BRAND,
+        { style, theme: 0, composition: "explain" },
+        format,
+      );
+      // Los íconos se dibujan: la lámina cambia respecto del pie de siempre.
+      expect(result.png.equals(before.png)).toBe(false);
+    }
+  }, 60_000);
+
   it("cada tema pinta su fondo y el tema rota con el índice del post", async () => {
     const corner = async (theme: number) => {
       const { png } = await renderStyledCard(
@@ -105,6 +129,60 @@ describe("renderStyledCard", () => {
     expect((light[0] ?? 0) > 230).toBe(true);
     const dark = await corner(0);
     expect((dark[0] ?? 255) < 20).toBe(true);
+  });
+
+  it("un punto que empieza con un porcentaje lo separa como cifra; los demás no", () => {
+    expect(figureOf("68% probaría una marca que no conoce")).toEqual({
+      value: "68%",
+      rest: "probaría una marca que no conoce",
+    });
+    expect(figureOf("64,5 % ya compró por IA")).toEqual({
+      value: "64,5%",
+      rest: "ya compró por IA",
+    });
+    expect(figureOf("Un contrato hace cumplir el tope")).toBeNull();
+    expect(figureOf("2026 fue el año")).toBeNull();
+    expect(figureOf("68%")).toBeNull();
+  });
+
+  it("las tarjetas con cifras («68% …») caben en cada formato y se dibujan distinto", async () => {
+    const withFigures: CardSpec = {
+      ...(cards[0] as CardSpec),
+      subtitle: null,
+      items: [
+        { label: "01", text: "64% ya compró algo que le recomendó una IA" },
+        { label: "02", text: "68% probaría una marca que no conoce" },
+      ],
+    };
+    const plain: CardSpec = {
+      ...withFigures,
+      items: [
+        { label: "01", text: "ya compró algo que le recomendó una IA" },
+        { label: "02", text: "probaría una marca que no conoce" },
+      ],
+    };
+    for (const format of POST_IMAGE_FORMATS) {
+      const result = await renderStyledCard(
+        withFigures,
+        BRAND,
+        { style, theme: 0, composition: "explain" },
+        format,
+      );
+      expect(result.fits, format).toBe(true);
+    }
+    const a = await renderStyledCard(
+      withFigures,
+      BRAND,
+      { style, theme: 0, composition: "explain" },
+      "4:5",
+    );
+    const b = await renderStyledCard(
+      plain,
+      BRAND,
+      { style, theme: 0, composition: "explain" },
+      "4:5",
+    );
+    expect(Buffer.compare(a.png, b.png)).not.toBe(0);
   });
 
   it("«Explicar» con un solo punto llena el lienzo: la tarjeta baja hasta cerca del pie", async () => {
