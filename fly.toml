@@ -35,10 +35,10 @@ swap_size_mb = 512            # para un pico breve del worker (Chromium y ffmpeg
   BACKUP_R2_BUCKET = "agentsales-backups"
   # El worker se apaga solo tras estos minutos sin trabajo ni nada que venza en los próximos
   # WORKER_STAY_AHEAD_MINUTES (70 por defecto) (F9.5-T24, ADR-0037).
-  # Activado el 2026-11-13 por decisión del operador: el horario (worker-schedule.yml, token de Fly en
-  # el Environment `worker-schedule`) enciende el worker y este valor lo apaga. No lo actives en un
-  # despliegue sin el token guardado: sin el workflow que lo enciende, nada programado saldría.
-  WORKER_IDLE_EXIT_MINUTES = "10"
+  # Desactivado otra vez el 2026-11-19: el cron "cada hora" de GitHub corrió en la práctica unas 3 veces
+  # al día (cada ~8 h), y el worker quedó apagado horas con un post esperando. Hasta tener un encendido
+  # confiable, el worker queda siempre encendido. Para activarlo, quita el `#` y despliega.
+  # WORKER_IDLE_EXIT_MINUTES = "10"
 
 [processes]
   api = "node apps/api/dist/src/server.js"
