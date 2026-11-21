@@ -3,6 +3,7 @@ import {
   type CardStylePreviewer,
   type CardStyleRepository,
   getCardStyle,
+  type PlatformAccountRepository,
   previewCardStyle,
   saveCardStyle,
 } from "@agentsales/core";
@@ -19,6 +20,8 @@ import { validated } from "../validation.js";
 export type CardStyleRoutesDeps = {
   brokers: Pick<BrokerRepository, "findById">;
   cardStyles: CardStyleRepository;
+  /** Las cuentas de la marca: el pie de la muestra toma de ahí el usuario de Instagram o X. */
+  platformAccounts?: Pick<PlatformAccountRepository, "listByBroker">;
   /** Dibuja la lámina de muestra (`@agentsales/media/cards`; en las pruebas, un doble). */
   cardStylePreview: CardStylePreviewer;
 };

@@ -1,5 +1,6 @@
 import type { AbortSignalLike } from "../abort.js";
 import type { Broker } from "../broker.js";
+import { cardFooterParts, cardFooterText } from "../card-style.js";
 import { chileMonthOf, chileMonthRange } from "../chile-time.js";
 import { postOriginalPath } from "../content/media-keys.js";
 import { editorialProfileView } from "../editorial-profile.js";
@@ -11,7 +12,7 @@ import {
   imageAiNotCharged,
 } from "../image-ai-budget.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
-import type { CardBrand, CardRenderer } from "../ports/card-renderer.js";
+import type { CardBrand, CardRenderer, CardSpec } from "../ports/card-renderer.js";
 import type { CardStyleRepository } from "../ports/card-style-repository.js";
 import type { ContentRepository } from "../ports/content-repository.js";
 import type { EditorialProfileRepository } from "../ports/editorial-profile-repository.js";
@@ -19,6 +20,7 @@ import type { JobQueue } from "../ports/job-queue.js";
 import type { MediaProcessor, VideoOutput } from "../ports/media-processor.js";
 import type { MediaRepository } from "../ports/media-repository.js";
 import type { MediaStorage } from "../ports/media-storage.js";
+import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
 import type { PostCardTextRepository } from "../ports/post-card-text-repository.js";
 import type { PostImageRunRepository } from "../ports/post-image-run-repository.js";
 import type { ImageFile, ImageGenerator, StockPhotoProvider } from "../ports/post-image-sources.js";
@@ -63,6 +65,11 @@ export type RunPostImageDeps = {
   cardStyles?: Pick<CardStyleRepository, "get" | "assignTheme">;
   /** F9.7 B5: los textos de las láminas que escribió la IA o el operador. */
   cardTexts?: Pick<PostCardTextRepository, "list">;
+  /**
+   * Las cuentas de la marca: el pie de las láminas con estilo toma de ahí el usuario de Instagram
+   * o de X que no esté en el estilo ni en la marca.
+   */
+  platformAccounts?: Pick<PlatformAccountRepository, "listByBroker">;
   /** El procesador del intento: solo arma el video de las tarjetas (`processPhotoReel`). */
   processor: Pick<MediaProcessor, "processPhotoReel">;
   /** La biblioteca (sin `PIXABAY_API_KEY`, `null`). */
@@ -181,31 +188,51 @@ async function produce(
         broker.id,
         saved.style.themes.length,
       );
-      brand.style = { style: saved.style, theme, composition: request.composition ?? "announce" };
       const texts =
         language === undefined
           ? []
           : cardTextsOf((await deps.cardTexts?.list(post.id)) ?? [], language);
-      const detail = plan.cards[0]?.detail ?? null;
+      // El pie: el sitio, Instagram y X del estilo, de la marca o de sus cuentas (nada inventado).
+      const footer = cardFooterText(
+        cardFooterParts({
+          footer: saved.style.footer,
+          broker,
+          accounts: (await deps.platformAccounts?.listByBroker(broker.id)) ?? [],
+        }),
+      );
       const fromTexts = cardDeckFromTexts({
         texts,
         kind: post.kind,
         brandName: broker.brandName,
-        detail,
+        detail: footer,
         maxPoints: post.kind === "video" ? POST_CARDS.maxPoints : Math.max(0, plan.limit.max - 2),
       });
+      let styledDeck: CardSpec[];
       if (
         fromTexts.length > 0 &&
         (post.kind !== "video" || fromTexts.length >= POST_CARDS.videoMinCards)
       ) {
-        deck = fromTexts;
+        styledDeck = fromTexts;
       } else {
         // Sin textos de láminas: la portada lleva los puntos en grilla («Explicar»).
         const items = plan.cards
           .filter((card) => card.role === "point")
           .map((card, index) => ({ label: String(index + 1).padStart(2, "0"), text: card.text }));
-        deck = plan.cards.map((card) => (card.role === "cover" ? { ...card, items } : card));
+        styledDeck = plan.cards.map((card) =>
+          card.role === "cover" ? { ...card, detail: footer, items } : { ...card, detail: footer },
+        );
       }
+      // El pie lleva solo el sitio, Instagram y X, también en un carrusel: sin el número de la
+      // lámina (lo decidió el operador el 2026-11-21).
+      deck = styledDeck;
+      // Un post de imagen con puntos clave los muestra en su única imagen: la grilla de «Explicar»
+      // (en «Anuncio» no cabrían). Sin puntos, la composición pedida, como siempre.
+      const pointsInImage = post.kind === "image" && (deck[0]?.items?.length ?? 0) > 0;
+      brand.style = {
+        style: saved.style,
+        theme,
+        composition: pointsInImage ? "explain" : (request.composition ?? "announce"),
+      };
     }
     const format = post.kind === "video" ? "9:16" : request.format;
     const rendered = [];

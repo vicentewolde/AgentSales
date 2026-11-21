@@ -74,6 +74,29 @@ const logoSchema = z
   ])
   .nullable();
 
+/** Un usuario de una red en el pie: letras, números, punto y guion bajo (con o sin «@»). */
+const footerHandle = z
+  .string()
+  .trim()
+  .regex(/^@?[A-Za-z0-9._]{1,30}$/u, "un usuario como agentpey (letras, números, . y _)");
+
+/**
+ * El pie de las láminas (arreglo de las láminas del servidor): el sitio, el usuario de Instagram y
+ * el de X. Cada uno es opcional: lo que falta lo completa `cardFooterParts` con los datos de la
+ * marca y de sus cuentas conectadas, y lo que no está en ninguna parte no va.
+ */
+export const cardFooterSchema = z.strictObject({
+  website: z
+    .string()
+    .trim()
+    .regex(/^[^\s{}<>]{3,80}$/u, "un sitio como agentpey.com, sin espacios")
+    .nullable()
+    .default(null),
+  instagram: footerHandle.nullable().default(null),
+  x: footerHandle.nullable().default(null),
+});
+export type CardFooter = z.infer<typeof cardFooterSchema>;
+
 /** El estilo de las imágenes de una marca (`brand_card_styles.style`). */
 export const cardStyleSchema = z.strictObject({
   version: z.literal(1),
@@ -98,6 +121,8 @@ export const cardStyleSchema = z.strictObject({
   /** Si junto al logo va el nombre de la marca. */
   showBrandName: z.boolean(),
   themes: z.array(cardThemeSchema).min(1).max(CARD_STYLE_MAX_THEMES),
+  /** El pie de las láminas; sin él, sale de los datos de la marca y de sus cuentas. */
+  footer: cardFooterSchema.optional(),
 });
 export type CardStyle = z.infer<typeof cardStyleSchema>;
 
@@ -224,3 +249,72 @@ export const lowContrastPairs = (theme: CardTheme) =>
   themeContrastPairs(theme).filter(
     (pair) => contrastRatio(pair.text, pair.background) < CARD_MIN_CONTRAST,
   );
+
+/** Lo que va en el pie: el sitio y los usuarios, ya limpios (sin «https://» ni «@»). */
+export type CardFooterParts = {
+  website: string | null;
+  instagram: string | null;
+  x: string | null;
+};
+
+const cleanSite = (value: string | null | undefined): string | null => {
+  const site = value
+    ?.trim()
+    .replace(/^https?:\/\//iu, "")
+    .replace(/^www\./iu, "")
+    .replace(/\/+$/u, "");
+  return site === undefined || !/^[^\s{}<>]{3,80}$/u.test(site) ? null : site;
+};
+
+const cleanHandle = (value: string | null | undefined): string | null => {
+  const handle = value?.trim().replace(/^@/u, "");
+  return handle === undefined || !/^[A-Za-z0-9._]{1,30}$/u.test(handle) ? null : handle;
+};
+
+/**
+ * El pie de las láminas desde los datos de la marca, sin inventar nada: cada parte sale del pie
+ * del estilo (`style.footer`); si falta ahí, el sitio y el Instagram de la marca (`website`,
+ * `instagramHandle`) y, después, el usuario de su cuenta conectada de Instagram o de X (la de
+ * Instagram puede ser «a mano», con su usuario). Una cuenta revocada no cuenta.
+ */
+export function cardFooterParts(params: {
+  footer: CardFooter | null | undefined;
+  broker: { website: string | null; instagramHandle: string | null };
+  accounts: readonly { platform: string; displayName: string; status: string }[];
+}): CardFooterParts {
+  const accountHandle = (platform: string) => {
+    const usable = params.accounts.filter(
+      (account) => account.platform === platform && account.status !== "revoked",
+    );
+    const sorted = [
+      ...usable.filter((account) => account.status === "connected"),
+      ...usable.filter((account) => account.status !== "connected"),
+    ];
+    for (const account of sorted) {
+      const handle = cleanHandle(account.displayName);
+      if (handle !== null) return handle;
+    }
+    return null;
+  };
+  return {
+    website: cleanSite(params.footer?.website) ?? cleanSite(params.broker.website),
+    instagram:
+      cleanHandle(params.footer?.instagram) ??
+      cleanHandle(params.broker.instagramHandle) ??
+      accountHandle("instagram"),
+    x: cleanHandle(params.footer?.x) ?? accountHandle("x"),
+  };
+}
+
+/**
+ * El texto del pie para el dibujante: «agentpey.com · {instagram} agentpey · {x} agentpeyai» (los
+ * marcadores `{instagram}` y `{x}` se dibujan como íconos). Solo lo que hay; `null` si no hay nada.
+ */
+export function cardFooterText(parts: CardFooterParts): string | null {
+  const pieces = [
+    ...(parts.website === null ? [] : [parts.website]),
+    ...(parts.instagram === null ? [] : [`{instagram} ${parts.instagram}`]),
+    ...(parts.x === null ? [] : [`{x} ${parts.x}`]),
+  ];
+  return pieces.length === 0 ? null : pieces.join(" · ");
+}

@@ -4,6 +4,9 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 
 ## [Sin publicar]
 
+### Añadido
+- **La API enciende el worker cuando hay trabajo** (ADR-0044): al encolar algo y antes de cada publicación programada, con la API de Machines de Fly y el secreto nuevo `FLY_WORKER_WAKE_TOKEN`. Así el worker puede volver a apagarse solo sin depender del cron de GitHub, que queda de respaldo. Sin el secreto no cambia nada; lo activas tú (`docs/10-despliegue.md`, «El worker con horario»).
+
 ## [1.6.0] - 2026-10-23 · F9.5 Lista para mostrar, lote 3
 **Publicar a diario desde tus marcas, con un panel acogedor.** Arregla lo que viste al probar como corredor nuevo; los posts salen sin fotos propias, las ideas del plan siguen lo que pides y cada marca tiene su propio interruptor de «en vivo». Además, el worker puede encenderse y apagarse solo.
 

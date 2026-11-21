@@ -34,7 +34,8 @@ function LanguageEditor({
       ? saved.map((text) => ({ headline: text.headline, subtitle: text.subtitle }))
       : [{ headline: "", subtitle: "" }],
   );
-  const max = kind === "image" ? 1 : CARD_TEXT_LIMITS.perLanguage;
+  // Un post de imagen: la portada y hasta 3 puntos clave, que van en la misma imagen.
+  const max = kind === "image" ? 1 + CARD_TEXT_LIMITS.imagePoints : CARD_TEXT_LIMITS.perLanguage;
   const change = (index: number, patch: Partial<Row>) =>
     setRows((current) => current.map((row, at) => (at === index ? { ...row, ...patch } : row)));
   const approved = saved.some((text) => text.approved);
@@ -159,6 +160,12 @@ export function PostCardTexts({
         El texto de cada imagen: titular corto y subtítulo. La IA los escribe al redactar; lo que
         guardes aquí ya no lo cambia. «Conseguir imagen → Tarjetas de la marca» las dibuja.
       </p>
+      {kind === "image" && (
+        <p className="mt-1 text-sm text-fg-muted">
+          En un post de imagen, los puntos (hasta {CARD_TEXT_LIMITS.imagePoints}) van en la misma
+          imagen, en tarjetas bajo el titular; una cifra al inicio («68% …») se ve grande.
+        </p>
+      )}
       {view.error && <ErrorAlert error={view.error} onRetry={() => void view.refetch()} />}
       {view.data !== undefined && (
         <div className="mt-3 space-y-5">

@@ -1364,4 +1364,83 @@ describe("F9.7 B6: láminas con el estilo de la marca", () => {
     ]);
     expect(s.cards.calls[0]?.styled).toEqual({ theme: 0, composition: "announce" });
   });
+
+  it("una imagen con puntos clave en sus láminas los muestra en esa imagen («Explicar»)", async () => {
+    const s = await setup({ kind: "image", platforms: ["instagram"], languages: ["es"] });
+    const cardStyles = createInMemoryCardStyleRepository();
+    await cardStyles.save(s.broker.id, STYLE);
+    const cardTexts = createInMemoryPostCardTextRepository();
+    await cardTexts.replace(
+      s.post.id,
+      "es",
+      [
+        { role: "cover", headline: "Cómo compran los chilenos con IA", subtitle: "" },
+        { role: "point", headline: "68% probaría comprar con IA", subtitle: "" },
+        { role: "point", headline: "64% confía en sus recomendaciones", subtitle: "" },
+      ],
+      { fromAi: false },
+    );
+    const worker = { ...s.worker, cardStyles, cardTexts };
+    const run = await s.request({ source: "card", format: "4:5", language: "es" });
+    await runPostImage(worker, { runId: run.id, isLastAttempt: true });
+    expect(s.cards.calls).toHaveLength(1);
+    expect(s.cards.calls[0]?.card.items?.map((item) => item.text)).toEqual([
+      "68% probaría comprar con IA",
+      "64% confía en sus recomendaciones",
+    ]);
+    expect(s.cards.calls[0]?.styled?.composition).toBe("explain");
+    // El pie sale de la marca (su Instagram), sin número: es una sola imagen.
+    expect(s.cards.calls[0]?.card.detail).toBe("{instagram} agentpey");
+  });
+
+  it("una imagen sin puntos sigue con la composición pedida", async () => {
+    const s = await setup({ kind: "image", platforms: ["instagram"], languages: ["es"] });
+    const cardStyles = createInMemoryCardStyleRepository();
+    await cardStyles.save(s.broker.id, STYLE);
+    const cardTexts = createInMemoryPostCardTextRepository();
+    await cardTexts.replace(
+      s.post.id,
+      "es",
+      [{ role: "cover", headline: "Precio justo", subtitle: "" }],
+      { fromAi: false },
+    );
+    const run = await s.request({ source: "card", format: "4:5", language: "es" });
+    await runPostImage(
+      { ...s.worker, cardStyles, cardTexts },
+      { runId: run.id, isLastAttempt: true },
+    );
+    expect(s.cards.calls[0]?.styled?.composition).toBe("announce");
+    expect(s.cards.calls[0]?.card.items).toEqual([]);
+  });
+
+  it("el pie: el del estilo y el X de la cuenta conectada, sin el número en un carrusel", async () => {
+    const s = await setup({ platforms: ["instagram"], languages: ["es"] });
+    const cardStyles = createInMemoryCardStyleRepository();
+    await cardStyles.save(s.broker.id, {
+      ...STYLE,
+      footer: { website: "agentpey.com", instagram: null, x: null },
+    });
+    const platformAccounts = createInMemoryPlatformAccountRepository();
+    await platformAccounts.upsertConnected({
+      brokerId: s.broker.id,
+      platform: "x",
+      externalAccountId: "123",
+      displayName: "@agentpeyai",
+      tokenExpiresAt: null,
+      meta: {},
+      credentials: { accessToken: "a", refreshToken: "r" },
+    });
+    const run = await s.request({ source: "card", format: "4:5", language: "es" });
+    await runPostImage(
+      { ...s.worker, cardStyles, platformAccounts },
+      { runId: run.id, isLastAttempt: true },
+    );
+    const footer = "agentpey.com · {instagram} agentpey · {x} agentpeyai";
+    expect(s.cards.calls.map((call) => [call.card.role, call.card.detail])).toEqual([
+      ["cover", footer],
+      ["point", footer],
+      ["point", footer],
+      ["closing", footer],
+    ]);
+  });
 });

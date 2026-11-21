@@ -21,7 +21,7 @@ const brokerData: BrokerData = {
   fixedHashtags: [],
 };
 
-async function setup(kind: "carousel" | "text" = "carousel") {
+async function setup(kind: "carousel" | "text" | "image" = "carousel") {
   const deps = testDeps({ access: { allowedHosts: ["localhost"], allowedOrigins: [ORIGIN] } });
   const app = createApp(deps);
   const broker = await deps.brokers.create(brokerData, { kind: "brand" });
@@ -60,6 +60,30 @@ describe("/posts/:id/card-texts", () => {
       json: { texts: [{ headline: "Cover" }] },
     });
     expect(english.status).toBe(409);
+  });
+
+  it("un post de imagen guarda su portada y hasta 3 puntos clave", async () => {
+    const s = await setup("image");
+    const saved = await s.call(`/posts/${s.post.id}/card-texts/es`, {
+      method: "PUT",
+      json: {
+        texts: [
+          { headline: "Cómo compran con IA" },
+          { headline: "Uno" },
+          { headline: "Dos" },
+          { headline: "Tres" },
+          { headline: "Cuatro" },
+        ],
+      },
+    });
+    expect(saved.status).toBe(200);
+    const body = postCardTextsResponseSchema.parse(await saved.json());
+    expect(body.texts.map((text) => [text.role, text.headline])).toEqual([
+      ["cover", "Cómo compran con IA"],
+      ["point", "Uno"],
+      ["point", "Dos"],
+      ["point", "Tres"],
+    ]);
   });
 
   it("un post de texto no tiene láminas; el PDF sin imágenes es 409", async () => {

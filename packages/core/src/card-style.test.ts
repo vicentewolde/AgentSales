@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   type CardStyle,
+  cardFooterParts,
+  cardFooterText,
   contrastRatio,
   lowContrastPairs,
   nextCardTheme,
@@ -110,5 +112,61 @@ describe("rotación y contraste", () => {
     expect(lowContrastPairs(bad as CardStyle["themes"][number]).map((pair) => pair.what)).toEqual([
       "secundario",
     ]);
+  });
+});
+
+describe("el pie de las láminas", () => {
+  const broker = { website: null, instagramHandle: null };
+  const account = (platform: string, displayName: string, status = "connected") => ({
+    platform,
+    displayName,
+    status,
+  });
+
+  it("el estilo acepta el pie (sitio y usuarios) y sin él sigue valiendo", () => {
+    expect(parseCardStyle(style()).footer).toBeUndefined();
+    expect(
+      parseCardStyle(style({ footer: { website: "agentpey.com", instagram: "@agentpey" } })).footer,
+    ).toEqual({ website: "agentpey.com", instagram: "@agentpey", x: null });
+    expect(issuesOf(style({ footer: { website: "agent pey.com" } }))).toContain("footer.website");
+    expect(issuesOf(style({ footer: { x: "{x} hola" } }))).toContain("footer.x");
+    expect(issuesOf(style({ footer: { tiktok: "agentpey" } }))).toContain("footer");
+  });
+
+  it("arma «sitio · {instagram} usuario · {x} usuario» con lo del estilo", () => {
+    const parts = cardFooterParts({
+      footer: { website: "https://agentpey.com/", instagram: "@agentpey", x: "agentpeyai" },
+      broker,
+      accounts: [],
+    });
+    expect(parts).toEqual({ website: "agentpey.com", instagram: "agentpey", x: "agentpeyai" });
+    expect(cardFooterText(parts)).toBe("agentpey.com · {instagram} agentpey · {x} agentpeyai");
+  });
+
+  it("lo que falta sale de la marca y de sus cuentas; lo que no está en ninguna parte no va", () => {
+    expect(
+      cardFooterParts({
+        footer: undefined,
+        broker: { website: "www.vinny.cl", instagramHandle: "@vinny" },
+        accounts: [account("x", "@vinnyx"), account("instagram", "@otra")],
+      }),
+    ).toEqual({ website: "vinny.cl", instagram: "vinny", x: "vinnyx" });
+    // Sin sitio ni Instagram en la marca: el Instagram de la cuenta (también la «a mano»).
+    const fromAccounts = cardFooterParts({
+      footer: { website: null, instagram: null, x: null },
+      broker,
+      accounts: [
+        account("x", "@vieja", "revoked"),
+        account("instagram", "@agentpey", "expired"),
+        account("linkedin", "AgentPey"),
+      ],
+    });
+    expect(fromAccounts).toEqual({ website: null, instagram: "agentpey", x: null });
+    expect(cardFooterText(fromAccounts)).toBe("{instagram} agentpey");
+    // Un nombre que no es un usuario no se usa como tal.
+    expect(
+      cardFooterParts({ footer: undefined, broker, accounts: [account("x", "Agent Pey")] }).x,
+    ).toBeNull();
+    expect(cardFooterText({ website: null, instagram: null, x: null })).toBeNull();
   });
 });

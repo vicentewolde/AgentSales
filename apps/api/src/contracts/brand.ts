@@ -144,6 +144,14 @@ export const cardStyleResponseSchema = z.object({
     warnings: z.array(
       z.object({ theme: z.string(), what: z.string(), text: z.string(), background: z.string() }),
     ),
+    /** Lo que lleva el pie de las láminas con estilo (del estilo, de la marca o de sus cuentas). */
+    footer: z
+      .object({
+        website: z.string().nullable(),
+        instagram: z.string().nullable(),
+        x: z.string().nullable(),
+      })
+      .default({ website: null, instagram: null, x: null }),
   }),
 });
 export type CardStyleResponse = z.infer<typeof cardStyleResponseSchema>;

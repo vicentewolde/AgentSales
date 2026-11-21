@@ -7,6 +7,7 @@ import type { EditorialProfileRepository } from "../ports/editorial-profile-repo
 import type { PostCardTextRepository } from "../ports/post-card-text-repository.js";
 import type { PostRepository } from "../ports/post-repository.js";
 import {
+  CARD_TEXT_LIMITS,
   type CardTextsInput,
   checkCardText,
   normalizeCardTexts,
@@ -93,13 +94,12 @@ export async function savePostCardTexts(
     });
   }
   const texts = normalizeCardTexts(input);
+  // Un post de imagen guarda su portada y hasta `imagePoints` puntos clave (van en la misma imagen).
   await deps.cardTexts.replace(
     postId,
     language,
-    post.kind === "image" ? texts.slice(0, 1) : texts,
-    {
-      fromAi: false,
-    },
+    post.kind === "image" ? texts.slice(0, 1 + CARD_TEXT_LIMITS.imagePoints) : texts,
+    { fromAi: false },
   );
   return viewOf(deps, postId);
 }

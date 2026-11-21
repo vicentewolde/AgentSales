@@ -1,6 +1,6 @@
 # ADR-0037 · El worker se enciende y se apaga solo según el horario de publicación
 
-- **Estado:** Aceptado (2026-10-22, F9.5-T24; decisión del operador del 2026-10-22: «que se encienda cuando tiene que publicar y cuando esté ok, se apaga»). Implementados los puntos 1, 2, 3 y 5; el 4 (el botón «encender ahora» del panel) queda para una tarea aparte (ver "Seguimiento").
+- **Estado:** Aceptado, modificado por **ADR-0044** (2026-11-21: la API enciende el worker; el workflow de cada hora queda de respaldo) (2026-10-22, F9.5-T24; decisión del operador del 2026-10-22: «que se encienda cuando tiene que publicar y cuando esté ok, se apaga»). Implementados los puntos 1, 2, 3 y 5; el 4 (el botón «encender ahora» del panel) queda para una tarea aparte (ver "Seguimiento").
 - **Fecha:** 2026-10-22
 - **Reemplaza a / Modifica a:** precisa D1 y el paso 11 de `docs/10-despliegue.md` (el worker nunca se apaga solo). Precisa **ADR-0018** (el disparo de lo programado): con el horario activado, un trabajo nuevo (una programada, publicar ahora, un reintento, preparar textos) puede atrasarse hasta la próxima revisión, unos 60 minutos de día, y de noche hasta la de las 06:50.
 
@@ -40,6 +40,8 @@ El worker publica, programa y prepara. Encendido todo el mes cuesta unos US$ 37 
 - **Que el worker informe si el apagado solo está activo:** hoy la API lo lee de su propio entorno, que comparte con el worker. Moverlo al latido (`worker_heartbeats`) necesita una migración, y se dejó para no chocar con la de F9.5-T22.
   - **2026-10-22 (F9.5-T27):** la «Lista para publicar a diario» también depende de ese dato: con el horario activo dice «revisa que el workflow tenga su secreto», y sin horario mira el latido. Si la API y el worker leen entornos distintos, la lista se equivoca: otro motivo para llevar el dato al latido.
 - **Punto 4** (el panel avisa al preparar con el worker apagado y ofrece «encender ahora», que dispara el workflow): no estaba en T24. Necesita que la API pueda disparar el workflow, con un token de GitHub con `actions:write` en el servidor o un enlace a la página del workflow; se decide en su tarea.
+
+- **2026-11-21 · ADR-0044.** El cron `50 * * * *` corrió unas 3 veces al día, y un post quedó sin salir (#288 volvió a dejar el worker siempre encendido). Desde ADR-0044 la API, que queda siempre encendida, enciende el worker al encolar y antes de lo programado. Este workflow queda de respaldo. La alternativa descartada «La API despierta al worker» se retoma con `min_machines_running = 1`.
 
 ## Alternativas descartadas
 - **La API despierta al worker:** la API también se apaga sin tráfico, así que no puede despertarlo.
