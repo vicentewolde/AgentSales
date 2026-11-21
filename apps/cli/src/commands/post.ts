@@ -15,6 +15,7 @@ import {
   postDetailResponseSchema,
   postListResponseSchema,
   postMediaLanguageResponseSchema,
+  postMediaRemoveResponseSchema,
   postPublishResponseSchema,
   postResponseSchema,
   postScheduleResponseSchema,
@@ -591,6 +592,59 @@ export function runPostMediaLanguage(deps: PostDeps, id: string, mediaId: string
         language === null ? "para todos los idiomas" : `en ${LANGUAGE_TEXT[language]}`
       }`,
     );
+    deps.print(c.dim(`→ Míralo con ${show(postId)}`));
+    return 0;
+  });
+}
+
+/**
+ * `agentsales post media-remove <id> <id_medio> [--yes]` (2026-11-21): quita una foto o un video del
+ * post, con sus variantes y sus archivos. Pregunta antes (no se deshace), salvo `--yes`. Si una
+ * publicación programada, publicándose, esperando el clic, publicada o con resultado dudoso lo usa,
+ * la API lo niega y dice qué hacer; a las aprobadas o fallidas se les quita.
+ */
+export async function runPostMediaRemove(
+  deps: PostDeps,
+  id: string,
+  mediaId: string,
+  options: { yes?: boolean } = {},
+) {
+  const c = deps.colors;
+  return guarded(deps, async () => {
+    const postId = postIdOf(id);
+    const target = mediaId.trim();
+    if (!options.yes) {
+      const confirmed = await deps.confirm(
+        `¿Quitar el medio ${target} del post? Se borra con sus variantes y no se deshace`,
+      );
+      if (!confirmed) {
+        deps.printError(c.yellow("No se quitó nada: confirma en la terminal o usa --yes"));
+        return 1;
+      }
+    }
+    const { media, removed } = await unwrap(
+      deps.client.posts[":id"].media[":mediaId"].$delete({
+        param: { id: postId, mediaId: target },
+      }),
+      postMediaRemoveResponseSchema,
+    ).catch((error: unknown) => {
+      throw explained(error, postId);
+    });
+    deps.print(
+      `${c.green("✓")} Se quitó el medio: el post queda con ${media.length} foto(s) o video(s)`,
+    );
+    if (removed.updatedPublicationIds.length > 0) {
+      deps.print(
+        `  También se quitó de ${removed.updatedPublicationIds.length} publicación(es) aprobada(s) o fallida(s)`,
+      );
+    }
+    if (removed.leftover > 0) {
+      deps.print(
+        c.yellow(
+          `  ${removed.leftover} archivo(s) no se pudieron borrar del almacenamiento (quedan sueltos; el post ya no los usa)`,
+        ),
+      );
+    }
     deps.print(c.dim(`→ Míralo con ${show(postId)}`));
     return 0;
   });
@@ -1792,6 +1846,17 @@ export function register(program: Command, ctx: CliContext): void {
     .argument("<idioma>", "en, es o todos")
     .action((id: string, mediaId: string, language: string) =>
       exitWith(() => runPostMediaLanguage(deps(), id, mediaId, language)),
+    );
+  post
+    .command("media-remove")
+    .description(
+      "Quita una foto o un video del post (con sus variantes y archivos; pregunta antes, no se deshace)",
+    )
+    .argument("<id>", "id del post")
+    .argument("<id_medio>", "id de la foto o el video (agentsales post show <id>)")
+    .option("--yes", "no pide confirmación")
+    .action((id: string, mediaId: string, options: { yes?: boolean }) =>
+      exitWith(() => runPostMediaRemove(deps(), id, mediaId, options)),
     );
   // F9.5-T25: conseguir imágenes (tarjetas, biblioteca o IA).
   registerPostMedia(post, ctx);

@@ -15,6 +15,7 @@ import {
   postDetailResponseSchema,
   postListResponseSchema,
   postMediaLanguageResponseSchema,
+  postMediaRemoveResponseSchema,
   postPublishResponseSchema,
   postRecordResponseSchema,
   postResponseSchema,
@@ -185,6 +186,23 @@ export function usePostMediaLanguage(id: string) {
           postMediaLanguageResponseSchema,
         )
       ).media,
+    onSettled: refresh,
+  });
+}
+
+/**
+ * `DELETE /posts/:id/media/:mediaId` (2026-11-21): quita una foto o un video del post con sus
+ * variantes y sus archivos (el panel confirma antes). Al terminar se relee el post.
+ */
+export function useRemovePostMedia(id: string) {
+  const client = useApiClient();
+  const refresh = useRefreshPost(id);
+  return useMutation({
+    mutationFn: async (mediaId: string) =>
+      unwrap(
+        client.posts[":id"].media[":mediaId"].$delete({ param: { id, mediaId } }),
+        postMediaRemoveResponseSchema,
+      ),
     onSettled: refresh,
   });
 }

@@ -100,6 +100,12 @@ export const editorialProfileSchema = z.object({
    */
   defaultHashtags: z.array(z.string()),
   /**
+   * Hashtags que siempre van **en un idioma** (2026-11-21): se suman a los de arriba solo en los
+   * textos de ese idioma (p. ej. `es: ["#ia"]`, `en: ["#AI"]`). Los de arriba van en todos.
+   * Opcional: sin el campo (un perfil anterior a la columna), ninguno por idioma.
+   */
+  hashtagsByLanguage: z.partialRecord(z.enum(LANGUAGES), z.array(z.string())).optional(),
+  /**
    * El conocimiento de la marca como lo ve la IA (spec F9.7 B3, ADR-0043 punto 3): lo agrega
    * `editorialProfilesWithKnowledge` al leer; no es una columna del perfil. Sin él, `undefined`.
    */
@@ -128,6 +134,9 @@ export type EditorialProfileData = Omit<
   aiHashtags?: boolean | null | undefined;
 };
 
+/** Los hashtags que siempre van en cada idioma (2026-11-21), además de los de todos los idiomas. */
+export type HashtagsByLanguage = Partial<Record<Language, string[]>>;
+
 /**
  * El perfil de un corredor como lo entregan la API y la CLI: el guardado o, si todavía no tiene,
  * el vacío por defecto (`updatedAt: null`).
@@ -150,6 +159,7 @@ export function emptyEditorialProfileData(): EditorialProfileData & { aiHashtags
     avoid: [],
     cadence: {},
     defaultHashtags: [],
+    hashtagsByLanguage: {},
     aiHashtags: null,
   };
 }
@@ -176,6 +186,8 @@ export type EditorialProfileInput = {
     { postsPerWeek: number; days?: string[]; hours?: string[]; languageGapHours?: number }
   >;
   defaultHashtags: string[];
+  /** Los que siempre van en un idioma (`{ es: [...], en: [...] }`); sin él, ninguno. */
+  hashtagsByLanguage?: Record<string, string[]> | undefined;
   /** «¿La IA puede agregar otros hashtags?»; sin él (o `null`), el valor por defecto. */
   aiHashtags?: boolean | null | undefined;
 };
@@ -197,6 +209,7 @@ const FIELD_LABELS: Record<keyof EditorialProfileInput, string> = {
   avoid: "Cosas que evitar",
   cadence: "Cadencia",
   defaultHashtags: "Hashtags que siempre van",
+  hashtagsByLanguage: "Hashtags por idioma",
   aiHashtags: "Otros hashtags de la IA",
 };
 
@@ -219,7 +232,9 @@ const HOUR = /^(\d{1,2}):(\d{2})$/;
  * - `facts` y `avoid`: hasta 50 frases (300 y 200 caracteres);
  * - `cadence`: solo redes de `POST_PLATFORMS`; de 0 a 21 posts por semana, días `mon`…`sun`,
  *   hasta 8 horas `HH:MM` (hora de Chile) y de 1 a 48 horas entre idiomas (6 si no se dicen);
- * - `defaultHashtags`: hasta 30, solo letras, números y `_`.
+ * - `defaultHashtags`: hasta 30, solo letras, números y `_`;
+ * - `hashtagsByLanguage`: solo idiomas de `LANGUAGES`, hasta 30 por idioma, con las reglas de
+ *   `defaultHashtags` (sin repetir los de todos los idiomas; un idioma sin hashtags no se guarda).
  * Ningún texto lleva saltos de línea ni caracteres de control. Si algo no sirve,
  * `EDITORIAL_PROFILE_INVALID` (400) con la lista de lo que hay que corregir (`details.issues`).
  */
@@ -387,26 +402,50 @@ export function normalizeEditorialProfile(input: EditorialProfileInput): Editori
   }
 
   // Hashtags: como los fijos del corredor (un `#` cada uno, sin repetir), y solo los válidos.
-  const defaultHashtags: string[] = [];
-  const seen = new Set<string>();
-  for (const tag of input.defaultHashtags
-    .join(" ")
-    .split(/[\s,]+/)
-    .filter(Boolean)) {
-    const body = tag.replace(/^#+/, "");
-    if (!HASHTAG_BODY.test(body) || body.length > L.hashtag) {
-      issue(
-        "defaultHashtags",
-        "defaultHashtags",
-        `«${tag}» no es un hashtag (solo letras, números y _, hasta ${L.hashtag})`,
-      );
-    } else if (!seen.has(body.toLowerCase())) {
-      seen.add(body.toLowerCase());
-      defaultHashtags.push(`#${body}`);
+  const hashtagList = (
+    top: "defaultHashtags" | "hashtagsByLanguage",
+    field: string,
+    raw: readonly string[],
+    skip: ReadonlySet<string>,
+  ): string[] => {
+    const out: string[] = [];
+    const seen = new Set(skip);
+    for (const tag of raw
+      .join(" ")
+      .split(/[\s,]+/)
+      .filter(Boolean)) {
+      const body = tag.replace(/^#+/, "");
+      if (!HASHTAG_BODY.test(body) || body.length > L.hashtag) {
+        issue(
+          top,
+          field,
+          `«${tag}» no es un hashtag (solo letras, números y _, hasta ${L.hashtag})`,
+        );
+      } else if (!seen.has(body.toLowerCase())) {
+        seen.add(body.toLowerCase());
+        out.push(`#${body}`);
+      }
     }
-  }
-  if (defaultHashtags.length > L.hashtags) {
-    issue("defaultHashtags", "defaultHashtags", `son ${L.hashtags} como máximo`);
+    if (out.length > L.hashtags) issue(top, field, `son ${L.hashtags} como máximo`);
+    return out;
+  };
+  const defaultHashtags = hashtagList(
+    "defaultHashtags",
+    "defaultHashtags",
+    input.defaultHashtags,
+    new Set(),
+  );
+  const common = new Set(defaultHashtags.map((tag) => tag.slice(1).toLowerCase()));
+  const hashtagsByLanguage: HashtagsByLanguage = {};
+  for (const [key, raw] of Object.entries(input.hashtagsByLanguage ?? {})) {
+    const language = key.trim().toLowerCase();
+    const field = `hashtagsByLanguage.${key}`;
+    if (!(LANGUAGES as readonly string[]).includes(language)) {
+      issue("hashtagsByLanguage", field, `«${key}» no es un idioma (usa ${LANGUAGES.join(" o ")})`);
+      continue;
+    }
+    const tags = hashtagList("hashtagsByLanguage", field, raw, common);
+    if (tags.length > 0) hashtagsByLanguage[language as Language] = tags;
   }
 
   if (issues.length > 0) {
@@ -424,6 +463,7 @@ export function normalizeEditorialProfile(input: EditorialProfileInput): Editori
     avoid,
     cadence,
     defaultHashtags,
+    hashtagsByLanguage,
     aiHashtags: input.aiHashtags ?? null,
   };
 }

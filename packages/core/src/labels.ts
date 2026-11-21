@@ -473,6 +473,7 @@ export function publicationEventDetail(event: {
   }
   if (event.type === "manual_edit") {
     if (payload.linkAdded === true) return "se agregó el enlace después de confirmar";
+    if (Array.isArray(payload.mediaRemoved)) return "se quitó un medio del post";
     const fields = Array.isArray(payload.fields) ? payload.fields.join(", ") : "";
     return `actualizada en Portal${fields === "" ? "" : `: ${fields}`}`;
   }

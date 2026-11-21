@@ -10,7 +10,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
 import { useApiClient, useUploadDeps } from "../../api/context.js";
 import { type PostUploadProgress, uploadPostMedia } from "../../api/post-upload.js";
-import { mediaProcessing, postKeys, usePostMediaLanguage } from "../../queries/posts.js";
+import {
+  mediaProcessing,
+  postKeys,
+  usePostMediaLanguage,
+  useRemovePostMedia,
+} from "../../queries/posts.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 import { Button } from "../ui/Button.js";
 import { Card } from "../ui/Card.js";
@@ -141,6 +146,19 @@ export function PostMedia({
       ? setLanguage.variables.language
       : item.language;
   const ownMedia = media.filter((item) => item.cardLanguages === null);
+  const remove = useRemovePostMedia(postId);
+  /** El medio que se está por quitar (espera la confirmación). */
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const dialog = useRef<HTMLDivElement>(null);
+  // El cuadro de confirmación recibe el foco al abrirse.
+  useEffect(() => {
+    if (confirmRemove !== null) dialog.current?.focus();
+  }, [confirmRemove]);
+  const removingIndex = media.findIndex((item) => item.id === confirmRemove);
+  const removingName =
+    removingIndex < 0
+      ? "este medio"
+      : `${media[removingIndex]?.kind === "video" ? "el video" : "la foto"} ${removingIndex + 1}`;
   // Al salir de la página se corta lo que se estaba subiendo.
   useEffect(() => () => abort.current?.abort(), []);
 
@@ -234,9 +252,60 @@ export function PostMedia({
                 disabled={lockReason !== null || setLanguage.isPending}
                 onChange={(language) => setLanguage.mutate({ mediaId: item.id, language })}
               />
+              <Button
+                variant="link"
+                className="mt-1 text-xs"
+                aria-label={`Quitar ${item.kind === "video" ? "el video" : "la foto"} ${index + 1}`}
+                disabled={lockReason !== null || remove.isPending || confirmRemove !== null}
+                onClick={() => {
+                  remove.reset();
+                  setConfirmRemove(item.id);
+                }}
+              >
+                Quitar
+              </Button>
             </li>
           ))}
         </ul>
+      )}
+      {confirmRemove !== null && (
+        <div
+          ref={dialog}
+          tabIndex={-1}
+          role="alertdialog"
+          aria-label="Confirmar quitar el medio"
+          className="mt-3 space-y-2 rounded-md bg-danger-50 p-3 text-sm text-danger-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+        >
+          <p>
+            ¿Quitar {removingName} del post? Se borra con sus versiones para cada red y no se puede
+            deshacer. Si una publicación aprobada la lleva, sale sin ella.
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="danger"
+              loading={remove.isPending}
+              onClick={() =>
+                remove.mutate(confirmRemove, { onSettled: () => setConfirmRemove(null) })
+              }
+            >
+              Sí, quitarla
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={remove.isPending}
+              onClick={() => setConfirmRemove(null)}
+            >
+              Cancelar
+            </Button>
+          </div>
+        </div>
+      )}
+      {remove.error !== null && <ErrorAlert error={remove.error} />}
+      {remove.data !== undefined && remove.data.removed.leftover > 0 && (
+        <p role="status" className="mt-3 text-sm text-warning-800">
+          Se quitó, pero {remove.data.removed.leftover} archivo(s) no se pudieron borrar del
+          almacenamiento. No afectan al post.
+        </p>
       )}
       {setLanguage.error !== null && <ErrorAlert error={setLanguage.error} />}
       {waiting > 0 && (

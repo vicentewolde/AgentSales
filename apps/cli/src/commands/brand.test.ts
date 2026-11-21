@@ -107,6 +107,7 @@ describe("brand edit y show", () => {
       avoid: [],
       cadence: {},
       defaultHashtags: [],
+      hashtagsByLanguage: {},
       aiHashtags: null,
     });
   });
@@ -166,6 +167,32 @@ describe("hashtags que siempre van (2026-11-15)", () => {
       1,
     );
     expect(s.h.errors()).toContain("AI_HASHTAGS_INVALID");
+  });
+
+  it("--hashtags-language guarda los de cada idioma, show los muestra y «es:» los borra (2026-11-21)", async () => {
+    const s = await setup();
+    await expect(
+      runBrandEdit(s.deps, {
+        broker: "agentpey",
+        hashtagsLanguage: ["es:#ia #chatgpt", "en:#AI agents"],
+      }),
+    ).resolves.toBe(0);
+    expect((await s.h.editorialProfiles.get(s.agentpey.id))?.hashtagsByLanguage).toEqual({
+      es: ["#ia", "#chatgpt"],
+      en: ["#AI", "#agents"],
+    });
+    expect(s.h.text()).toContain("Solo en español: #ia #chatgpt");
+    expect(s.h.text()).toContain("Solo en inglés: #AI #agents");
+    // Otra edición no los pisa; «es:» vacía solo el español.
+    await runBrandEdit(s.deps, { broker: "agentpey", audience: "Tiendas" });
+    await runBrandEdit(s.deps, { broker: "agentpey", hashtagsLanguage: ["es:"] });
+    expect((await s.h.editorialProfiles.get(s.agentpey.id))?.hashtagsByLanguage).toEqual({
+      en: ["#AI", "#agents"],
+    });
+    await expect(
+      runBrandEdit(s.deps, { broker: "agentpey", hashtagsLanguage: ["fr:#ia"] }),
+    ).resolves.toBe(1);
+    expect(s.h.errors()).toContain("HASHTAGS_LANGUAGE_INVALID");
   });
 });
 

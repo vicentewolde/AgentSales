@@ -15,6 +15,8 @@ import {
   type EditorialWeekday,
   isPostPlatform,
   LANGUAGE_TEXT,
+  LANGUAGES,
+  type Language,
   PLATFORM_SHORT_NAMES,
   PLATFORM_TEXT,
   POST_PLATFORMS,
@@ -79,6 +81,7 @@ function profileData(profile: EditorialProfileJson): EditorialProfileBody {
     avoid: profile.avoid,
     cadence: profile.cadence,
     defaultHashtags: profile.defaultHashtags,
+    hashtagsByLanguage: profile.hashtagsByLanguage ?? {},
     aiHashtags: profile.aiHashtags,
   };
 }
@@ -138,6 +141,12 @@ function printProfile(deps: Io, broker: Broker, profile: EditorialProfileJson): 
   deps.print(
     `Hashtags que siempre van (Instagram, X, LinkedIn y TikTok): ${always.length === 0 ? c.dim("(ninguno)") : always.join(" ")}`,
   );
+  // 2026-11-21: los que van solo en los textos de un idioma.
+  for (const language of LANGUAGES) {
+    const own = profile.hashtagsByLanguage?.[language] ?? [];
+    if (own.length === 0) continue;
+    deps.print(`  · Solo en ${LANGUAGE_TEXT[language] ?? language}: ${own.join(" ")}`);
+  }
   if (broker.fixedHashtags.length > 0) {
     deps.print(
       c.dim(
@@ -145,10 +154,34 @@ function printProfile(deps: Io, broker: Broker, profile: EditorialProfileJson): 
       ),
     );
   }
-  const aiMayAdd = profile.aiHashtags ?? always.length === 0;
+  const byLanguage = Object.values(profile.hashtagsByLanguage ?? {}).flat();
+  const aiMayAdd = profile.aiHashtags ?? (always.length === 0 && byLanguage.length === 0);
   deps.print(
     `La IA puede agregar otros hashtags: ${aiMayAdd ? "sí" : "no"}${profile.aiHashtags === null ? c.dim(" (por defecto)") : ""}`,
   );
+}
+
+/**
+ * `--hashtags-language "es:#ia #chatgpt"` → el idioma y su lista (vacía la borra). La API revisa
+ * cada hashtag.
+ */
+function hashtagsLanguageOf(text: string): [Language, string[]] {
+  const at = text.indexOf(":");
+  const code = (at < 0 ? "" : text.slice(0, at)).trim().toLowerCase();
+  const language = LANGUAGES.find((item) => item === code);
+  if (language === undefined) {
+    throw new CliError(
+      "HASHTAGS_LANGUAGE_INVALID",
+      `--hashtags-language va con el idioma y los hashtags: "es:#ia #chatgpt" (idiomas: ${LANGUAGES.join(", ")})`,
+    );
+  }
+  return [
+    language,
+    text
+      .slice(at + 1)
+      .split(/[\s,]+/)
+      .filter(Boolean),
+  ];
 }
 
 /** `--ai-hashtags si|no|auto` → `true`, `false` o `null` (por defecto). */
@@ -196,6 +229,8 @@ export type BrandEditOptions = {
   cadence?: string[];
   removeCadence?: string[];
   hashtags?: string;
+  /** Los que siempre van en un idioma: `es:#ia #chatgpt` (repetible; 2026-11-21). */
+  hashtagsLanguage?: string[];
   /** «¿La IA puede agregar otros hashtags?»: si, no o auto (2026-11-15). */
   aiHashtags?: string;
 };
@@ -339,7 +374,7 @@ async function profileFile(cwd: string, file: string): Promise<Partial<Editorial
     throw new CliError(
       "FILE_INVALID",
       `${file} no tiene la forma de un perfil editorial: revisa ${fields.join(", ")}`,
-      "Los campos son languages, audience, pillars, facts, avoid, cadence y defaultHashtags (agentsales brand show --json muestra un ejemplo)",
+      "Los campos son languages, audience, pillars, facts, avoid, cadence, defaultHashtags y hashtagsByLanguage (agentsales brand show --json muestra un ejemplo)",
     );
   }
   return parsed.data;
@@ -372,6 +407,7 @@ export function runBrandEdit(deps: BrandDeps, options: BrandEditOptions) {
     const removed = options.removeCadence?.map((network) => networkOf(network, "--remove-cadence"));
     const aiHashtags =
       options.aiHashtags === undefined ? undefined : aiHashtagsOption(options.aiHashtags);
+    const byLanguage = options.hashtagsLanguage?.map(hashtagsLanguageOf);
 
     const broker = await brandOf(deps.client, options.broker);
     const { profile: current } = await unwrap(
@@ -398,6 +434,14 @@ export function runBrandEdit(deps: BrandDeps, options: BrandEditOptions) {
     }
     if (options.hashtags !== undefined) {
       next.defaultHashtags = options.hashtags.split(/[\s,]+/).filter(Boolean);
+    }
+    if (byLanguage !== undefined) {
+      const entries = { ...next.hashtagsByLanguage };
+      for (const [language, tags] of byLanguage) {
+        if (tags.length === 0) delete entries[language];
+        else entries[language] = tags;
+      }
+      next.hashtagsByLanguage = entries;
     }
     if (aiHashtags !== undefined) next.aiHashtags = aiHashtags;
     const { profile } = await unwrap(
@@ -458,6 +502,11 @@ export function register(program: Command, ctx: CliContext): void {
     .option(
       "--hashtags <lista>",
       "hashtags que siempre van, separados por espacio (reemplaza la lista; se suman a los fijos de la marca)",
+    )
+    .option(
+      "--hashtags-language <idioma:lista>",
+      'hashtags que van solo en los textos de un idioma: "es:#ia #chatgpt" o "en:#AI #agents" (repetible; "es:" la vacía)',
+      collect,
     )
     .option(
       "--ai-hashtags <si|no|auto>",

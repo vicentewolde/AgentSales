@@ -47,6 +47,7 @@ export function createEditorialProfileRepository(db: SchemaDatabase): EditorialP
         avoid: [...profile.avoid],
         cadence: profile.cadence,
         defaultHashtags: [...profile.defaultHashtags],
+        hashtagsByLanguage: profile.hashtagsByLanguage ?? {},
         aiHashtags: profile.aiHashtags ?? null,
       };
       try {

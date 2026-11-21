@@ -221,6 +221,17 @@ export interface PublicationRepository {
     event: PublicationEventInput,
   ): Promise<Publication>;
   /**
+   * Quita medios de los fijados de una publicación (`media_ids`) **solo** si sigue en uno de
+   * `guard.statuses`, sin cambiar el estado, con un evento `manual_edit` en la misma transacción
+   * (2026-11-21: quitar un medio de un post; solo `approved` o `failed`, las que todavía no salieron).
+   * Los ids que no estaban se ignoran. Si la publicación cambió de estado, `PUBLICATION_STALE`.
+   */
+  removeMediaIds(
+    id: string,
+    guard: { statuses: readonly PublicationStatus[]; mediaIds: readonly string[] },
+    event: PublicationEventInput,
+  ): Promise<Publication>;
+  /**
    * Guarda lo que el publisher ya creó en la plataforma, antes del paso que publica (spec F3 §4.4).
    * Solo con la publicación en `publishing`; `null` lo borra.
    */

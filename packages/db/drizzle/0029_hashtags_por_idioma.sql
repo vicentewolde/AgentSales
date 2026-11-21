@@ -1,0 +1,1 @@
+ALTER TABLE "editorial_profiles" ADD COLUMN "hashtags_by_language" jsonb DEFAULT '{}'::jsonb NOT NULL;

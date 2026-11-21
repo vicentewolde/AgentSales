@@ -67,6 +67,11 @@ export type SocialBrief = {
    * repetir): el código los agrega al final en las redes que los usan (`applyHashtagPolicy`).
    */
   hashtags: string[];
+  /**
+   * Los que siempre van solo en un idioma (2026-11-21, `hashtagsByLanguage` del perfil), de los
+   * idiomas que se redactan; el código los agrega al final de los textos de ese idioma.
+   */
+  hashtagsByLanguage: Partial<Record<Language, string[]>>;
   /** Si la IA puede agregar otros hashtags (`hashtagPolicy`, 2026-11-15). */
   aiMayAddHashtags: boolean;
   topic: string;
@@ -139,21 +144,29 @@ export function buildSocialBrief(params: {
 }): SocialBrief {
   const { post, profile, broker } = params;
   const pillar = profile.pillars.find((item) => item.key === post.pillar) ?? null;
+  const policy = hashtagPolicy(profile, broker);
+  const languages =
+    params.targets.length > 0
+      ? [...new Set(params.targets.map((target) => target.language))]
+      : [...profile.languages];
+  const hashtagsByLanguage: Partial<Record<Language, string[]>> = {};
+  for (const language of languages) {
+    const own = policy.byLanguage?.[language];
+    if (own !== undefined && own.length > 0) hashtagsByLanguage[language] = [...own];
+  }
   return {
     brandName: broker.brandName,
     tone: broker.tone,
     // Los idiomas que se redactan (los del post, `postLanguages`); sin destinos, los de la marca.
-    languages:
-      params.targets.length > 0
-        ? [...new Set(params.targets.map((target) => target.language))]
-        : [...profile.languages],
+    languages,
     targets: params.targets.map((target) => ({ ...target })),
     audience: profile.audience,
     pillar: pillar === null ? null : { name: pillar.name, description: pillar.description },
     facts: [...profile.facts],
     avoid: [...profile.avoid],
     hashtags: uniqueTags([...broker.fixedHashtags, ...profile.defaultHashtags]),
-    aiMayAddHashtags: hashtagPolicy(profile, broker).aiMayAdd,
+    hashtagsByLanguage,
+    aiMayAddHashtags: policy.aiMayAdd,
     topic: post.topic,
     topicIsSource: post.source === "manual",
     operatorBrief: operatorBriefOf(post),

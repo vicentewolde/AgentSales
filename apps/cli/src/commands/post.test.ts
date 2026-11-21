@@ -27,6 +27,7 @@ import {
   runPostEdit,
   runPostList,
   runPostMediaLanguage,
+  runPostMediaRemove,
   runPostPublish,
   runPostSchedule,
   runPostShow,
@@ -427,6 +428,31 @@ describe("post de punta a punta", () => {
     // Un idioma inventado no llega a la API.
     expect(await runPostMediaLanguage(s.deps(), post.id, spanish.id, "fr")).toBe(1);
     expect(s.h.errors()).toContain("LANGUAGE_INVALID");
+  });
+
+  it("media-remove pregunta antes, quita la foto y dice cuántas quedan (2026-11-21)", async () => {
+    const s = await setup();
+    await writeFile(join(s.cwd, "a.jpg"), "imagen a");
+    await writeFile(join(s.cwd, "b.jpg"), "imagen b");
+    await runPostCreate(s.deps(), "Dos fotos", { broker: "agentpey", kind: "image" });
+    const post = await s.created();
+    expect(await runPostUpload(s.deps(), post.id, ["a.jpg", "b.jpg"])).toBe(0);
+    const [first] = await s.h.media.listOriginals({ kind: "post", id: post.id });
+    if (first === undefined) throw new Error("sin fotos");
+
+    // Sin confirmar, no se quita nada.
+    expect(await runPostMediaRemove(s.deps({}, false), post.id, first.id)).toBe(1);
+    expect(s.h.errors()).toContain("No se quitó nada");
+    expect(await s.h.media.listOriginals({ kind: "post", id: post.id })).toHaveLength(2);
+
+    expect(await runPostMediaRemove(s.deps({}, true), post.id, first.id)).toBe(0);
+    expect(s.h.text()).toContain("el post queda con 1 foto(s) o video(s)");
+    const left = await s.h.media.listOriginals({ kind: "post", id: post.id });
+    expect(left.map((item) => item.id)).not.toContain(first.id);
+
+    // Con --yes no pregunta; un medio que ya no está es MEDIA_NOT_FOUND.
+    expect(await runPostMediaRemove(s.deps(), post.id, first.id, { yes: true })).toBe(1);
+    expect(s.h.errors()).toContain("MEDIA_NOT_FOUND");
   });
 
   it("edit toma el texto de la entrada estándar y lo deja editado; publish lo envía en simulación", async () => {

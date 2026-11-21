@@ -142,10 +142,12 @@ export {
 } from "./plan-slots.js";
 export {
   ALWAYS_HASHTAG_PLATFORMS,
+  alwaysHashtagsFor,
   applyHashtagPolicy,
   type HashtagPolicy,
   hashtagPolicy,
   hashtagsOutsideList,
+  hashtagWords,
 } from "./post-hashtags.js";
 export {
   normalizePostLanguages,
