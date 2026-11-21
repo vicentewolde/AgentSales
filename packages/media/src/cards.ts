@@ -20,7 +20,7 @@ import { renderStyledCard } from "./styled-cards.js";
 // (`USE_FONT_FILE`): el tamaño y el corte de líneas pueden variar un poco.
 
 /** Versión del dibujo: cambiarla cambia los bytes (y el sha256) de las tarjetas. */
-export const CARD_RENDER_VERSION = "4";
+export const CARD_RENDER_VERSION = "5";
 
 /** Inter en los pesos que usan las tarjetas (latín básico: ñ, tildes y ü). */
 const fontFile = (weight: Weight) =>

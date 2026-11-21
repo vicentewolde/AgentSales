@@ -542,6 +542,8 @@ const jobs = buildJobs({
       // F9.7 B4 a B6: las láminas con el estilo de la marca y sus textos.
       cardStyles,
       cardTexts,
+      // El pie de las láminas: el usuario de Instagram o X de las cuentas de la marca.
+      platformAccounts,
       stock: env.PIXABAY_API_KEY ? createPixabayStock({ apiKey: env.PIXABAY_API_KEY }) : null,
       ai: env.GEMINI_API_KEY
         ? {

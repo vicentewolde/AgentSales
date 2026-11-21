@@ -24,6 +24,18 @@ const COMPOSITION_TEXT: Readonly<Record<CardComposition, string>> = {
   explain: "Explicar",
 };
 
+/** El pie como se ve en las láminas, en simple («agentpey.com · Instagram agentpey · X agentpeyai»). */
+function footerLine(footer: CardStyleResponse["cardStyle"]["footer"]): string {
+  const parts = [
+    ...(footer.website === null ? [] : [footer.website]),
+    ...(footer.instagram === null ? [] : [`Instagram ${footer.instagram}`]),
+    ...(footer.x === null ? [] : [`X ${footer.x}`]),
+  ];
+  return parts.length === 0
+    ? "sin pie (no hay sitio ni usuarios de Instagram o X)"
+    : parts.join(" · ");
+}
+
 function printStyle(deps: Io, brandName: string, view: CardStyleResponse["cardStyle"]): void {
   const c = deps.colors;
   deps.print(c.bold(`Estilo de imágenes de ${brandName}`));
@@ -44,6 +56,7 @@ function printStyle(deps: Io, brandName: string, view: CardStyleResponse["cardSt
   );
   deps.print(`Logo: ${style.logo === null ? "sin logo" : style.logo.kind.toUpperCase()}`);
   deps.print(`Temas (rotan uno por post): ${style.themes.map((theme) => theme.name).join(" · ")}`);
+  deps.print(`Pie: ${footerLine(view.footer)}`);
   deps.print(c.dim(`Versión ${view.version ?? 0}`));
   for (const warning of view.warnings) {
     deps.print(
@@ -90,6 +103,68 @@ export function runStyleEdit(deps: StyleDeps, options: { broker?: string; file?:
     );
     deps.print(`${deps.colors.green("✓")} Estilo guardado: las próximas tarjetas lo usan`);
     printStyle(deps, broker.brandName, cardStyle);
+    return 0;
+  });
+}
+
+export type StyleFooterOptions = {
+  broker?: string;
+  website?: string;
+  instagram?: string;
+  x?: string;
+};
+
+/** «ninguno» (o vacío) deja ese dato sin fijar: lo toma de la marca o de su cuenta, si hay. */
+const footerValue = (value: string): string | null =>
+  ["", "ninguno", "ninguna"].includes(value.trim().toLowerCase()) ? null : value.trim();
+
+/**
+ * `agentsales brand style footer [--website agentpey.com] [--instagram agentpey] [--x agentpeyai]`:
+ * fija el pie de las láminas en el estilo guardado y deja lo demás como estaba. Lo que no se fija
+ * sale del sitio y el Instagram de la marca y de sus cuentas conectadas; lo que no está, no va.
+ */
+export function runStyleFooter(deps: StyleDeps, options: StyleFooterOptions) {
+  return guarded(deps, async () => {
+    if (
+      options.website === undefined &&
+      options.instagram === undefined &&
+      options.x === undefined
+    ) {
+      throw new CliError(
+        "OPTION_REQUIRED",
+        "Di qué cambiar del pie",
+        "Usa --website, --instagram o --x (con «ninguno» se quita)",
+      );
+    }
+    const broker = await brandOf(deps.client, options.broker);
+    const { cardStyle: current } = await unwrap(
+      deps.client.brokers[":id"]["card-style"].$get({ param: { id: broker.id } }),
+      cardStyleResponseSchema,
+    );
+    if (current.style === null) {
+      throw new CliError(
+        "CARD_STYLE_NOT_FOUND",
+        "La marca todavía no tiene estilo de imágenes",
+        "Cárgalo primero con brand style edit --file estilo.json",
+      );
+    }
+    const before = current.style.footer ?? { website: null, instagram: null, x: null };
+    const footer = {
+      website: options.website === undefined ? before.website : footerValue(options.website),
+      instagram:
+        options.instagram === undefined ? before.instagram : footerValue(options.instagram),
+      x: options.x === undefined ? before.x : footerValue(options.x),
+    };
+    const { cardStyle } = await unwrap(
+      deps.client.brokers[":id"]["card-style"].$put({
+        param: { id: broker.id },
+        json: { style: { ...current.style, footer } },
+      }),
+      cardStyleResponseSchema,
+    );
+    deps.print(
+      `${deps.colors.green("✓")} Pie guardado: las próximas láminas llevan ${footerLine(cardStyle.footer)}`,
+    );
     return 0;
   });
 }
@@ -159,6 +234,16 @@ export function registerStyle(brand: Command, ctx: CliContext): void {
     .action((options: { broker?: string; file?: string }) =>
       exitWith(() => runStyleEdit(deps(), options)),
     );
+  style
+    .command("footer")
+    .description(
+      "El pie de las láminas: el sitio, Instagram y X (lo que no fijes sale de la marca y sus cuentas)",
+    )
+    .option("--broker <slug>", "la marca (si tienes más de una)")
+    .option("--website <sitio>", "el sitio, como agentpey.com («ninguno» lo quita)")
+    .option("--instagram <usuario>", "el usuario de Instagram, sin @ («ninguno» lo quita)")
+    .option("--x <usuario>", "el usuario de X, sin @ («ninguno» lo quita)")
+    .action((options: StyleFooterOptions) => exitWith(() => runStyleFooter(deps(), options)));
   style
     .command("preview")
     .description("Guarda una lámina de muestra con el estilo guardado (PNG)")
