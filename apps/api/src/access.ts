@@ -133,6 +133,7 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "POST /posts/:id/uploads/complete": "session",
   // ADR-0042: el idioma de una foto del post, con `posts.manage` revisado en core y lo ajeno 404.
   "PATCH /posts/:id/media/:mediaId": "session",
+  "DELETE /posts/:id/media/:mediaId": "session",
   // F9.5-T25 (ADR-0038): conseguir imágenes para un post (fuentes, biblioteca, pedir y seguir),
   // con `posts.manage` revisado en core y lo ajeno 404.
   "GET /posts/:id/images": "session",

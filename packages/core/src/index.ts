@@ -104,6 +104,7 @@ export {
   editorialProfileSchema,
   editorialProfileView,
   emptyEditorialProfileData,
+  type HashtagsByLanguage,
   normalizeEditorialProfile,
 } from "./editorial-profile.js";
 export * from "./enums.js";
@@ -1404,6 +1405,13 @@ export {
   relistedIds,
   relistPublication,
 } from "./use-cases/relist-publication.js";
+export {
+  MEDIA_REMOVAL_BLOCKED_BY,
+  MEDIA_REMOVAL_UPDATES,
+  type RemovePostMediaDeps,
+  type RemovePostMediaResult,
+  removePostMedia,
+} from "./use-cases/remove-post-media.js";
 export {
   enqueueContentRun,
   enqueuePostDraft,

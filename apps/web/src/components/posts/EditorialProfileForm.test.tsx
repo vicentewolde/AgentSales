@@ -42,6 +42,7 @@ const FULL: EditorialProfileData = {
     linkedin: { postsPerWeek: 1, days: ["tue"], hours: ["09:00"], languageGapHours: 12 },
   },
   defaultHashtags: ["#propiedades", "#nunoa"],
+  hashtagsByLanguage: { en: ["#realestate"] },
   aiHashtags: null,
 };
 
@@ -453,5 +454,18 @@ describe("hashtags que siempre van (2026-11-15)", () => {
     fireEvent.click(within(s.form).getByRole("button", { name: "Guardar el perfil" }));
     expect(await within(s.form).findByText("Perfil guardado.")).toBeTruthy();
     expect((await saved(s)).aiHashtags).toBe(true);
+  });
+
+  it("los hashtags por idioma: uno por cada idioma de la marca, y se guardan aparte (2026-11-21)", async () => {
+    const s = await setup(FULL);
+    const english = within(s.form).getByLabelText("Solo en inglés") as HTMLInputElement;
+    expect(english.value).toBe("#realestate");
+    fireEvent.change(within(s.form).getByLabelText("Solo en español"), {
+      target: { value: "#arriendo, #ñuñoa" },
+    });
+    fireEvent.change(english, { target: { value: "" } });
+    fireEvent.click(within(s.form).getByRole("button", { name: "Guardar el perfil" }));
+    expect(await within(s.form).findByText("Perfil guardado.")).toBeTruthy();
+    expect((await saved(s)).hashtagsByLanguage).toEqual({ es: ["#arriendo", "#ñuñoa"] });
   });
 });

@@ -204,6 +204,13 @@
       "when": 1794770176894,
       "tag": "0028_f97_marca",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1795289222635,
+      "tag": "0029_hashtags_por_idioma",
+      "breakpoints": true
     }
   ]
 }

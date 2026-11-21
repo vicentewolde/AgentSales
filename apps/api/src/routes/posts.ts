@@ -40,6 +40,7 @@ import {
   publishPost,
   recordExternalPublication,
   removePostCards,
+  removePostMedia,
   requestContentRun,
   requestPostImage,
   requestPostUploads,
@@ -69,6 +70,7 @@ import {
   type PostListResponse,
   type PostMediaItem,
   type PostMediaLanguageResponse,
+  type PostMediaRemoveResponse,
   type PostPublishResponse,
   type PostRecordResponse,
   type PostResponse,
@@ -401,6 +403,19 @@ export function postRoutes(deps: PostRoutesDeps) {
           return c.json(body, 200);
         },
       )
+      // 2026-11-21: quitar una foto o un video del post (con sus variantes y sus archivos). El
+      // panel y la CLI piden confirmación antes; lo que ya salió o va a salir lo impide.
+      .delete("/:id/media/:mediaId", validated("param", postMediaParamSchema), async (c) => {
+        const { id, mediaId } = c.req.valid("param");
+        const removed = await removePostMedia(
+          { posts: deps.posts, postLock: deps.postLock, storage: deps.storage },
+          requireAuth(c).user,
+          id,
+          mediaId,
+        );
+        const body: PostMediaRemoveResponse = { media: await mediaOf(id), removed };
+        return c.json(body, 200);
+      })
       // F9.5-T25 (ADR-0038): conseguir imágenes. Las fuentes, lo propuesto y los últimos pedidos;
       // buscar en la biblioteca (una lectura); pedir (el worker las consigue con `post.image`) y
       // seguir un pedido.

@@ -41,9 +41,11 @@ import {
 } from "./networks.js";
 import {
   ALWAYS_HASHTAG_PLATFORMS,
+  alwaysHashtagsFor,
   type HashtagPolicy,
   hashtagPolicy,
   hashtagsOutsideList,
+  hashtagWords,
 } from "./post-hashtags.js";
 import { misspellings } from "./spelling.js";
 
@@ -109,6 +111,7 @@ export type PostCheckContext = {
 export function profileSources(
   profile: Pick<EditorialProfileView, "facts" | "audience" | "pillars" | "defaultHashtags"> & {
     knowledge?: EditorialProfileView["knowledge"];
+    hashtagsByLanguage?: EditorialProfileView["hashtagsByLanguage"];
   },
   broker: Pick<Broker, "brandName" | "fixedHashtags">,
 ): string {
@@ -120,11 +123,21 @@ export function profileSources(
     ...knowledgeSources(profile.knowledge),
     profile.audience ?? "",
     ...profile.pillars.flatMap((pillar) => [pillar.name, pillar.description]),
-    ...profile.defaultHashtags,
-    ...broker.fixedHashtags,
+    // Un hashtag pegado cuenta también con sus palabras: #BlackFriday es fuente de «Black Friday».
+    ...[
+      ...profile.defaultHashtags,
+      ...Object.values(profile.hashtagsByLanguage ?? {}).flat(),
+      ...broker.fixedHashtags,
+    ].map(withHashtagWords),
   ]
     .filter((text) => text.trim() !== "")
     .join("\n");
+}
+
+/** El hashtag y, si se separa en palabras (`hashtagWords`), también ellas: «#BlackFriday Black Friday». */
+function withHashtagWords(tag: string): string {
+  const words = hashtagWords(tag);
+  return words === tag.replace(/^#+/u, "") ? tag : `${tag} ${words}`;
 }
 
 /**
@@ -138,7 +151,10 @@ export function buildPostCheckContext(params: {
   profile: Pick<
     EditorialProfileView,
     "facts" | "audience" | "pillars" | "defaultHashtags" | "avoid" | "knowledge"
-  > & { aiHashtags?: boolean | null };
+  > & {
+    aiHashtags?: boolean | null;
+    hashtagsByLanguage?: EditorialProfileView["hashtagsByLanguage"];
+  };
   broker: Pick<Broker, "brandName" | "fixedHashtags">;
   media: readonly (Pick<Media, "role" | "kind"> &
     Partial<Pick<Media, "id" | "sortOrder" | "parentMediaId" | "language">>)[];
@@ -791,7 +807,7 @@ export function checkPostContent(
     // Los hashtags que siempre van cuentan: si no caben, se dice (el texto nunca se corta solo).
     const always =
       ctx.hashtags !== undefined && ALWAYS_HASHTAG_PLATFORMS.includes(platform)
-        ? ctx.hashtags.always
+        ? alwaysHashtagsFor(ctx.hashtags, text.language)
         : [];
     add(
       "TOO_LONG",
@@ -801,7 +817,7 @@ export function checkPostContent(
     );
   }
   if (ctx.hashtags !== undefined) {
-    const outside = hashtagsOutsideList(text.hashtags, ctx.hashtags);
+    const outside = hashtagsOutsideList(text.hashtags, ctx.hashtags, text.language);
     if (outside.length > 0) {
       add(
         "HASHTAG_NOT_IN_LIST",

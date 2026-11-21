@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { editorialProfileView } from "../editorial-profile.js";
 import { buildPostCheckContext, checkPostContent } from "./check.js";
-import { applyHashtagPolicy, hashtagPolicy, hashtagsOutsideList } from "./post-hashtags.js";
+import {
+  alwaysHashtagsFor,
+  applyHashtagPolicy,
+  hashtagPolicy,
+  hashtagsOutsideList,
+  hashtagWords,
+} from "./post-hashtags.js";
 
 // «Hashtags que siempre van» (2026-11-15).
 
@@ -95,5 +101,109 @@ describe("la revisión con hashtags que siempre van", () => {
     const checks = checkPostContent("x", { body, hashtags: ["#AgentPey"] }, ctx(null));
     expect(checks.map((check) => check.code)).toEqual(["TOO_LONG"]);
     expect(checks[0]?.message).toContain("contando los hashtags que siempre van (#AgentPey)");
+  });
+});
+
+describe("hashtags por idioma (2026-11-21)", () => {
+  const byLanguage = {
+    ...profile(["#AgentPey"]),
+    hashtagsByLanguage: { es: ["ia", "#chatgpt"], en: ["#AI", "#agents"] },
+  };
+  const policy = hashtagPolicy(byLanguage, { fixedHashtags: [] });
+
+  it("los de todos los idiomas primero y después los del idioma del texto", () => {
+    expect(policy.byLanguage).toEqual({ es: ["#ia", "#chatgpt"], en: ["#AI", "#agents"] });
+    expect(alwaysHashtagsFor(policy, "es")).toEqual(["#AgentPey", "#ia", "#chatgpt"]);
+    expect(alwaysHashtagsFor(policy, "en")).toEqual(["#AgentPey", "#AI", "#agents"]);
+    expect(alwaysHashtagsFor(policy)).toEqual(["#AgentPey"]);
+    expect(applyHashtagPolicy("x", [], policy, "en")).toEqual(["#AgentPey", "#AI", "#agents"]);
+    expect(applyHashtagPolicy("discord", [], policy, "en")).toEqual([]);
+  });
+
+  it("solo con hashtags de un idioma, la IA tampoco agrega otros por defecto", () => {
+    const only = hashtagPolicy(
+      { ...profile([]), hashtagsByLanguage: { en: ["#AI"] } },
+      { fixedHashtags: [] },
+    );
+    expect(only.aiMayAdd).toBe(false);
+    // Sin ninguno por idioma, la regla es la de siempre (sin el campo).
+    expect(hashtagPolicy(profile([]), { fixedHashtags: [] })).toEqual({
+      always: [],
+      aiMayAdd: true,
+    });
+  });
+
+  it("la revisión: #AI no es aviso en inglés, pero #ia sí lo es en inglés", () => {
+    expect(hashtagsOutsideList(["#AgentPey", "#AI"], policy, "en")).toEqual([]);
+    expect(hashtagsOutsideList(["#AgentPey", "#ia"], policy, "en")).toEqual(["#ia"]);
+    expect(hashtagsOutsideList(["#ia"], policy, "es")).toEqual([]);
+    const ctx = buildPostCheckContext({
+      post: {
+        kind: "text",
+        topic: "Tema",
+        brief: null,
+        briefOrigin: "operator",
+        source: "manual",
+        xLinkAllowed: false,
+      },
+      profile: byLanguage,
+      broker: { brandName: "AgentPey", fixedHashtags: [] },
+      media: [],
+    });
+    expect(
+      checkPostContent(
+        "x",
+        { body: "Hoy les cuento algo.", hashtags: ["#AgentPey", "#AI"], language: "en" },
+        ctx,
+      ),
+    ).toEqual([]);
+    expect(
+      checkPostContent(
+        "x",
+        { body: "Hoy les cuento algo.", hashtags: ["#AgentPey", "#ia"], language: "en" },
+        ctx,
+      ).map((check) => check.code),
+    ).toEqual(["HASHTAG_NOT_IN_LIST"]);
+  });
+});
+
+describe("hashtagWords: un hashtag pegado en palabras (2026-11-21)", () => {
+  it("separa CamelCase, siglas, números y guiones bajos", () => {
+    expect(hashtagWords("#BlackFriday")).toBe("Black Friday");
+    expect(hashtagWords("#AIAgents")).toBe("AI Agents");
+    expect(hashtagWords("#Web3")).toBe("Web 3");
+    expect(hashtagWords("#CyberDay2026")).toBe("Cyber Day 2026");
+    expect(hashtagWords("#cyber_monday")).toBe("cyber monday");
+    expect(hashtagWords("#ÑuñoaCentro")).toBe("Ñuñoa Centro");
+    expect(hashtagWords("#blackfriday")).toBe("blackfriday");
+  });
+
+  it("la revisión no marca «Black Friday» si #BlackFriday es un hashtag fijo", () => {
+    const ctx = buildPostCheckContext({
+      post: {
+        kind: "text",
+        topic: "Tema",
+        brief: null,
+        briefOrigin: "operator",
+        source: "manual",
+        xLinkAllowed: false,
+      },
+      profile: profile(["#BlackFriday", "#CyberDay2026"], true),
+      broker: { brandName: "AgentPey", fixedHashtags: [] },
+      media: [],
+    });
+    expect(
+      checkPostContent(
+        "linkedin",
+        { body: "Se viene el Black Friday y el Cyber Day 2026.", hashtags: [] },
+        ctx,
+      ),
+    ).toEqual([]);
+    // Un nombre que no está en ninguna fuente sigue marcándose.
+    expect(
+      checkPostContent("linkedin", { body: "Se viene el Prime Day.", hashtags: [] }, ctx).map(
+        (check) => check.code,
+      ),
+    ).toEqual(["FACT_NOT_IN_PROFILE"]);
   });
 });

@@ -33,6 +33,7 @@ function withUserEvents(
     replacePublishedSource: (id, guard, source, event) =>
       publications.replacePublishedSource(id, guard, source, withUser(event)),
     setPublishedLink: (id, link, event) => publications.setPublishedLink(id, link, withUser(event)),
+    removeMediaIds: (id, guard, event) => publications.removeMediaIds(id, guard, withUser(event)),
     setRemoteState: (id, remoteState, event) =>
       publications.setRemoteState(
         id,

@@ -22,6 +22,9 @@ El operador edita un post y ve el cambio reflejado en el mismo post (una red agr
 - A9. Seguimiento: encabezados «Post» / «Redes», tarjetas en el celular, «Cancelada» en vez de «Sin programar».
 - A10. Calendario: los borradores se ven distintos de lo programado, con leyenda.
 - A11. Hashtags que siempre van: en Mi marca, la lista de hashtags fijos (se agregan al final en Instagram, X y LinkedIn) y «¿La IA puede agregar otros?» (por defecto No con hashtags fijos).
+- A12 (pedido del operador, 2026-11-21). Quitar una foto o un video de un post (panel con confirmación, API y `post media-remove`): se niega si una publicación programada, publicándose, esperando el clic, publicada o con resultado dudoso lo usa; a las aprobadas o fallidas se les quita. Se borra con sus variantes y archivos (ver `docs/01-arquitectura.md`).
+- A13 (2026-11-21). La revisión de hechos lee un hashtag pegado del perfil también en palabras (`#BlackFriday` → «Black Friday»): sin falsa alarma `FACT_NOT_IN_PROFILE`.
+- A14 (2026-11-21). Hashtags fijos por idioma (`editorial_profiles.hashtags_by_language`, migración aditiva `0029`): en Mi marca y `brand edit --hashtags-language`; se usan al redactar y en la revisión. Los que no tienen idioma siguen yendo en todos.
 
 ### Parte B · La IA conoce la marca
 - B1. **Conocimiento de la marca** en «Mi marca», además del perfil actual (público, temas, hechos, evitar, cadencia):

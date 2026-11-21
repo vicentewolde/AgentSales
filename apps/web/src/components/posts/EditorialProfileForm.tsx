@@ -31,6 +31,7 @@ import {
   type Draft,
   draftOf,
   FACT_EXAMPLES,
+  hasLanguageHashtags,
   type Issue,
   levelOf,
   lines,
@@ -367,9 +368,16 @@ export function ProfileForm({
   const fixedHashtags = useBrokerDetail(brokerId).data?.broker.fixedHashtags ?? [];
   const otherIssues = issues.filter(
     (issue) =>
-      !["languages", "audience", "pillars", "facts", "avoid", "cadence", "defaultHashtags"].some(
-        (field) => issue.field === field || issue.field.startsWith(field),
-      ),
+      ![
+        "languages",
+        "audience",
+        "pillars",
+        "facts",
+        "avoid",
+        "cadence",
+        "defaultHashtags",
+        "hashtagsByLanguage",
+      ].some((field) => issue.field === field || issue.field.startsWith(field)),
   );
   const oddWeights = cliWeights(draft.pillars);
   const pillarNames = draft.pillars.map((pillar) => pillar.name.trim().toLowerCase());
@@ -688,6 +696,39 @@ export function ProfileForm({
         <FieldErrors issues={issues} prefix="defaultHashtags" />
       </div>
 
+      {/* 2026-11-21: los que van solo en los textos de un idioma (los de arriba van en todos). */}
+      <div>
+        <p className="text-sm font-medium text-fg">Hashtags por idioma</p>
+        <Help>
+          Van solo en los textos de ese idioma, después de los de arriba (por ejemplo, #ia en
+          español y #AI en inglés). Déjalo vacío si no hace falta.
+        </Help>
+        <div className="mt-1 space-y-2">
+          {LANGUAGES.filter(
+            (language) =>
+              language === draft.primary ||
+              language === draft.second ||
+              draft.hashtagsByLanguage[language].trim() !== "",
+          ).map((language) => (
+            <label key={language} className="block text-sm text-fg">
+              Solo en {LANGUAGE_TEXT[language]}
+              <Input
+                value={draft.hashtagsByLanguage[language]}
+                onChange={(event) =>
+                  set("hashtagsByLanguage", {
+                    ...draft.hashtagsByLanguage,
+                    [language]: event.target.value,
+                  })
+                }
+                placeholder={language === "en" ? "#AI #agents" : "#ia #chatgpt"}
+                className="mt-1"
+              />
+            </label>
+          ))}
+        </div>
+        <FieldErrors issues={issues} prefix="hashtagsByLanguage" />
+      </div>
+
       <fieldset>
         <legend className="text-sm font-medium text-fg">
           ¿La IA puede agregar otros hashtags?
@@ -705,7 +746,9 @@ export function ProfileForm({
                 name={`${ids}-ai-hashtags`}
                 checked={
                   (draft.aiHashtags ??
-                    (draft.hashtags.trim() === "" && fixedHashtags.length === 0)) === value
+                    (draft.hashtags.trim() === "" &&
+                      fixedHashtags.length === 0 &&
+                      !hasLanguageHashtags(draft))) === value
                 }
                 onChange={() => setDraft((current) => ({ ...current, aiHashtags: value }))}
               />

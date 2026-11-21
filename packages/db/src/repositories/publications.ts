@@ -517,6 +517,43 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
       return toPublication(row);
     },
 
+    async removeMediaIds(id, guard, event) {
+      const current = await findRow(id);
+      if (current === undefined) throw notFound(id);
+      const payload = normalizeEventPayload(event.payload);
+      const drop = new Set(guard.mediaIds);
+      const row = await withDbErrors(() =>
+        db.transaction(async (tx) => {
+          const [updated] = await tx
+            .update(publications)
+            .set({
+              mediaIds: current.mediaIds.filter((mediaId) => !drop.has(mediaId)),
+              updatedAt: sql`clock_timestamp()`,
+            })
+            .where(
+              and(
+                eq(publications.id, id),
+                // Se usa dentro del candado del post: los medios leídos no cambian entre medio.
+                inArray(publications.status, [...guard.statuses]),
+              ),
+            )
+            .returning();
+          if (updated === undefined) return undefined;
+          await insertEvent(tx, id, {
+            type: "manual_edit",
+            fromStatus: null,
+            toStatus: null,
+            actor: event.actor,
+            userId: event.userId ?? null,
+            payload,
+          });
+          return updated;
+        }),
+      );
+      if (row === undefined) throw publicationStale(id);
+      return toPublication(row);
+    },
+
     async transition(id, { from, to, changes = {} }, event) {
       const current = await findRow(id);
       if (current === undefined) throw notFound(id);
