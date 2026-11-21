@@ -24,12 +24,14 @@ export {
   type Env,
   EnvError,
   type EnvIssue,
+  FLY_MACHINES_INTERNAL_URL,
   IMAGE_AI_DEFAULTS,
   loadEnv,
   marketplaceAutomationEnabled,
   panelUrlOf,
   withoutBackupCredentials,
   withoutImageAiKey,
+  withoutWorkerWakeToken,
 } from "./env.js";
 export { EnvFileError, findWorkspaceRoot, loadAppEnvFile, loadEnvFile } from "./env-file.js";
 export { createErrorThrottle, type ErrorThrottleOptions } from "./error-throttle.js";

@@ -85,7 +85,12 @@ import { createPixabayStock } from "@agentsales/publishers/images";
 import { createLinkedInAuth } from "@agentsales/publishers/linkedin";
 import { createTikTokAuth } from "@agentsales/publishers/tiktok";
 import { createPkcePair, createXAuth } from "@agentsales/publishers/x";
-import { checkQueueSchema, createJobQueue } from "@agentsales/queue";
+import {
+  BACKGROUND_JOBS,
+  checkQueueSchema,
+  createJobQueue,
+  nextPendingJobAt,
+} from "@agentsales/queue";
 import { createR2Storage, r2BucketOrigin } from "@agentsales/storage";
 import { serve } from "@hono/node-server";
 import { getConnInfo } from "@hono/node-server/conninfo";
@@ -99,6 +104,12 @@ import { instagramStartUrlOf, oauthStartUrlOf } from "./routes/oauth.js";
 import { internetAccess, localAccess } from "./security.js";
 import { createServerApp } from "./server-app.js";
 import { readApiVersion } from "./version.js";
+import {
+  createNextWorkAt,
+  isWritingRequest,
+  wakingQueue,
+  workerWakeFromEnv,
+} from "./worker-wake.js";
 
 const HEALTHCHECK_PATH = "_healthcheck/ping";
 /** Mayor que el tope de un check de `/health` (25 s), para dejar terminar lo que está en curso. */
@@ -155,6 +166,21 @@ const users = createUserRepository(database.db);
 // F9.7 (ADR-0043): el conocimiento de la marca (lo envuelve el perfil editorial, abajo).
 const brandKnowledge = createBrandKnowledgeRepository(database.db);
 const workerHeartbeats = createWorkerHeartbeatRepository(database.db);
+const publications = createPublicationRepository(database.db);
+// La API enciende el worker detenido cuando hay trabajo (ADR-0044): al encolar y con un temporizador
+// que mira la base solo con el worker detenido. Sin FLY_WORKER_WAKE_TOKEN o FLY_APP_NAME, nada.
+const workerWake = workerWakeFromEnv(env, {
+  nextWorkAt: createNextWorkAt({
+    pendingJobAt: () =>
+      nextPendingJobAt(
+        { executeSql: (text, values) => database.db.$client.query(text, values) },
+        { ignore: BACKGROUND_JOBS },
+      ),
+    publications,
+    heartbeats: workerHeartbeats,
+  }),
+  logger,
+});
 const backupStatus = backupStatusReader(
   env.BACKUP_TARGET === "r2"
     ? { target: "r2", storage }
@@ -274,7 +300,7 @@ const app = createApp({
     ai: imageAiConfigured ? imageAiPricing : null,
   },
   imageAiPricing,
-  publications: createPublicationRepository(database.db),
+  publications,
   platformAccounts: createPlatformAccountRepository(database.db, { secretBox }),
   instagram: {
     // Sin el par de la app, `/me` (conectar con el token del panel) funciona igual; solo el canje
@@ -363,7 +389,7 @@ const app = createApp({
   // El host del panel debe ser el mismo de la URI de retorno (la cookie distingue `localhost`).
   panelUrl: panelUrlOf(env),
   instagramStartUrl: instagramStartUrlOf(env.INSTAGRAM_REDIRECT_URI),
-  queue,
+  queue: wakingQueue(queue, workerWake),
   // Las cargas suben directo a R2 (spec F8 §4.4, ADR-0025): la API solo firma y revisa.
   newId: randomUUID,
   maxUploadBytes: env.MAX_IMPORT_UPLOAD_MB * 1024 * 1024,
@@ -428,8 +454,16 @@ const serverApp = createServerApp(app, {
   allowedHosts: access.allowedHosts,
 });
 
+// Un pedido que escribe (programar, aprobar la semana…) puede dejar trabajo para más tarde: el
+// temporizador que enciende el worker revisa pronto (ADR-0044).
+const fetchAndPoke: typeof serverApp.fetch = async (request, ...rest) => {
+  const response = await serverApp.fetch(request, ...rest);
+  if (isWritingRequest(request.method, response.status)) workerWake.poke();
+  return response;
+};
+
 const server = serve(
-  { fetch: serverApp.fetch, port: env.API_PORT, hostname: env.API_HOST },
+  { fetch: fetchAndPoke, port: env.API_PORT, hostname: env.API_HOST },
   (info) => {
     logger.info({ url: `http://${env.API_HOST}:${info.port}${API_PREFIX}` }, "API escuchando");
     if (serverMode === "live") {
@@ -475,6 +509,7 @@ function shutdown(signal: string): void {
       logger.warn({ err: error }, "el servidor ya estaba cerrado");
     }
     queueErrors.dispose();
+    workerWake.stop();
     Promise.all([queue.stop(), database.close()])
       .catch((closeError: unknown) =>
         logger.error({ err: closeError }, "error al cerrar la cola o la base"),

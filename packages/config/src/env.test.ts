@@ -7,6 +7,7 @@ import {
   panelUrlOf,
   withoutBackupCredentials,
   withoutImageAiKey,
+  withoutWorkerWakeToken,
 } from "./env.js";
 
 const DIRECT_URL =
@@ -727,5 +728,32 @@ describe("loadEnv", () => {
         }).issues.map((issue) => issue.variable),
       ).toEqual(["API_HOST", "CLIENT_IP_HEADER"]);
     });
+  });
+});
+
+describe("el token que enciende el worker (ADR-0044)", () => {
+  it("sin valor, la API no enciende nada y mira la API de Machines interna", () => {
+    const env = loadEnv(validSource);
+    expect(env.FLY_WORKER_WAKE_TOKEN).toBeUndefined();
+    expect(env.FLY_APP_NAME).toBeUndefined();
+    expect(env.FLY_MACHINES_API_URL).toBe("http://_api.internal:4280");
+  });
+
+  it("acepta la dirección pública y rechaza una que no es http", () => {
+    expect(
+      loadEnv({ ...validSource, FLY_MACHINES_API_URL: "https://api.machines.dev" })
+        .FLY_MACHINES_API_URL,
+    ).toBe("https://api.machines.dev");
+    expect(envErrorOf({ ...validSource, FLY_MACHINES_API_URL: "ftp://x" }).issues).toEqual(
+      expect.arrayContaining([expect.objectContaining({ variable: "FLY_MACHINES_API_URL" })]),
+    );
+  });
+
+  it("el worker lo quita de su configuración y de su entorno", () => {
+    const processEnv = { ...validSource, FLY_WORKER_WAKE_TOKEN: "FlyV1 fm2_inventado" };
+    const env = withoutWorkerWakeToken(loadEnv(processEnv), processEnv);
+    expect(env.FLY_WORKER_WAKE_TOKEN).toBeUndefined();
+    expect(processEnv.FLY_WORKER_WAKE_TOKEN).toBeUndefined();
+    expect(JSON.stringify(env)).not.toContain("fm2_inventado");
   });
 });
