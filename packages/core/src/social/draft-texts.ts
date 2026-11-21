@@ -48,7 +48,7 @@ export async function draftPostTexts(
       const hashtags =
         params.ctx.hashtags === undefined
           ? text.hashtags
-          : applyHashtagPolicy(text.platform, text.hashtags, params.ctx.hashtags);
+          : applyHashtagPolicy(text.platform, text.hashtags, params.ctx.hashtags, text.language);
       const final = { ...text, hashtags };
       return {
         platform: text.platform,

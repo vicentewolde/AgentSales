@@ -2,6 +2,7 @@ import type { EditorialProfileBody, EditorialProfileJson } from "@agentsales/api
 import {
   EDITORIAL_LIMITS,
   type EditorialWeekday,
+  LANGUAGES,
   type Language,
   PLATFORM_TEXT,
   POST_PLATFORMS,
@@ -57,6 +58,8 @@ export type Draft = {
   avoid: string;
   cadence: Record<PostPlatform, CadenceRow>;
   hashtags: string;
+  /** Los que van solo en los textos de cada idioma (2026-11-21), como texto. */
+  hashtagsByLanguage: Record<Language, string>;
   /** «¿La IA puede agregar otros hashtags?»: `null` = por defecto (no si hay hashtags fijos). */
   aiHashtags: boolean | null;
 };
@@ -92,6 +95,13 @@ export function pillarKeyOf(name: string): string {
     .replace(/-+$/, "");
 }
 
+/** Los hashtags escritos en un campo, separados por espacios o comas. */
+const hashtagsOf = (text: string) => text.split(/[\s,]+/).filter((tag) => tag.trim() !== "");
+
+/** Si hay algún hashtag que siempre va en un idioma (cuenta para el valor por defecto de la IA). */
+export const hasLanguageHashtags = (draft: Pick<Draft, "hashtagsByLanguage">) =>
+  LANGUAGES.some((language) => draft.hashtagsByLanguage[language].trim() !== "");
+
 export function draftOf(profile: EditorialProfileJson): Draft {
   const [primary = "es", second] = profile.languages;
   const cadence = Object.fromEntries(
@@ -124,6 +134,12 @@ export function draftOf(profile: EditorialProfileJson): Draft {
     avoid: profile.avoid.join("\n"),
     cadence,
     hashtags: profile.defaultHashtags.join(" "),
+    hashtagsByLanguage: Object.fromEntries(
+      LANGUAGES.map((language) => [
+        language,
+        (profile.hashtagsByLanguage?.[language] ?? []).join(" "),
+      ]),
+    ) as Record<Language, string>,
     aiHashtags: profile.aiHashtags,
   };
 }
@@ -214,7 +230,13 @@ export function profileBody(draft: Draft): { body: EditorialProfileBody; issues:
         ];
       }),
     ),
-    defaultHashtags: draft.hashtags.split(/[\s,]+/).filter((tag) => tag.trim() !== ""),
+    defaultHashtags: hashtagsOf(draft.hashtags),
+    hashtagsByLanguage: Object.fromEntries(
+      LANGUAGES.flatMap((language) => {
+        const tags = hashtagsOf(draft.hashtagsByLanguage[language]);
+        return tags.length === 0 ? [] : [[language, tags] as const];
+      }),
+    ),
     aiHashtags: draft.aiHashtags,
   };
   return { body, issues };

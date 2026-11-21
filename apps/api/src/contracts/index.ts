@@ -1566,6 +1566,14 @@ export const editorialProfileBodySchema = z
       .refine((cadence) => Object.keys(cadence).length <= 20, { message: "Demasiadas redes" }),
     defaultHashtags: profileList(EDITORIAL_LIMITS.hashtags, EDITORIAL_LIMITS.hashtag),
     /**
+     * Los que siempre van en un idioma (2026-11-21): `{ "es": [...], "en": [...] }`. Sin el campo,
+     * ninguno. Las claves y los hashtags los valida core (`EDITORIAL_PROFILE_INVALID`).
+     */
+    hashtagsByLanguage: z
+      .record(z.string().max(10), profileList(EDITORIAL_LIMITS.hashtags, EDITORIAL_LIMITS.hashtag))
+      .refine((value) => Object.keys(value).length <= 10, { message: "Demasiados idiomas" })
+      .optional(),
+    /**
      * «¿La IA puede agregar otros hashtags?» (2026-11-15): `null` o sin el campo, por defecto (no
      * si hay hashtags que siempre van; sí si no hay ninguno).
      */

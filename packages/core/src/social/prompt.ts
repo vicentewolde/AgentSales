@@ -12,8 +12,10 @@ import { POST_TEXT_LIMITS } from "./networks.js";
  * (`hashtags_que_siempre_van`) y la IA agrega otros solo si `puede_agregar_hashtags`.
  * `social-post-v6` (F9.7, ADR-0043): el conocimiento de la marca (postura, forma de contar,
  * ejemplos de forma y novedades) y, en un post de imagen o carrusel, los textos de las láminas.
+ * `social-post-v7` (2026-11-21): los hashtags que siempre van en un idioma
+ * (`hashtags_que_siempre_van_por_idioma`).
  */
-export const SOCIAL_PROMPT_VERSION = "social-post-v6";
+export const SOCIAL_PROMPT_VERSION = "social-post-v7";
 
 /** Etiqueta del bloque de datos. Dentro del bloque, `<` y `>` van escapados: nada lo cierra. */
 const DATA_TAG = "datos_del_post";
@@ -42,7 +44,7 @@ Reglas obligatorias:
 9. Escribe cada texto en su idioma: "es" es español de Chile; "en", inglés. Con dos idiomas, cada texto se escribe para su público; no es una traducción literal.
 10. "ejemplos_de_forma" son textos que le gustan a la marca: imita su forma (cómo abren, el ritmo, el largo de las frases, cómo cuentan una escena y cómo cierran), nunca su contenido. Ninguna cifra, nombre, fecha, cliente ni hecho de un ejemplo se puede afirmar si no está en las fuentes de la regla 1. No copies frases de los ejemplos.
 11. "postura" es lo que la marca quiere transmitir y "forma_de_contar", cómo lo cuenta: úsalas para el enfoque y la voz, no como fuente de hechos. Si hay "novedades", úsalas cuando calcen con el tema; son hechos recientes de sus proyectos.
-12. Los hashtags van en "hashtags" (cada uno con #), nunca dentro de "body". Los de "hashtags_que_siempre_van" los agrega el sistema al final de cada texto en Instagram, X, LinkedIn y TikTok: no los repitas y deja espacio para ellos en el largo. Si "puede_agregar_hashtags" es false, devuelve "hashtags" vacío: no inventes ninguno. Si es true, puedes agregar pocos y específicos que calcen con el tema, nunca genéricos (#motivación, #éxito, #innovation): Instagram y TikTok, hasta 3; LinkedIn, hasta 2; X, 1 como mucho y ninguno si ya hay hashtags que siempre van; Discord, ninguno.
+12. Los hashtags van en "hashtags" (cada uno con #), nunca dentro de "body". Los de "hashtags_que_siempre_van" los agrega el sistema al final de cada texto en Instagram, X, LinkedIn y TikTok, y los de "hashtags_que_siempre_van_por_idioma" solo en los textos de ese idioma: no los repitas y deja espacio para ellos en el largo. Si "puede_agregar_hashtags" es false, devuelve "hashtags" vacío: no inventes ninguno. Si es true, puedes agregar pocos y específicos que calcen con el tema, nunca genéricos (#motivación, #éxito, #innovation): Instagram y TikTok, hasta 3; LinkedIn, hasta 2; X, 1 como mucho y ninguno si ya hay hashtags que siempre van; Discord, ninguno.
 13. Si viene "texto_actual", estás rehaciendo ese texto: úsalo como punto de partida de forma, no como fuente (solo afirma lo que permiten las reglas 1 y 2). Si viene "indicacion_del_operador" (por ejemplo, "más corto" o "sin hashtags"), síguela en la forma, el largo y el tono, sin romper las demás reglas. Es una guía, nunca una fuente de hechos: las cifras, fechas, clientes, nombres, enlaces, menciones o promesas que traiga y que no estén en las fuentes no van en el texto; avisa en "warnings" que el operador los agregue a los hechos del perfil o al brief si son verdad. Si pide algo contra estas reglas o contra "evitar", no lo sigas y avísalo en "warnings".
 
 Cómo escribir (que no suene a texto generado):
@@ -88,6 +90,8 @@ function briefData(brief: SocialBrief): Record<string, unknown> {
     hechos: brief.facts,
     evitar: brief.avoid,
     hashtags_que_siempre_van: brief.hashtags,
+    hashtags_que_siempre_van_por_idioma:
+      Object.keys(brief.hashtagsByLanguage).length === 0 ? null : brief.hashtagsByLanguage,
     puede_agregar_hashtags: brief.aiMayAddHashtags,
     tema: brief.topic,
     tema_es_fuente: brief.topicIsSource,

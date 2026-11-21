@@ -511,6 +511,11 @@ export const editorialProfiles = pgTable("editorial_profiles", {
   /** «Hashtags que siempre van»: se suman a `brokers.fixed_hashtags` en cada texto de post. */
   defaultHashtags: text("default_hashtags").array().notNull().default(sql`'{}'::text[]`),
   /**
+   * Hashtags que siempre van en un idioma (2026-11-21): `{ "es": ["#ia"], "en": ["#AI"] }`, además
+   * de `default_hashtags` (que van en todos). Claves de `LANGUAGES` (core), validadas al leer.
+   */
+  hashtagsByLanguage: jsonb("hashtags_by_language").notNull().default({}),
+  /**
    * «¿La IA puede agregar otros hashtags?» (2026-11-15): `null` = por defecto (no si hay hashtags
    * que siempre van; sí si no hay ninguno).
    */

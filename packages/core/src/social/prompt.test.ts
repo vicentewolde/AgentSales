@@ -86,6 +86,7 @@ describe("buildSocialBrief", () => {
       avoid: ["gratis"],
       hashtags: ["#AgentPey", "#corretaje"],
       // 2026-11-15: con hashtags que siempre van, por defecto la IA no agrega otros.
+      hashtagsByLanguage: {},
       aiMayAddHashtags: false,
       topic: "Cómo elegimos las redes",
       topicIsSource: true,
@@ -163,6 +164,21 @@ describe("buildSocialPrompt", () => {
     expect(buildSocialPrompt(open).prompt).toContain('"puede_agregar_hashtags": true');
   });
 
+  it("los hashtags por idioma van solo de los idiomas que se redactan (social-post-v7)", () => {
+    const withLanguages = buildSocialBrief({
+      post: POST,
+      profile: { ...PROFILE, hashtagsByLanguage: { es: ["#ia"], en: ["#AI"] } },
+      broker: BROKER,
+      targets: [{ platform: "x", language: "en" }],
+    });
+    expect(withLanguages.hashtagsByLanguage).toEqual({ en: ["#AI"] });
+    const { prompt } = buildSocialPrompt(withLanguages);
+    expect(prompt).toContain('"hashtags_que_siempre_van_por_idioma"');
+    expect(prompt).not.toContain('"#ia"');
+    expect(buildSocialPrompt(brief()).prompt).not.toContain("hashtags_que_siempre_van_por_idioma");
+    expect(SOCIAL_SYSTEM_PROMPT).toContain("hashtags_que_siempre_van_por_idioma");
+  });
+
   it("al rehacer un texto, lleva el texto actual y la indicación (guía, no fuente)", () => {
     const plain = buildSocialPrompt(brief()).prompt;
     expect(plain).not.toContain("texto_actual");
@@ -181,7 +197,7 @@ describe("buildSocialPrompt", () => {
   });
 
   it("tiene versión propia, distinta de la de avisos", () => {
-    expect(SOCIAL_PROMPT_VERSION).toBe("social-post-v6");
+    expect(SOCIAL_PROMPT_VERSION).toBe("social-post-v7");
     // v2 (F9.5-T05): el estilo de una persona, sin muletillas de IA y con hashtags medidos.
     expect(SOCIAL_SYSTEM_PROMPT).toContain("Sin clichés de marketing ni muletillas");
     // v5 (2026-11-15): los hashtags que siempre van los pone el sistema; la IA agrega otros solo si

@@ -104,6 +104,7 @@ export {
   editorialProfileSchema,
   editorialProfileView,
   emptyEditorialProfileData,
+  type HashtagsByLanguage,
   normalizeEditorialProfile,
 } from "./editorial-profile.js";
 export * from "./enums.js";

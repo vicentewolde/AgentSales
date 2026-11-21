@@ -72,6 +72,7 @@ describe("normalizeEditorialProfile", () => {
         linkedin: { postsPerWeek: 1, days: [], hours: [], languageGapHours: 12 },
       },
       defaultHashtags: ["#AgentSales", "#chile", "#emprender", "#ñandú_2"],
+      hashtagsByLanguage: {},
       aiHashtags: null,
     });
     // Lo normalizado calza con la forma de la fila (lo que el repositorio lee de vuelta).
@@ -183,6 +184,23 @@ describe("normalizeEditorialProfile", () => {
     ).toEqual(["#Chile"]);
     const tags = Array.from({ length: 31 }, (_, i) => `#tag${i}`);
     expect(fieldsOf(valid({ defaultHashtags: tags }))).toEqual(["defaultHashtags"]);
+  });
+
+  it("hashtags por idioma (2026-11-21): normaliza, no repite los de todos y valida el idioma", () => {
+    const data = normalizeEditorialProfile(
+      valid({
+        defaultHashtags: ["#agentsales"],
+        hashtagsByLanguage: { es: ["ia, #ChatGPT", "#AgentSales"], EN: ["#AI #agents"], en: [] },
+      }),
+    );
+    expect(data.hashtagsByLanguage).toEqual({ es: ["#ia", "#ChatGPT"], en: ["#AI", "#agents"] });
+    expect(normalizeEditorialProfile(valid()).hashtagsByLanguage).toEqual({});
+    expect(fieldsOf(valid({ hashtagsByLanguage: { fr: ["#ia"] } }))).toEqual([
+      "hashtagsByLanguage.fr",
+    ]);
+    expect(fieldsOf(valid({ hashtagsByLanguage: { en: ["#mal-escrito"] } }))).toEqual([
+      "hashtagsByLanguage.en",
+    ]);
   });
 
   it("junta todos los problemas en un solo error, con el mensaje legible", () => {
