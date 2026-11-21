@@ -2,13 +2,18 @@ import { PGlite } from "@electric-sql/pglite";
 import { getConstructionPlans } from "pg-boss";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { QUEUE_SCHEMA } from "./boss.js";
-import { countPendingJobs, type QueueSql } from "./pending-jobs.js";
+import {
+  BACKGROUND_JOBS,
+  countPendingJobs,
+  nextPendingJobAt,
+  type QueueSql,
+} from "./pending-jobs.js";
 
 // F9.5-T24 (ADR-0037): la consulta corre contra el esquema real de pg-boss 12.35 (el que crea
 // `getConstructionPlans`), en PGlite.
 
 const MINUTE = 60_000;
-const IGNORE = ["publication.due", "publications.watch"];
+const IGNORE = [...BACKGROUND_JOBS];
 const QUEUES = [
   ...IGNORE,
   "__pgboss__send-it",
@@ -82,5 +87,36 @@ describe("countPendingJobs (PGlite con el esquema de pg-boss)", () => {
     await job("publication.due", "active");
     await job("publications.watch", "created");
     expect(await count()).toBe(0);
+  });
+
+  describe("nextPendingJobAt (ADR-0044)", () => {
+    const next = () => nextPendingJobAt(db, { ignore: IGNORE });
+
+    it("sin jobs (o solo de fondo, internos o terminados), null", async () => {
+      expect(await next()).toBeNull();
+      await job("__pgboss__send-it", "created");
+      await job("publication.due", "active");
+      await job("publications.watch", "created", 30);
+      await job("import.run", "completed", -5);
+      await job("post.media", "failed", -5);
+      expect(await next()).toBeNull();
+    });
+
+    it("el más temprano de los que esperan, aunque sea en horas", async () => {
+      await job("post.draft", "retry", 180);
+      await job("content.prepare", "created", 45);
+      const at = await next();
+      expect(at).toBeInstanceOf(Date);
+      const minutes = ((at?.getTime() ?? 0) - Date.now()) / MINUTE;
+      expect(minutes).toBeGreaterThan(40);
+      expect(minutes).toBeLessThan(50);
+    });
+
+    it("uno activo es ya", async () => {
+      await job("content.prepare", "created", 45);
+      await job("publication.publish", "active", -30);
+      const at = await next();
+      expect(Math.abs((at?.getTime() ?? 0) - Date.now())).toBeLessThan(MINUTE);
+    });
   });
 });

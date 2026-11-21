@@ -58,6 +58,9 @@ const port = intInRange(1, 65535, "debe ser un puerto entre 1 y 65535");
 const MAX_SIGNED_URL_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 /** URL `http://` o `https://` (la dirección de retorno del OAuth). */
+/** La API de Machines de Fly desde la red privada (docs.fly.io/machines/api/working-with-machines-api). */
+export const FLY_MACHINES_INTERNAL_URL = "http://_api.internal:4280";
+
 const httpUrl = z.string().refine((value) => {
   const url = URL.parse(value);
   return url !== null && (url.protocol === "http:" || url.protocol === "https:");
@@ -372,6 +375,13 @@ const envSchema = z
       1440,
       `debe ser un número entero de minutos entre ${WORKER_CHECK_PERIOD_MINUTES} (cada cuánto revisa el horario) y 1440`,
     ).default(WORKER_STAY_AHEAD_DEFAULT_MINUTES),
+    // La API enciende el worker detenido cuando hay trabajo (ADR-0044): un token de Fly de la app
+    // (secreto, lo crea el operador) y el nombre de la app (`FLY_APP_NAME`, lo pone Fly en cada
+    // máquina). Sin los dos, la API no enciende nada (como antes). La dirección de la API de
+    // Machines es la interna de la red privada de Fly; la pública es `https://api.machines.dev`.
+    FLY_WORKER_WAKE_TOKEN: z.string().optional(),
+    FLY_APP_NAME: z.string().optional(),
+    FLY_MACHINES_API_URL: httpUrl.default(FLY_MACHINES_INTERNAL_URL),
 
     // Imágenes de un post sin medios (F9.5-T25, ADR-0038): la biblioteca de Pixabay y la IA de
     // imágenes de Google (Nano Banana). Sin la clave, esa pestaña dice qué falta y las tarjetas de
@@ -714,4 +724,17 @@ export function withoutImageAiKey(
   const imageAiConfigured = Boolean(env.GEMINI_API_KEY);
   delete processEnv.GEMINI_API_KEY;
   return { env: Object.freeze({ ...env, GEMINI_API_KEY: undefined }), imageAiConfigured };
+}
+
+/**
+ * El token que enciende el worker es solo de la API (ADR-0044): en Fly los secretos llegan a todas las
+ * máquinas, así que el worker lo quita de su configuración y de su entorno al arrancar (Chromium y
+ * ffmpeg heredan el entorno), como `withoutBackupCredentials` en la API.
+ */
+export function withoutWorkerWakeToken(
+  env: Env,
+  processEnv: Record<string, string | undefined> = process.env,
+): Env {
+  delete processEnv.FLY_WORKER_WAKE_TOKEN;
+  return Object.freeze({ ...env, FLY_WORKER_WAKE_TOKEN: undefined });
 }

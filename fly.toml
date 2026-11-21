@@ -1,8 +1,8 @@
 # AgentSales en Fly.io (spec F8 §4.7 y §4.15, D1, T11): una app, una imagen (`Dockerfile`) y dos
 # procesos: `api` (con HTTPS, se apaga sola sin tráfico) y `worker` (sin servicio HTTP; se enciende y
-# se apaga a mano en modo demo, o, con el horario activado, lo enciende `worker-schedule.yml` y se
-# apaga solo sin trabajo: F9.5-T24, ADR-0037; docs/10-despliegue.md, paso 8). Desplegar es del
-# operador (D8): `.github/workflows/deploy.yml`. Sintaxis verificada: docs/integraciones/hosting.md §14.
+# se apaga a mano en modo demo, o, con el horario activado, lo enciende la API cuando hay trabajo y
+# se apaga solo sin trabajo: F9.5-T24, ADR-0037 y ADR-0044; docs/10-despliegue.md, paso 8).
+# Desplegar es del operador (D8): `.github/workflows/deploy.yml`. Sintaxis verificada: docs/integraciones/hosting.md §14.
 # Aquí solo va lo que no es secreto; los secretos los pone el operador con `fly secrets import`.
 # Es la instancia `principal` (D19 de F9). Otra instancia del mismo código tiene su propio
 # `fly.<instancia>.toml`, una copia de este con otra `app`, `PUBLIC_URL`, `Host` del chequeo y
@@ -36,8 +36,11 @@ swap_size_mb = 512            # para un pico breve del worker (Chromium y ffmpeg
   # El worker se apaga solo tras estos minutos sin trabajo ni nada que venza en los próximos
   # WORKER_STAY_AHEAD_MINUTES (70 por defecto) (F9.5-T24, ADR-0037).
   # Desactivado otra vez el 2026-11-19: el cron "cada hora" de GitHub corrió en la práctica unas 3 veces
-  # al día (cada ~8 h), y el worker quedó apagado horas con un post esperando. Hasta tener un encendido
-  # confiable, el worker queda siempre encendido. Para activarlo, quita el `#` y despliega.
+  # al día (cada ~8 h), y el worker quedó apagado horas con un post esperando. Desde ADR-0044 lo
+  # enciende la API (con el secreto FLY_WORKER_WAKE_TOKEN). Para activarlo, quita el `#` **y** pon
+  # `min_machines_running = 1` en `[http_service]` (la API debe quedar siempre encendida para
+  # despertarlo), y despliega: docs/10-despliegue.md, «El worker con horario».
+  # Un test (`apps/api/src/fly-toml.test.ts`) falla si se activa uno sin el otro.
   # WORKER_IDLE_EXIT_MINUTES = "10"
 
 [processes]
@@ -61,6 +64,8 @@ swap_size_mb = 512            # para un pico breve del worker (Chromium y ffmpeg
   force_https = true
   auto_stop_machines = "stop"
   auto_start_machines = true
+  # Con el worker que se apaga solo (WORKER_IDLE_EXIT_MINUTES en `[env]`), 1: la API queda siempre
+  # encendida para encenderlo (ADR-0044). Se cambian juntos.
   min_machines_running = 0
 
   # Solo que el proceso responde (`/api/health/live`, sin base): una base despertando no saca la

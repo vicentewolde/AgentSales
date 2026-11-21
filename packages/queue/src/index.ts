@@ -7,7 +7,9 @@ export {
   type ProducerBoss,
 } from "./job-queue.js";
 export {
+  BACKGROUND_JOBS,
   countPendingJobs,
+  nextPendingJobAt,
   PGBOSS_INTERNAL_PREFIX,
   type QueueSql,
 } from "./pending-jobs.js";
