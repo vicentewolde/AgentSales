@@ -1,6 +1,8 @@
+import type { CardStyleResponse } from "@agentsales/api/contracts";
 import {
   CARD_COMPOSITIONS,
   type CardComposition,
+  type CardStyle,
   type CardTheme,
   POST_IMAGE_FORMATS,
   type PostImageFormat,
@@ -10,7 +12,7 @@ import { useCardStyle, useCardStylePreview, useSaveCardStyle } from "../../queri
 import { ErrorAlert } from "../ErrorAlert.js";
 import { Alert } from "../ui/Alert.js";
 import { Button } from "../ui/Button.js";
-import { Field, Select, Textarea } from "../ui/Field.js";
+import { Field, Input, Select, Textarea } from "../ui/Field.js";
 
 // «Estilo de imágenes» en Mi marca (spec F9.7 B4, ADR-0043 D3): el manual de diseño de la marca
 // como datos (colores, fuentes de la lista, márgenes, logo y hasta 4 temas que se rotan, uno por
@@ -48,6 +50,92 @@ function ThemeSwatches({ themes }: { themes: readonly CardTheme[] }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/** El pie como sale en las láminas («agentpey.com · Instagram agentpey · X agentpeyai»). */
+function footerLine(footer: CardStyleResponse["cardStyle"]["footer"]): string {
+  const parts = [
+    ...(footer.website === null ? [] : [footer.website]),
+    ...(footer.instagram === null ? [] : [`Instagram ${footer.instagram}`]),
+    ...(footer.x === null ? [] : [`X ${footer.x}`]),
+  ];
+  return parts.length === 0 ? "sin pie" : parts.join(" · ");
+}
+
+type FooterDraft = { website: string; instagram: string; x: string };
+
+/**
+ * «Pie de las láminas»: el sitio y los usuarios de Instagram y X que van abajo en cada lámina (con
+ * sus íconos). Se guarda en el estilo; lo que se deja vacío sale de la marca o de sus cuentas.
+ */
+function FooterForm({
+  brokerId,
+  style,
+  footer,
+}: {
+  brokerId: string;
+  style: CardStyle;
+  footer: CardStyleResponse["cardStyle"]["footer"];
+}) {
+  const save = useSaveCardStyle(brokerId);
+  const [draft, setDraft] = useState<FooterDraft>({
+    website: style.footer?.website ?? "",
+    instagram: style.footer?.instagram ?? "",
+    x: style.footer?.x ?? "",
+  });
+  const value = (text: string) => (text.trim() === "" ? null : text.trim());
+  const fields: { key: keyof FooterDraft; label: string; placeholder: string }[] = [
+    { key: "website", label: "Sitio", placeholder: "agentpey.com" },
+    { key: "instagram", label: "Usuario de Instagram", placeholder: "agentpey" },
+    { key: "x", label: "Usuario de X", placeholder: "agentpeyai" },
+  ];
+  return (
+    <form
+      aria-label="Pie de las láminas"
+      className="mt-4 rounded-xl border border-line-soft p-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        save.mutate({
+          ...style,
+          footer: {
+            website: value(draft.website),
+            instagram: value(draft.instagram),
+            x: value(draft.x),
+          },
+        });
+      }}
+    >
+      <p className="text-sm font-semibold">Pie de las láminas</p>
+      <p className="text-sm text-fg-muted">
+        Hoy: {footerLine(save.data?.cardStyle.footer ?? footer)}. Lo que dejes vacío sale del sitio
+        y el Instagram de la marca o de sus cuentas conectadas; lo que no está en ninguna parte no
+        va.
+      </p>
+      <div className="mt-2 grid gap-2 sm:grid-cols-3">
+        {fields.map((field) => (
+          <Field key={field.key} label={field.label}>
+            <Input
+              value={draft[field.key]}
+              placeholder={field.placeholder}
+              maxLength={80}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, [field.key]: event.target.value }))
+              }
+            />
+          </Field>
+        ))}
+      </div>
+      {save.error && <ErrorAlert error={save.error} />}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Button type="submit" variant="secondary" loading={save.isPending}>
+          Guardar el pie
+        </Button>
+        <p role="status" className="text-sm text-success-800">
+          {save.isSuccess && "Pie guardado."}
+        </p>
+      </div>
+    </form>
   );
 }
 
@@ -105,6 +193,14 @@ export function CardStyleSection({ brokerId }: { brokerId: string }) {
       </p>
       {current.error && <ErrorAlert error={current.error} onRetry={() => void current.refetch()} />}
       {themes.length > 0 && <ThemeSwatches themes={themes} />}
+      {saved !== null && current.data !== undefined && (
+        <FooterForm
+          key={current.data.version ?? 0}
+          brokerId={brokerId}
+          style={saved}
+          footer={current.data.footer}
+        />
+      )}
       <div className="mt-3 grid gap-4 lg:grid-cols-2">
         <div>
           <Field
