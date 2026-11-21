@@ -11,6 +11,7 @@ import {
   marketplaceAutomationEnabled,
   resolveBackupDir,
   resolveBrowserProfilesDir,
+  withoutWorkerWakeToken,
 } from "@agentsales/config";
 import {
   type AutoPublishDeps,
@@ -105,7 +106,8 @@ import { type ShutdownReason, stopOptionsFor, stopWorker } from "./shutdown.js";
 
 // `ENV_FILE` es solo para los scripts (spec F8, D12): aquí se rechaza.
 loadAppEnvFile();
-const env = loadEnv();
+// El token que enciende el worker es solo de la API (ADR-0044): en Fly llega a las dos máquinas.
+const env = withoutWorkerWakeToken(loadEnv());
 const logger = createLogger({
   level: env.LOG_LEVEL,
   pretty: env.NODE_ENV !== "production",

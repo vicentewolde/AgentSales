@@ -1,24 +1,19 @@
 import { createErrorThrottle, type Logger } from "@agentsales/config";
 import { dueQuery, type JobName, type PublicationRepository } from "@agentsales/core";
-import { countPendingJobs, type QueueSql } from "@agentsales/queue";
+import { BACKGROUND_JOBS, countPendingJobs, type QueueSql } from "@agentsales/queue";
 
 // El worker se apaga solo (F9.5-T24, ADR-0037): cuando lleva `WORKER_IDLE_EXIT_MINUTES` seguidos sin
 // nada que hacer ni nada programado que venza en los próximos `WORKER_STAY_AHEAD_MINUTES`, cierra
 // limpio (sin cortar los jobs: el apagado espera a que terminen, `stopOptionsFor("idle")`) y sale
-// con 0. En Fly la máquina queda detenida (`[[restart]] policy = "on-failure"`) hasta que el
-// workflow `worker-schedule.yml` la vuelve a encender en su próxima revisión (cada hora a los :50,
-// de día): mirar 70 min adelante cubre lo que vence antes de esa revisión y su atraso en GitHub.
+// con 0. En Fly la máquina queda detenida (`[[restart]] policy = "on-failure"`) hasta que la API la
+// enciende cuando hay trabajo (ADR-0044, `apps/api/src/worker-wake.ts`) o, de respaldo, el workflow
+// `worker-schedule.yml` en su revisión de cada hora (de día).
 
 /** Cada cuánto se revisa si queda algo que hacer. */
 export const IDLE_CHECK_INTERVAL_MS = 60_000;
 
-/**
- * Los jobs que no cuentan como trabajo (los internos de pg-boss tampoco, `countPendingJobs`):
- * `publication.due` corre cada minuto aunque no haya nada (lo que sí cuenta es lo programado que
- * vence, que se mira aparte) y `publications.watch` cada hora (es vigilancia, y el arranque ya hace
- * lo mismo): contarlos alargaría cada encendido sin motivo.
- */
-export const IDLE_IGNORED_JOBS: readonly JobName[] = ["publication.due", "publications.watch"];
+/** Los jobs que no cuentan como trabajo (`BACKGROUND_JOBS` de la cola, el mismo que mira la API). */
+export const IDLE_IGNORED_JOBS: readonly JobName[] = BACKGROUND_JOBS;
 
 /** Por qué el worker sigue encendido (para el log), o `null` si no queda nada que hacer. */
 export type IdleReason = "jobs" | "publications" | "marketplace_windows";
