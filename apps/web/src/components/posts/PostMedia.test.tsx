@@ -88,3 +88,24 @@ describe("panel: el idioma de cada imagen", () => {
     await waitFor(async () => expect(await languages(s)).toEqual([null, "es"]));
   });
 });
+
+describe("panel: quitar una foto del post (2026-11-21)", () => {
+  it("«Quitar» pide confirmación; cancelar no cambia nada y confirmar la quita", async () => {
+    const s = await setup();
+    fireEvent.click(await screen.findByRole("button", { name: "Quitar la foto 1" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Confirmar quitar el medio" });
+    expect(dialog.textContent).toContain("¿Quitar la foto 1 del post?");
+    expect(dialog.textContent).toContain("no se puede deshacer");
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(await languages(s)).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "Quitar la foto 1" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Sí, quitarla" }));
+    await waitFor(async () => expect(await languages(s)).toHaveLength(1));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Quitar la foto 2" })).toBeNull(),
+    );
+    expect(screen.getByRole("button", { name: "Quitar la foto 1" })).toBeTruthy();
+  });
+});

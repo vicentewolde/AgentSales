@@ -1718,6 +1718,21 @@ export const postMediaLanguageResponseSchema = z.object({
 export type PostMediaLanguageResponse = z.infer<typeof postMediaLanguageResponseSchema>;
 
 /**
+ * `DELETE /posts/:id/media/:mediaId` (2026-11-21): los medios que quedan en el post, las
+ * publicaciones aprobadas o fallidas a las que se les quitó, y cuántos archivos de R2 quedaron
+ * sueltos (no se pudieron borrar; el post ya no los tiene).
+ */
+export const postMediaRemoveResponseSchema = z.object({
+  media: z.array(postMediaItemSchema),
+  removed: z.object({
+    mediaId: z.string(),
+    updatedPublicationIds: z.array(z.string()),
+    leftover: z.number().int().nonnegative(),
+  }),
+});
+export type PostMediaRemoveResponse = z.infer<typeof postMediaRemoveResponseSchema>;
+
+/**
  * Una publicación de un post con los medios que lleva, firmados (F9.5, LinkedIn a mano): como
  * `listingPublicationSchema`, solo en las pendientes (`PENDING_PUBLICATION_STATUSES`), cuyos medios
  * no cambian; en las demás va vacío. Un servidor anterior no lo manda: se lee vacío. Nunca va a la

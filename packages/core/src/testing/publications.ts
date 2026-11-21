@@ -287,6 +287,26 @@ export function createInMemoryPublicationRepository(
       return structuredCopy(publication);
     },
 
+    async removeMediaIds(id, guard, event) {
+      const found = find(id);
+      normalizeEventPayload(event.payload);
+      const current = found.publication;
+      if (!guard.statuses.includes(current.status)) {
+        throw new AppError("PUBLICATION_STALE", "La publicación cambió mientras tanto: recarga", {
+          details: { publicationId: id },
+        });
+      }
+      const drop = new Set(guard.mediaIds);
+      const publication = {
+        ...current,
+        mediaIds: current.mediaIds.filter((mediaId) => !drop.has(mediaId)),
+        updatedAt: later(current.updatedAt),
+      };
+      publications.set(id, { ...found, publication });
+      pushEvent(id, "manual_edit", null, null, event);
+      return structuredCopy(publication);
+    },
+
     async replacePublishedSource(id, guard, source, event) {
       const found = find(id);
       // Primero los datos y después el estado, como el de Drizzle.

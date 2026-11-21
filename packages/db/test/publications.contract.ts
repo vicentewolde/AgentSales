@@ -974,6 +974,32 @@ export function publicationRepositoryContract(
       ).rejects.toMatchObject({ code: "PUBLICATION_STALE" });
     });
 
+    it("removeMediaIds quita medios solo en los estados dados, con manual_edit", async () => {
+      const ids = ["00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000002"];
+      const created = await repos.publications.create(
+        await newPublication({ mediaIds: ids }),
+        operator,
+      );
+      const updated = await repos.publications.removeMediaIds(
+        created.id,
+        { statuses: ["approved", "failed"], mediaIds: [ids[0] ?? "", "otro"] },
+        { actor: "operator", payload: { mediaRemoved: [ids[0]] } },
+      );
+      expect(updated).toMatchObject({ status: "approved", mediaIds: [ids[1]] });
+      expect((await repos.publications.listEvents(created.id)).at(-1)).toMatchObject({
+        type: "manual_edit",
+        payload: { mediaRemoved: [ids[0]] },
+      });
+      await expect(
+        repos.publications.removeMediaIds(
+          created.id,
+          { statuses: ["failed"], mediaIds: [ids[1] ?? ""] },
+          operator,
+        ),
+      ).rejects.toMatchObject({ code: "PUBLICATION_STALE" });
+      expect((await repos.publications.get(created.id))?.mediaIds).toEqual([ids[1]]);
+    });
+
     it("replacePublishedSource es solo de Portal publicada o pausada (ADR-0020)", async () => {
       const input = await newPublication();
       const instagram = await repos.publications.create(input, operator);
