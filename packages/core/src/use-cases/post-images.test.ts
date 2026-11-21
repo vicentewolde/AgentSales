@@ -1413,7 +1413,7 @@ describe("F9.7 B6: láminas con el estilo de la marca", () => {
     expect(s.cards.calls[0]?.card.items).toEqual([]);
   });
 
-  it("el pie: el del estilo, el X de la cuenta conectada y, en un carrusel, el número antes", async () => {
+  it("el pie: el del estilo y el X de la cuenta conectada, sin el número en un carrusel", async () => {
     const s = await setup({ platforms: ["instagram"], languages: ["es"] });
     const cardStyles = createInMemoryCardStyleRepository();
     await cardStyles.save(s.broker.id, {
@@ -1437,9 +1437,9 @@ describe("F9.7 B6: láminas con el estilo de la marca", () => {
     );
     const footer = "agentpey.com · {instagram} agentpey · {x} agentpeyai";
     expect(s.cards.calls.map((call) => [call.card.role, call.card.detail])).toEqual([
-      ["cover", `1/4 · ${footer}`],
-      ["point", `2/4 · ${footer}`],
-      ["point", `3/4 · ${footer}`],
+      ["cover", footer],
+      ["point", footer],
+      ["point", footer],
       ["closing", footer],
     ]);
   });

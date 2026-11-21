@@ -222,18 +222,9 @@ async function produce(
           card.role === "cover" ? { ...card, detail: footer, items } : { ...card, detail: footer },
         );
       }
-      // En un carrusel, el número de la lámina va antes del pie («1/4 · agentpey.com · …»).
-      deck = styledDeck.map((card) =>
-        post.kind === "carousel" && card.total > 1 && card.role !== "closing"
-          ? {
-              ...card,
-              detail:
-                footer === null
-                  ? `${card.position}/${card.total}`
-                  : `${card.position}/${card.total} · ${footer}`,
-            }
-          : card,
-      );
+      // El pie lleva solo el sitio, Instagram y X, también en un carrusel: sin el número de la
+      // lámina (lo decidió el operador el 2026-11-21).
+      deck = styledDeck;
       // Un post de imagen con puntos clave los muestra en su única imagen: la grilla de «Explicar»
       // (en «Anuncio» no cabrían). Sin puntos, la composición pedida, como siempre.
       const pointsInImage = post.kind === "image" && (deck[0]?.items?.length ?? 0) > 0;
