@@ -112,6 +112,58 @@ describe("renderStyledCard", () => {
     }
   }, 60_000);
 
+  it("el cierre con el pie de las redes dibuja los íconos y cabe en cada formato", async () => {
+    const footer = "agentpey.com · {instagram} agentpey · {x} agentpeyai";
+    for (const format of POST_IMAGE_FORMATS) {
+      const closing: CardSpec = {
+        role: "closing",
+        text: "AgentPey",
+        detail: footer,
+        position: 4,
+        total: 4,
+      };
+      const result = await renderStyledCard(
+        closing,
+        BRAND,
+        { style, theme: 0, composition: "announce" },
+        format,
+      );
+      expect(result.fits, format).toBe(true);
+      const plain = await renderStyledCard(
+        { ...closing, detail: "agentpey.com · instagram agentpey · x agentpeyai" },
+        BRAND,
+        { style, theme: 0, composition: "announce" },
+        format,
+      );
+      expect(result.png.equals(plain.png), format).toBe(false);
+    }
+  }, 60_000);
+
+  it("una sola imagen con el titular y sus puntos clave con cifras cabe en cada formato", async () => {
+    const card: CardSpec = {
+      role: "cover",
+      text: "Cómo compran los chilenos con IA",
+      subtitle: null,
+      detail: "agentpey.com · {instagram} agentpey · {x} agentpeyai",
+      position: 1,
+      total: 1,
+      items: [
+        { label: "01", text: "68% probaría comprar con un agente de IA" },
+        { label: "02", text: "64% confía más si puede poner límites" },
+        { label: "03", text: "Pagar con permiso, no con la tarjeta" },
+      ],
+    };
+    for (const format of POST_IMAGE_FORMATS) {
+      const result = await renderStyledCard(
+        card,
+        BRAND,
+        { style, theme: 0, composition: "explain" },
+        format,
+      );
+      expect(result.fits, format).toBe(true);
+    }
+  }, 60_000);
+
   it("cada tema pinta su fondo y el tema rota con el índice del post", async () => {
     const corner = async (theme: number) => {
       const { png } = await renderStyledCard(

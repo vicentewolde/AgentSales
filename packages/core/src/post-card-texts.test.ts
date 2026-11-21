@@ -60,6 +60,36 @@ describe("normalizeCardTexts y el mazo", () => {
     ).toHaveLength(1);
   });
 
+  it("una imagen lleva sus puntos clave (hasta 3) en la misma lámina, sin láminas aparte", () => {
+    const texts = [
+      {
+        role: "cover" as const,
+        headline: "Cómo compran los chilenos con IA",
+        subtitle: "",
+        position: 1,
+      },
+      ...["68% probaría", "64% confía", "Tercero", "Cuarto"].map((headline, index) => ({
+        role: "point" as const,
+        headline,
+        subtitle: "",
+        position: index + 2,
+      })),
+    ];
+    const deck = cardDeckFromTexts({
+      texts,
+      kind: "image",
+      brandName: "A",
+      detail: null,
+      maxPoints: 8,
+    });
+    expect(deck).toHaveLength(1);
+    expect(deck[0]?.items?.map((item) => item.text)).toEqual([
+      "68% probaría",
+      "64% confía",
+      "Tercero",
+    ]);
+  });
+
   it("de la respuesta de la IA quedan una portada por idioma pedido y los puntos que caben", () => {
     const slide = (language: "es" | "en", role: "cover" | "point", headline: string) => ({
       language,

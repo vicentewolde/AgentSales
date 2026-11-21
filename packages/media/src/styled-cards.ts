@@ -455,6 +455,21 @@ async function footerBlock(
   }
 }
 
+/**
+ * El subtítulo de una lámina. En el cierre es el pie (`detail`): si trae `{instagram}` o `{x}`, sus
+ * íconos en una línea, como en el pie; si no, el texto de siempre.
+ */
+function subtitleBlock(
+  text: string,
+  style: CardStyle,
+  color: string,
+  options: { width: number; maxHeight: number; size: number; align: "left" | "centre" },
+): Promise<Block> {
+  return FOOTER_TOKEN.test(text)
+    ? footerBlock(text, style, color, options)
+    : bodyText(text, style, color, options);
+}
+
 /** Cuánto más grande que el texto de la tarjeta se dibuja una cifra al inicio de un punto. */
 export const FIGURE_SCALE = 2.4;
 
@@ -597,7 +612,7 @@ async function announceLayers(
   const subtitle =
     subtitleText === ""
       ? null
-      : await bodyText(subtitleText, style, theme.secondary, {
+      : await subtitleBlock(subtitleText, style, theme.secondary, {
           width: Math.round(inner * 0.82),
           maxHeight: short ? 110 : 150,
           size: short ? 34 : 40,
@@ -659,7 +674,7 @@ async function explainLayers(
   const subtitle =
     subtitleText === "" || card.role === "point"
       ? null
-      : await bodyText(subtitleText, style, theme.secondary, {
+      : await subtitleBlock(subtitleText, style, theme.secondary, {
           width: Math.round(inner * 0.82),
           maxHeight: short ? 100 : 130,
           size: short ? 34 : 40,
@@ -801,7 +816,7 @@ async function wideLayers(
   const subtitle =
     subtitleText === "" || (explain && card.role === "point")
       ? null
-      : await bodyText(subtitleText, style, theme.secondary, {
+      : await subtitleBlock(subtitleText, style, theme.secondary, {
           width: leftWidth,
           maxHeight: 160,
           size: 28,

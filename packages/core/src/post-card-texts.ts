@@ -22,6 +22,11 @@ export const CARD_TEXT_LIMITS = {
   subtitleChars: 240,
   /** Láminas por idioma: la portada y hasta 8 puntos (las tarjetas de siempre). */
   perLanguage: 9,
+  /**
+   * Los puntos clave de un post de imagen: van en la misma imagen, en la grilla de «Explicar»
+   * (3 caben en todas las proporciones, también en 1:1).
+   */
+  imagePoints: 3,
 } as const;
 
 export const postCardTextSchema = z.object({
@@ -118,7 +123,8 @@ export function normalizeCardTexts(input: CardTextsInput): NewCardText[] {
 /**
  * El mazo de las láminas con estilo desde sus textos (B6): la portada (titular, subtítulo y, en
  * «Explicar», los puntos en grilla), un punto por lámina (un carrusel) y el cierre con la marca.
- * Una imagen sola es solo la portada. `maxPoints` es el tope de la red más estricta.
+ * Una imagen sola es solo la portada, con sus puntos clave (hasta `CARD_TEXT_LIMITS.imagePoints`)
+ * en la grilla. `maxPoints` es el tope de la red más estricta.
  */
 export function cardDeckFromTexts(params: {
   texts: readonly Pick<PostCardText, "role" | "headline" | "subtitle" | "position">[];
@@ -129,9 +135,11 @@ export function cardDeckFromTexts(params: {
 }): CardSpec[] {
   const sorted = [...params.texts].sort((a, b) => a.position - b.position);
   const cover = sorted.find((text) => text.role === "cover");
-  const points = sorted
-    .filter((text) => text.role === "point")
-    .slice(0, Math.max(0, params.maxPoints));
+  const cap =
+    params.kind === "image"
+      ? Math.min(params.maxPoints, CARD_TEXT_LIMITS.imagePoints)
+      : params.maxPoints;
+  const points = sorted.filter((text) => text.role === "point").slice(0, Math.max(0, cap));
   const items = points.map((point, index) => ({
     label: String(index + 1).padStart(2, "0"),
     text: point.headline,

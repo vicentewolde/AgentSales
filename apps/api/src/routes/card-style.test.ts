@@ -64,6 +64,37 @@ describe("/brokers/:id/card-style", () => {
     expect(body.cardStyle.version).toBe(1);
     expect(body.cardStyle.style?.themes).toHaveLength(4);
     expect(body.cardStyle.warnings).toEqual([]);
+    // El pie de AgentPey va en su estilo: el sitio, Instagram y X.
+    expect(body.cardStyle.footer).toEqual({
+      website: "agentpey.com",
+      instagram: "agentpey",
+      x: "agentpeyai",
+    });
+  });
+
+  it("sin pie en el estilo, el pie sale de la marca y de la cuenta de X conectada", async () => {
+    const s = await setup();
+    const { footer: _, ...style } = (await agentpey()) as Record<string, unknown>;
+    await s.deps.platformAccounts.upsertConnected({
+      brokerId: s.broker.id,
+      platform: "x",
+      externalAccountId: "1",
+      displayName: "@agentpeyx",
+      tokenExpiresAt: null,
+      meta: {},
+      credentials: { accessToken: "a", refreshToken: "r" },
+    });
+    const saved = cardStyleResponseSchema.parse(
+      await (
+        await s.call(`/brokers/${s.broker.id}/card-style`, { method: "PUT", json: { style } })
+      ).json(),
+    );
+    expect(saved.cardStyle.style?.footer).toBeUndefined();
+    expect(saved.cardStyle.footer).toEqual({
+      website: null,
+      instagram: "agentpeyai",
+      x: "agentpeyx",
+    });
   });
 
   it("un estilo inválido es 400 con su campo; la muestra devuelve un PNG", async () => {

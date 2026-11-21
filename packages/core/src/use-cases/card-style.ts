@@ -1,13 +1,18 @@
+import type { Broker } from "../broker.js";
 import {
   type BrandCardStyle,
   type CardComposition,
+  type CardFooterParts,
   type CardStyle,
+  cardFooterParts,
+  cardFooterText,
   lowContrastPairs,
   parseCardStyle,
 } from "../card-style.js";
 import { AppError } from "../errors.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { CardStyleRepository } from "../ports/card-style-repository.js";
+import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
 import type { PostImageFormat } from "../post-image.js";
 import type { User } from "../user.js";
 import { assertBrandAccess } from "./brand-knowledge.js";
@@ -27,6 +32,8 @@ export type CardStyleView = {
   version: number | null;
   updatedAt: Date | null;
   warnings: CardStyleWarning[];
+  /** Lo que lleva el pie de las láminas con estilo (`null`, lo que no está en ninguna parte). */
+  footer: CardFooterParts;
 };
 
 const warningsOf = (style: CardStyle | null): CardStyleWarning[] =>
@@ -36,22 +43,50 @@ const warningsOf = (style: CardStyle | null): CardStyleWarning[] =>
         lowContrastPairs(theme).map((pair) => ({ theme: theme.name, ...pair })),
       );
 
-const viewOf = (brokerId: string, saved: BrandCardStyle | null): CardStyleView => ({
+const viewOf = (
+  brokerId: string,
+  saved: BrandCardStyle | null,
+  footer: CardFooterParts,
+): CardStyleView => ({
   brokerId,
   style: saved?.style ?? null,
   version: saved?.version ?? null,
   updatedAt: saved?.updatedAt ?? null,
   warnings: warningsOf(saved?.style ?? null),
+  footer,
 });
+
+const brokerOf = async (deps: Deps, brokerId: string) => {
+  const broker = await deps.brokers.findById(brokerId);
+  if (broker === null) throw new AppError("BROKER_NOT_FOUND", "La marca no existe");
+  return broker;
+};
 
 type Deps = {
   brokers: Pick<BrokerRepository, "findById">;
   cardStyles: Pick<CardStyleRepository, "get" | "save">;
+  /** Las cuentas de la marca, para el usuario de Instagram o X del pie. */
+  platformAccounts?: Pick<PlatformAccountRepository, "listByBroker">;
 };
+
+/** El pie que sale en las láminas con ese estilo (del estilo, de la marca o de sus cuentas). */
+async function footerOf(
+  deps: Deps,
+  broker: Pick<Broker, "id" | "website" | "instagramHandle">,
+  style: CardStyle | null,
+): Promise<CardFooterParts> {
+  return cardFooterParts({
+    footer: style?.footer,
+    broker,
+    accounts: (await deps.platformAccounts?.listByBroker(broker.id)) ?? [],
+  });
+}
 
 export async function getCardStyle(deps: Deps, actor: Actor, brokerId: string) {
   await assertBrandAccess(deps.brokers, actor, brokerId, "broker.view");
-  return viewOf(brokerId, await deps.cardStyles.get(brokerId));
+  const saved = await deps.cardStyles.get(brokerId);
+  const broker = await brokerOf(deps, brokerId);
+  return viewOf(brokerId, saved, await footerOf(deps, broker, saved?.style ?? null));
 }
 
 /** Guarda el estilo (`brand.edit`): `CARD_STYLE_INVALID` (400) si no sirve; avisa el contraste. */
@@ -63,7 +98,9 @@ export async function saveCardStyle(
 ): Promise<CardStyleView> {
   await assertBrandAccess(deps.brokers, actor, brokerId, "brand.edit");
   const style = parseCardStyle(input);
-  return viewOf(brokerId, await deps.cardStyles.save(brokerId, style));
+  const saved = await deps.cardStyles.save(brokerId, style);
+  const broker = await brokerOf(deps, brokerId);
+  return viewOf(brokerId, saved, await footerOf(deps, broker, style));
 }
 
 /** Dibuja una lámina de muestra (lo hace `@agentsales/media`; en las pruebas, un doble). */
@@ -100,11 +137,12 @@ export async function previewCardStyle(
   if (style === null || broker === null) {
     throw new AppError("CARD_STYLE_NOT_FOUND", "La marca todavía no tiene estilo de imágenes");
   }
-  const handle = broker.instagramHandle?.trim().replace(/^@/u, "");
+  // El pie de las láminas del servidor: el del estilo, o el de la marca y sus cuentas.
+  const detail = cardFooterText(await footerOf(deps, broker, style));
   return deps.preview({
     style,
     brandName: broker.brandName,
-    detail: handle === undefined || handle === "" ? (broker.website ?? null) : `@${handle}`,
+    detail,
     theme: input.theme,
     composition: input.composition,
     format: input.format,
