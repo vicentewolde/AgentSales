@@ -212,6 +212,8 @@ En vez de encenderlo y apagarlo tú, el worker puede **apagarse solo** cuando no
 
 **Activarlo (lo haces tú, una vez):**
 
+> **Hecho el 2026-11-21** en la app principal: puntos 1 a 3 (el worker apagado se encendió solo al pedir una lámina) y el punto 4 en `fly.toml`. Falta, después de una semana sin problemas, desactivar el respaldo de GitHub.
+
 1. **El token de Fly**, directo al secreto de la API, sin que pase por la pantalla ni el portapapeles. Es un token de la app `agentsales` y nada más, y vence en 6 meses:
    ```bash
    fly tokens create deploy -a agentsales -n api-worker-wake -x 4380h \

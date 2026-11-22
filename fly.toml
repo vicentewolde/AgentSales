@@ -35,13 +35,12 @@ swap_size_mb = 512            # para un pico breve del worker (Chromium y ffmpeg
   BACKUP_R2_BUCKET = "agentsales-backups"
   # El worker se apaga solo tras estos minutos sin trabajo ni nada que venza en los próximos
   # WORKER_STAY_AHEAD_MINUTES (70 por defecto) (F9.5-T24, ADR-0037).
-  # Desactivado otra vez el 2026-11-19: el cron "cada hora" de GitHub corrió en la práctica unas 3 veces
-  # al día (cada ~8 h), y el worker quedó apagado horas con un post esperando. Desde ADR-0044 lo
-  # enciende la API (con el secreto FLY_WORKER_WAKE_TOKEN). Para activarlo, quita el `#` **y** pon
-  # `min_machines_running = 1` en `[http_service]` (la API debe quedar siempre encendida para
-  # despertarlo), y despliega: docs/10-despliegue.md, «El worker con horario».
+  # Activado el 2026-11-21 (ADR-0044): lo vuelve a encender la API (con el secreto
+  # FLY_WORKER_WAKE_TOKEN; probado ese día con el worker apagado), que por eso queda siempre encendida
+  # (`min_machines_running = 1` en `[http_service]`). Para volver atrás, pon el `#` aquí **y**
+  # `min_machines_running = 0`, y despliega: docs/10-despliegue.md, «El worker con horario».
   # Un test (`apps/api/src/fly-toml.test.ts`) falla si se activa uno sin el otro.
-  # WORKER_IDLE_EXIT_MINUTES = "10"
+  WORKER_IDLE_EXIT_MINUTES = "10"
 
 [processes]
   api = "node apps/api/dist/src/server.js"
@@ -66,7 +65,7 @@ swap_size_mb = 512            # para un pico breve del worker (Chromium y ffmpeg
   auto_start_machines = true
   # Con el worker que se apaga solo (WORKER_IDLE_EXIT_MINUTES en `[env]`), 1: la API queda siempre
   # encendida para encenderlo (ADR-0044). Se cambian juntos.
-  min_machines_running = 0
+  min_machines_running = 1
 
   # Solo que el proceso responde (`/api/health/live`, sin base): una base despertando no saca la
   # API del balanceo. `/api/health` completo queda para `doctor` y el panel.
