@@ -25,14 +25,12 @@ describe("fly.toml", () => {
   });
 
   it("la regla se nota en las líneas activas, no en las comentadas", () => {
-    const withIdle = flyToml.replace(
-      /^\s*# WORKER_IDLE_EXIT_MINUTES = "10"$/m,
-      '  WORKER_IDLE_EXIT_MINUTES = "10"',
-    );
-    expect(withIdle).not.toBe(flyToml);
-    expect(pairingProblem(withIdle)).not.toBeNull();
-    const both = withIdle.replace(/^(\s*)min_machines_running = 0$/m, "$1min_machines_running = 1");
-    expect(both).not.toBe(withIdle);
-    expect(pairingProblem(both)).toBeNull();
+    const idle = '  WORKER_IDLE_EXIT_MINUTES = "10"';
+    const commentedIdle = '  # WORKER_IDLE_EXIT_MINUTES = "10"';
+    const base = (idleLine: string, min: number) =>
+      `[env]\n${idleLine}\n\n[http_service]\n  # min_machines_running = 1\n  min_machines_running = ${min}\n`;
+    expect(pairingProblem(base(idle, 0))).not.toBeNull();
+    expect(pairingProblem(base(idle, 1))).toBeNull();
+    expect(pairingProblem(base(commentedIdle, 0))).toBeNull();
   });
 });
