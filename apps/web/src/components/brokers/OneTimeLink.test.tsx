@@ -45,12 +45,12 @@ describe("enviar el enlace por correo", () => {
   it("la invitación: al correo del invitado, con el asunto y el enlace en el cuerpo", () => {
     const mail = parse(invitationMailto(link, "invitation"));
     expect(mail.to).toBe("ana+corredora@ejemplo.cl");
-    expect(mail.subject).toBe("Tu acceso a AgentSales");
+    expect(mail.subject).toBe("Tu acceso a AgentPey");
     expect(mail.body).toBe(
       [
         "Hola Ana Pérez:",
         "",
-        "Te creé un usuario en AgentSales. Para entrar, abre este enlace y elige tu contraseña:",
+        "Te creé un usuario en AgentPey. Para entrar, abre este enlace y elige tu contraseña:",
         "",
         "https://panel.ejemplo.cl/invitacion#token-de-prueba&otra=cosa",
         "",
@@ -94,8 +94,8 @@ describe("enviar el enlace por correo", () => {
 
   it("restablecer: el mismo asunto y un mensaje de contraseña nueva", () => {
     const mail = parse(invitationMailto(link, "reset"));
-    expect(mail.subject).toBe("Tu acceso a AgentSales");
-    expect(mail.body).toContain("Para elegir una contraseña nueva en AgentSales");
+    expect(mail.subject).toBe("Tu acceso a AgentPey");
+    expect(mail.body).toContain("Para elegir una contraseña nueva en AgentPey");
     expect(mail.body).toContain(link.invitationUrl);
     expect(mail.body).not.toContain("Te creé un usuario");
   });

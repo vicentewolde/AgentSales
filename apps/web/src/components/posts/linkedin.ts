@@ -3,7 +3,7 @@ import { confirmsWithoutUrl, joinedPostText } from "@agentsales/core";
 
 // LinkedIn a mano al mínimo trabajo (F9.5): lo puro del asistente — el enlace que abre el editor con
 // el texto puesto, los medios que se bajan y cuándo una publicación quedó confirmada sin enlace.
-// Todo es un enlace normal y el portapapeles: AgentSales no automatiza el navegador en LinkedIn.
+// Todo es un enlace normal y el portapapeles: AgentPey no automatiza el navegador en LinkedIn.
 
 /** El inicio de LinkedIn, donde está «Crear una publicación». */
 export const LINKEDIN_FEED_URL = "https://www.linkedin.com/feed/";

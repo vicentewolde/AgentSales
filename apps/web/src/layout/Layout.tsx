@@ -245,7 +245,7 @@ function LayoutBody() {
           <div className="flex items-center justify-between gap-3">
             <p className="flex items-center gap-3 px-1 text-fg">
               <LogoMark className="size-9" />
-              <span className="font-display text-[1.375rem] font-semibold">AgentSales</span>
+              <span className="font-display text-[1.375rem] font-semibold">AgentPey</span>
             </p>
             <button
               type="button"

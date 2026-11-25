@@ -8,7 +8,7 @@ import type { OneTimeLinkKind } from "./one-time-link-store.js";
 
 export type { OneTimeLinkKind } from "./one-time-link-store.js";
 
-export const INVITATION_MAIL_SUBJECT = "Tu acceso a AgentSales";
+export const INVITATION_MAIL_SUBJECT = "Tu acceso a AgentPey";
 
 /**
  * El mensaje que se le manda a la persona (F9.5-T20): el saludo, para qué es el enlace, el enlace
@@ -19,8 +19,8 @@ export const INVITATION_MAIL_SUBJECT = "Tu acceso a AgentSales";
 export function invitationMessage(link: UserLinkResponse, kind: OneTimeLinkKind): string {
   const intro =
     kind === "invitation"
-      ? "Te creé un usuario en AgentSales. Para entrar, abre este enlace y elige tu contraseña:"
-      : "Para elegir una contraseña nueva en AgentSales, abre este enlace:";
+      ? "Te creé un usuario en AgentPey. Para entrar, abre este enlace y elige tu contraseña:"
+      : "Para elegir una contraseña nueva en AgentPey, abre este enlace:";
   const name = link.user.name.replace(/\s+/g, " ").trim();
   const hours = Math.round(INVITATION_TTL_MS / (60 * 60 * 1000));
   return [

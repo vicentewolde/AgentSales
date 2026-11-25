@@ -108,7 +108,7 @@ describe("la invitación", () => {
     const { token } = await invite(h);
     h.renderApp(`/invitacion#${token}`);
 
-    await screen.findByRole("heading", { name: "Crea tu usuario en AgentSales" });
+    await screen.findByRole("heading", { name: "Crea tu usuario en AgentPey" });
     await screen.findByLabelText("Contraseña");
     fill("Contraseña", "una-clave-larga-1");
     fill("Repite la contraseña", "otra-clave-larga-1");
@@ -132,10 +132,10 @@ describe("la invitación", () => {
     const { token } = await invite(h);
     h.renderApp(`/invitacion#${token}`);
 
-    await screen.findByRole("heading", { name: "Crea tu usuario en AgentSales" });
+    await screen.findByRole("heading", { name: "Crea tu usuario en AgentPey" });
     await screen.findByLabelText("Contraseña");
     expect(
-      screen.getByText(/Estás creando tu usuario en AgentSales: elige una contraseña/),
+      screen.getByText(/Estás creando tu usuario en AgentPey: elige una contraseña/),
     ).toBeTruthy();
     // Sin sesión abierta, sin aviso.
     expect(screen.queryByRole("button", { name: "Seguir y cerrar esa sesión" })).toBeNull();
@@ -195,7 +195,7 @@ describe("la invitación", () => {
   it("un enlace usado o sin token lo explica", async () => {
     const h = harness({ session: "none" });
     h.renderApp("/invitacion#token-que-no-existe");
-    await screen.findByRole("heading", { name: "Crea tu usuario en AgentSales" });
+    await screen.findByRole("heading", { name: "Crea tu usuario en AgentPey" });
     await screen.findByLabelText("Contraseña");
     fill("Contraseña", "una-clave-larga-1");
     fill("Repite la contraseña", "una-clave-larga-1");

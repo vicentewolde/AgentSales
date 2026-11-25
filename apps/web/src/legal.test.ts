@@ -21,7 +21,7 @@ describe("páginas públicas", () => {
       // términos y la privacidad se actualizaron el 2026-10-20: las opera CERTILINK SPA.
       // El 2026-11-25 pasaron a nombrar AgentPey (la app de Meta se llama así) y los posts de marca.
       expect(html).toContain("Última actualización: 25 de noviembre de 2026");
-      expect(html).not.toContain("AgentSales");
+      expect(html).not.toContain("AgentPey");
       expect(html).not.toContain("Borrador en revisión");
       // Enlaza a las otras dos y a Entrar.
       for (const other of PAGES.filter((p) => p !== name)) {
@@ -37,7 +37,7 @@ describe("páginas públicas", () => {
       expect(html).toContain('href="mailto:vicente@agentpey.com"');
       expect(html.match(/\[[A-ZÁÉÍÓÚÑ ]+\]/g) ?? []).toEqual([]);
     }
-    // Quien opera AgentSales es la empresa (Meta la compara con su verificación); él es su representante.
+    // Quien opera AgentPey es la empresa (Meta la compara con su verificación); él es su representante.
     for (const name of ["privacidad", "terminos"] as const) {
       expect(page(name)).toContain("CERTILINK SPA (RUT 78.344.583-2)");
       expect(page(name)).toContain("Santa Teresa #6, Huelquén, comuna de Paine");

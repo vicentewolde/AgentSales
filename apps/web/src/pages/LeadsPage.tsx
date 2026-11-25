@@ -122,7 +122,7 @@ function WebhookSetup({ brokerId }: { brokerId: string }) {
       <h2 className="font-semibold text-fg">Conectar ManyChat</h2>
       <p className="mt-1 text-sm text-fg-muted">
         En el flujo de ManyChat agrega un «External Request» (plan Pro) que envíe cada contacto a
-        AgentSales con este secreto. Si lo generas de nuevo, el anterior deja de servir.
+        AgentPey con este secreto. Si lo generas de nuevo, el anterior deja de servir.
       </p>
       {result === undefined ? (
         asking ? (

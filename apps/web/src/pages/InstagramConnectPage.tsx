@@ -70,13 +70,13 @@ export function InstagramConnectPage() {
       />
       <Card as="section" title="Qué vas a autorizar" className="mb-4">
         <p className="text-sm text-fg">
-          Instagram te va a pedir permiso para que AgentSales pueda{" "}
+          Instagram te va a pedir permiso para que AgentPey pueda{" "}
           <strong>publicar en la cuenta</strong> (fotos, carruseles y reels) y{" "}
           <strong>leer las métricas básicas</strong> de la cuenta. Nada más.
         </p>
         <p className="mt-2 text-sm text-fg-muted">
-          AgentSales nunca ve ni guarda tu contraseña: la escribes solo en Instagram. Puedes quitar
-          el permiso cuando quieras desde la configuración de la cuenta.
+          AgentPey nunca ve ni guarda tu contraseña: la escribes solo en Instagram. Puedes quitar el
+          permiso cuando quieras desde la configuración de la cuenta.
         </p>
       </Card>
       <Card as="section" title="La cuenta tiene que ser profesional" className="mb-4">

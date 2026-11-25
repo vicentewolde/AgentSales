@@ -123,7 +123,7 @@ describe("ErrorAlert · en simple (F9.5-T20)", () => {
       />,
     );
     alert = screen.getByRole("alert");
-    expect(alert.textContent).toContain("Ese correo ya tiene un usuario en AgentSales.");
+    expect(alert.textContent).toContain("Ese correo ya tiene un usuario en AgentPey.");
     expect(alert.textContent).not.toContain("USER_EMAIL_TAKEN:");
   });
 

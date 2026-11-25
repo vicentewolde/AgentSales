@@ -9,7 +9,7 @@ import { Field, Input } from "../components/ui/Field.js";
 import { useAcceptInvitation, useLogout, useMe } from "../queries/auth.js";
 import { AuthShell } from "./LoginPage.js";
 
-const TITLE = "Crea tu usuario en AgentSales";
+const TITLE = "Crea tu usuario en AgentPey";
 
 /**
  * `/invitacion#<token>` (spec F7 §4.2 y §4.11): elegir la contraseña con el enlace que mandó el
@@ -97,7 +97,7 @@ export function InvitationPage() {
     <AuthShell title={TITLE}>
       <form onSubmit={submit} className="space-y-4">
         <p className="text-sm text-fg-muted">
-          Estás creando tu usuario en AgentSales: elige una contraseña de al menos{" "}
+          Estás creando tu usuario en AgentPey: elige una contraseña de al menos{" "}
           {PASSWORD_MIN_LENGTH} caracteres. Con ella entras al panel y a la CLI. Si ya tenías
           usuario y te mandaron este enlace para restablecerlo, aquí eliges la contraseña nueva.
         </p>

@@ -221,7 +221,7 @@ export function CloseIcon(props: IconProps) {
   );
 }
 
-/** La marca de AgentSales: un cuadrado terracota con una casa de trazo crema (F9.5-T26). */
+/** La marca de AgentPey: un cuadrado terracota con una casa de trazo crema (F9.5-T26). */
 export function LogoMark({ className = "size-8" }: IconProps) {
   return (
     <svg viewBox="0 0 36 36" aria-hidden="true" focusable="false" className={className}>

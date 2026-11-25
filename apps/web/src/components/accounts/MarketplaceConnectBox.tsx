@@ -86,7 +86,7 @@ export function MarketplaceConnectBox({
         </p>
       )}
       <p className="mt-1 text-fg-muted">
-        AgentSales no guarda tu clave: la sesión queda en un perfil de Chromium de este equipo. El
+        AgentPey no guarda tu clave: la sesión queda en un perfil de Chromium de este equipo. El
         worker abre la ventana (tiene que estar corriendo: pnpm dev).
       </p>
       <Button size="sm" onClick={start} disabled={login.isPending || waiting} className="mt-2">

@@ -43,7 +43,7 @@ describe("Mi cuenta: el doble factor", () => {
     const secret = key.value.replaceAll(" ", "");
     expect(secret).toBe("CLAVEA");
     const link = within(section).getByRole("link", { name: "este enlace en tu app de claves" });
-    expect(link.getAttribute("href")).toMatch(/^otpauth:\/\/totp\/AgentSales/);
+    expect(link.getAttribute("href")).toMatch(/^otpauth:\/\/totp\/AgentPey/);
     expect(cached(h)).not.toContain(secret);
 
     fireEvent.change(within(section).getByLabelText("Código de la app"), {

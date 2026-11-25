@@ -12,7 +12,7 @@ const NETWORK: Readonly<
     name: "LinkedIn",
     env: "LINKEDIN_CLIENT_ID y LINKEDIN_CLIENT_SECRET",
     guide: "docs/integraciones/linkedin.md",
-    note: "Queda a mano: AgentSales deja el texto listo y tú publicas y pegas el enlace. El acceso dura 60 días.",
+    note: "Queda a mano: AgentPey deja el texto listo y tú publicas y pegas el enlace. El acceso dura 60 días.",
   },
   x: {
     name: "X",

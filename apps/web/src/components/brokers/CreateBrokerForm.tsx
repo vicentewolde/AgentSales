@@ -127,7 +127,7 @@ export function CreateBrokerForm({
     if (file.size > MAX_BROKER_TEMPLATE_BYTES) {
       setFilled(null);
       setFileError(
-        `La planilla pesa más de ${MAX_BROKER_TEMPLATE_BYTES / 1024 / 1024} MB: sube la planilla de AgentSales con la hoja Corredor llena.`,
+        `La planilla pesa más de ${MAX_BROKER_TEMPLATE_BYTES / 1024 / 1024} MB: sube la planilla de AgentPey con la hoja Corredor llena.`,
       );
       return;
     }
