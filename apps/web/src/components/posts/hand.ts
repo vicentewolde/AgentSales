@@ -3,7 +3,7 @@ import { type LinkedInOpenTarget, linkedinOpenTarget } from "./linkedin.js";
 
 // Publicar a mano en LinkedIn, X e Instagram (F9.5 y F9.6, ADR-0041): lo puro del asistente — qué
 // redes lo tienen, el enlace que abre el editor con el texto puesto (donde la red lo permite) y qué
-// dice cada una. Todo es un enlace normal y el portapapeles: AgentSales no automatiza el navegador.
+// dice cada una. Todo es un enlace normal y el portapapeles: AgentPey no automatiza el navegador.
 
 /** Las redes que se publican a mano con el asistente de copiar. */
 export const HAND_PLATFORMS = ["linkedin", "x", "instagram"] as const satisfies readonly Platform[];

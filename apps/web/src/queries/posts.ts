@@ -336,7 +336,7 @@ export function usePublishPost(id: string) {
 }
 
 /**
- * `POST /posts/:id/record` («Ya lo publiqué fuera de AgentSales»): registra con su enlace un texto que
+ * `POST /posts/:id/record` («Ya lo publiqué fuera de AgentPey»): registra con su enlace un texto que
  * ya está en la red. No publica nada: solo anota lo que ya pasó.
  */
 export function useRecordPost(id: string) {

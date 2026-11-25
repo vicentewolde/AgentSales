@@ -130,9 +130,9 @@ export const OPERATION_TIMEOUT_MS = 15_000;
  */
 const OPERATION_MESSAGES: Readonly<Record<string, string>> = {
   ML_ABORTED:
-    "Mercado Libre tardó demasiado en responder: AgentSales revisará el estado en un momento",
+    "Mercado Libre tardó demasiado en responder: AgentPey revisará el estado en un momento",
   ML_CONFLICT:
-    "Mercado Libre está procesando otro cambio del aviso: AgentSales revisará el estado en un momento",
+    "Mercado Libre está procesando otro cambio del aviso: AgentPey revisará el estado en un momento",
 };
 
 /** Relanza el error de una operación con el mensaje propio, si lo tiene (mismo código). */

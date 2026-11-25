@@ -180,7 +180,7 @@ export function AuthShell({ title, children }: { title: string; children: React.
       <section className="w-full max-w-sm rounded-xl border border-line bg-surface p-6 shadow-xs">
         <p className="flex items-center gap-2.5 text-lg font-semibold tracking-tight">
           <LogoMark className="size-8" />
-          AgentSales
+          AgentPey
         </p>
         <h1 className="mt-5 mb-4 text-xl font-semibold">{title}</h1>
         {children}

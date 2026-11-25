@@ -741,7 +741,7 @@ export function PublicationItem({
                 checked={removedByHand}
                 onChange={(event) => setRemovedByHand(event.target.checked)}
               />
-              Ya la borré a mano en {channel} (AgentSales no puede borrarla)
+              Ya la borré a mano en {channel} (AgentPey no puede borrarla)
             </label>
           ) : (
             <p>Es una simulación: no hay nada que borrar en {channel}.</p>

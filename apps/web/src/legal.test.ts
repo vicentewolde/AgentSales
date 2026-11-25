@@ -37,7 +37,7 @@ describe("páginas públicas", () => {
       expect(html).toContain('href="mailto:vicente@agentpey.com"');
       expect(html.match(/\[[A-ZÁÉÍÓÚÑ ]+\]/g) ?? []).toEqual([]);
     }
-    // Quien opera AgentSales es la empresa (Meta la compara con su verificación); él es su representante.
+    // Quien opera AgentPey es la empresa (Meta la compara con su verificación); él es su representante.
     for (const name of ["privacidad", "terminos"] as const) {
       expect(page(name)).toContain("CERTILINK SPA (RUT 78.344.583-2)");
       expect(page(name)).toContain("Santa Teresa #6, Huelquén, comuna de Paine");

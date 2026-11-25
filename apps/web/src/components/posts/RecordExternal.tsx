@@ -24,7 +24,7 @@ const EXAMPLES: Readonly<Partial<Record<PostPlatform, string>>> = {
 };
 
 /**
- * «Ya lo publiqué fuera de AgentSales»: para un texto del post que ya está en la red (lo publicaste
+ * «Ya lo publiqué fuera de AgentPey»: para un texto del post que ya está en la red (lo publicaste
  * a mano, o antes), lo registra con su enlace para seguirlo en Seguimiento. No publica nada. Si ese
  * texto tenía una publicación simulada, queda como retirada (no se borra).
  */
@@ -87,7 +87,7 @@ export function RecordExternal({
   return (
     <div className="space-y-3 text-sm">
       <p className="text-fg-muted">
-        ¿Ya lo publicaste en la red por tu cuenta, o antes de usar AgentSales? Regístralo con su
+        ¿Ya lo publicaste en la red por tu cuenta, o antes de usar AgentPey? Regístralo con su
         enlace y lo sigues desde Seguimiento. Esto no publica nada.
       </p>
       {done && (
@@ -106,7 +106,7 @@ export function RecordExternal({
             setWhen(chileInputValue(new Date()));
           }}
         >
-          Ya lo publiqué fuera de AgentSales
+          Ya lo publiqué fuera de AgentPey
         </Button>
       ) : (
         <form

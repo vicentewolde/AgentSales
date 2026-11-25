@@ -376,14 +376,12 @@ describe("panel: detalle de un post", () => {
     expect(await within(list).findByText("publicada")).toBeTruthy();
   });
 
-  it("«Ya lo publiqué fuera de AgentSales» registra el post con su enlace", async () => {
+  it("«Ya lo publiqué fuera de AgentPey» registra el post con su enlace", async () => {
     const s = await setup();
     await s.approvedPublication(["publishing", "published"]);
     await s.open();
     const card = screen.getByRole("region", { name: "Ya publicado" });
-    fireEvent.click(
-      within(card).getByRole("button", { name: "Ya lo publiqué fuera de AgentSales" }),
-    );
+    fireEvent.click(within(card).getByRole("button", { name: "Ya lo publiqué fuera de AgentPey" }));
     fireEvent.change(within(card).getByLabelText(/Enlace del post en Discord/), {
       target: { value: "https://discord.com/channels/1/2/3" },
     });

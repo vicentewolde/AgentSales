@@ -185,7 +185,7 @@ describe("panel: perfil editorial", () => {
     });
     fireEvent.change(within(form).getByLabelText("Cuánto del tema 1"), { target: { value: "1" } });
     fireEvent.change(within(form).getByLabelText(/^Hechos/), {
-      target: { value: "AgentSales publica en cuatro redes\n\nNació en 2026" },
+      target: { value: "AgentPey publica en cuatro redes\n\nNació en 2026" },
     });
     fireEvent.click(within(form).getByRole("checkbox", { name: "X" }));
     fireEvent.click(within(form).getByRole("button", { name: "X: lunes" }));
@@ -216,7 +216,7 @@ describe("panel: perfil editorial", () => {
       languages: ["es", "en"],
       audience: "Corredores independientes",
       pillars: [{ key: "bastidores", name: "Bastidores", weight: 1 }],
-      facts: ["AgentSales publica en cuatro redes", "Nació en 2026"],
+      facts: ["AgentPey publica en cuatro redes", "Nació en 2026"],
       cadence: { x: { postsPerWeek: 1, days: ["mon"], hours: ["09:00"] } },
     });
   });

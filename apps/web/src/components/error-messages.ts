@@ -21,7 +21,7 @@ export const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   MARKETPLACE_AUTOMATION_NOT_ALLOWED: "Eso no se puede automatizar en Facebook Marketplace.",
   OAUTH_STATE_USED: "Ese intento de conexión ya se usó: empieza la conexión de nuevo.",
   // Usuarios y corredores.
-  USER_EMAIL_TAKEN: "Ese correo ya tiene un usuario en AgentSales.",
+  USER_EMAIL_TAKEN: "Ese correo ya tiene un usuario en AgentPey.",
   USER_SELF_DISABLE: "No puedes desactivar tu propio usuario.",
   INVITATION_CONFLICT: "Se estaba generando otro enlace al mismo tiempo: vuelve a intentarlo.",
   USER_NOT_ADMIN: "Esa acción es solo para el administrador.",

@@ -228,7 +228,7 @@ function StockTab({
         </ul>
       )}
       <p className="text-xs text-fg-subtle">
-        La foto elegida se guarda en AgentSales antes de usarla (licencia de Pixabay, sin crédito
+        La foto elegida se guarda en AgentPey antes de usarla (licencia de Pixabay, sin crédito
         obligatorio).
       </p>
     </div>
