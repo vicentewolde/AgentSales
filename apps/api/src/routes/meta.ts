@@ -111,7 +111,7 @@ function statusPage(code: string, request: MetaDeletionRequest | null): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Borrado de datos · AgentSales</title>
+<title>Borrado de datos · AgentPey</title>
 <link rel="stylesheet" href="/legal/legal.css">
 </head>
 <body>

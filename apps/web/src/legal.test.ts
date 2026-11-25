@@ -19,8 +19,9 @@ describe("páginas públicas", () => {
       expect(html).toContain('<link rel="stylesheet" href="/legal/legal.css">');
       // Aprobadas por el operador (F8-T18, 2026-10-19), con su fecha y sin el aviso de borrador. Los
       // términos y la privacidad se actualizaron el 2026-10-20: las opera CERTILINK SPA.
-      const updated = name === "eliminacion-de-datos" ? "19" : "20";
-      expect(html).toContain(`Última actualización: ${updated} de octubre de 2026`);
+      // El 2026-11-25 pasaron a nombrar AgentPey (la app de Meta se llama así) y los posts de marca.
+      expect(html).toContain("Última actualización: 25 de noviembre de 2026");
+      expect(html).not.toContain("AgentSales");
       expect(html).not.toContain("Borrador en revisión");
       // Enlaza a las otras dos y a Entrar.
       for (const other of PAGES.filter((p) => p !== name)) {
